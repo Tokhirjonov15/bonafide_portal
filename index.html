@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BONAFIDE 통합 포털</title>
+<meta name="theme-color" content="#0a0e15">
+<style>
+  :root{
+    --bg:#0a0e15; --card:#111827; --card2:#0f1522; --line:rgba(255,255,255,.12);
+    --ink:#e5ecf5; --ink2:#8aa0bd; --accent:#3b82f6; --accent2:#6366f1;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--ink); min-height:100vh;
+    font-family:'Segoe UI','Malgun Gothic',system-ui,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:24px; gap:34px;
+  }
+  .logo{
+    width:64px; height:64px; border-radius:18px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:grid; place-items:center; font-size:32px; margin:0 auto 14px;
+    box-shadow:0 8px 32px rgba(59,130,246,.35);
+  }
+  header{text-align:center}
+  h1{font-size:26px; letter-spacing:.5px}
+  .sub{color:var(--ink2); font-size:14px; margin-top:6px}
+  .cards{display:flex; gap:22px; flex-wrap:wrap; justify-content:center; max-width:820px; width:100%}
+  a.card{
+    flex:1 1 300px; max-width:380px; text-decoration:none; color:var(--ink);
+    background:linear-gradient(180deg,var(--card),var(--card2));
+    border:1px solid var(--line); border-radius:20px; padding:30px 26px;
+    transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  a.card:hover{transform:translateY(-4px); border-color:var(--accent); box-shadow:0 12px 40px rgba(59,130,246,.22)}
+  .ic{font-size:40px; margin-bottom:14px}
+  .card h2{font-size:19px; margin-bottom:8px}
+  .card p{color:var(--ink2); font-size:13.5px; line-height:1.6}
+  .badge{
+    display:inline-block; margin-top:16px; font-size:12px; font-weight:700;
+    padding:4px 12px; border-radius:20px; background:rgba(59,130,246,.15);
+    color:#7fb0ff; border:1px solid rgba(59,130,246,.35);
+  }
+  footer{color:var(--ink2); font-size:12px; text-align:center}
+  @media (max-width:680px){ body{justify-content:flex-start; padding-top:60px} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🏥</div>
+  <h1>BONAFIDE 통합 포털</h1>
+  <div class="sub">사용할 시스템을 선택하세요</div>
+</header>
+
+<div class="cards">
+  <a class="card" href="jaego/index.html">
+    <div class="ic">📦</div>
+    <h2>재고관리</h2>
+    <p>재고·입출고·바코드 관리.<br>
+       자체 개발 시스템 (v0.1 시제품).</p>
+    <span class="badge">자체 개발</span>
+  </a>
+
+  <a class="card" href="dongseon/index.html" style="opacity:.55">
+    <div class="ic">🚶</div>
+    <h2>동선관리</h2>
+    <p>슬립지 없는 환자 흐름 관리.<br>
+       준비 중 — 타 지점 시스템 검토 후 구축.</p>
+    <span class="badge">준비 중</span>
+  </a>
+
+  <a class="card" href="jspacs/index.html">
+    <div class="ic">🩻</div>
+    <h2>JS PACS · 판독/계측</h2>
+    <p>DICOM 영상 조회·판독·전척추 계측 도구.<br>
+       주석은 원본을 변경하지 않고 별도 저장됩니다.</p>
+    <span class="badge">영상 판독 시스템</span>
+  </a>
+</div>
+
+<footer>© BONAFIDE — 원내 통합 시스템 · <a href="https://bonafidekcs-inventory.pages.dev/" target="_blank" rel="noopener" style="color:inherit">기존 재고 앱(이전 시스템) ↗</a></footer>
+
+</body>
+</html>

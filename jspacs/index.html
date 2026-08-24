@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JS PACS + Full-Spine Annotation Tool</title>
+<meta name="theme-color" content="#0a0e15">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JS PACS">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/01-layout.css">
+<link rel="stylesheet" href="css/02-toolbar.css">
+<link rel="stylesheet" href="css/03-modals.css">
+</head><body>
+<script src="js/01-mode.js"></script>
+
+<!-- ===== 통합 로그인 게이트 (재고·동선·인사 앱과 동일 계정 — Firebase uiwon-inventory) ===== -->
+<link rel="stylesheet" href="css/04-extra.css">
+<div id="authOverlay">
+  <div id="authCard">
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="width:52px;height:52px;margin:0 auto 10px;border-radius:14px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:grid;place-items:center;font-size:26px">🩻</div>
+      <h1 style="margin:0;text-align:center">JS PACS</h1>
+      <div style="font-size:13px;color:#8aa0bd;margin-top:4px">로그인</div>
+    </div>
+    <div id="authMsg"></div>
+    <label for="authName">아이디 (이름)</label>
+    <input id="authName" autocomplete="username" placeholder="이름을 입력하세요">
+    <label for="authPw">비밀번호</label>
+    <input id="authPw" type="password" autocomplete="current-password" placeholder="비밀번호">
+    <button id="authBtn">로그인</button>
+  </div>
+</div>
+<script src="js/02-auth-stub.js"></script>
+
+<div id="pacsApp">
+
+<header id="top">
+  <div class="brand"><span class="logo"></span>JS PACS</div>
+  <span id="folderInfo" data-i18n="ui.noFolder">No folder selected.</span>
+  <div class="tools">
+    <button id="hubBtn" title="통합 포털로 이동" onclick="location.href='../index.html'">🏠 포털</button>
+    <button id="invBtn" title="재고관리 열기" onclick="window.open('../jaego/index.html','_blank')">📦 재고관리</button>
+    <button id="settingBtn" title="Settings — language &amp; folder"><span data-i18n="ui.setting">⚙ Setting</span></button>
+    <button id="img2dcmBtn" title="이미지 파일을 DICOM으로 변환해 폴더에 저장">🖼→DCM</button>
+    <button id="refreshBtn" title="Refresh list">↻</button>
+    <button id="compareBtn" title="Open JS VIEWER (side-by-side comparison)" data-i18n="ui.viewer">⊟ JS VIEWER</button>
+    <div id="userPill" style="display:none;align-items:center;gap:7px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.16);border-radius:20px;padding:4px 10px;font-size:12.5px;font-weight:700;color:var(--ink)">
+      <span id="uAv" style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px"></span>
+      <span style="display:inline-block;line-height:1.15;text-align:left;vertical-align:middle"><span id="authUserName"></span><span id="uSub" style="display:none;font-size:10px;font-weight:600;color:var(--ink2)"></span></span>
+      <span id="uRole" style="font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px"></span>
+    </div>
+    <button id="authLogoutBtn" title="로그아웃 (통합 계정)" style="display:none" onclick="if(window.JS_LOGOUT)window.JS_LOGOUT()">⎋ 로그아웃</button>
+  </div>
+</header>
+<div id="bar2">
+  <div class="filters">
+    <span class="flabel" data-i18n="ui.idName">Patient ID · Name</span>
+    <input id="search" class="idin" placeholder="Patient ID or name" data-i18n-ph="ui.idNamePh">
+    <span class="flabel ml" data-i18n="ui.studyDate">Study date</span>
+    <input type="date" id="startDate" class="dt">
+    <span class="sep">~</span>
+    <input type="date" id="endDate" class="dt">
+    <button id="todayBtn" class="mini" data-i18n="ui.today">Today</button>
+    <button id="allBtn" class="mini" data-i18n="ui.allDates">All dates</button>
+    <label id="groupToggle" title="Group files with the same Patient ID, Study name, and Study date/time into one row"><input type="checkbox" id="groupChk" checked><span data-i18n="ui.groupSame">Group same study</span></label>
+  </div>
+  <div class="right"><span id="count"></span><button id="prevToggleBtn" class="mini" title="Toggle image preview">👁 미리보기 켜기</button><button id="searchBtn" data-i18n="ui.search">🔍 Search</button></div>
+</div>
+<div id="restore"><span><span data-i18n="ui.reopenAsk">Reopen previous folder</span> <b id="restoreName"></b>?</span><button id="restoreBtn" data-i18n="ui.reopen">📂 Reopen</button><button class="x" id="restoreX" title="Close">✕</button></div>
+<div id="content">
+  <div id="leftcol">
+    <div id="listWrap">
+      <table>
+        <thead><tr><th class="cnum">#</th><th class="cpid sortable" data-sort="pid" data-i18n="ui.thPid">Patient ID</th><th class="cname sortable" data-sort="name" data-i18n="ui.thName">Name</th><th class="csex sortable" data-sort="sex" data-i18n="ui.thSex">Sex</th><th class="cage sortable" data-sort="age" data-i18n="ui.thAge">Age</th><th class="cexam sortable" data-sort="exam" data-i18n="ui.thStudy">Study</th><th class="cdate sortable" data-sort="date" data-i18n="ui.thDate">Date/Time</th><th class="cdoc sortable" data-sort="doc" data-i18n="ui.thDoc">Physician</th><th class="csize sortable" data-sort="size" data-i18n="ui.thSize">Size</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty"><div class="ic">🗂️</div><span data-i18n="ui.emptyHint">Open <b>⚙ Setting</b> to choose a folder containing DICOM files.<br><b>Single-click</b> a study to see its history and preview; <b>double-click</b> to open it in JS VIEWER.</span></div>
+    </div>
+    <div id="hsplit" title="Drag to resize"></div>
+    <div id="history">
+      <div class="phead" id="histHead"><button id="analyzeBtn" title="Analyze measurements of the checked studies over time" data-i18n="ui.analyze">📈 Analyze</button><button id="exportBtn" title="Export a patient report (measurements + before/after images) as an HTML file" data-i18n="ui.export">📄 Export</button><span id="histTitle" data-i18n="ui.studyHistory">Study history</span></div>
+      <div class="pbody">
+        <table>
+          <thead><tr><th class="cchk"><input type="checkbox" id="histChkAll" title="Select all"></th><th class="cnum">#</th><th class="cexam" data-i18n="ui.thStudy">Study</th><th class="cdate" data-i18n="ui.thDate">Date/Time</th><th class="cdoc" data-i18n="ui.thDoc">Physician</th><th class="csize" data-i18n="ui.thSize">Size</th></tr></thead>
+          <tbody id="histRows"></tbody>
+        </table>
+        <div id="histEmpty" data-i18n="ui.histEmpty">Click a study once to see the full history for that patient.</div>
+      </div>
+    </div>
+  </div>
+  <div id="preview">
+    <div class="phead" data-i18n="ui.preview">Preview</div>
+    <div class="pbody">
+      <div id="prevEmpty" data-i18n="ui.prevEmpty">Click a study once to preview the image.</div>
+      <div id="prevWrap" style="display:none">
+        <div id="prevMeta"></div>
+        <div id="prevNote"></div>
+        <div id="prevCap"></div>
+        <div id="prevNav" style="display:none"><button id="prevPrevBtn" title="Previous (←)">‹</button><span id="prevNavLabel"></span><button id="prevNextBtn" title="Next (→)">›</button></div>
+        <img id="prevImg" alt="preview" draggable="false">
+        <div id="prevHint" data-i18n="ui.prevHint">For multi-image studies use <b>← →</b> keys, drag, or wheel to flip. Double-click to open in JS VIEWER.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="foot" data-i18n="ui.foot">Single-click = patient history &amp; preview · Double-click = open in JS VIEWER · Annotations saved as <b>original.dcm.jsha.json</b> (original DICOM unchanged) · Folder write recommended on Chrome/Edge</div>
+<input id="dirInput" type="file" webkitdirectory multiple hidden>
+
+
+</div>
+
+<div id="annotatorOverlay">
+
+<div id="app">
+ <div id="bar">
+  <div class="title">JS PACS</div>
+  <div id="status"></div>
+  <span id="imginfo" class="muted">No image</span>
+
+  <div class="grp">
+   <button id="exp" class="primary" title="Save (Ctrl/⌘ + S)">Save</button>
+  </div>
+
+  <div class="grp">
+   <div class="row"><button id="undoBtn" title="Undo (Ctrl/⌘ + Z)">↶ Undo</button><button id="redoBtn" title="Redo (Ctrl/⌘ + Shift + Z)">↷ Redo</button></div>
+   <button id="clr">Clear all</button>
+  </div>
+
+  <div class="grp">
+   <div class="row"><button id="zoomInBtn" title="Zoom in (=)">Zoom in<span class="sc">=</span></button><button id="zoomOutBtn" title="Zoom out (-)">Zoom out<span class="sc">−</span></button></div>
+   <button id="fitBtn">Fit<span class="sc">0</span></button>
+   <button id="flipBtn">Flip<span class="sc">r</span></button>
+  </div>
+  <input id="pxmm" type="hidden">
+
+  <div class="grp">
+   <div class="muted">Patient note (manual)<span class="sc">info</span></div>
+   <input id="patientInfo" placeholder="e.g. Barefoot / Insole">
+  </div>
+
+  <div class="grp">
+   <button id="refBtn">Midline<span class="sc">cc</span></button>
+   <div class="vwrap" id="vwrap">
+     <button id="vtrigger" class="vtrigger">Vertebra ▾</button>
+     <div class="vmenu" id="vmenu">
+       <div class="vcat">Cervical<span class="varr">▸</span><div class="vsub"><button data-v="C2">C2<span class="sc">c2</span></button><button data-v="C3">C3<span class="sc">c3</span></button><button data-v="C4">C4<span class="sc">c4</span></button><button data-v="C5">C5<span class="sc">c5</span></button><button data-v="C6">C6<span class="sc">c6</span></button><button data-v="C7">C7<span class="sc">c7</span></button></div></div>
+       <div class="vcat">Thoracic<span class="varr">▸</span><div class="vsub"><button data-v="T1">T1<span class="sc">t1</span></button><button data-v="T2">T2<span class="sc">t2</span></button><button data-v="T3">T3<span class="sc">t3</span></button><button data-v="T4">T4<span class="sc">t4</span></button><button data-v="T5">T5<span class="sc">t5</span></button><button data-v="T6">T6<span class="sc">t6</span></button><button data-v="T7">T7<span class="sc">t7</span></button><button data-v="T8">T8<span class="sc">t8</span></button><button data-v="T9">T9<span class="sc">t9</span></button><button data-v="T10">T10<span class="sc">t10</span></button><button data-v="T11">T11<span class="sc">t11</span></button><button data-v="T12">T12<span class="sc">t12</span></button></div></div>
+       <div class="vcat">Lumbar<span class="varr">▸</span><div class="vsub"><button data-v="L1">L1<span class="sc">l1</span></button><button data-v="L2">L2<span class="sc">l2</span></button><button data-v="L3">L3<span class="sc">l3</span></button><button data-v="L4">L4<span class="sc">l4</span></button><button data-v="L5">L5<span class="sc">l5</span></button></div></div>
+       <div class="vcat">Sacral<span class="varr">▸</span><div class="vsub"><button data-v="S1">S1<span class="sc">s1</span></button><button data-v="S2">S2<span class="sc">s2</span></button><button data-v="Coccyx">Coccyx<span class="sc">co</span></button></div></div>
+     </div>
+   </div>
+   <div class="vwrap" id="lwrap">
+     <button id="ltrigger" class="vtrigger">Level ▾</button>
+     <div class="vmenu" id="lmenu">
+       <button class="vleaf" data-lev="Mandibular angle">Mandibular angle</button>
+       <button class="vleaf" data-lev="Clavicle">Clavicle<span class="sc">cl</span></button>
+       <button class="vleaf" data-lev="Coracoid">Coracoid</button>
+       <button class="vleaf" data-lev="Iliac crest">Iliac crest<span class="sc">i</span></button>
+       <button class="vleaf" data-lev="Sacral base">Sacral base</button>
+       <button class="vleaf" data-lev="Femoral head">Femoral head<span class="sc">f</span></button>
+     </div>
+   </div>
+   <button id="pelvisBtn">Pelvic cavity<span class="sc">p</span></button>
+   <button id="obtBtn">Obturator<span class="sc">o</span></button>
+   <button id="ltrBtn" class="long">Lesser trochanter-Inferior ramus<span class="sc">le</span></button>
+   <button id="cobbBtn">Cobb's angle 1<span class="sc">cb</span></button>
+   <button id="cobb2Btn">Cobb's angle 2<span class="sc">xb</span></button>
+  </div>
+
+  <div class="grp">
+   <div class="muted">Sagittal alignment (측면)</div>
+   <div class="sagGrid">
+     <button id="sagSimpleBtn" class="sagBtn" title="SVA · cSVA (4점)">Simple<span class="sagSub">SVA·cSVA</span><span class="sc">ss</span></button>
+     <button id="sagComplexBtn" class="sagBtn" title="SVA · cSVA · PI−LL · T1S−CL · PT (14점)">Complex<span class="sagSub">＋PI-LL·PT</span><span class="sc">sx</span></button>
+   </div>
+  </div>
+
+  <div class="grp">
+   <button id="manualBtn">📖 Manual</button>
+   <button id="pinBtn" title="Toggle panel (auto-hide ↔ pinned)">📌 Pin panel</button>
+  </div>
+
+  <input id="file" type="file" accept="image/*" hidden>
+  <input id="zipfile" type="file" accept=".zip,application/zip" hidden>
+ </div>
+
+ <div id="main">
+  <div id="annSeriesNav" style="display:none"><button id="annSeriesPrev" title="Previous image (←)">‹</button><span id="annSeriesLabel"></span><button id="annSeriesNext" title="Next image (→)">›</button></div>
+  <div id="drop">Double-click a study in JS PACS to open the image and annotations here.<br>See the <b>📖 Manual</b> at the bottom-left for usage.</div>
+  <div id="imgArea" style="display:none">
+    <div id="cvWrap"><button id="imgCloseBtn" title="Close image (ESC twice)">✕</button><div id="patNoteOverlay"></div><div id="patHeader"><div id="patDicom"></div><div id="patManual"></div></div><canvas id="cv"></canvas></div>
+  </div>
+ </div>
+
+ <div id="side">
+  <div id="readout" class="muted">cursor: -</div>
+  <div class="muted">Points / midline distance</div>
+  <table id="tbl"><thead><tr><th>#</th><th>label</th><th>x</th><th>y</th><th>off px</th><th>off mm</th></tr></thead><tbody></tbody></table>
+  <div class="ph">Level height (L/R)</div>
+  <table id="levtbl"><thead><tr><th>label</th><th>L(x,y)</th><th>R(x,y)</th><th>&#916;px</th><th>&#916;mm</th><th>Lower</th></tr></thead><tbody></tbody></table>
+  <div class="ph">Vertebra rotation (SP)</div>
+  <table id="rottbl"><thead><tr><th>Vertebra</th><th>Width(px)</th><th>Offset%</th><th>Dir</th></tr></thead><tbody></tbody></table>
+  <div class="ph">Pelvic cavity · Obturator · LT-IR</div>
+  <table id="mtbl"><thead><tr><th>Item</th><th>L</th><th>R</th><th>Value</th></tr></thead><tbody></tbody></table>
+  <div id="reportHdr"><span id="reportTitle">Report (auto)</span><button id="copyReport">Copy</button></div>
+  <div id="report">Load an image and mark points — the report appears here.</div>
+ </div>
+</div>
+
+<div id="manualOverlay">
+ <div id="manualCard">
+  <button id="manualClose">Close ✕</button>
+  <div class="mTitle">JS Full-Spine Annotation Tool</div>
+  <div class="mSub">User guide · Posture-assessment annotation tool for full-spine AP images</div>
+
+  <div class="mH">1. Overview</div>
+  <ul class="mL">
+   <li>A single self-contained HTML tool that places reference points/lines on full-spine AP X-rays and automatically computes and displays left–right deviation, height difference, rotation, and pelvic measurements (no install or internet required).</li>
+   <li>Double-clicking a study in <b>JS PACS</b> opens it in <b>JS VIEWER</b>, where the <b>DICOM (.dcm)</b> is automatically decoded and loaded. All coordinates are based on the image's <b>original pixels</b>.</li>
+  </ul>
+
+  <div class="mH">2. Layout</div>
+  <ul class="mL">
+   <li>Select tools from the <b>left button panel</b> (file · edit · view · measurement groups).</li>
+   <li>The image/annotations are in the center, the current action hint at the top, and the measurement results table on the right.</li>
+  </ul>
+
+  <div class="mH">3. Measurement tools</div>
+  <table class="mT">
+   <thead><tr><th style="width:170px">Button</th><th>Usage</th></tr></thead>
+   <tbody>
+    <tr><td>Vertebra (dropdown)</td><td>Select a vertebra, then click <b>left vertebral border → spinous process (SP) → right vertebral border</b>. After all three points, rotation% (relative to SP) and the vertebral-center–midline distance are shown. ESC while incomplete = cancel.</td></tr>
+    <tr><td>Midline</td><td>Click → yellow vertical reference line. The left–right distance (±) of each SP/point is then shown.</td></tr>
+    <tr><td>Level height + region</td><td>Pick a region (clavicle · coracoid · iliac crest · sacral base · femoral head) and click left → right → height difference.</td></tr>
+    <tr><td>Pelvic cavity</td><td>Left SI joint inferior (A) → right SI joint inferior (B) → pubic symphysis (C). Pelvic ratio = (perpendicular distance from C to line AB) ÷ (A–B distance).</td></tr>
+    <tr><td>Obturator</td><td>Click left medial → horizontal guide → click left lateral (measures distance) → same for the right side.</td></tr>
+    <tr><td>Lesser trochanter–Inferior ramus</td><td>Click left Lesser trochanter → horizontal guide → click left Inferior ramus (distance) → same for the right.</td></tr>
+    <tr><td>Cobb's angle</td><td>Click two points along the <b>upper endplate</b> of the upper-end vertebra → two points along the <b>lower endplate</b> of the lower-end vertebra. The acute angle between the two endplate lines is shown as the Cobb angle. Multiple measurements supported; click a label then Delete to remove.</td></tr>
+    <tr><td>px/mm (auto)</td><td>Reads the per-pixel length from the DICOM PixelSpacing automatically and converts all distances to mm (no separate calibration needed).</td></tr>
+    <tr><td>Sagittal alignment (측면)</td><td><b>측면(시상면) 전척추 전용.</b> 화면 좌측이 환자 앞(anterior) 기준. 두 모드 제공 — <b>Simple</b>: 4점(C2 치돌기 → C7 대각 2점[상앞·하뒤]의 중점=C7 중심 → S1 후상연)으로 <b>SVA·cSVA</b> 산출(둘 다 C7 중심 기준). <b>Complex</b>: 14점(C2 치돌기·C2 하종판 2점 → C7 네 모서리 → T1 상종판 2점 → L1 상종판 2점 → S1 종판 2점 → 비구 전·후연 2점[중점=대퇴골두 중심])으로 <b>SVA·cSVA·PI−LL·T1S−CL·PT</b>(및 SS·PI·CL·LL) 산출. 추체 중심은 클릭하지 않고 C7 네 모서리의 대각선 교차로 자동 계산. 결과·신호등 해석은 우측 리포트에 표시되며 px/mm 설정 시 거리(mm) 표시. SVA·cSVA의 + 부호 = 앞(anterior) 편위. 측면 작도를 지우려면 측면 라벨(SVA 등)을 클릭해 선택한 뒤 Delete 키를 누른다.</td></tr>
+   </tbody>
+  </table>
+
+  <div class="mH">4. Selecting · deleting annotations</div>
+  <ul class="mL">
+   <li><b>Click an annotation label</b> on the image to select it (highlighted with a white outline).</li>
+   <li><b>Delete</b> key → remove the selected annotation (point/group/measurement). <b>ESC</b> or click an empty area → deselect.</li>
+   <li><b>Undo</b> (Ctrl/⌘+Z) / <b>Redo</b> (Ctrl/⌘+Shift+Z) to revert or replay point placement, deletion, etc.</li>
+  </ul>
+
+  <div class="mH">5. Size (mm) calibration</div>
+  <ul class="mL">
+   <li>Pixel distances vary with magnification and resolution, so <b>mm calibration</b> is needed for comparison.</li>
+   <li>Distance (mm) is <b>auto-converted</b> from the DICOM PixelSpacing.</li>
+  </ul>
+
+  <div class="mH">6. Opening and saving</div>
+  <ul class="mL">
+   <li><b>Open</b>: Double-click a study in the <b>JS PACS</b> worklist; the <b>DICOM</b> is decoded and the image and any existing annotations load automatically. Patient info (ID/name/study date) is filled from the DICOM header.</li>
+   <li><b>Save</b>: Press <b>[Save]</b> (or Ctrl/⌘+S). The <b>original DICOM is left unchanged</b>, and the annotation data <b>original.dcm.jsha.json</b> is saved in the same folder (falls back to ZIP download where folder write is unsupported).</li>
+   <li>The saved <b>.jsha.json</b> includes coordinates, measured values, patient info, and the report summary, so you can continue where you left off when reopening the same study.</li>
+   <li>If you try to <b>close the window without saving</b> after editing, a confirmation warning appears.</li>
+  </ul>
+
+  <div class="mH">7. Colors</div>
+  <table class="mT"><tbody>
+   <tr><td style="background:#ffe600;width:42px"></td><td>Midline (vertical reference)</td></tr>
+   <tr><td style="background:#00eaff"></td><td>Vertebra SP point / connecting line (lime)</td></tr>
+   <tr><td style="background:#1f9dff"></td><td>Level height</td></tr>
+   <tr><td style="background:#00ffcc"></td><td>Rotation (vertebral border · body line)</td></tr>
+   <tr><td style="background:#ff9500"></td><td>Pelvic cavity</td></tr>
+   <tr><td style="background:#c77dff"></td><td>Obturator</td></tr>
+   <tr><td style="background:#ffbf00"></td><td>Lesser trochanter–Inferior ramus</td></tr>
+   <tr><td style="background:#ff5da2"></td><td>Cobb's angle</td></tr>
+  </tbody></table>
+
+  <div class="mH">8. Notes and limitations</div>
+  <ul class="mL">
+   <li>Rotation deviation% is a qualitative approximation based on SP deviation on a planar AP image, not a calibrated angle (°). Since the SP typically shifts toward the concave side, the displayed direction is interpreted opposite to the vertebral rotation direction.</li>
+   <li>The midline is a surrogate for the true median line. This is a drawing/measurement aid for clinical support, not a standalone diagnostic tool.</li>
+  </ul>
+ </div>
+</div>
+<canvas id="mag" width="190" height="190"></canvas>
+
+
+
+</div>
+<div id="annBackBar"><span class="pname" id="annBackName"></span><button id="annBackBtn">← Back to worklist</button></div>
+<div id="analyzeModal"><div id="analyzeCard">
+  <button class="aclose" id="analyzeClose">Close ✕</button>
+  <h2 id="analyzeTitle">Measurement analysis</h2>
+  <div class="asub" id="analyzeSub"></div>
+  <div id="analyzeBody"></div>
+  <div id="analyzeAISection" style="display:none">
+    <div class="aaiHead">🩺 AI 전문 소견 (의료진용)</div>
+    <div class="aaiSub">차트(진료 기록)를 입력하면 측정 결과와 함께 AI가 <b>전문가 톤</b>의 소견 초안을 작성합니다. 작성된 소견은 참고용이며 의사의 판단을 대체하지 않습니다.</div>
+    <textarea id="aaiChart" placeholder="예) 45세 남성, 만성 요통(VAS 5). 흉요추 측만 의심, 골반 좌측 거상. 도수·운동치료 12주 경과. 보행 시 우측 둔부 방사통 잔존. 영상상 L4–5 경도 퇴행성 변화."></textarea>
+    <div class="aaiBtns">
+      <button id="aaiGo" class="cmBtn primary">✨ 전문 소견 생성</button>
+      <span id="aaiStatus" class="aaiStatus"></span>
+    </div>
+    <div id="aaiResult" class="aaiResult" style="display:none"></div>
+  </div>
+</div></div>
+<div id="chartModal"><div id="chartCard">
+  <button class="cmClose" id="chartClose">✕</button>
+  <h2 id="chartTitle">환자 차트 입력</h2>
+  <div class="cmSub" id="chartSub">차트(진료 기록) 내용을 입력하면, 측정 결과와 함께 AI가 환자용 코멘트 초안을 작성합니다. 생성된 코멘트는 레포트에서 자유롭게 수정한 뒤 내보낼 수 있습니다.</div>
+  <textarea id="chartInput" placeholder="예) 흉추 우측 측만, 골반 좌측 거상. 도수치료 및 운동치료 8주 시행. 통증 VAS 6→3 감소. 자세 호전 추세."></textarea>
+  <div class="cmFoot">
+    <label class="cmSkip"><input type="checkbox" id="chartSkip"> 코멘트 없이 바로 내보내기</label>
+    <div class="cmBtns">
+      <button id="chartCancel" class="cmBtn">취소</button>
+      <button id="chartGo" class="cmBtn primary">✨ 코멘트 생성 후 내보내기</button>
+    </div>
+  </div>
+  <div id="chartStatus" class="cmStatus"></div>
+</div></div>
+<div id="settingModal"><div id="settingCard">
+  <button class="sclose" id="settingClose">✕</button>
+  <h2 data-i18n="set.title">Settings</h2>
+  <div class="sgroup">
+    <div class="slabel" data-i18n="set.lang">Language</div>
+    <div class="ssub" data-i18n="set.langHint">Switch the whole interface language.</div>
+    <div class="segbtns" id="langSeg">
+      <button data-lang="en" class="on">English</button>
+      <button data-lang="ko">한국어</button>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel" data-i18n="set.folder">DICOM folder</div>
+    <div class="ssub" data-i18n="set.folderHint">Choose a folder that contains DICOM files (subfolders included).</div>
+    <button id="setFolderBtn" class="sbtn">📁 <span data-i18n="set.pick">Select folder</span></button>
+    <div class="sfolderinfo" id="setFolderInfo">No folder selected.</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">주석 잠금 (Annotation lock)</div>
+    <div class="ssub">잠그면 기존 작도는 볼 수 있지만 새로 그리거나 지울 수 없습니다(읽기 전용). 실수로 측정이 바뀌는 것을 막습니다.</div>
+    <div class="segbtns" id="annLockSeg">
+      <button data-annlock="off" class="on">잠금 해제 (편집 가능)</button>
+      <button data-annlock="on">잠금 (읽기 전용)</button>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel" data-i18n="set.clinicPw">Report clinic password</div>
+    <div class="ssub" data-i18n="set.clinicPwHint">A master password to open locked reports (besides the patient's birth date).</div>
+    <input id="setClinicPw" type="text" class="spwin" placeholder="qksemtgks" autocomplete="off">
+    <div class="sfolderinfo" data-i18n="set.clinicPwNote">Saved on this device. Used when finalizing reports.</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">AI 코멘트 — 보안</div>
+    <div class="ssub">🔒 Anthropic API 키는 이제 <b>서버(Cloudflare Worker)에서만</b> 관리됩니다. 직원 기기·브라우저에는 키가 저장되지 않으며, 로그인한 직원만 AI 코멘트를 사용할 수 있습니다. 별도 키 입력이 필요 없습니다.</div>
+    <div class="sfolderinfo">키 교체·요금 관리는 Cloudflare 대시보드의 <b>js-pacs-api</b> Worker(Variables and Secrets → ANTHROPIC_API_KEY)에서 합니다.</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">🔒 AI 개인정보 보호 — 환자 정보 전송</div>
+    <div class="ssub">AI 코멘트 생성 시 외부(Anthropic API)로 보내는 정보를 제어합니다. <b>환자 이름은 어느 설정에서도 자동으로 가려집니다.</b> "전송 안 함"을 선택하면 성별·나이·차트 본문까지 빼고 <b>계측 수치만</b> 전송합니다(코멘트가 다소 일반화됩니다).</div>
+    <div class="featrow">
+      <span>환자 정보</span>
+      <div class="segbtns" id="featAiPhiSeg">
+        <button data-phi="send" class="on">전송(이름 자동 가림)</button>
+        <button data-phi="block">전송 안 함</button>
+      </div>
+    </div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel" data-i18n="set.guide">AI 코멘트 지침 (말투·형식)</div>
+    <div class="ssub" data-i18n="set.guideHint">코멘트를 원하는 스타일로 쓰도록 지침을 입력하세요. 예시 코멘트를 함께 적으면 더 정확합니다. 비워두면 기본 스타일로 작성됩니다.</div>
+    <textarea id="setGuide" class="sguide" placeholder="예) 3~4문장으로 짧게. 환자를 '○○님'으로 부르기. 마지막에 다음 내원·꾸준한 치료 권유 문구 넣기. 너무 단정적이지 않게. 예시: '○○님, 이번 촬영에서 골반 균형이 이전보다 개선된 모습이 보입니다. 다만 흉추 부위는 조금 더 관리가 필요해 보여요. 꾸준히 치료와 운동을 이어가시면 더 좋아질 것으로 기대됩니다. 다음 내원 때 다시 점검해 드리겠습니다.'" spellcheck="false"></textarea>
+    <div class="sfolderinfo" data-i18n="set.guideNote">이 기기에 저장됩니다. 마음에 들 때까지 자유롭게 수정하세요.</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">기능 사용 설정</div>
+    <div class="ssub">레포트 내보내기와 분석(Analyze)의 AI 코멘트 기능을 켜고 끌 수 있습니다. <b>이 설정과 위 'AI 환자 정보 전송' 설정은 관리자 계정만 변경할 수 있습니다.</b> (동선앱에서 지정한 관리자/최고관리자 역할 기준)</div>
+    <div class="sfolderinfo" id="featAdminNote" style="margin-bottom:6px"></div>
+    <div class="featrow">
+      <span>📄 레포트 내보내기</span>
+      <div class="segbtns" id="featReportSeg">
+        <button data-feat="on" class="on">사용</button>
+        <button data-feat="off">차단</button>
+      </div>
+    </div>
+    <div class="featrow">
+      <span>📈 분석 AI 코멘트</span>
+      <div class="segbtns" id="featAnalyzeAISeg">
+        <button data-feat="on" class="on">사용</button>
+        <button data-feat="off">차단</button>
+      </div>
+    </div>
+  </div>
+  <div class="sgroup" id="featPermGroup" style="display:none">
+    <div class="slabel">기능 설정 변경 권한 (아이디별) <span style="font-weight:600;font-size:11px;color:#7e94ad">(관리자 전용)</span></div>
+    <div class="ssub">위 <b>기능 사용 설정</b>과 <b>AI 환자 정보 전송</b> 설정을 바꿀 수 있는 계정을 아이디별로 지정합니다. 체크된 직원만 변경 가능하고, 나머지는 읽기 전용입니다. <b>관리자/최고관리자는 항상 가능</b>합니다. 변경은 즉시 클라우드에 저장되어 모든 기기에 적용됩니다.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin:8px 0">
+      <button id="featPermRefreshBtn" class="sbtn2">↻ 명단 새로고침</button>
+      <span id="featPermStatus" class="sfolderinfo"></span>
+    </div>
+    <div id="featPermList" style="border:1px solid #25324a;border-radius:9px;background:#0b1220;max-height:240px;overflow:auto"></div>
+  </div>
+  <div class="sgroup" id="logGroup" style="display:none">
+    <div class="slabel">로그인 · 설정 변경 기록 <span style="font-weight:600;font-size:11px;color:#7e94ad">(관리자 전용)</span></div>
+    <div class="ssub">누가 언제 로그인했는지, 기능 사용 설정·AI 전송 설정을 누가 바꿨는지 기록됩니다. 클라우드(통합 계정)에 저장되어 어느 기기에서든 관리자가 확인할 수 있습니다.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin:8px 0">
+      <button id="logRefreshBtn" class="sbtn2">↻ 최근 기록 불러오기</button>
+      <span id="logStatus" class="sfolderinfo"></span>
+    </div>
+    <div id="logList" style="max-height:260px;overflow:auto;border:1px solid #25324a;border-radius:9px;background:#0b1220;display:none"></div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">분석(Analyze) AI 코멘트 지침 — 전문가용</div>
+    <div class="ssub">분석 화면의 AI 코멘트는 <b>의료진용 전문 소견</b> 톤으로 작성됩니다(레포트의 환자용과 별개). 원하는 형식·깊이를 지정하세요. 비워두면 기본 전문가 지침으로 작성됩니다.</div>
+    <textarea id="setProGuide" class="sguide" placeholder="예) 시상면·관상면 정렬을 SVA·cSVA·PI−LL·PT·Cobb 등 파라미터로 해석. 결과(SVA/cSVA) ← 원인(PI−LL/T1S−CL) ← 보상(PT) 축으로 기술. 정상범위와 비교, 시계열 변화 추세와 임상적 의미, 감별 포인트, 권장 평가/치료 방향을 포함. 단정적 진단은 피하고 소견 수준으로." spellcheck="false"></textarea>
+    <div class="sfolderinfo">이 기기에 저장됩니다.</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel" data-i18n="set.backup">설정 내보내기 / 가져오기</div>
+    <div class="ssub" data-i18n="set.backupHint">API 키·코멘트 지침·의원 비밀번호 등 설정을 파일로 저장해 다른 PC에서 불러올 수 있습니다.</div>
+    <div class="sbackupBtns">
+      <button id="setExportBtn" class="sbtn2" data-i18n="set.backupExport">⬇ 설정 파일로 저장</button>
+      <button id="setImportBtn" class="sbtn2" data-i18n="set.backupImport">⬆ 설정 파일 불러오기</button>
+      <input id="setImportFile" type="file" accept=".json,application/json" style="display:none">
+    </div>
+    <div class="sfolderinfo" id="setBackupInfo" data-i18n="set.backupNote">설정 파일에는 API 키가 포함됩니다. 안전하게 보관하세요.</div>
+  </div>
+</div></div>
+<div id="img2dcmModal"><div id="img2dcmCard">
+  <button class="sclose" id="img2dcmClose">✕</button>
+  <h2>이미지 → DICOM 변환</h2>
+  <div class="sgroup">
+    <div class="ssub">JPG·PNG 이미지를 DICOM으로 변환해 현재 DICOM 폴더에 저장합니다. 흑백(MONOCHROME2)으로 저장됩니다.</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">이미지 파일</div>
+    <button id="i2dPick" class="sbtn">🖼 이미지 선택 (여러 장 가능)</button>
+    <div class="sfolderinfo" id="i2dFiles">선택된 파일 없음</div>
+  </div>
+  <div class="sgroup">
+    <div class="slabel">환자 정보</div>
+    <div class="i2dgrid">
+      <label>환자번호<input id="i2dPid" type="text" placeholder="예: 19083"></label>
+      <label>이름<input id="i2dName" type="text" placeholder="예: 홍길동"></label>
+      <label>성별
+        <select id="i2dSex"><option value="">-</option><option value="M">M</option><option value="F">F</option><option value="O">기타</option></select>
+      </label>
+      <label>생년월일<input id="i2dBirth" type="text" placeholder="YYYYMMDD (선택)" maxlength="8"></label>
+      <label>검사명<input id="i2dExam" type="text" placeholder="예: 전척추 AP"></label>
+      <label>검사일시<input id="i2dDate" type="datetime-local"></label>
+      <label>판독의<input id="i2dDoc" type="text" placeholder="예: 조한솔 (선택)"></label>
+    </div>
+  </div>
+  <div class="sgroup">
+    <button id="i2dConvert" class="sbtn primary">DICOM으로 변환·저장</button>
+    <div class="sfolderinfo" id="i2dStatus"></div>
+  </div>
+</div></div>
+<div id="cmpView">
+  <div id="cmpShowTab" title="Show toolbar (₩)"><span id="cmpShowTabStatus"></span><span class="cmpShowTabHint" data-i18n="cmp.showToolbar">▾ Show toolbar (₩)</span></div>
+  <div id="cmpBar">
+    <div class="ctitle"><span class="ctitle-name" data-i18n="cmp.title">JS VIEWER</span>
+      <div class="ctitle-acts">
+        <button id="cmpPosBtn" class="tbarBtn" title="Toolbar position (left/top)"><span data-i18n="cmp.posToggle">⇄ 툴바 위치</span></button>
+        <button id="cmpAutohideBtn" class="tbarBtn" title="Toggle toolbar (₩)"><span data-i18n="cmp.autohide">⇤ 툴바 숨기기</span><span class="kc">₩</span></button>
+      </div>
+    </div>
+    <div id="cmpStatus" data-i18n="cmp.clickActivate">Click an image to activate.</div>
+    <div id="cmpTools">
+      <div class="ctgrp">
+        <button data-cmd="save" class="prim"><span data-i18n="cmp.save">💾 Save</span><span class="kc">⌘S</span></button>
+      </div>
+      <div class="ctgrp ctfull">
+        <input id="cmpPatNote" type="text" placeholder="Patient note (shown on active image)" data-i18n-ph="cmp.notePh">
+      </div>
+      <div class="ctgrp ctfull">
+        <select id="ctVert"><option value="" data-i18n="cmp.vertRot">Vertebra rotation…</option></select>
+        <select id="ctLevel"><option value="" data-i18n="cmp.levelH">Level height…</option></select>
+      </div>
+      <div class="ctgrp">
+        <button data-cmd="refBtn"><span data-i18n="cmp.midline">Midline</span><span class="kc">cc</span></button>
+        <button data-cmd="pelvisBtn"><span data-i18n="cmp.pelvis">Pelvic cavity</span><span class="kc">p</span></button>
+        <button data-cmd="obtBtn"><span data-i18n="cmp.obt">Obturator</span><span class="kc">o</span></button>
+        <button data-cmd="ltrBtn">LT-IR<span class="kc">le</span></button>
+        <button data-cmd="cobbBtn">Cobb 1<span class="kc">cb</span></button>
+        <button data-cmd="cobb2Btn">Cobb 2<span class="kc">xb</span></button>
+      </div>
+      <div class="ctgrp">
+        <button data-cmd="sagSimpleBtn" title="측면 Simple: SVA·cSVA (4점)">Sag Simple<span class="kc">ss</span></button>
+        <button data-cmd="sagComplexBtn" title="측면 Complex: SVA·cSVA·PI−LL·T1S−CL·PT (14점)">Sag Complex<span class="kc">sx</span></button>
+      </div>
+      <div class="ctgrp">
+        <button data-cmd="undoBtn"><span data-i18n="cmp.undo">↶ Undo</span><span class="kc">⌘Z</span></button><button data-cmd="redoBtn"><span data-i18n="cmp.redo">↷ Redo</span><span class="kc">⌘⇧Z</span></button>
+        <button data-cmd="clr" data-i18n="cmp.clear">Clear</button>
+      </div>
+      <div class="ctgrp">
+        <button data-cmd="zoomInBtn"><span data-i18n="cmp.zoomIn">＋ Zoom in</span><span class="kc">=</span></button><button data-cmd="zoomOutBtn"><span data-i18n="cmp.zoomOut">－ Zoom out</span><span class="kc">-</span></button>
+        <button data-cmd="fitBtn"><span data-i18n="cmp.fit">Fit</span><span class="kc">0</span></button><button data-cmd="flipBtn"><span data-i18n="cmp.flip">⇄ Flip</span><span class="kc">r</span></button>
+      </div>
+    </div>
+    <div id="cmpManual">
+      <div class="mh" id="cmpManualHead"><span data-i18n="cmp.manual">📖 Manual</span> <span class="mtog">▾</span></div>
+      <div class="mb" id="cmpManualBody" data-i18n="cmp.manualBody">
+        <p><b>Basic flow</b><br>Double-click a study in the worklist to fill the empty panels. Click an image to activate it (blue border); the left toolbar and shortcuts then apply only to that image.</p>
+        <p><b>Measurement tools</b><br>· <b>Midline (cc)</b>: vertical reference through pubic symphysis<br>· <b>Pelvic cavity (p)</b> / <b>Obturator (o)</b> / <b>LT-IR (le)</b>: left–right symmetry<br>· <b>Cobb 1 (cb)</b>: 4-point endplate measurement<br>· <b>Cobb 2 (xb)</b>: click two measured vertebrae<br>· <b>Vertebra rotation</b>: pick a level from the dropdown, then click LB·RB·SP<br>· <b>Level height</b>: clavicle / iliac crest / femoral head left–right heights</p>
+        <p><b>View / shortcuts</b><br>Zoom in <b>=</b> · Zoom out <b>-</b> · Fit <b>0</b> · Flip <b>r</b> · Undo <b>⌘Z</b> · Hide/Show toolbar <b>₩</b></p>
+        <p><b>Save / close</b><br>Save (⌘S) writes the annotation as a sidecar next to the original DICOM. Press <b>ESC twice</b> inside a panel to close just that image.</p>
+        <p><b>Analyze</b><br>Click <b>📈 Analyze</b> to see all of this patient's studies over time as trend charts (uses the JS PACS window's data). Improved values are highlighted in green.</p>
+      </div>
+    </div>
+  </div>
+  <div id="cmpRight">
+    <div id="cmpPanels">
+      <div class="cmpPane activePane" data-pane="0"><div class="paneHdr"><span class="pn" data-i18n="cmp.leftBefore">Left</span><span class="pi"></span></div><div class="paneEmpty" data-i18n="cmp.leftEmpty">Left — double-click a study in the worklist</div></div>
+      <div class="cmpPane" data-pane="1"><div class="paneHdr"><span class="pn" data-i18n="cmp.rightAfter">Right</span><span class="pi"></span></div><div class="paneEmpty" data-i18n="cmp.rightEmpty">Right — double-click a study in the worklist</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/03-dicom.js"></script>
+
+<script src="js/04-bridge.js"></script>
+
+<script src="js/05-pacs.js"></script>
+
+<script src="js/06-annotator.js"></script>
+
+<script src="js/07-compare.js"></script>
+
+</body></html>
