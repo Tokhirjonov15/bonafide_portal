@@ -1,0 +1,11 @@
+{
+  // BONAFIDE 통합 포털 — Cloudflare 배포 설정
+  // public/ 안의 정적 파일(포털·재고관리·동선관리·JS PACS)을 그대로 서비스합니다.
+  // 다음 단계에서 D1 데이터베이스와 API를 여기에 추가합니다.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bonafide-portal",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    "directory": "./public"
+  }
+}

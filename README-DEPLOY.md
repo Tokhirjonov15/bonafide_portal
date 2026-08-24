@@ -1,51 +1,47 @@
-# BONAFIDE Portal + JS PACS (veb-versiya)
+# BONAFIDE 통합 포털 (bonafide-portal)
 
-Bu papka — Cloudflare Pages'ga joylash uchun tayyor statik sayt:
+원내 통합 포털 — 재고관리 · 동선관리 · JS PACS를 한 곳에서 엽니다.
+
+## 폴더 구조
 
 ```
-JS_PACS_web/
-├── index.html        ← Portal (hub): ikkita karta — 재고 관리 va JS PACS
-└── jspacs/           ← JS PACS ko'ruvchi (brauzerda mustaqil ishlaydi)
+bonafide_portal/
+├── public/            ← 실제 서비스되는 파일 (여기 안의 내용만 웹에 공개됩니다)
+│   ├── index.html     포털 (3개 선택 화면)
+│   ├── jaego/         재고관리 (자체 개발 v0.1)
+│   ├── dongseon/      동선관리 (준비 중)
+│   └── jspacs/        JS PACS 뷰어
+├── wrangler.jsonc     Cloudflare 배포 설정
+├── DEMO-START.bat     로컬 데모 실행 (python 필요)
+└── README-DEPLOY.md
 ```
 
-## Cloudflare Pages'ga joylash (eng oson yo'l — drag & drop)
+`public/` 밖의 파일(설정·문서)은 웹에 공개되지 않습니다.
 
-1. [dash.cloudflare.com](https://dash.cloudflare.com) ga kiring (inventar ilovangiz turgan akkaunt).
-2. **Workers & Pages → Create → Pages → Upload assets** ni tanlang.
-3. Loyiha nomi kiriting, masalan: `bonafidekcs-portal`.
-4. Shu papkaning **ichidagi hamma narsani** (index.html + jspacs papkasi) sudrab tashlang.
-5. **Deploy** bosing → `https://bonafidekcs-portal.pages.dev` tayyor.
+## Cloudflare 배포
 
-CLI orqali xohlasangiz:
-```
-npx wrangler pages deploy "C:\Users\user\Desktop\JS_PACS_web" --project-name=bonafidekcs-portal
-```
+새 Cloudflare 대시보드에는 "Pages" 생성 메뉴가 없고 **Workers**로 통합되었습니다.
+정적 사이트도 Workers로 배포하며, 설정은 `wrangler.jsonc`가 담당합니다.
 
-## Ishlash tartibi
+**처음 연결할 때 (1회):**
 
-- Portal ochiladi → xodim **재고 관리** yoki **JS PACS** ni tanlaydi.
-- JS PACS sarlavhasida **🏠 포털** (portalga qaytish) va **📦 재고 관리** (inventar ilovasi) tugmalari bor.
-- JS PACS brauzerda (Chrome/Edge) **⚙ Setting** orqali DICOM papkani tanlab ishlaydi —
-  klinika kompyuterida tarmoq papkasini (`\\Desktop-uebgim1\sts`) tanlash mumkin.
+1. **Workers & Pages → Create application → Workers → Import a repository**
+2. 저장소 `Tokhirjonov15/bonafide_portal` 선택
+3. 설정:
+   - Project name: `bonafide-portal`
+   - Build command: **비워둠**
+   - Deploy command: `npx wrangler deploy`
+4. **Deploy** → `https://bonafide-portal.<계정>.workers.dev` 발급
 
-## Muhim cheklovlar (veb-versiyada)
+**그 다음부터:** VS Code에서 Commit → Sync Changes 하면 자동으로 재배포됩니다.
 
-| Imkoniyat | Desktop (WPF) | Veb (brauzer) |
-|---|---|---|
-| Worklist, preview, qidiruv | ✅ | ✅ |
-| Umurtqa annotatsiya, Cobb, o'lchovlar | ✅ | ✅ |
-| JS VIEWER (yonma-yon solishtirish) | ✅ | ✅ |
-| Annotatsiya saqlash (.jsha.json) | ✅ | ✅ (papkaga yozish ruxsati bilan) |
-| EMR (SQL Server) ma'lumotlari | ✅ | ❌ |
-| Claude AI hisobot (판독) | ✅ | ❌ |
-| Yangi surat kelganda avtomatik yangilanish | ✅ | ❌ (↻ tugmasi bilan qo'lda) |
+## 로컬에서 확인
 
-Desktop dastur (`JS_PACS_배포\HospitalReport.App.exe`) o'zgarmagan — ikkalasi parallel ishlayveradi.
+`DEMO-START.bat` 실행 → `http://localhost:8080/`
+(폴더 선택 등 브라우저 기능이 정상 동작하려면 파일 직접 열기보다 이 방법을 권장)
 
-## Keyingi qadam (ixtiyoriy): yagona login
+## 다음 단계
 
-JS PACS aslida inventar ilovasi bilan **bitta Firebase akkaunt tizimiga** (uiwon-inventory)
-ulangan bo'lgan — hozirgi nusxada login o'chirilgan (`js/02-auth-stub.js`).
-Xodimlar ikkala tizimga bitta parol bilan kirsin desangiz, `02-auth-stub.js` o'rniga
-Firebase login kodini qaytarish kerak — buning uchun Firebase loyiha sozlamalari
-(apiKey, authDomain va h.k.) kerak bo'ladi.
+- [ ] D1 데이터베이스 연결 — 재고 데이터를 모든 기기가 공유
+- [ ] 직원 로그인 (통합 계정)
+- [ ] 동선관리 구축 (타 지점 시스템 검토 후)
