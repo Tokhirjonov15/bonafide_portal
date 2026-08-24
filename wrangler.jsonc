@@ -1,11 +1,21 @@
 {
   // BONAFIDE 통합 포털 — Cloudflare 배포 설정
-  // public/ 안의 정적 파일(포털·재고관리·동선관리·JS PACS)을 그대로 서비스합니다.
-  // 다음 단계에서 D1 데이터베이스와 API를 여기에 추가합니다.
+  //  · public/  : 정적 파일(포털·재고관리·동선관리·JS PACS)
+  //  · src/     : API 코드 (/api/* 요청만 처리, 나머지는 정적 파일로)
+  //  · DB       : D1 데이터베이스 (재고 데이터 — 모든 기기 공유)
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bonafide-portal",
   "compatibility_date": "2025-04-01",
+  "main": "src/index.js",
   "assets": {
-    "directory": "./public"
-  }
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bonafide-db",
+      "database_id": "c69b1a9d-5ee6-46f4-85b0-e822e946b412"
+    }
+  ]
 }
