@@ -105,10 +105,17 @@
   .mbtns{display:flex; gap:8px; margin-top:18px; justify-content:flex-end}
   .qbig{font-size:22px !important; text-align:center; font-weight:700}
 
-  #camBox{position:fixed; inset:0; background:#000; z-index:60; display:none; flex-direction:column; align-items:center; justify-content:center; gap:12px}
+  #camBox{position:fixed; inset:0; background:#000; z-index:60; display:none; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:12px}
   #camBox.show{display:flex}
-  #camVideo{width:min(92vw,560px); border-radius:12px}
-  #camBox .hint{color:#fff; font-size:14px}
+  #camWrap{position:relative; width:min(92vw,560px)}
+  #camVideo{width:100%; border-radius:12px; display:block}
+  #camFrame{
+    position:absolute; left:6%; right:6%; top:36%; height:28%;
+    border:3px solid rgba(255,255,255,.95); border-radius:10px; pointer-events:none;
+    box-shadow:0 0 0 100vmax rgba(0,0,0,.35);
+  }
+  #camBox .hint{color:#fff; font-size:15px; font-weight:700; text-align:center}
+  #camBox .tip{color:#C8D6E5; font-size:12.5px; text-align:center; line-height:1.6; max-width:340px}
 
   footer{max-width:1100px; margin:6px auto 30px; padding:0 16px; color:var(--ink2); font-size:11.5px}
   @media(max-width:760px){ .hidem{display:none} }
@@ -152,9 +159,11 @@
         <button class="btn ghost small" id="expClear">지우기</button>
       </div>
 
-      <div style="text-align:center; margin-top:12px">
-        <button class="btn ghost" id="camBtn">📱 휴대폰 카메라로 스캔</button>
+      <div style="text-align:center; margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap">
+        <button class="btn ghost" id="camBtn">📱 카메라로 스캔</button>
+        <button class="btn ghost" id="photoBtn" title="초점이 안 맞을 때 — 사진을 찍어서 인식">📸 사진 찍어서 인식</button>
       </div>
+      <input type="file" id="photoFile" accept="image/*" capture="environment" hidden>
 
       <div class="result" id="scanResult"></div>
 
@@ -264,8 +273,17 @@
 </div></div>
 
 <div id="camBox">
-  <video id="camVideo" autoplay playsinline muted></video>
+  <div id="camWrap">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div id="camFrame"></div>
+  </div>
   <span class="hint" id="camHint">바코드를 화면에 비추세요</span>
+  <div id="zoomWrap" style="display:none; width:min(92vw,560px); align-items:center; gap:10px">
+    <span style="color:#fff; font-size:12px">🔍</span>
+    <input type="range" id="zoomRange" style="flex:1">
+  </div>
+  <span class="tip">💡 <b>초점이 맞는 만큼만</b> 가까이 — 흐려지면 조금 뒤로 물러나세요<br>
+    흐림이 계속되면 <b>📸 사진 찍어서 인식</b>을 쓰면 확실합니다</span>
   <button class="btn ghost" id="camClose">닫기</button>
 </div>
 
@@ -512,7 +530,7 @@ window.registerScanned=function(bar, expiry){
    1순위: 브라우저 내장 BarcodeDetector (안드로이드 크롬 등 — 가장 빠름)
    2순위: ZXing 라이브러리 (윈도우 PC·아이폰 등 내장 기능이 없는 환경)
    ZXing은 버튼을 누를 때만 불러오므로 평소 화면 속도에는 영향이 없습니다. */
-let camStream=null, camTimer=null, zxReader=null;
+let camStream=null, camTimer=null, zxReader=null, camTipTimer=null;
 
 function loadScript(src){
   return new Promise((res,rej)=>{
@@ -522,9 +540,35 @@ function loadScript(src){
   });
 }
 
+/* 해상도를 높게 요청해야 작은 바코드도 읽힙니다 */
+const CAM_CONSTRAINTS={ video:{
+  facingMode:{ideal:"environment"},
+  width:{ideal:1920}, height:{ideal:1080}
+}};
+
+/* 연속 자동초점 + (지원되면) 확대 슬라이더.
+   확대가 되면 멀리서도 바코드를 크게 볼 수 있어 초점 문제가 사라집니다. */
+function setupCamControls(stream){
+  const track=stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+  $("zoomWrap").style.display="none";
+  if(!track) return;
+  try{ track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(()=>{}); }catch(_){}
+  try{
+    const caps=track.getCapabilities ? track.getCapabilities() : null;
+    if(caps && caps.zoom){
+      const z=$("zoomRange");
+      z.min=caps.zoom.min; z.max=caps.zoom.max; z.step=caps.zoom.step||0.1;
+      z.value=(track.getSettings&&track.getSettings().zoom)||caps.zoom.min;
+      z.oninput=()=>{ track.applyConstraints({advanced:[{zoom:+z.value}]}).catch(()=>{}); };
+      $("zoomWrap").style.display="flex";
+    }
+  }catch(_){}
+}
+
 async function startNativeCam(){
-  camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+  camStream=await navigator.mediaDevices.getUserMedia(CAM_CONSTRAINTS);
   $("camVideo").srcObject=camStream;
+  setupCamControls(camStream);
   const det=new BarcodeDetector();
   $("camHint").textContent="바코드를 화면에 비추세요";
   camTimer=setInterval(async()=>{
@@ -540,15 +584,51 @@ async function startZxingCam(){
     $("camHint").textContent="스캔 모듈 불러오는 중…";
     await loadScript("vendor/zxing.min.js");
   }
-  zxReader=new ZXing.BrowserMultiFormatReader();
+  const hints=zxHints();
+  zxReader = hints ? new ZXing.BrowserMultiFormatReader(hints) : new ZXing.BrowserMultiFormatReader();
   const onResult=(result)=>{ if(result){ const v=result.getText(); closeCam(); doScan(v); } };
   $("camHint").textContent="바코드를 화면에 비추세요";
   try{
-    await zxReader.decodeFromConstraints({video:{facingMode:"environment"}}, "camVideo", onResult);
+    await zxReader.decodeFromConstraints(CAM_CONSTRAINTS, "camVideo", onResult);
   }catch(_){
     await zxReader.decodeFromVideoDevice(null, "camVideo", onResult);
   }
+  setTimeout(()=>setupCamControls($("camVideo").srcObject), 400);
 }
+
+/* 인식률을 높이는 설정: 찾을 코드 종류 지정 + 더 꼼꼼히 분석 */
+function zxHints(){
+  try{
+    const F=ZXing.BarcodeFormat, H=ZXing.DecodeHintType;
+    const h=new Map();
+    h.set(H.POSSIBLE_FORMATS,[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.CODE_39,
+                              F.ITF,F.CODABAR,F.QR_CODE,F.DATA_MATRIX]);
+    h.set(H.TRY_HARDER,true);
+    return h;
+  }catch(_){ return null; }
+}
+
+/* 📸 사진으로 인식 — 휴대폰 기본 카메라가 초점을 잡아 주므로 가장 확실한 방법 */
+$("photoBtn").onclick=()=>$("photoFile").click();
+$("photoFile").onchange=async e=>{
+  const f=e.target.files[0]; e.target.value="";
+  if(!f) return;
+  showScanResult("ok",`<div class="big">🔎 사진 분석 중…</div>`);
+  let url=null;
+  try{
+    if(!window.ZXing) await loadScript("vendor/zxing.min.js");
+    url=URL.createObjectURL(f);
+    const hints=zxHints();
+    const reader = hints ? new ZXing.BrowserMultiFormatReader(hints) : new ZXing.BrowserMultiFormatReader();
+    const result=await reader.decodeFromImageUrl(url);
+    doScan(result.getText());
+  }catch(err){
+    beep(false);
+    showScanResult("bad",
+      `<div class="big">❌ 사진에서 바코드를 찾지 못했습니다</div>
+       <div class="muted">바코드가 사진의 절반 이상 크게, 밝고 선명하게 나오도록 다시 찍어 보세요.</div>`);
+  }finally{ if(url) URL.revokeObjectURL(url); }
+};
 
 $("camBtn").onclick=async()=>{
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
@@ -556,6 +636,10 @@ $("camBtn").onclick=async()=>{
   }
   $("camBox").classList.add("show");
   $("camHint").textContent="카메라 준비 중…";
+  clearTimeout(camTipTimer);
+  camTipTimer=setTimeout(()=>{
+    $("camHint").textContent="인식이 안 되나요? 더 가까이 대보세요";
+  },10000);
   try{
     if("BarcodeDetector" in window) await startNativeCam();
     else await startZxingCam();
@@ -567,6 +651,7 @@ $("camBtn").onclick=async()=>{
 };
 
 function closeCam(){
+  clearTimeout(camTipTimer); camTipTimer=null;
   if(camTimer){ clearInterval(camTimer); camTimer=null; }
   if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
   if(zxReader){ try{ zxReader.reset(); }catch(_){} zxReader=null; }
