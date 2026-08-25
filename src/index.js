@@ -37,13 +37,24 @@ const DDL = [
    )`,
   `CREATE INDEX IF NOT EXISTS idx_mv_pid ON movements(pid)`,
   `CREATE INDEX IF NOT EXISTS idx_mv_ts  ON movements(ts)`,
-  `CREATE INDEX IF NOT EXISTS idx_pr_bar ON products(bar)`
+  `CREATE INDEX IF NOT EXISTS idx_pr_bar ON products(bar)`,
+  `CREATE TABLE IF NOT EXISTS tg_subs (
+     chat_id TEXT PRIMARY KEY,
+     name    TEXT DEFAULT '',
+     added   INTEGER
+   )`,
+  `CREATE TABLE IF NOT EXISTS meta (
+     key   TEXT PRIMARY KEY,
+     value TEXT
+   )`
 ];
 
 /* 이미 만들어진 표에 새 열을 붙인다(이미 있으면 오류가 나므로 조용히 넘어감) */
 const MIGRATIONS = [
   `ALTER TABLE products  ADD COLUMN price  INTEGER DEFAULT 0`,
   `ALTER TABLE products  ADD COLUMN vendor TEXT DEFAULT ''`,
+  `ALTER TABLE products  ADD COLUMN par_qty INTEGER DEFAULT 0`,
+  `ALTER TABLE products  ADD COLUMN alt    TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`
 ];
@@ -87,7 +98,7 @@ function normDate(v) {
 async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
-           p.min_qty AS min, p.price, p.vendor,
+           p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -182,6 +193,120 @@ function parseGs1(raw) {
   return out;
 }
 
+/* ============================================================
+   발주 → 텔레그램 알림
+   매주 수요일 아침(크론) 또는 발주 화면의 [지금 보내기] 버튼으로,
+   주문시점 이하로 떨어진 품목을 거래처별 문안으로 만들어 보냅니다.
+   필요 설정(Worker Secrets): TELEGRAM_TOKEN, TELEGRAM_CHAT
+   ============================================================ */
+function orderMessageText(vendor, items, dateStr) {
+  const lines = items.map((p) => {
+    let l = `- ${p.name}`;
+    if (p.unit) l += ` (${p.unit})`;
+    l += ` : ${p.need}개`;
+    if (p.alt) l += `  ※대체가능: ${p.alt}`;
+    return l;
+  });
+  return `[반듯의원 발주] ${dateStr}\n거래처: ${vendor || "미지정"}\n` +
+         lines.join("\n") +
+         "\n\n품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.";
+}
+
+async function buildOrders(env) {
+  const products = await listProducts(env);
+  const items = products
+    .filter((p) => (p.par || 0) > 0 || (p.min || 0) > 0)
+    .filter((p) => p.stock <= (p.min || 0))
+    .map((p) => ({ ...p, need: Math.max(1, (p.par || 0) - p.stock) }));
+  const byVendor = {};
+  for (const p of items) {
+    const v = p.vendor || "미지정";
+    (byVendor[v] = byVendor[v] || []).push(p);
+  }
+  return byVendor;
+}
+
+async function tgApi(env, method, payload) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return await res.json().catch(() => ({}));
+}
+
+async function tgSendTo(env, chatId, text) {
+  const out = await tgApi(env, "sendMessage", { chat_id: chatId, text });
+  return !!out.ok;
+}
+
+/* /start 보낸 사람을 구독자로 등록 (getUpdates 폴링 — 15분마다 크론 + 발주 전송 직전)
+   TELEGRAM_JOIN 비밀값을 설정하면 "/start 코드" 처럼 코드를 입력한 사람만 등록됩니다. */
+async function pollTelegram(env) {
+  if (!env.TELEGRAM_TOKEN) return;
+  const last = await env.DB.prepare(`SELECT value FROM meta WHERE key='tg_offset'`).first();
+  const offset = last ? parseInt(last.value, 10) + 1 : 0;
+  const out = await tgApi(env, "getUpdates", { offset, timeout: 0, allowed_updates: ["message"] });
+  if (!out.ok || !Array.isArray(out.result) || !out.result.length) return;
+
+  let maxId = offset - 1;
+  for (const u of out.result) {
+    maxId = Math.max(maxId, u.update_id);
+    const msg = u.message;
+    if (!msg || !msg.text || !msg.chat) continue;
+    const chatId = String(msg.chat.id);
+    const text = msg.text.trim();
+    const name = [msg.chat.first_name, msg.chat.last_name, msg.chat.title]
+      .filter(Boolean).join(" ") || (msg.chat.username || "");
+
+    if (text.startsWith("/start")) {
+      if (env.TELEGRAM_JOIN && !text.includes(env.TELEGRAM_JOIN)) {
+        await tgSendTo(env, chatId,
+          "구독하려면 코드를 함께 보내주세요.\n예) /start 코드\n(코드는 관리자에게 문의)");
+        continue;
+      }
+      await env.DB.prepare(
+        `INSERT OR REPLACE INTO tg_subs (chat_id, name, added) VALUES (?,?,?)`
+      ).bind(chatId, name, Date.now()).run();
+      await tgSendTo(env, chatId,
+        "✅ 반듯의원 발주 알림 구독 완료!\n매주 수요일 오전 9시에 발주 문안이 전송됩니다.\n구독 해지: /stop");
+    } else if (text.startsWith("/stop")) {
+      await env.DB.prepare(`DELETE FROM tg_subs WHERE chat_id=?`).bind(chatId).run();
+      await tgSendTo(env, chatId, "구독이 해지되었습니다. 다시 받으려면 /start");
+    }
+  }
+  await env.DB.prepare(
+    `INSERT OR REPLACE INTO meta (key, value) VALUES ('tg_offset', ?)`
+  ).bind(String(maxId)).run();
+}
+
+async function sendOrders(env) {
+  if (!env.TELEGRAM_TOKEN) {
+    return { sent: 0, error: "텔레그램이 설정되지 않았습니다 (TELEGRAM_TOKEN)." };
+  }
+  await pollTelegram(env);   // 방금 /start 한 사람도 포함되도록
+
+  const subs = (await env.DB.prepare(`SELECT chat_id FROM tg_subs`).all()).results || [];
+  if (!subs.length) {
+    return { sent: 0, error: "구독자가 없습니다. 봇에게 /start 를 보내 구독하세요." };
+  }
+
+  const byVendor = await buildOrders(env);
+  const vendors = Object.keys(byVendor);
+  const d = new Date(Date.now() + 9 * 3600 * 1000); // KST
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const dateStr = `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${days[d.getUTCDay()]})`;
+
+  const texts = vendors.length
+    ? vendors.map((v) => orderMessageText(v, byVendor[v], dateStr))
+    : [`[반듯의원 발주] ${dateStr}\n오늘 발주할 품목이 없습니다 🎉`];
+
+  for (const sub of subs) {
+    for (const t of texts) await tgSendTo(env, sub.chat_id, t);
+  }
+  return { sent: texts.length * subs.length, vendors: vendors.length, subscribers: subs.length };
+}
+
 async function currentStock(env, pid) {
   const row = await env.DB.prepare(`
     SELECT COALESCE(SUM(CASE WHEN type='in' THEN qty ELSE -qty END),0) AS stock
@@ -215,19 +340,19 @@ async function handleApi(request, env, url) {
 
     if (body.id) {
       await env.DB.prepare(
-        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, price=?, vendor=? WHERE id=?`
+        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=? WHERE id=?`
       ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
-             n(body.min), n(body.price), s(body.vendor), s(body.id)).run();
+             n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor), s(body.id)).run();
       return json({ ok: true, id: body.id });
     }
 
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,price,vendor,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
-             n(body.min), n(body.price), s(body.vendor), Date.now())
+             n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor), Date.now())
     ];
     const init = n(body.init);
     if (init > 0) {
@@ -292,7 +417,7 @@ async function handleApi(request, env, url) {
   }
 
   /* CSV 일괄 가져오기
-     열: 품목명,카테고리,보관위치,단위,바코드,최소수량,현재수량,단가,거래처,유통기한 */
+     열: 품목명,카테고리,보관위치,단위,바코드,최소수량(주문시점),현재수량,단가,거래처,유통기한,필요수량,대체품목 */
   if (path === "/import" && method === "POST") {
     const rows = Array.isArray(body.rows) ? body.rows : [];
     const existing = new Set((await listProducts(env)).map((p) => p.name));
@@ -304,9 +429,9 @@ async function handleApi(request, env, url) {
       existing.add(name);
       const id = uid();
       stmts.push(env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,price,vendor,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`
-      ).bind(id, name, s(r[1]), s(r[2]), s(r[3]), s(r[4]), n(r[5]), n(r[7]), s(r[8]), Date.now()));
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(id, name, s(r[1]), s(r[2]), s(r[3]), s(r[4]), n(r[5]), n(r[10]), s(r[11]), n(r[7]), s(r[8]), Date.now()));
       const qty = n(r[6]);
       if (qty > 0) {
         stmts.push(env.DB.prepare(
@@ -339,10 +464,11 @@ async function handleApi(request, env, url) {
     ];
     for (const p of products) {
       stmts.push(env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,price,vendor,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(s(p.id) || uid(), s(p.name), s(p.cat), s(p.loc), s(p.unit), s(p.bar),
-             n(p.min_qty ?? p.min), n(p.price), s(p.vendor), n(p.created_at) || Date.now()));
+             n(p.min_qty ?? p.min), n(p.par_qty ?? p.par), s(p.alt),
+             n(p.price), s(p.vendor), n(p.created_at) || Date.now()));
     }
     for (const m of movements) {
       stmts.push(env.DB.prepare(
@@ -352,6 +478,13 @@ async function handleApi(request, env, url) {
     }
     for (let i = 0; i < stmts.length; i += 40) await env.DB.batch(stmts.slice(i, i + 40));
     return json({ ok: true, products: products.length, movements: movements.length });
+  }
+
+  /* 발주 문안을 텔레그램으로 지금 보내기 (수동 실행·테스트용) */
+  if (path === "/order/send" && method === "POST") {
+    const r = await sendOrders(env);
+    if (r.error) return json({ error: r.error }, 400);
+    return json({ ok: true, ...r });
   }
 
   return json({ error: "알 수 없는 요청: " + path }, 404);
@@ -374,6 +507,18 @@ export default {
       return await handleApi(request, env, url);
     } catch (err) {
       return json({ error: "서버 오류: " + (err && err.message ? err.message : String(err)) }, 500);
+    }
+  },
+
+  /* 크론 2개:
+     - 15분마다: /start·/stop 메시지 확인(구독 등록)
+     - 매주 수요일 오전 9시(KST): 발주 문안 전송 */
+  async scheduled(event, env, ctx) {
+    await ensureSchema(env);
+    if (event.cron === "0 0 * * 3") {
+      ctx.waitUntil(sendOrders(env).catch(() => {}));
+    } else {
+      ctx.waitUntil(pollTelegram(env).catch(() => {}));
     }
   }
 };

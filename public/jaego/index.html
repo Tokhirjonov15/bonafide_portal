@@ -132,6 +132,7 @@
     <a class="homelink" id="logoutLink" href="/cdn-cgi/access/logout" style="display:none">⎋ 로그아웃</a>
     <button id="tabScan" class="on">📷 스캔</button>
     <button id="tabStock">재고 현황</button>
+    <button id="tabOrder">📋 발주</button>
     <button id="tabLog">입출고 기록</button>
     <button id="tabSet">설정·백업</button>
   </nav>
@@ -183,6 +184,20 @@
       <button class="btn" id="addBtn">＋ 품목 추가</button>
     </div>
     <div id="stockWrap"></div>
+  </section>
+
+  <!-- ===== 발주 ===== -->
+  <section id="pgOrder" style="display:none">
+    <div class="caubox" style="margin-bottom:12px">
+      <b>📋 발주 기준:</b> 현재 재고가 <b>주문시점 이하</b>인 품목이 자동으로 올라옵니다.
+      주문 수량 = 필요수량 − 현재 재고. (필요수량·주문시점 둘 다 0인 품목은 제외)<br>
+      <span class="muted">매주 <b>수요일 오전 9시</b>에 아래 문안이 텔레그램으로 자동 전송됩니다.
+      품절·대체품 문의가 오면 간호관리자 확인 후 처리합니다.</span>
+      <div style="margin-top:8px">
+        <button class="btn small" id="tgSendBtn">✈️ 텔레그램으로 지금 보내기</button>
+      </div>
+    </div>
+    <div id="orderWrap"></div>
   </section>
 
   <!-- ===== 기록 ===== -->
@@ -237,11 +252,15 @@
   </div>
   <div class="mrow">
     <div><label>단위</label><input id="pUnit" placeholder="예) 박스"></div>
-    <div><label>최소수량 (경고 기준)</label><input id="pMin" type="number" min="0" value="0"></div>
+    <div><label>주문시점 (이하로 떨어지면 발주)</label><input id="pMin" type="number" min="0" value="0"></div>
   </div>
   <div class="mrow">
+    <div><label>필요수량 (유지 목표)</label><input id="pPar" type="number" min="0" value="0"></div>
     <div><label>단가 (원)</label><input id="pPrice" type="number" min="0" value="0"></div>
-    <div><label>거래처 (구입처)</label><input id="pVendor" list="venList" placeholder="예) OO메디칼"><datalist id="venList"></datalist></div>
+  </div>
+  <div class="mrow">
+    <div><label>거래처 (구입처)</label><input id="pVendor" list="venList" placeholder="예) 한대표님 / 메디풀"><datalist id="venList"></datalist></div>
+    <div><label>대체품목</label><input id="pAlt" placeholder="선택사항"></div>
   </div>
   <label>바코드 (스캔하거나 입력)</label><input id="pBar" placeholder="선택사항">
   <div id="pInitWrap">
@@ -342,7 +361,7 @@ async function refresh(silent){
 }
 
 /* ---------- 탭 ---------- */
-const tabs={tabScan:"pgScan", tabStock:"pgStock", tabLog:"pgLog", tabSet:"pgSet"};
+const tabs={tabScan:"pgScan", tabStock:"pgStock", tabOrder:"pgOrder", tabLog:"pgLog", tabSet:"pgSet"};
 for(const t in tabs){
   $(t).onclick=()=>{
     for(const k in tabs){ $(k).classList.toggle("on",k===t); $(tabs[k]).style.display=(k===t)?"":"none"; }
@@ -377,14 +396,15 @@ function expBadge(pid){
 /* ---------- 화면 그리기 ---------- */
 function render(){
   const q=($("q").value||"").trim().toLowerCase();
+  const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
   const rows=PRODUCTS
     .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")).toLowerCase().includes(q))
-    .sort((a,b)=> ((a.stock<=(a.min||0))?0:1) - ((b.stock<=(b.min||0))?0:1)
-                  || a.name.localeCompare(b.name,"ko"));
+    .sort((a,b)=> (isLow(a)?0:1)-(isLow(b)?0:1) || a.name.localeCompare(b.name,"ko"));
 
-  const low=PRODUCTS.filter(p=>p.stock<=(p.min||0)).length;
+  const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
   const soon=LOTS.filter(l=>{ const d=daysLeft(l.expiry); return d!==null && d<=60; }).length;
-  $("statLine").textContent=`품목 ${PRODUCTS.length}개 · 부족 ${low}개 · 기한임박 ${soon}건`;
+  $("statLine").textContent=`품목 ${PRODUCTS.length}개 · 발주대상 ${ordN}개 · 기한임박 ${soon}건`;
+  $("tabOrder").textContent = ordN ? `📋 발주 (${ordN})` : "📋 발주";
 
   /* 유통기한 경고 */
   const warn=LOTS.map(l=>({...l, dd:daysLeft(l.expiry), p:PRODUCTS.find(p=>p.id===l.pid)}))
@@ -404,8 +424,8 @@ function render(){
         <th>유통기한</th><th>입출고</th><th class="hidem"></th>
       </tr></thead><tbody>${rows.map(p=>{
         const nl=nearestLot(p.id);
-        return `<tr class="${p.stock<=(p.min||0)?"low":""}">
-          <td><b>${esc(p.name)}</b> ${p.stock<=(p.min||0)?'<span class="lowtag">부족</span>':""}
+        return `<tr class="${isLow(p)?"low":""}">
+          <td><b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
           <td class="hidem muted">${esc(p.loc||"")}</td>
@@ -439,8 +459,77 @@ function render(){
 
   $("catList").innerHTML=[...new Set(PRODUCTS.map(p=>p.cat).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
   $("venList").innerHTML=[...new Set(PRODUCTS.map(p=>p.vendor).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
+  renderOrder();
 }
 $("q").oninput=render;
+
+/* ============================================================
+   발주 — 주문시점 이하 품목을 거래처별로 묶어 문안 생성
+   ============================================================ */
+function orderItems(){
+  return PRODUCTS
+    .filter(p=>((p.par||0)>0 || (p.min||0)>0))      // 둘 다 0 → 발주 대상 아님
+    .filter(p=>p.stock<=(p.min||0))
+    .map(p=>({...p, need: Math.max(1,(p.par||0)-p.stock)}));
+}
+function orderMessage(vendor, items){
+  const d=new Date();
+  const days=["일","월","화","수","목","금","토"];
+  const head=`[반듯의원 발주] ${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})\n거래처: ${vendor||"미지정"}\n`;
+  const lines=items.map(p=>{
+    let l=`- ${p.name}`;
+    if(p.unit) l+=` (${p.unit})`;
+    l+=` : ${p.need}개`;
+    if(p.alt) l+=`  ※대체가능: ${p.alt}`;
+    return l;
+  });
+  return head+lines.join("\n")+"\n\n품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.";
+}
+function renderOrder(){
+  const items=orderItems();
+  if(!items.length){
+    $("orderWrap").innerHTML=`<div class="empty">🎉 지금 발주할 품목이 없습니다.<br>
+      <span class="muted">재고가 주문시점 이하로 떨어지면 여기에 자동으로 표시됩니다.</span></div>`;
+    return;
+  }
+  const byVendor={};
+  for(const p of items){ const v=p.vendor||"미지정"; (byVendor[v]=byVendor[v]||[]).push(p); }
+  $("orderWrap").innerHTML=Object.entries(byVendor).map(([v,list],i)=>`
+    <div style="background:var(--card); border-radius:10px; padding:14px 16px; margin-bottom:14px">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
+        <b style="font-size:15px">🏢 ${esc(v)}</b>
+        <span class="tag">${list.length}품목</span>
+        <button class="btn small" style="margin-left:auto" onclick="copyOrder(${i})">📋 문안 복사</button>
+      </div>
+      <table style="font-size:12.5px; margin-bottom:8px"><thead><tr>
+        <th>품목</th><th>현재</th><th>주문시점</th><th>필요수량</th><th><b>주문</b></th><th class="hidem">대체품목</th>
+      </tr></thead><tbody>
+      ${list.map(p=>`<tr>
+        <td>${esc(p.name)} <span class="muted">${esc(p.unit||"")}</span></td>
+        <td class="qty">${p.stock}</td><td class="muted num">${p.min||0}</td><td class="muted num">${p.par||0}</td>
+        <td class="qty" style="color:var(--accent)">${p.need}</td>
+        <td class="hidem muted">${esc(p.alt||"")}</td>
+      </tr>`).join("")}
+      </tbody></table>
+      <textarea id="orderMsg${i}" style="width:100%; min-height:110px; border:1px solid var(--line);
+        border-radius:8px; padding:9px 11px; font-family:inherit; font-size:12.5px; resize:vertical"
+      >${esc(orderMessage(v,list))}</textarea>
+    </div>`).join("");
+}
+$("tgSendBtn").onclick=async()=>{
+  if(!confirm("발주 문안을 텔레그램으로 지금 보낼까요?")) return;
+  $("tgSendBtn").disabled=true;
+  try{
+    const r=await API.call("/order/send",{});
+    alert(`전송 완료 — 구독자 ${r.subscribers}명에게 ${r.vendors?`거래처 ${r.vendors}곳 문안`:"'발주 없음' 알림"} 전송`);
+  }catch(err){ alert(err.message); }
+  finally{ $("tgSendBtn").disabled=false; }
+};
+window.copyOrder=async function(i){
+  const t=$("orderMsg"+i);
+  try{ await navigator.clipboard.writeText(t.value); alert("복사되었습니다. 카톡/문자에 붙여넣으세요."); }
+  catch(_){ t.select(); document.execCommand("copy"); alert("복사되었습니다."); }
+};
 
 /* ============================================================
    스캔 모드
@@ -671,6 +760,7 @@ window.openProd=function(id){
   $("pName").value=p?p.name:""; $("pCat").value=p?(p.cat||""):"";
   $("pLoc").value=p?(p.loc||""):""; $("pUnit").value=p?(p.unit||""):"";
   $("pMin").value=p?(p.min||0):0; $("pBar").value=p?(p.bar||""):"";
+  $("pPar").value=p?(p.par||0):0; $("pAlt").value=p?(p.alt||""):"";
   $("pPrice").value=p?(p.price||0):0; $("pVendor").value=p?(p.vendor||""):"";
   $("pInitWrap").style.display=p?"none":"";
   $("prodDel").style.display=p?"":"none";
@@ -686,6 +776,7 @@ $("prodSave").onclick=async()=>{
   const payload={ id:editId||undefined, name,
     cat:$("pCat").value.trim(), loc:$("pLoc").value.trim(), unit:$("pUnit").value.trim(),
     bar:$("pBar").value.trim(), min:+$("pMin").value||0,
+    par:+$("pPar").value||0, alt:$("pAlt").value.trim(),
     price:+$("pPrice").value||0, vendor:$("pVendor").value.trim() };
   if(!editId){ payload.init=+$("pInit").value||0; payload.expiry=$("pExp").value||""; }
   $("prodSave").disabled=true;
@@ -771,10 +862,10 @@ $("csvFile").onchange=async e=>{
   }catch(err){ alert("가져오기 실패: "+err.message); }
 };
 $("csvOutBtn").onclick=()=>{
-  const head="품목명,카테고리,보관위치,단위,바코드,최소수량,현재수량,단가,거래처,유통기한";
+  const head="품목명,카테고리,보관위치,단위,바코드,최소수량,현재수량,단가,거래처,유통기한,필요수량,대체품목";
   const body=PRODUCTS.map(p=>{
     const nl=nearestLot(p.id);
-    return [p.name,p.cat,p.loc,p.unit,p.bar,p.min||0,p.stock,p.price||0,p.vendor,nl?nl.expiry:""]
+    return [p.name,p.cat,p.loc,p.unit,p.bar,p.min||0,p.stock,p.price||0,p.vendor,nl?nl.expiry:"",p.par||0,p.alt||""]
       .map(v=>`"${(""+(v??"")).replace(/"/g,'""')}"`).join(",");
   }).join("\n");
   dl("재고_내보내기.csv","﻿"+head+"\n"+body,"text/csv");

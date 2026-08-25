@@ -17,5 +17,10 @@
       "database_name": "bonafide-db",
       "database_id": "c69b1a9d-5ee6-46f4-85b0-e822e946b412"
     }
-  ]
+  ],
+  // 크론: ① 매주 수요일 오전 9시(KST, UTC 0시) 발주 알림 전송
+  //       ② 15분마다 텔레그램 /start 구독 확인
+  "triggers": {
+    "crons": ["0 0 * * 3", "*/15 * * * *"]
+  }
 }
