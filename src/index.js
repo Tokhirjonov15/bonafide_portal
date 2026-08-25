@@ -197,6 +197,7 @@ async function handleApi(request, env, url) {
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
   const me = authUser(request);
+  /* 담당자: 로그인 계정(공용 계정)으로 기록. 로그인 전 단계에서는 입력값을 쓴다. */
   const actor = me ? me.email : s(body.who);
 
   /* 현황 + 로트 + 최근 기록 */
