@@ -4,8 +4,9 @@
 
    설계 원칙
    1) 재고 수량은 저장하지 않는다. movements(입출고 기록)의 합으로 서버가 계산 → 감사 추적.
-   2) 표(테이블)는 첫 요청 때 자동으로 만들어진다 → 수동 SQL 실행 불필요.
-   3) APP_KEY 환경변수를 설정하면 그 암호를 아는 직원만 쓸 수 있다(미설정 시 개방).
+   2) 유통기한은 movements에 함께 기록한다 → 같은 품목도 들어온 날짜별로 관리(로트).
+      출고할 때는 유통기한이 가장 빠른 것부터 자동으로 빠진다(FEFO).
+   3) 표는 첫 요청 때 자동으로 만들어지고, 새 열도 자동으로 추가된다.
    ============================================================ */
 
 let schemaReady = false;
@@ -19,6 +20,8 @@ const DDL = [
      unit TEXT DEFAULT '',
      bar  TEXT DEFAULT '',
      min_qty INTEGER DEFAULT 0,
+     price INTEGER DEFAULT 0,
+     vendor TEXT DEFAULT '',
      created_at INTEGER
    )`,
   `CREATE TABLE IF NOT EXISTS movements (
@@ -28,6 +31,8 @@ const DDL = [
      qty  INTEGER NOT NULL,
      memo TEXT DEFAULT '',
      who  TEXT DEFAULT '',
+     expiry TEXT DEFAULT '',
+     lot  TEXT DEFAULT '',
      ts   INTEGER NOT NULL
    )`,
   `CREATE INDEX IF NOT EXISTS idx_mv_pid ON movements(pid)`,
@@ -35,10 +40,27 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS idx_pr_bar ON products(bar)`
 ];
 
+/* 이미 만들어진 표에 새 열을 붙인다(이미 있으면 오류가 나므로 조용히 넘어감) */
+const MIGRATIONS = [
+  `ALTER TABLE products  ADD COLUMN price  INTEGER DEFAULT 0`,
+  `ALTER TABLE products  ADD COLUMN vendor TEXT DEFAULT ''`,
+  `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
+  `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`
+];
+
 async function ensureSchema(env) {
   if (schemaReady) return;
   for (const q of DDL) await env.DB.prepare(q).run();
+  for (const q of MIGRATIONS) {
+    try { await env.DB.prepare(q).run(); } catch (_) { /* 이미 있는 열 */ }
+  }
   schemaReady = true;
+}
+
+/* Cloudflare Access(구글 로그인)로 들어온 사용자 */
+function authUser(request) {
+  const email = (request.headers.get("cf-access-authenticated-user-email") || "").trim();
+  return email ? { email, name: email.split("@")[0] } : null;
 }
 
 const json = (data, status = 200) =>
@@ -50,12 +72,22 @@ const json = (data, status = 200) =>
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const s = (v) => (v == null ? "" : String(v).trim());
 const n = (v) => { const x = parseInt(v, 10); return Number.isFinite(x) ? x : 0; };
+/* 유통기한 정규화: 20260930 / 2026-09-30 / 260930 → 2026-09-30 */
+function normDate(v) {
+  let t = s(v).replace(/[^0-9]/g, "");
+  if (!t) return "";
+  if (t.length === 6) t = "20" + t;
+  if (t.length !== 8) return "";
+  const y = t.slice(0, 4), m = t.slice(4, 6), d = t.slice(6, 8);
+  if (+m < 1 || +m > 12 || +d < 1 || +d > 31) return "";
+  return `${y}-${m}-${d}`;
+}
 
-/* ---------- 재고 현황: 품목 + 계산된 재고 ---------- */
+/* ---------- 조회 ---------- */
 async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
-           p.min_qty AS min,
+           p.min_qty AS min, p.price, p.vendor,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -65,9 +97,23 @@ async function listProducts(env) {
   return results || [];
 }
 
+/* 남아 있는 로트(유통기한별 재고) */
+async function listLots(env) {
+  const { results } = await env.DB.prepare(`
+    SELECT pid, expiry,
+           SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty
+    FROM movements
+    WHERE expiry <> ''
+    GROUP BY pid, expiry
+    HAVING qty > 0
+    ORDER BY expiry
+  `).all();
+  return results || [];
+}
+
 async function listMovements(env, limit = 300) {
   const { results } = await env.DB.prepare(`
-    SELECT m.id, m.pid, m.type, m.qty, m.memo, m.who, m.ts, p.name AS pname
+    SELECT m.id, m.pid, m.type, m.qty, m.memo, m.who, m.expiry, m.lot, m.ts, p.name AS pname
     FROM movements m
     LEFT JOIN products p ON p.id = m.pid
     ORDER BY m.ts DESC
@@ -76,17 +122,89 @@ async function listMovements(env, limit = 300) {
   return results || [];
 }
 
+/* 출고 시 유통기한이 빠른 로트부터 차감(FEFO). 기록 문장 배열을 만들어 준다. */
+async function buildOutStatements(env, pid, qty, memo, who) {
+  const { results } = await env.DB.prepare(`
+    SELECT expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty
+    FROM movements
+    WHERE pid = ? AND expiry <> ''
+    GROUP BY expiry HAVING qty > 0
+    ORDER BY expiry
+  `).bind(pid).all();
+
+  const stmts = [];
+  let remain = qty;
+  for (const b of (results || [])) {
+    if (remain <= 0) break;
+    const take = Math.min(remain, b.qty);
+    stmts.push(env.DB.prepare(
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'out',?,?,?,?,'',?)`
+    ).bind(uid(), pid, take, memo, who, b.expiry, Date.now()));
+    remain -= take;
+  }
+  if (remain > 0) {
+    stmts.push(env.DB.prepare(
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'out',?,?,?,'','',?)`
+    ).bind(uid(), pid, remain, memo, who, Date.now()));
+  }
+  return stmts;
+}
+
+/* 바코드로 품목 찾기: 전체 일치 → GS1(01+GTIN14) → 끝 13자리 */
+async function findByBarcode(env, raw) {
+  const code = s(raw);
+  if (!code) return null;
+  const tryCodes = [code];
+  if (code.length > 16 && code.startsWith("01")) {
+    const gtin = code.slice(2, 16);
+    tryCodes.push(gtin, gtin.replace(/^0+/, ""));
+  }
+  if (code.length >= 13) tryCodes.push(code.slice(-13));
+  for (const c of tryCodes) {
+    const row = await env.DB.prepare(
+      `SELECT id, name, unit FROM products WHERE bar = ? LIMIT 1`
+    ).bind(c).first();
+    if (row) return row;
+  }
+  return null;
+}
+
+/* GS1-128에서 유통기한(AI 17)·로트(AI 10) 뽑기 */
+function parseGs1(raw) {
+  const code = s(raw);
+  const out = { expiry: "", lot: "" };
+  if (code.length <= 16 || !code.startsWith("01")) return out;
+  const rest = code.slice(16);
+  const mExp = rest.match(/17(\d{6})/);
+  if (mExp) out.expiry = normDate(mExp[1]);
+  const mLot = rest.match(/10([0-9A-Za-z]{1,20})$/);
+  if (mLot) out.lot = mLot[1];
+  return out;
+}
+
+async function currentStock(env, pid) {
+  const row = await env.DB.prepare(`
+    SELECT COALESCE(SUM(CASE WHEN type='in' THEN qty ELSE -qty END),0) AS stock
+    FROM movements WHERE pid = ?
+  `).bind(pid).first();
+  return row ? row.stock : 0;
+}
+
 /* ---------- 라우팅 ---------- */
 async function handleApi(request, env, url) {
   await ensureSchema(env);
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
+  const me = authUser(request);
+  const actor = me ? me.email : s(body.who);
 
-  /* 현황 + 최근 기록 */
+  /* 현황 + 로트 + 최근 기록 */
   if (path === "/state" && method === "GET") {
-    const [products, movements] = await Promise.all([listProducts(env), listMovements(env)]);
-    return json({ products, movements, serverTime: Date.now() });
+    const [products, lots, movements] = await Promise.all([
+      listProducts(env), listLots(env), listMovements(env)
+    ]);
+    return json({ products, lots, movements, me, serverTime: Date.now() });
   }
 
   /* 품목 추가 / 수정 */
@@ -96,28 +214,31 @@ async function handleApi(request, env, url) {
 
     if (body.id) {
       await env.DB.prepare(
-        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=? WHERE id=?`
-      ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar), n(body.min), s(body.id)).run();
+        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, price=?, vendor=? WHERE id=?`
+      ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
+             n(body.min), n(body.price), s(body.vendor), s(body.id)).run();
       return json({ ok: true, id: body.id });
     }
 
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,created_at) VALUES (?,?,?,?,?,?,?,?)`
-      ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar), n(body.min), Date.now())
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,price,vendor,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
+      ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
+             n(body.min), n(body.price), s(body.vendor), Date.now())
     ];
     const init = n(body.init);
     if (init > 0) {
       stmts.push(env.DB.prepare(
-        `INSERT INTO movements (id,pid,type,qty,memo,who,ts) VALUES (?,?,'in',?,?,?,?)`
-      ).bind(uid(), id, init, "초기 수량", s(body.who), Date.now()));
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,'',?)`
+      ).bind(uid(), id, init, "초기 수량", actor, normDate(body.expiry), Date.now()));
     }
     await env.DB.batch(stmts);
     return json({ ok: true, id });
   }
 
-  /* 품목 삭제 (기록도 함께) */
+  /* 품목 삭제 */
   if (path === "/product/delete" && method === "POST") {
     const id = s(body.id);
     if (!id) return json({ error: "id가 필요합니다." }, 400);
@@ -128,19 +249,49 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
-  /* 입출고 */
+  /* 입출고 (화면에서 직접 입력) */
   if (path === "/movement" && method === "POST") {
     const pid = s(body.pid);
     const type = body.type === "out" ? "out" : "in";
     const qty = n(body.qty);
     if (!pid || qty <= 0) return json({ error: "품목과 수량을 확인하세요." }, 400);
-    await env.DB.prepare(
-      `INSERT INTO movements (id,pid,type,qty,memo,who,ts) VALUES (?,?,?,?,?,?,?)`
-    ).bind(uid(), pid, type, qty, s(body.memo), s(body.who), Date.now()).run();
-    return json({ ok: true });
+
+    if (type === "in") {
+      await env.DB.prepare(
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
+      ).bind(uid(), pid, qty, s(body.memo), actor, normDate(body.expiry), s(body.lot), Date.now()).run();
+    } else {
+      const stmts = await buildOutStatements(env, pid, qty, s(body.memo), actor);
+      await env.DB.batch(stmts);
+    }
+    return json({ ok: true, stock: await currentStock(env, pid) });
   }
 
-  /* CSV 일괄 가져오기 — rows: [[품목명,카테고리,위치,단위,바코드,최소수량,현재수량], ...] */
+  /* 스캐너 전용: 바코드 하나로 입고/출고 */
+  if (path === "/scan" && method === "POST") {
+    const raw = s(body.bar);
+    const mode = body.mode === "out" ? "out" : "in";
+    const qty = Math.max(1, n(body.qty) || 1);
+    if (!raw) return json({ error: "바코드가 비어 있습니다." }, 400);
+
+    const p = await findByBarcode(env, raw);
+    if (!p) return json({ notFound: true, bar: raw, gs1: parseGs1(raw) });
+
+    if (mode === "in") {
+      const g = parseGs1(raw);
+      const expiry = normDate(body.expiry) || g.expiry;
+      await env.DB.prepare(
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
+      ).bind(uid(), p.id, qty, "스캔 입고", actor, expiry, g.lot, Date.now()).run();
+    } else {
+      const stmts = await buildOutStatements(env, p.id, qty, "스캔 출고", actor);
+      await env.DB.batch(stmts);
+    }
+    return json({ ok: true, product: p, mode, qty, stock: await currentStock(env, p.id) });
+  }
+
+  /* CSV 일괄 가져오기
+     열: 품목명,카테고리,보관위치,단위,바코드,최소수량,현재수량,단가,거래처,유통기한 */
   if (path === "/import" && method === "POST") {
     const rows = Array.isArray(body.rows) ? body.rows : [];
     const existing = new Set((await listProducts(env)).map((p) => p.name));
@@ -152,13 +303,14 @@ async function handleApi(request, env, url) {
       existing.add(name);
       const id = uid();
       stmts.push(env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,created_at) VALUES (?,?,?,?,?,?,?,?)`
-      ).bind(id, name, s(r[1]), s(r[2]), s(r[3]), s(r[4]), n(r[5]), Date.now()));
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,price,vendor,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
+      ).bind(id, name, s(r[1]), s(r[2]), s(r[3]), s(r[4]), n(r[5]), n(r[7]), s(r[8]), Date.now()));
       const qty = n(r[6]);
       if (qty > 0) {
         stmts.push(env.DB.prepare(
-          `INSERT INTO movements (id,pid,type,qty,memo,who,ts) VALUES (?,?,'in',?,?,?,?)`
-        ).bind(uid(), id, qty, "CSV 가져오기", "", Date.now()));
+          `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,'',?)`
+        ).bind(uid(), id, qty, "CSV 가져오기", actor, normDate(r[9]), Date.now()));
       }
       added++;
     }
@@ -166,7 +318,7 @@ async function handleApi(request, env, url) {
     return json({ ok: true, added, skipped });
   }
 
-  /* 전체 백업 */
+  /* 백업 / 복원 */
   if (path === "/backup" && method === "GET") {
     const [p, m] = await Promise.all([
       env.DB.prepare(`SELECT * FROM products`).all(),
@@ -175,7 +327,6 @@ async function handleApi(request, env, url) {
     return json({ products: p.results || [], movements: m.results || [], at: Date.now() });
   }
 
-  /* 백업 복원 — 전체 교체 */
   if (path === "/restore" && method === "POST") {
     const products = Array.isArray(body.products) ? body.products : null;
     const movements = Array.isArray(body.movements) ? body.movements : null;
@@ -187,15 +338,16 @@ async function handleApi(request, env, url) {
     ];
     for (const p of products) {
       stmts.push(env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,created_at) VALUES (?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,price,vendor,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`
       ).bind(s(p.id) || uid(), s(p.name), s(p.cat), s(p.loc), s(p.unit), s(p.bar),
-             n(p.min_qty ?? p.min), n(p.created_at) || Date.now()));
+             n(p.min_qty ?? p.min), n(p.price), s(p.vendor), n(p.created_at) || Date.now()));
     }
     for (const m of movements) {
       stmts.push(env.DB.prepare(
-        `INSERT INTO movements (id,pid,type,qty,memo,who,ts) VALUES (?,?,?,?,?,?,?)`
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,?,?,?,?,?,?,?)`
       ).bind(s(m.id) || uid(), s(m.pid), m.type === "out" ? "out" : "in",
-             n(m.qty), s(m.memo), s(m.who), n(m.ts) || Date.now()));
+             n(m.qty), s(m.memo), s(m.who), normDate(m.expiry), s(m.lot), n(m.ts) || Date.now()));
     }
     for (let i = 0; i < stmts.length; i += 40) await env.DB.batch(stmts.slice(i, i + 40));
     return json({ ok: true, products: products.length, movements: movements.length });
@@ -212,8 +364,8 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    /* 암호 보호: APP_KEY를 설정한 경우에만 검사 */
-    if (env.APP_KEY && request.headers.get("x-app-key") !== env.APP_KEY) {
+    /* 접근 제어: Access(구글 로그인) 우선, 없으면 APP_KEY, 둘 다 없으면 개방 */
+    if (!authUser(request) && env.APP_KEY && request.headers.get("x-app-key") !== env.APP_KEY) {
       return json({ error: "unauthorized" }, 401);
     }
 

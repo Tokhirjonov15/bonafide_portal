@@ -24,11 +24,32 @@ bonafide_portal/
 
 **재고 수량은 저장하지 않습니다** — 입출고 기록의 합계로 서버가 계산합니다(감사 추적).
 
-### 암호 보호 (권장)
+### 로그인 (구글 계정) — Cloudflare Access
 
-Worker → **Settings → Variables and Secrets → Add** 에서
-`APP_KEY` 라는 이름으로 직원 공용 암호를 등록하면, 그 암호를 입력한 사람만
-재고 데이터를 보고 수정할 수 있습니다. (등록하지 않으면 주소를 아는 누구나 사용 가능)
+직원은 **구글 계정으로 로그인**합니다. 별도 회원가입·비밀번호가 없고, 코드도 필요 없습니다.
+Cloudflare Zero Trust의 Access가 신원을 확인한 뒤 Worker에 이메일을 전달하고,
+앱은 그 계정을 입출고 담당자로 자동 기록합니다.
+
+**설정 순서 (관리자 1회):**
+
+1. Cloudflare 대시보드 → **Zero Trust** (처음이면 팀 이름 지정 + Free 요금제 선택)
+2. **Settings → Authentication → Login methods → Add new → Google** → 저장
+   (기본 제공 방식이라 별도 구글 개발자 설정 없이 바로 사용 가능)
+3. **Access → Applications → Add an application → Self-hosted**
+   - Application name: `BONAFIDE 통합 포털`
+   - Domain: `bonafide-portal.seoulgijibae.workers.dev`
+4. **Policy**: Action `Allow`, Include → **Emails** 에 직원 구글 계정을 넣거나,
+   회사 도메인을 쓰면 **Emails ending in** `@도메인` 으로 한 번에 허용
+   ※ 반드시 **본인 계정을 먼저** 넣으세요(잠김 방지)
+5. 저장 → 이후 사이트 접속 시 구글 로그인 화면이 먼저 뜹니다
+
+로그아웃 주소: `/cdn-cgi/access/logout`
+
+### 임시 암호 보호 (Access를 켜기 전에만)
+
+Worker → **Settings → Variables and Secrets → Add** 에 `APP_KEY` 를 등록하면
+그 암호를 입력한 사람만 재고 데이터를 쓸 수 있습니다.
+Access를 켠 뒤에는 무시되므로 그대로 두거나 삭제해도 됩니다.
 
 ### API 엔드포인트
 
@@ -70,8 +91,14 @@ Worker → **Settings → Variables and Secrets → Add** 에서
 ## 다음 단계
 
 - [x] D1 데이터베이스 연결 — 재고 데이터를 모든 기기가 공유
-- [ ] `APP_KEY` 등록 (암호 보호)
+- [ ] Cloudflare Access + 구글 로그인 켜기
+- [ ] 관리자/직원 역할 구분 (users 표 — 로그인 이메일 기준)
+- [x] 스캔 모드 (입고/출고) · 유통기한(로트) · 단가 · 거래처
 - [ ] 기존 재고 앱 데이터 CSV로 가져오기
-- [ ] 발주·유통기한 기능 추가
+- [ ] 발주(주문) 관리 · 소비량 통계
+
+### CSV 열 순서 (10열)
+
+`품목명, 카테고리, 보관위치, 단위, 바코드, 최소수량, 현재수량, 단가, 거래처, 유통기한`
 - [ ] 직원 로그인 (통합 계정)
 - [ ] 동선관리 구축 (타 지점 시스템 검토 후)
