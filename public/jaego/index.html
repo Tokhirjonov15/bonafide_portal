@@ -265,7 +265,7 @@
 
 <div id="camBox">
   <video id="camVideo" autoplay playsinline muted></video>
-  <span class="hint">바코드를 화면에 비추세요</span>
+  <span class="hint" id="camHint">바코드를 화면에 비추세요</span>
   <button class="btn ghost" id="camClose">닫기</button>
 </div>
 
@@ -508,29 +508,70 @@ window.registerScanned=function(bar, expiry){
   $("pName").focus();
 };
 
-/* ---------- 카메라 스캔 ---------- */
-let camStream=null, camTimer=null;
-$("camBtn").onclick=async()=>{
-  if(!("BarcodeDetector" in window)){
-    alert("이 브라우저는 카메라 스캔을 지원하지 않습니다.\nChrome/Edge 최신 버전을 쓰거나 USB 스캐너를 이용하세요."); return;
+/* ---------- 카메라 스캔 ----------
+   1순위: 브라우저 내장 BarcodeDetector (안드로이드 크롬 등 — 가장 빠름)
+   2순위: ZXing 라이브러리 (윈도우 PC·아이폰 등 내장 기능이 없는 환경)
+   ZXing은 버튼을 누를 때만 불러오므로 평소 화면 속도에는 영향이 없습니다. */
+let camStream=null, camTimer=null, zxReader=null;
+
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const el=document.createElement("script");
+    el.src=src; el.onload=()=>res(); el.onerror=()=>rej(new Error("스캔 모듈을 불러오지 못했습니다."));
+    document.head.appendChild(el);
+  });
+}
+
+async function startNativeCam(){
+  camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+  $("camVideo").srcObject=camStream;
+  const det=new BarcodeDetector();
+  $("camHint").textContent="바코드를 화면에 비추세요";
+  camTimer=setInterval(async()=>{
+    try{
+      const codes=await det.detect($("camVideo"));
+      if(codes.length){ const v=codes[0].rawValue; closeCam(); doScan(v); }
+    }catch(_){}
+  },400);
+}
+
+async function startZxingCam(){
+  if(!window.ZXing){
+    $("camHint").textContent="스캔 모듈 불러오는 중…";
+    await loadScript("vendor/zxing.min.js");
   }
+  zxReader=new ZXing.BrowserMultiFormatReader();
+  const onResult=(result)=>{ if(result){ const v=result.getText(); closeCam(); doScan(v); } };
+  $("camHint").textContent="바코드를 화면에 비추세요";
   try{
-    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-    $("camVideo").srcObject=camStream;
-    $("camBox").classList.add("show");
-    const det=new BarcodeDetector();
-    camTimer=setInterval(async()=>{
-      try{
-        const codes=await det.detect($("camVideo"));
-        if(codes.length){ const v=codes[0].rawValue; closeCam(); doScan(v); }
-      }catch(_){}
-    },400);
-  }catch(err){ alert("카메라를 열 수 없습니다: "+err.message); }
+    await zxReader.decodeFromConstraints({video:{facingMode:"environment"}}, "camVideo", onResult);
+  }catch(_){
+    await zxReader.decodeFromVideoDevice(null, "camVideo", onResult);
+  }
+}
+
+$("camBtn").onclick=async()=>{
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    alert("이 브라우저에서는 카메라를 쓸 수 없습니다. USB 스캐너를 이용하세요."); return;
+  }
+  $("camBox").classList.add("show");
+  $("camHint").textContent="카메라 준비 중…";
+  try{
+    if("BarcodeDetector" in window) await startNativeCam();
+    else await startZxingCam();
+  }catch(err){
+    closeCam();
+    alert("카메라를 열 수 없습니다.\n"+err.message+
+          "\n\n· 주소창의 자물쇠 → 카메라 '허용'을 확인하세요\n· PC에 카메라가 없으면 USB 스캐너나 휴대폰을 이용하세요");
+  }
 };
+
 function closeCam(){
   if(camTimer){ clearInterval(camTimer); camTimer=null; }
   if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  if(zxReader){ try{ zxReader.reset(); }catch(_){} zxReader=null; }
   $("camBox").classList.remove("show");
+  focusScan();
 }
 $("camClose").onclick=closeCam;
 
