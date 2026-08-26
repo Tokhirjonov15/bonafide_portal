@@ -578,19 +578,18 @@ async function handleApi(request, env, url) {
         GROUP BY p.id ORDER BY q DESC LIMIT 15
       `).bind(cutoff).all(),
       env.DB.prepare(`
-        SELECT COALESCE(NULLIF(p.vendor,''),'미지정') AS vendor,
-               SUM(m.qty * COALESCE(p.price,0)) AS cost
+        SELECT m.ts, m.qty, m.memo, p.name, p.unit,
+               COALESCE(p.price,0) AS price,
+               COALESCE(NULLIF(p.vendor,''),'미지정') AS vendor
         FROM movements m JOIN products p ON p.id = m.pid
-        WHERE m.type='in'
-          AND strftime('%Y-%m', datetime(m.ts/1000,'unixepoch')) =
-              strftime('%Y-%m', datetime((?)/1000,'unixepoch'))
-        GROUP BY vendor
-      `).bind(Date.now() + 9 * 3600 * 1000).all()
+        WHERE m.type='in' AND m.ts >= ?
+        ORDER BY m.ts DESC LIMIT 2000
+      `).bind(cutoff).all()
     ]);
     return json({
       monthly: monthly.results || [],
       top: top.results || [],
-      vmonth: vmonth.results || []
+      ins: vmonth.results || []
     });
   }
 

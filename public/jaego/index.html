@@ -489,6 +489,16 @@ function expBadge(pid){
 
 /* ---------- 화면 그리기 ---------- */
 const FLOORS=["3층","4층","10층"];   // 병원 창고 3곳
+/* 약품 시트에서 온 카테고리 목록 → 이에 속하면 약품, 아니면 물품 */
+const DRUG_CATS=new Set(["예방주사","독감","골다공증","연골주사","교감신경흥분제","혈압강하제",
+  "진해거담제","진경제","항응고제","소염진통","소화기","조영제","항생제","항히스타민",
+  "주사MIX","수액바탕","수액","멸균증류수","수액MIX","로션","다이어트","연고","마취크림","소독","보톡스"]);
+const DRUG_VENDORS=new Set(["한대표님","블루팜"]);
+function kindOf(p){
+  if(DRUG_CATS.has((p.cat||"").trim())) return "약품";
+  if(DRUG_VENDORS.has((p.vendor||"").trim())) return "약품";
+  return "물품";
+}
 const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
 /* 상태 판정: expired > soon > (low는 별개 축) */
 function prodState(p){
@@ -519,7 +529,7 @@ function render(){
       if(locSel==="__none__") return !(p.loc||"").trim();
       return (p.loc||"").includes(locSel);
     })
-    .filter(p=>!catSel || (p.cat||"")===catSel)
+    .filter(p=>!catSel || kindOf(p)===catSel)
     .filter(p=>!venSel || (p.vendor||"미지정")===venSel)
     .filter(p=>matchState(p, stateSel))
     .sort((a,b)=> (isLow(a)?0:1)-(isLow(b)?0:1) || a.name.localeCompare(b.name,"ko"));
@@ -583,11 +593,13 @@ function render(){
   $("catList").innerHTML=[...new Set(PRODUCTS.map(p=>p.cat).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
   $("venList").innerHTML=[...new Set(PRODUCTS.map(p=>p.vendor).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
 
-  /* 분류·거래처 필터 (선택 유지) */
-  const cats=[...new Set(PRODUCTS.map(p=>(p.cat||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ko"));
+  /* 분류: 약품/물품 두 가지 (선택 유지) */
+  const nDrug=PRODUCTS.filter(p=>kindOf(p)==="약품").length;
   const keepCat=catSel;
-  $("catFilter").innerHTML=`<option value="">전체 분류 (${cats.length})</option>`+
-    cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  $("catFilter").innerHTML=
+    `<option value="">전체 분류</option>`+
+    `<option value="약품">💊 약품 (${nDrug})</option>`+
+    `<option value="물품">📦 물품 (${PRODUCTS.length-nDrug})</option>`;
   $("catFilter").value=keepCat; if($("catFilter").selectedIndex<0) $("catFilter").value="";
 
   const vens=[...new Set(PRODUCTS.map(p=>(p.vendor||"미지정").trim()||"미지정"))].sort((a,b)=>a.localeCompare(b,"ko"));
@@ -644,32 +656,56 @@ function bar(label, val, max, color, suffix){
     <span class="bn">${won(val)}${suffix||""}</span></div>`;
 }
 
+let EXP_PERIOD="12", EXP_VENDOR="";
+function expFiltered(){
+  const ins=STATS.ins||[];
+  const months=+EXP_PERIOD;
+  const cut=new Date(Date.now()+9*3600*1000);
+  cut.setUTCMonth(cut.getUTCMonth()-months+1); cut.setUTCDate(1); cut.setUTCHours(0,0,0,0);
+  const cutTs=cut.getTime()-9*3600*1000;
+  return ins.filter(r=>r.ts>=cutTs && (!EXP_VENDOR || r.vendor===EXP_VENDOR));
+}
+function ymOf(ts){ return new Date(ts+9*3600*1000).toISOString().slice(0,7); }
+
 function renderStats(){
   if(!STATS) return;
-  const m=STATS.monthly||[], top=STATS.top||[], vmonth=STATS.vmonth||[];
+  const m=STATS.monthly||[], top=STATS.top||[], ins=STATS.ins||[];
 
   /* 요약 */
   const totOut=m.reduce((s,x)=>s+(x.out_qty||0),0);
   const totIn =m.reduce((s,x)=>s+(x.in_qty||0),0);
-  const totCost=m.reduce((s,x)=>s+(x.in_cost||0),0);
   const stockValue=PRODUCTS.reduce((s,p)=>s+Math.max(0,p.stock)*(p.price||0),0);
   const nowYm=new Date(Date.now()+9*3600*1000).toISOString().slice(0,7);
-  const thisM=m.find(x=>x.ym===nowYm)||{};
+  const thisMCost=ins.filter(r=>ymOf(r.ts)===nowYm).reduce((s,r)=>s+r.qty*r.price,0);
 
   /* 월별 최대값 */
   const maxQ=Math.max(1,...m.map(x=>Math.max(x.in_qty||0,x.out_qty||0)));
-  const maxC=Math.max(1,...m.map(x=>x.in_cost||0));
 
-  /* 거래처 표 (현황은 PRODUCTS에서, 이번달 입고금액은 서버에서) */
+  /* ===== 지출 (필터 적용) ===== */
+  const fins=expFiltered();
+  const expTotal=fins.reduce((s,r)=>s+r.qty*r.price,0);
+  const byYm={};  for(const r of fins){ const y=ymOf(r.ts); byYm[y]=(byYm[y]||0)+r.qty*r.price; }
+  const yms=Object.keys(byYm).sort();
+  const maxC=Math.max(1,...yms.map(y=>byYm[y]));
+  const byVen={}; for(const r of fins){ byVen[r.vendor]=(byVen[r.vendor]||0)+r.qty*r.price; }
+  const venList=Object.entries(byVen).sort((a,b)=>b[1]-a[1]);
+  const maxV=Math.max(1,...venList.map(v=>v[1]));
+  const byItem={}; for(const r of fins){ byItem[r.name]=(byItem[r.name]||0)+r.qty*r.price; }
+  const itemList=Object.entries(byItem).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const maxI=Math.max(1,...itemList.map(v=>v[1]));
+  const allVens=[...new Set(ins.map(r=>r.vendor))].sort((a,b)=>a.localeCompare(b,"ko"));
+  const recent=fins.slice(0,30);
+
+  /* 거래처 표 */
   const vens=[...new Set(PRODUCTS.map(p=>(p.vendor||"미지정").trim()||"미지정"))].sort((a,b)=>a.localeCompare(b,"ko"));
-  const vmap={}; for(const v of vmonth) vmap[v.vendor]=v.cost||0;
   const venRows=vens.map(v=>{
     const list=PRODUCTS.filter(p=>(p.vendor||"미지정")===v);
     const val=list.reduce((s,p)=>s+Math.max(0,p.stock)*(p.price||0),0);
     const low=list.filter(isLow).length;
+    const mCost=ins.filter(r=>r.vendor===v && ymOf(r.ts)===nowYm).reduce((s,r)=>s+r.qty*r.price,0);
     return `<tr><td><b>${esc(v)}</b></td><td class="num">${list.length}</td>
       <td class="num">${low?`<span style="color:var(--warn);font-weight:700">${low}</span>`:0}</td>
-      <td class="num">${won(val)}원</td><td class="num">${won(vmap[v]||0)}원</td></tr>`;
+      <td class="num">${won(val)}원</td><td class="num">${won(mCost)}원</td></tr>`;
   }).join("");
 
   /* 보관위치 표 */
@@ -686,7 +722,7 @@ function renderStats(){
     <div class="statcards">
       <div class="statcard"><div class="k">12개월 총 출고</div><div class="v">${won(totOut)}</div></div>
       <div class="statcard"><div class="k">12개월 총 입고</div><div class="v">${won(totIn)}</div></div>
-      <div class="statcard"><div class="k">이번달 지출(입고금액)</div><div class="v">${won(thisM.in_cost||0)}원</div></div>
+      <div class="statcard"><div class="k">이번달 지출(입고금액)</div><div class="v">${won(thisMCost)}원</div></div>
       <div class="statcard"><div class="k">현재 재고금액</div><div class="v">${won(stockValue)}원</div></div>
     </div>
 
@@ -699,9 +735,41 @@ function renderStats(){
     </div>
 
     <div class="statbox">
-      <h3>💰 지출 — 월별 입고금액 (12개월 합계 ${won(totCost)}원)</h3>
-      ${m.length? m.map(x=>bar(x.ym.slice(2), x.in_cost||0, maxC, "var(--cau)", "원")).join("")
-                : `<div class="muted">기록이 없습니다.</div>`}
+      <h3>💰 지출</h3>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+        <select id="expPeriod" class="fsel">
+          <option value="12">최근 12개월</option>
+          <option value="6">최근 6개월</option>
+          <option value="3">최근 3개월</option>
+          <option value="1">이번달</option>
+        </select>
+        <select id="expVendor" class="fsel">
+          <option value="">전체 거래처</option>
+          ${allVens.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("")}
+        </select>
+        <span class="tag" style="align-self:center">총지출 <b>${won(expTotal)}원</b> · 입고 ${fins.length}건</span>
+      </div>
+
+      <div class="muted" style="font-weight:700; margin-bottom:4px">월별 지출</div>
+      ${yms.length? yms.map(y=>bar(y.slice(2), byYm[y], maxC, "var(--cau)", "원")).join("")
+                  : `<div class="muted">이 조건의 입고 기록이 없습니다.</div>`}
+
+      ${venList.length?`<div class="muted" style="font-weight:700; margin:12px 0 4px">거래처별 지출</div>`+
+        venList.map(([v,c])=>bar(v, c, maxV, "var(--accent)", "원")).join(""):""}
+
+      ${itemList.length?`<div class="muted" style="font-weight:700; margin:12px 0 4px">품목별 지출 TOP 15</div>`+
+        itemList.map(([n,c])=>bar(n.length>10?n.slice(0,10)+"…":n, c, maxI, "#7C6FD8", "원")).join(""):""}
+
+      ${recent.length?`<div class="muted" style="font-weight:700; margin:12px 0 4px">최근 입고 내역 (${Math.min(30,recent.length)}건)</div>
+      <div style="overflow-x:auto"><table style="box-shadow:none"><thead><tr>
+        <th>날짜</th><th>품목</th><th class="num">수량</th><th class="num">단가</th><th class="num">금액</th><th>거래처</th>
+      </tr></thead><tbody>${recent.map(r=>{
+        const d=new Date(r.ts);
+        return `<tr><td class="muted">${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}</td>
+        <td>${esc(r.name)}</td><td class="num">${r.qty}</td>
+        <td class="num">${r.price?won(r.price)+"원":"—"}</td>
+        <td class="num b">${won(r.qty*r.price)}원</td><td class="muted">${esc(r.vendor)}</td></tr>`;
+      }).join("")}</tbody></table></div>`:""}
       <div class="muted" style="margin-top:6px">※ 단가가 입력된 품목만 금액에 반영됩니다.</div>
     </div>
 
@@ -728,6 +796,13 @@ function renderStats(){
       </tr></thead><tbody>${locRows}</tbody></table>
       <div class="muted" style="margin-top:6px">위치별 목록은 재고 현황의 📍 필터로 볼 수 있습니다.</div>
     </div>`;
+
+  /* 지출 필터 이벤트 (statsWrap을 다시 그린 뒤 선택 복원) */
+  $("expPeriod").value=EXP_PERIOD;
+  $("expVendor").value=EXP_VENDOR;
+  if($("expVendor").selectedIndex<0){ EXP_VENDOR=""; $("expVendor").value=""; }
+  $("expPeriod").onchange=e=>{ EXP_PERIOD=e.target.value; renderStats(); };
+  $("expVendor").onchange=e=>{ EXP_VENDOR=e.target.value; renderStats(); };
 }
 
 /* ============================================================
