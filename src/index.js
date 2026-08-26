@@ -558,6 +558,42 @@ async function handleApi(request, env, url) {
     return json({ ok: true, products: products.length, movements: movements.length });
   }
 
+  /* 통계: 최근 12개월 월별 입출고·지출 + 출고 TOP + 거래처별 이번달 입고금액 */
+  if (path === "/stats" && method === "GET") {
+    const cutoff = Date.now() - 370 * 86400000;
+    const [monthly, top, vmonth] = await Promise.all([
+      env.DB.prepare(`
+        SELECT strftime('%Y-%m', datetime(m.ts/1000,'unixepoch')) AS ym,
+               SUM(CASE WHEN m.type='in'  THEN m.qty ELSE 0 END) AS in_qty,
+               SUM(CASE WHEN m.type='out' THEN m.qty ELSE 0 END) AS out_qty,
+               SUM(CASE WHEN m.type='in'  THEN m.qty * COALESCE(p.price,0) ELSE 0 END) AS in_cost
+        FROM movements m LEFT JOIN products p ON p.id = m.pid
+        WHERE m.ts >= ?
+        GROUP BY ym ORDER BY ym
+      `).bind(cutoff).all(),
+      env.DB.prepare(`
+        SELECT p.name, p.unit, SUM(m.qty) AS q
+        FROM movements m JOIN products p ON p.id = m.pid
+        WHERE m.type='out' AND m.ts >= ?
+        GROUP BY p.id ORDER BY q DESC LIMIT 15
+      `).bind(cutoff).all(),
+      env.DB.prepare(`
+        SELECT COALESCE(NULLIF(p.vendor,''),'미지정') AS vendor,
+               SUM(m.qty * COALESCE(p.price,0)) AS cost
+        FROM movements m JOIN products p ON p.id = m.pid
+        WHERE m.type='in'
+          AND strftime('%Y-%m', datetime(m.ts/1000,'unixepoch')) =
+              strftime('%Y-%m', datetime((?)/1000,'unixepoch'))
+        GROUP BY vendor
+      `).bind(Date.now() + 9 * 3600 * 1000).all()
+    ]);
+    return json({
+      monthly: monthly.results || [],
+      top: top.results || [],
+      vmonth: vmonth.results || []
+    });
+  }
+
   /* 발주 문안을 텔레그램으로 지금 보내기 (수동 실행·테스트용) */
   if (path === "/order/send" && method === "POST") {
     const r = await sendOrders(env);

@@ -100,6 +100,23 @@
   .empty{text-align:center; padding:44px 10px; color:var(--ink2); background:var(--card); border-radius:10px}
   .errbox{background:var(--warn-bg); border:1px solid var(--warn); color:var(--warn);
     border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:13px}
+  .fsel{border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px;
+    font-family:inherit; background:var(--card); max-width:220px}
+
+  /* ===== 통계 ===== */
+  .statcards{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px}
+  .statcard{flex:1; min-width:150px; background:var(--card); border-radius:10px; padding:12px 14px;
+    box-shadow:0 2px 10px rgba(29,95,184,.06)}
+  .statcard .k{font-size:11.5px; color:var(--ink2); margin-bottom:2px}
+  .statcard .v{font-size:19px; font-weight:700; font-variant-numeric:tabular-nums}
+  .statbox{background:var(--card); border-radius:10px; padding:14px 16px; margin-bottom:14px;
+    box-shadow:0 2px 10px rgba(29,95,184,.06)}
+  .statbox h3{font-size:14px; margin-bottom:10px; color:var(--accent)}
+  .brow{display:flex; align-items:center; gap:8px; font-size:12px; padding:2px 0}
+  .brow .bl{width:58px; color:var(--ink2); white-space:nowrap}
+  .brow .btrack{flex:1; background:#EDF1F6; border-radius:4px; height:14px; overflow:hidden}
+  .brow .bfill{height:100%; border-radius:4px}
+  .brow .bn{width:70px; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink2)}
   .caubox{background:var(--cau-bg); border:1px solid var(--cau); border-radius:10px;
     padding:12px 14px; margin-bottom:12px; font-size:13px}
   .caubox b{color:var(--cau)}
@@ -173,6 +190,7 @@
     <button id="tabScan" class="on">📷 스캔</button>
     <button id="tabStock">재고 현황</button>
     <button id="tabOrder">📋 발주</button>
+    <button id="tabStats">📊 통계</button>
     <button id="tabLog">입출고 기록</button>
     <button id="tabSet">설정·백업</button>
   </nav>
@@ -220,11 +238,20 @@
     <div id="expAlert"></div>
     <div class="bar">
       <input type="search" id="q" placeholder="품목명·카테고리·바코드 검색">
-      <select id="locFilter" style="border:1px solid var(--line); border-radius:8px; padding:9px 10px; font-size:13.5px; font-family:inherit; background:var(--card)">
-        <option value="">📍 전체 위치</option>
-      </select>
       <button class="btn ghost" id="reloadBtn" title="다시 불러오기">↻</button>
       <button class="btn" id="addBtn">＋ 품목 추가</button>
+    </div>
+    <div class="bar" style="margin-top:-4px">
+      <select id="catFilter" class="fsel"><option value="">전체 분류</option></select>
+      <select id="locFilter" class="fsel"><option value="">📍 전체 위치</option></select>
+      <select id="stateFilter" class="fsel">
+        <option value="">전체 상태</option>
+        <option value="low">🔴 부족(발주필요)</option>
+        <option value="soon">🟠 기한 임박</option>
+        <option value="expired">⛔ 기한 만료</option>
+        <option value="ok">🟢 정상</option>
+      </select>
+      <select id="venFilter" class="fsel"><option value="">전체 거래처</option></select>
     </div>
     <div id="stockWrap"></div>
   </section>
@@ -241,6 +268,15 @@
       </div>
     </div>
     <div id="orderWrap"></div>
+  </section>
+
+  <!-- ===== 통계 ===== -->
+  <section id="pgStats" style="display:none">
+    <div class="bar">
+      <span class="muted">최근 12개월 기준 · 재고금액 = 현재고 × 단가</span>
+      <button class="btn ghost small" id="statsReload" style="margin-left:auto">↻ 새로고침</button>
+    </div>
+    <div id="statsWrap"><div class="empty">불러오는 중…</div></div>
   </section>
 
   <!-- ===== 기록 ===== -->
@@ -418,12 +454,13 @@ async function refresh(silent){
 }
 
 /* ---------- 탭 ---------- */
-const tabs={tabScan:"pgScan", tabStock:"pgStock", tabOrder:"pgOrder", tabLog:"pgLog", tabSet:"pgSet"};
+const tabs={tabScan:"pgScan", tabStock:"pgStock", tabOrder:"pgOrder", tabStats:"pgStats", tabLog:"pgLog", tabSet:"pgSet"};
 for(const t in tabs){
   $(t).onclick=()=>{
     for(const k in tabs){ $(k).classList.toggle("on",k===t); $(tabs[k]).style.display=(k===t)?"":"none"; }
     render();
     if(t==="tabScan") focusScan();
+    if(t==="tabStats") loadStats();
   };
 }
 $("reloadBtn").onclick=()=>refresh();
@@ -452,10 +489,29 @@ function expBadge(pid){
 
 /* ---------- 화면 그리기 ---------- */
 const FLOORS=["3층","4층","10층"];   // 병원 창고 3곳
+const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
+/* 상태 판정: expired > soon > (low는 별개 축) */
+function prodState(p){
+  let expired=false, soon=false;
+  for(const l of lotsOf(p.id)){
+    const dd=daysLeft(l.expiry); if(dd===null) continue;
+    if(dd<=0) expired=true; else if(dd<=60) soon=true;
+  }
+  return {low:isLow(p), expired, soon};
+}
+function matchState(p, sel){
+  if(!sel) return true;
+  const st=prodState(p);
+  if(sel==="low") return st.low;
+  if(sel==="expired") return st.expired;
+  if(sel==="soon") return st.soon && !st.expired;
+  if(sel==="ok") return !st.low && !st.expired && !st.soon;
+  return true;
+}
 function render(){
   const q=($("q").value||"").trim().toLowerCase();
-  const locSel=$("locFilter").value;
-  const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
+  const locSel=$("locFilter").value, catSel=$("catFilter").value,
+        stateSel=$("stateFilter").value, venSel=$("venFilter").value;
   const rows=PRODUCTS
     .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")+" "+(p.loc||"")).toLowerCase().includes(q))
     .filter(p=>{
@@ -463,6 +519,9 @@ function render(){
       if(locSel==="__none__") return !(p.loc||"").trim();
       return (p.loc||"").includes(locSel);
     })
+    .filter(p=>!catSel || (p.cat||"")===catSel)
+    .filter(p=>!venSel || (p.vendor||"미지정")===venSel)
+    .filter(p=>matchState(p, stateSel))
     .sort((a,b)=> (isLow(a)?0:1)-(isLow(b)?0:1) || a.name.localeCompare(b.name,"ko"));
 
   const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
@@ -524,6 +583,19 @@ function render(){
   $("catList").innerHTML=[...new Set(PRODUCTS.map(p=>p.cat).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
   $("venList").innerHTML=[...new Set(PRODUCTS.map(p=>p.vendor).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
 
+  /* 분류·거래처 필터 (선택 유지) */
+  const cats=[...new Set(PRODUCTS.map(p=>(p.cat||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ko"));
+  const keepCat=catSel;
+  $("catFilter").innerHTML=`<option value="">전체 분류 (${cats.length})</option>`+
+    cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  $("catFilter").value=keepCat; if($("catFilter").selectedIndex<0) $("catFilter").value="";
+
+  const vens=[...new Set(PRODUCTS.map(p=>(p.vendor||"미지정").trim()||"미지정"))].sort((a,b)=>a.localeCompare(b,"ko"));
+  const keepVen=venSel;
+  $("venFilter").innerHTML=`<option value="">전체 거래처</option>`+
+    vens.map(v=>`<option value="${esc(v)}">${esc(v)} (${PRODUCTS.filter(p=>(p.vendor||"미지정")===v).length})</option>`).join("");
+  $("venFilter").value=keepVen; if($("venFilter").selectedIndex<0) $("venFilter").value="";
+
   /* 보관위치: 고정 3개 층 + 데이터에 있는 기타 위치 */
   const extraLocs=[...new Set(PRODUCTS.map(p=>(p.loc||"").trim()).filter(Boolean))]
     .filter(l=>!FLOORS.some(f=>l.includes(f)));
@@ -545,6 +617,118 @@ function render(){
   renderAlerts();
 }
 $("locFilter").onchange=render;
+$("catFilter").onchange=render;
+$("stateFilter").onchange=render;
+$("venFilter").onchange=render;
+
+/* ============================================================
+   📊 통계 — 월별 사용량 · 지출 · 거래처 · 보관위치
+   ============================================================ */
+let STATS=null;
+async function loadStats(force){
+  if(STATS && !force){ renderStats(); return; }
+  $("statsWrap").innerHTML=`<div class="empty">불러오는 중…</div>`;
+  try{
+    STATS=await API.call("/stats");
+    renderStats();
+  }catch(err){
+    $("statsWrap").innerHTML=`<div class="errbox">⚠ 통계를 불러오지 못했습니다: ${esc(err.message)}</div>`;
+  }
+}
+$("statsReload").onclick=()=>loadStats(true);
+
+function bar(label, val, max, color, suffix){
+  const w=max>0? Math.max(1, Math.round(val/max*100)) : 0;
+  return `<div class="brow"><span class="bl">${esc(label)}</span>
+    <div class="btrack"><div class="bfill" style="width:${val>0?w:0}%; background:${color}"></div></div>
+    <span class="bn">${won(val)}${suffix||""}</span></div>`;
+}
+
+function renderStats(){
+  if(!STATS) return;
+  const m=STATS.monthly||[], top=STATS.top||[], vmonth=STATS.vmonth||[];
+
+  /* 요약 */
+  const totOut=m.reduce((s,x)=>s+(x.out_qty||0),0);
+  const totIn =m.reduce((s,x)=>s+(x.in_qty||0),0);
+  const totCost=m.reduce((s,x)=>s+(x.in_cost||0),0);
+  const stockValue=PRODUCTS.reduce((s,p)=>s+Math.max(0,p.stock)*(p.price||0),0);
+  const nowYm=new Date(Date.now()+9*3600*1000).toISOString().slice(0,7);
+  const thisM=m.find(x=>x.ym===nowYm)||{};
+
+  /* 월별 최대값 */
+  const maxQ=Math.max(1,...m.map(x=>Math.max(x.in_qty||0,x.out_qty||0)));
+  const maxC=Math.max(1,...m.map(x=>x.in_cost||0));
+
+  /* 거래처 표 (현황은 PRODUCTS에서, 이번달 입고금액은 서버에서) */
+  const vens=[...new Set(PRODUCTS.map(p=>(p.vendor||"미지정").trim()||"미지정"))].sort((a,b)=>a.localeCompare(b,"ko"));
+  const vmap={}; for(const v of vmonth) vmap[v.vendor]=v.cost||0;
+  const venRows=vens.map(v=>{
+    const list=PRODUCTS.filter(p=>(p.vendor||"미지정")===v);
+    const val=list.reduce((s,p)=>s+Math.max(0,p.stock)*(p.price||0),0);
+    const low=list.filter(isLow).length;
+    return `<tr><td><b>${esc(v)}</b></td><td class="num">${list.length}</td>
+      <td class="num">${low?`<span style="color:var(--warn);font-weight:700">${low}</span>`:0}</td>
+      <td class="num">${won(val)}원</td><td class="num">${won(vmap[v]||0)}원</td></tr>`;
+  }).join("");
+
+  /* 보관위치 표 */
+  const locRows=[...FLOORS.map(f=>({key:f, test:p=>(p.loc||"").includes(f)})),
+                 {key:"위치 미지정", test:p=>!(p.loc||"").trim()}]
+    .map(({key,test})=>{
+      const list=PRODUCTS.filter(test);
+      const val=list.reduce((s,p)=>s+Math.max(0,p.stock)*(p.price||0),0);
+      return `<tr><td><b>📍 ${esc(key)}</b></td><td class="num">${list.length}</td>
+        <td class="num">${won(val)}원</td></tr>`;
+    }).join("");
+
+  $("statsWrap").innerHTML=`
+    <div class="statcards">
+      <div class="statcard"><div class="k">12개월 총 출고</div><div class="v">${won(totOut)}</div></div>
+      <div class="statcard"><div class="k">12개월 총 입고</div><div class="v">${won(totIn)}</div></div>
+      <div class="statcard"><div class="k">이번달 지출(입고금액)</div><div class="v">${won(thisM.in_cost||0)}원</div></div>
+      <div class="statcard"><div class="k">현재 재고금액</div><div class="v">${won(stockValue)}원</div></div>
+    </div>
+
+    <div class="statbox">
+      <h3>월별 사용량 — 출고(빨강) · 입고(파랑)</h3>
+      ${m.length? m.map(x=>
+        bar(x.ym.slice(2), x.out_qty||0, maxQ, "var(--warn)")+
+        bar("  └ 입고", x.in_qty||0, maxQ, "var(--accent)")
+      ).join("") : `<div class="muted">기록이 없습니다.</div>`}
+    </div>
+
+    <div class="statbox">
+      <h3>💰 지출 — 월별 입고금액 (12개월 합계 ${won(totCost)}원)</h3>
+      ${m.length? m.map(x=>bar(x.ym.slice(2), x.in_cost||0, maxC, "var(--cau)", "원")).join("")
+                : `<div class="muted">기록이 없습니다.</div>`}
+      <div class="muted" style="margin-top:6px">※ 단가가 입력된 품목만 금액에 반영됩니다.</div>
+    </div>
+
+    <div class="statbox">
+      <h3>🏆 출고 TOP 15 — 최근 12개월</h3>
+      ${top.length? `<table style="box-shadow:none"><thead><tr><th>#</th><th>품목</th><th class="num">출고량</th></tr></thead>
+        <tbody>${top.map((t,i)=>`<tr><td class="muted">${i+1}</td><td>${esc(t.name)} <span class="muted">${esc(t.unit||"")}</span></td>
+        <td class="num qty">${won(t.q)}</td></tr>`).join("")}</tbody></table>`
+        : `<div class="muted">이 기간에 출고 기록이 없습니다.</div>`}
+    </div>
+
+    <div class="statbox">
+      <h3>🏢 거래처</h3>
+      <table style="box-shadow:none"><thead><tr>
+        <th>거래처</th><th class="num">품목수</th><th class="num">발주필요</th>
+        <th class="num">재고금액</th><th class="num">이번달 입고금액</th>
+      </tr></thead><tbody>${venRows}</tbody></table>
+    </div>
+
+    <div class="statbox">
+      <h3>📍 보관위치</h3>
+      <table style="box-shadow:none"><thead><tr>
+        <th>위치</th><th class="num">품목수</th><th class="num">재고금액</th>
+      </tr></thead><tbody>${locRows}</tbody></table>
+      <div class="muted" style="margin-top:6px">위치별 목록은 재고 현황의 📍 필터로 볼 수 있습니다.</div>
+    </div>`;
+}
 
 /* ============================================================
    🔔 앱 내 알림 — 유통기한(만료/7일/30일) + 발주 대상
