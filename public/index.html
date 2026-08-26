@@ -12,7 +12,12 @@
   }
   *{box-sizing:border-box; margin:0; padding:0}
   body{
-    background:var(--bg); color:var(--ink); min-height:100vh;
+    color:var(--ink); min-height:100vh;
+    background:
+      radial-gradient(1000px 500px at 75% -15%, rgba(59,130,246,.22), transparent 60%),
+      radial-gradient(800px 460px at 10% 110%, rgba(99,102,241,.16), transparent 55%),
+      linear-gradient(170deg, #0a0e15 0%, #0d1524 55%, #0b1220 100%);
+    background-attachment:fixed;
     font-family:'Segoe UI','Malgun Gothic',system-ui,sans-serif;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     padding:24px; gap:34px;
