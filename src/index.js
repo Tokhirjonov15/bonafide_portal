@@ -1,5 +1,5 @@
 /* ============================================================
-   BONAFIDE 통합 포털 — API (재고관리)
+   반듯한정형외과 통합 포털 — API (재고관리)
    /api/* 요청만 여기서 처리하고, 나머지 주소는 public/ 의 파일을 그대로 보냅니다.
 
    설계 원칙
@@ -207,7 +207,7 @@ function orderMessageText(vendor, items, dateStr) {
     if (p.alt) l += `  ※대체가능: ${p.alt}`;
     return l;
   });
-  return `[반듯의원 발주] ${dateStr}\n거래처: ${vendor || "미지정"}\n` +
+  return `[반듯한정형외과 발주] ${dateStr}\n거래처: ${vendor || "미지정"}\n` +
          lines.join("\n") +
          "\n\n품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.";
 }
@@ -269,7 +269,7 @@ async function pollTelegram(env) {
         `INSERT OR REPLACE INTO tg_subs (chat_id, name, added) VALUES (?,?,?)`
       ).bind(chatId, name, Date.now()).run();
       await tgSendTo(env, chatId,
-        "✅ 반듯의원 발주 알림 구독 완료!\n매주 수요일 오전 9시에 발주 문안이 전송됩니다.\n구독 해지: /stop");
+        "✅ 반듯한정형외과 발주 알림 구독 완료!\n매주 수요일 오전 9시에 발주 문안이 전송됩니다.\n구독 해지: /stop");
     } else if (text.startsWith("/stop")) {
       await env.DB.prepare(`DELETE FROM tg_subs WHERE chat_id=?`).bind(chatId).run();
       await tgSendTo(env, chatId, "구독이 해지되었습니다. 다시 받으려면 /start");
@@ -299,7 +299,7 @@ async function sendOrders(env) {
 
   const texts = vendors.length
     ? vendors.map((v) => orderMessageText(v, byVendor[v], dateStr))
-    : [`[반듯의원 발주] ${dateStr}\n오늘 발주할 품목이 없습니다 🎉`];
+    : [`[반듯한정형외과 발주] ${dateStr}\n오늘 발주할 품목이 없습니다 🎉`];
 
   for (const sub of subs) {
     for (const t of texts) await tgSendTo(env, sub.chat_id, t);
@@ -348,7 +348,7 @@ async function sendExpiryAlerts(env) {
 
   const d = new Date(Date.now() + 9 * 3600 * 1000);
   const days = ["일", "월", "화", "수", "목", "금", "토"];
-  let text = `⏰ [반듯의원 유통기한 알림] ${d.getUTCMonth() + 1}/${d.getUTCDate()}(${days[d.getUTCDay()]})\n`;
+  let text = `⏰ [반듯한정형외과 유통기한 알림] ${d.getUTCMonth() + 1}/${d.getUTCDate()}(${days[d.getUTCDay()]})\n`;
   if (buckets[0].length)  text += `\n🔴 오늘 만료 — 즉시 사용 또는 폐기:\n${buckets[0].join("\n")}\n`;
   if (buckets[7].length)  text += `\n🟠 7일 남음 — 우선 사용:\n${buckets[7].join("\n")}\n`;
   if (buckets[30].length) text += `\n🟡 30일 남음:\n${buckets[30].join("\n")}\n`;

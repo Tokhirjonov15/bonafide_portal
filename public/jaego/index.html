@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>반듯 재고 — 자체 재고관리</title>
+<title>반듯한 재고 — 자체 재고관리</title>
 <style>
   :root{
     --bg:#F5F7FA; --card:#FFFFFF; --ink:#1B2734; --ink2:#5B7085; --line:#DDE5EC;
@@ -152,7 +152,7 @@
 <body>
 
 <header>
-  <h1>📦 반듯 재고</h1>
+  <h1>📦 반듯한 재고</h1>
   <span class="conn wait" id="conn">연결 중…</span>
   <span class="sub" id="statLine"></span>
   <button id="bellBtn" title="유통기한·발주 알림">🔔<span id="bellBadge"></span></button>
@@ -244,8 +244,9 @@
         열 순서 (첫 줄 제목은 자동으로 건너뜁니다):
       </p>
       <div style="background:#F2F6FA; border-radius:8px; padding:10px 12px; font-size:12.5px; margin-bottom:12px; overflow-x:auto">
-        <b>품목명, 카테고리, 보관위치, 단위, 바코드, 최소수량, 현재수량, 단가, 거래처, 유통기한</b><br>
-        <span class="muted">예) 니트릴 장갑 M, 소모품, 창고 A-2, 박스, 8801234567890, 5, 20, 12000, OO메디칼, 2027-03-31</span>
+        <b>품목명, 카테고리, 보관위치, 단위, 바코드, 주문시점, 현재수량, 단가, 거래처, 유통기한, 필요수량, 대체품목</b><br>
+        <span class="muted">예) 니트릴 장갑 M, 소모품, 창고 A-2, 박스, 8801234567890, 5, 20, 12000, 메디풀, 2027-03-31, 10, 라텍스 장갑</span><br>
+        <span class="muted">· 주문시점 = 이 수량 이하로 떨어지면 발주 대상 · 필요수량 = 유지 목표 수량 · 모르는 칸은 비워 두세요</span>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn" id="csvInBtn">⬆ CSV 가져오기</button>
@@ -351,7 +352,7 @@
 <script>
 "use strict";
 /* ============================================================
-   반듯 재고 v0.3 — 스캔 모드 + 유통기한(로트) + 단가·거래처
+   반듯한 재고 v0.3 — 스캔 모드 + 유통기한(로트) + 단가·거래처
    ============================================================ */
 const $=id=>document.getElementById(id);
 const esc=s=>(""+(s??"")).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -577,7 +578,7 @@ function orderItems(){
 function orderMessage(vendor, items){
   const d=new Date();
   const days=["일","월","화","수","목","금","토"];
-  const head=`[반듯의원 발주] ${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})\n거래처: ${vendor||"미지정"}\n`;
+  const head=`[반듯한정형외과 발주] ${d.getMonth()+1}/${d.getDate()}(${days[d.getDay()]})\n거래처: ${vendor||"미지정"}\n`;
   const lines=items.map(p=>{
     let l=`- ${p.name}`;
     if(p.unit) l+=` (${p.unit})`;

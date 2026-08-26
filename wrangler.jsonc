@@ -1,5 +1,5 @@
 {
-  // BONAFIDE 통합 포털 — Cloudflare 배포 설정
+  // 반듯한정형외과 통합 포털 — Cloudflare 배포 설정
   //  · public/  : 정적 파일(포털·재고관리·동선관리·JS PACS)
   //  · src/     : API 코드 (/api/* 요청만 처리, 나머지는 정적 파일로)
   //  · DB       : D1 데이터베이스 (재고 데이터 — 모든 기기 공유)
