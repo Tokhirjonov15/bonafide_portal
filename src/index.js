@@ -122,6 +122,31 @@ async function listLots(env) {
   return results || [];
 }
 
+/* 로트 보정: 유통기한 없이 기록된 출고(예: 재고 0에서 강제 출고)도
+   기한이 빠른 로트부터 소진된 것으로 간주해, 로트 합계가 실제 재고를
+   넘지 않도록 맞춘다. (표시·알림용 — 원본 기록은 바꾸지 않음) */
+function adjustLots(products, lots) {
+  const stockMap = {};
+  for (const p of products) stockMap[p.id] = Math.max(0, p.stock || 0);
+  const byPid = {};
+  for (const l of lots) (byPid[l.pid] = byPid[l.pid] || []).push({ ...l });
+  const out = [];
+  for (const pid in byPid) {
+    const group = byPid[pid];                       // SQL에서 expiry 오름차순
+    const total = group.reduce((s, l) => s + l.qty, 0);
+    let deficit = total - (stockMap[pid] ?? 0);
+    for (const l of group) {
+      if (deficit > 0) {
+        const cut = Math.min(deficit, l.qty);
+        l.qty -= cut; deficit -= cut;
+      }
+      if (l.qty > 0) out.push(l);
+    }
+  }
+  out.sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0));
+  return out;
+}
+
 async function listMovements(env, limit = 300) {
   const { results } = await env.DB.prepare(`
     SELECT m.id, m.pid, m.type, m.qty, m.memo, m.who, m.expiry, m.lot, m.ts, p.name AS pname
@@ -329,7 +354,8 @@ async function sendExpiryAlerts(env) {
   const subs = (await env.DB.prepare(`SELECT chat_id FROM tg_subs`).all()).results || [];
   if (!subs.length) return { sent: 0, error: "구독자가 없습니다. 봇에게 /start 를 보내 구독하세요." };
 
-  const [lots, products] = await Promise.all([listLots(env), listProducts(env)]);
+  const [lotsRaw, products] = await Promise.all([listLots(env), listProducts(env)]);
+  const lots = adjustLots(products, lotsRaw);
   const pmap = {};
   for (const p of products) pmap[p.id] = p;
 
@@ -379,10 +405,10 @@ async function handleApi(request, env, url) {
 
   /* 현황 + 로트 + 최근 기록 */
   if (path === "/state" && method === "GET") {
-    const [products, lots, movements] = await Promise.all([
+    const [products, lotsRaw, movements] = await Promise.all([
       listProducts(env), listLots(env), listMovements(env)
     ]);
-    return json({ products, lots, movements, me, serverTime: Date.now() });
+    return json({ products, lots: adjustLots(products, lotsRaw), movements, me, serverTime: Date.now() });
   }
 
   /* 품목 추가 / 수정 */

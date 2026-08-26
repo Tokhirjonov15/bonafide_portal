@@ -46,8 +46,9 @@
     border-radius:8px; padding:6px 11px; font-size:15px; cursor:pointer;
   }
   #bellBadge{
-    position:absolute; top:-6px; right:-6px; background:var(--warn); color:#fff;
+    position:absolute; top:-7px; right:-7px; background:var(--warn); color:#fff;
     border-radius:10px; font-size:10.5px; font-weight:700; padding:1px 6px; display:none;
+    border:2px solid #fff; box-shadow:0 1px 4px rgba(176,58,46,.4); line-height:1.3;
   }
   #alertPanel{
     position:fixed; top:58px; right:14px; width:min(94vw,400px); z-index:70;
@@ -538,8 +539,8 @@ function renderAlerts(){
   const total=items.length+(ordN?1:0);
 
   const badge=$("bellBadge");
-  badge.style.display = total? "" : "none";
-  badge.textContent = total;
+  badge.style.display = total? "inline-block" : "none";
+  badge.textContent = total>99? "99+" : total;
 
   const G=["🔴 만료됨 — 즉시 사용 또는 폐기","🟠 7일 이내 만료","🟡 30일 이내 만료"];
   let html="";
