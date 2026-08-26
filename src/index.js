@@ -198,7 +198,7 @@ async function findByBarcode(env, raw) {
   if (code.length >= 13) tryCodes.push(code.slice(-13));
   for (const c of tryCodes) {
     const row = await env.DB.prepare(
-      `SELECT id, name, unit FROM products WHERE bar = ? LIMIT 1`
+      `SELECT id, name, unit, loc FROM products WHERE bar = ? LIMIT 1`
     ).bind(c).first();
     if (row) return row;
   }

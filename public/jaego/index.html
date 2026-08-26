@@ -220,6 +220,9 @@
     <div id="expAlert"></div>
     <div class="bar">
       <input type="search" id="q" placeholder="품목명·카테고리·바코드 검색">
+      <select id="locFilter" style="border:1px solid var(--line); border-radius:8px; padding:9px 10px; font-size:13.5px; font-family:inherit; background:var(--card)">
+        <option value="">📍 전체 위치</option>
+      </select>
       <button class="btn ghost" id="reloadBtn" title="다시 불러오기">↻</button>
       <button class="btn" id="addBtn">＋ 품목 추가</button>
     </div>
@@ -302,7 +305,7 @@
   <label>품목명 *</label><input id="pName" placeholder="예) 니트릴 장갑 M">
   <div class="mrow">
     <div><label>카테고리</label><input id="pCat" list="catList" placeholder="예) 소모품"><datalist id="catList"></datalist></div>
-    <div><label>보관 위치</label><input id="pLoc" placeholder="예) 창고 A-2"></div>
+    <div><label>보관 위치</label><input id="pLoc" list="locList" placeholder="예) 3층 / 4층 / 10층"><datalist id="locList"></datalist></div>
   </div>
   <div class="mrow">
     <div><label>단위</label><input id="pUnit" placeholder="예) 박스"></div>
@@ -448,11 +451,18 @@ function expBadge(pid){
 }
 
 /* ---------- 화면 그리기 ---------- */
+const FLOORS=["3층","4층","10층"];   // 병원 창고 3곳
 function render(){
   const q=($("q").value||"").trim().toLowerCase();
+  const locSel=$("locFilter").value;
   const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
   const rows=PRODUCTS
-    .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")).toLowerCase().includes(q))
+    .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")+" "+(p.loc||"")).toLowerCase().includes(q))
+    .filter(p=>{
+      if(!locSel) return true;
+      if(locSel==="__none__") return !(p.loc||"").trim();
+      return (p.loc||"").includes(locSel);
+    })
     .sort((a,b)=> (isLow(a)?0:1)-(isLow(b)?0:1) || a.name.localeCompare(b.name,"ko"));
 
   const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
@@ -513,9 +523,28 @@ function render(){
 
   $("catList").innerHTML=[...new Set(PRODUCTS.map(p=>p.cat).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
   $("venList").innerHTML=[...new Set(PRODUCTS.map(p=>p.vendor).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
+
+  /* 보관위치: 고정 3개 층 + 데이터에 있는 기타 위치 */
+  const extraLocs=[...new Set(PRODUCTS.map(p=>(p.loc||"").trim()).filter(Boolean))]
+    .filter(l=>!FLOORS.some(f=>l.includes(f)));
+  $("locList").innerHTML=[...FLOORS, ...extraLocs].map(l=>`<option value="${esc(l)}">`).join("");
+  const noLocN=PRODUCTS.filter(p=>!(p.loc||"").trim()).length;
+  const keep=locSel;
+  $("locFilter").innerHTML=
+    `<option value="">📍 전체 위치</option>`+
+    FLOORS.map(f=>{
+      const n=PRODUCTS.filter(p=>(p.loc||"").includes(f)).length;
+      return `<option value="${esc(f)}">${esc(f)} (${n})</option>`;
+    }).join("")+
+    extraLocs.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join("")+
+    (noLocN?`<option value="__none__">위치 미지정 (${noLocN})</option>`:"");
+  $("locFilter").value=keep;
+  if($("locFilter").selectedIndex<0) $("locFilter").value="";
+
   renderOrder();
   renderAlerts();
 }
+$("locFilter").onchange=render;
 
 /* ============================================================
    🔔 앱 내 알림 — 유통기한(만료/7일/30일) + 발주 대상
@@ -714,7 +743,7 @@ async function doScan(code){
     const sign = r.mode==="in" ? "＋1" : "－1";
     showScanResult("ok",
       `<div class="big">${r.mode==="in"?"✅ 입고":"📤 출고"} ${sign} — ${esc(r.product.name)}</div>
-       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}</div>`);
+       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${r.product.loc?` · 📍 ${esc(r.product.loc)}`:""}</div>`);
     const t=new Date().toTimeString().slice(0,5);
     scanHistory.unshift(`<div class="row"><span class="t">${t}</span>
       <span>${r.mode==="in"?"＋":"－"} ${esc(r.product.name)}</span>
