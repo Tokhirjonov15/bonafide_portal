@@ -307,6 +307,58 @@ async function sendOrders(env) {
   return { sent: texts.length * subs.length, vendors: vendors.length, subscribers: subs.length };
 }
 
+/* ============================================================
+   유통기한 알림 (매일 오전 9시 KST 크론)
+   재고가 남아 있는 로트 중 D-30 / D-7 / 오늘 만료를 텔레그램으로 알립니다.
+   정확히 그 날짜에만 알리므로 같은 로트가 매일 반복 알림되지 않습니다.
+   ============================================================ */
+function kstToday() {
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+function expiryDaysLeft(expiry) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(expiry || "");
+  if (!m) return null;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  return Math.round((t - kstToday()) / 86400000);
+}
+
+async function sendExpiryAlerts(env) {
+  if (!env.TELEGRAM_TOKEN) return { sent: 0, error: "텔레그램이 설정되지 않았습니다 (TELEGRAM_TOKEN)." };
+  await pollTelegram(env);
+  const subs = (await env.DB.prepare(`SELECT chat_id FROM tg_subs`).all()).results || [];
+  if (!subs.length) return { sent: 0, error: "구독자가 없습니다. 봇에게 /start 를 보내 구독하세요." };
+
+  const [lots, products] = await Promise.all([listLots(env), listProducts(env)]);
+  const pmap = {};
+  for (const p of products) pmap[p.id] = p;
+
+  const buckets = { 0: [], 7: [], 30: [] };
+  for (const l of lots) {
+    const p = pmap[l.pid];
+    if (!p) continue;
+    const dd = expiryDaysLeft(l.expiry);
+    if (dd === 0 || dd === 7 || dd === 30) {
+      buckets[dd].push(`- ${p.name}${p.unit ? ` (${p.unit})` : ""} : ${l.qty}개 · ${l.expiry}${p.loc ? ` · ${p.loc}` : ""}`);
+    }
+  }
+  if (!buckets[0].length && !buckets[7].length && !buckets[30].length) {
+    return { sent: 0, vendors: 0, note: "오늘 알릴 유통기한 항목이 없습니다." };
+  }
+
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  let text = `⏰ [반듯의원 유통기한 알림] ${d.getUTCMonth() + 1}/${d.getUTCDate()}(${days[d.getUTCDay()]})\n`;
+  if (buckets[0].length)  text += `\n🔴 오늘 만료 — 즉시 사용 또는 폐기:\n${buckets[0].join("\n")}\n`;
+  if (buckets[7].length)  text += `\n🟠 7일 남음 — 우선 사용:\n${buckets[7].join("\n")}\n`;
+  if (buckets[30].length) text += `\n🟡 30일 남음:\n${buckets[30].join("\n")}\n`;
+
+  let ok = 0;
+  for (const sub of subs) { if (await tgSendTo(env, sub.chat_id, text.trim())) ok++; }
+  return { sent: ok, subscribers: subs.length,
+           items: buckets[0].length + buckets[7].length + buckets[30].length };
+}
+
 async function currentStock(env, pid) {
   const row = await env.DB.prepare(`
     SELECT COALESCE(SUM(CASE WHEN type='in' THEN qty ELSE -qty END),0) AS stock
@@ -487,6 +539,13 @@ async function handleApi(request, env, url) {
     return json({ ok: true, ...r });
   }
 
+  /* 유통기한 알림 지금 보내기 (테스트용) */
+  if (path === "/expiry/send" && method === "POST") {
+    const r = await sendExpiryAlerts(env);
+    if (r.error) return json({ error: r.error }, 400);
+    return json({ ok: true, ...r });
+  }
+
   return json({ error: "알 수 없는 요청: " + path }, 404);
 }
 
@@ -510,13 +569,16 @@ export default {
     }
   },
 
-  /* 크론 2개:
+  /* 크론 3개:
      - 15분마다: /start·/stop 메시지 확인(구독 등록)
+     - 매일 오전 9시(KST): 유통기한 알림 (D-30 / D-7 / 당일)
      - 매주 수요일 오전 9시(KST): 발주 문안 전송 */
   async scheduled(event, env, ctx) {
     await ensureSchema(env);
     if (event.cron === "0 0 * * 3") {
       ctx.waitUntil(sendOrders(env).catch(() => {}));
+    } else if (event.cron === "0 0 * * *") {
+      ctx.waitUntil(sendExpiryAlerts(env).catch(() => {}));
     } else {
       ctx.waitUntil(pollTelegram(env).catch(() => {}));
     }

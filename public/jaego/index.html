@@ -30,6 +30,34 @@
   }
   nav button.on{background:var(--accent); color:#fff; border-color:var(--accent); font-weight:700}
 
+  /* ===== 알림 벨 ===== */
+  #bellBtn{
+    position:relative; border:1px solid var(--line); background:var(--card);
+    border-radius:8px; padding:6px 11px; font-size:15px; cursor:pointer;
+  }
+  #bellBadge{
+    position:absolute; top:-6px; right:-6px; background:var(--warn); color:#fff;
+    border-radius:10px; font-size:10.5px; font-weight:700; padding:1px 6px; display:none;
+  }
+  #alertPanel{
+    position:fixed; top:58px; right:14px; width:min(94vw,400px); z-index:70;
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 10px 34px rgba(20,30,45,.18); display:none;
+    max-height:72vh; overflow:auto; padding:14px 16px;
+  }
+  #alertPanel.show{display:block}
+  #alertPanel h3{font-size:14px; margin-bottom:10px; display:flex; align-items:center}
+  #alertPanel .grp{font-size:12px; font-weight:700; margin:10px 0 4px}
+  #alertPanel .g0{color:var(--warn)} #alertPanel .g1{color:var(--cau)} #alertPanel .g2{color:#8a7a10}
+  #alertPanel .arow{
+    font-size:12.5px; padding:5px 0; border-bottom:1px solid #F0F4F8;
+    display:flex; gap:8px; align-items:baseline;
+  }
+  #alertPanel .arow b{flex:1}
+  #alertPanel .arow .dd{font-weight:700; white-space:nowrap}
+  #alertPanel .aempty{color:var(--ink2); font-size:13px; text-align:center; padding:16px 0}
+  #alertPanel .xbtn{margin-left:auto; border:none; background:none; font-size:15px; cursor:pointer; color:var(--ink2)}
+
   main{max-width:1100px; margin:0 auto; padding:16px}
   .bar{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center}
   .bar input[type=search]{
@@ -127,6 +155,7 @@
   <h1>📦 반듯 재고</h1>
   <span class="conn wait" id="conn">연결 중…</span>
   <span class="sub" id="statLine"></span>
+  <button id="bellBtn" title="유통기한·발주 알림">🔔<span id="bellBadge"></span></button>
   <nav>
     <a class="homelink" href="../index.html">🏠 포털</a>
     <a class="homelink" id="logoutLink" href="/cdn-cgi/access/logout" style="display:none">⎋ 로그아웃</a>
@@ -233,6 +262,14 @@
         <button class="btn ghost" id="pwClear">암호 지우기</button>
       </div>
 
+      <h2 style="font-size:15px; margin:22px 0 8px">텔레그램 알림</h2>
+      <p class="muted" style="margin-bottom:10px">
+        · 매주 <b>수요일 9시</b>: 발주 문안 자동 전송<br>
+        · 매일 <b>오전 9시</b>: 유통기한 알림 — 🟡 30일 전 · 🟠 7일 전 · 🔴 만료 당일<br>
+        (봇 구독자 전원에게 전송됩니다)
+      </p>
+      <button class="btn ghost" id="expTestBtn">⏰ 유통기한 알림 테스트 전송</button>
+
       <p class="muted" style="margin-top:18px; padding-top:12px; border-top:1px solid var(--line)">
         ☁ 데이터는 Cloudflare D1에 저장되어 모든 기기가 같은 재고를 봅니다 · 화면은 15초마다 자동 갱신<br>
         유통기한은 <b>들어온 묶음(로트)별</b>로 관리되고, 출고할 때 기한이 빠른 것부터 자동으로 빠집니다.
@@ -242,6 +279,11 @@
 </main>
 
 <footer>자체 재고관리 v0.3 · 재고 = 입출고 기록의 합계 · 유통기한 FEFO 자동 차감</footer>
+
+<div id="alertPanel">
+  <h3>🔔 알림 <button class="xbtn" id="alertClose">✕</button></h3>
+  <div id="alertBody"></div>
+</div>
 
 <div class="ovl" id="prodOvl"><div class="modal">
   <h2 id="prodTitle">품목 추가</h2>
@@ -460,7 +502,67 @@ function render(){
   $("catList").innerHTML=[...new Set(PRODUCTS.map(p=>p.cat).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
   $("venList").innerHTML=[...new Set(PRODUCTS.map(p=>p.vendor).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join("");
   renderOrder();
+  renderAlerts();
 }
+
+/* ============================================================
+   🔔 앱 내 알림 — 유통기한(만료/7일/30일) + 발주 대상
+   하루에 한 번, 알림이 있으면 자동으로 패널이 열립니다.
+   ============================================================ */
+function alertList(){
+  const out=[];
+  for(const l of LOTS){
+    const p=PRODUCTS.find(x=>x.id===l.pid); if(!p) continue;
+    const dd=daysLeft(l.expiry); if(dd===null) continue;
+    if(dd<=0)       out.push({sev:0, dd, p, l});
+    else if(dd<=7)  out.push({sev:1, dd, p, l});
+    else if(dd<=30) out.push({sev:2, dd, p, l});
+  }
+  out.sort((a,b)=>a.sev-b.sev || a.dd-b.dd);
+  return out;
+}
+function renderAlerts(){
+  const items=alertList();
+  const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
+  const total=items.length+(ordN?1:0);
+
+  const badge=$("bellBadge");
+  badge.style.display = total? "" : "none";
+  badge.textContent = total;
+
+  const G=["🔴 만료됨 — 즉시 사용 또는 폐기","🟠 7일 이내 만료","🟡 30일 이내 만료"];
+  let html="";
+  if(ordN) html+=`<div class="arow" style="cursor:pointer" onclick="$('tabOrder').click();$('alertPanel').classList.remove('show')">
+    <b>📋 발주 대상 ${ordN}품목</b><span class="dd" style="color:var(--accent)">발주 탭 →</span></div>`;
+  for(let s=0;s<3;s++){
+    const grp=items.filter(i=>i.sev===s);
+    if(!grp.length) continue;
+    html+=`<div class="grp g${s}">${G[s]} (${grp.length})</div>`;
+    html+=grp.map(i=>`<div class="arow">
+      <b>${esc(i.p.name)}</b>
+      <span class="muted">${i.l.qty}${esc(i.p.unit||"")}${i.p.loc?` · ${esc(i.p.loc)}`:""}</span>
+      <span class="dd" style="color:${i.sev===0?"var(--warn)":i.sev===1?"var(--cau)":"#8a7a10"}">
+        ${i.dd<0?`${-i.dd}일 지남`:i.dd===0?"오늘":`D-${i.dd}`}</span>
+    </div>`).join("");
+  }
+  $("alertBody").innerHTML = html || `<div class="aempty">🎉 알림이 없습니다</div>`;
+
+  /* 하루 한 번 자동 표시 */
+  if(total){
+    const today=new Date().toISOString().slice(0,10);
+    if(localStorage.getItem("jaego_alert_day")!==today){
+      localStorage.setItem("jaego_alert_day",today);
+      $("alertPanel").classList.add("show");
+    }
+  }
+}
+$("bellBtn").onclick=()=>$("alertPanel").classList.toggle("show");
+$("alertClose").onclick=()=>$("alertPanel").classList.remove("show");
+document.addEventListener("click",e=>{
+  if(!$("alertPanel").classList.contains("show")) return;
+  if(e.target.closest("#alertPanel")||e.target.closest("#bellBtn")) return;
+  $("alertPanel").classList.remove("show");
+});
 $("q").oninput=render;
 
 /* ============================================================
@@ -894,6 +996,17 @@ function dl(name,content,type){
   a.href=URL.createObjectURL(new Blob([content],{type}));
   a.download=name; a.click(); URL.revokeObjectURL(a.href);
 }
+
+/* ---------- 유통기한 알림 테스트 ---------- */
+$("expTestBtn").onclick=async()=>{
+  $("expTestBtn").disabled=true;
+  try{
+    const r=await API.call("/expiry/send",{});
+    alert(r.items ? `전송 완료 — ${r.items}건을 구독자 ${r.subscribers}명에게 알렸습니다.`
+                  : "오늘 알릴 유통기한 항목이 없습니다 (D-30 / D-7 / 당일만 알림).");
+  }catch(err){ alert(err.message); }
+  finally{ $("expTestBtn").disabled=false; }
+};
 
 /* ---------- 암호 ---------- */
 $("pwBtn").onclick=()=>{
