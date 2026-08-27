@@ -434,6 +434,15 @@
   </div>
 </div></div>
 
+<!-- 바코드를 기존 품목에 연결 -->
+<div class="ovl" id="linkOvl"><div class="modal">
+  <h2>🔗 기존 품목에 바코드 연결</h2>
+  <p class="muted" style="margin-bottom:8px">바코드: <b id="linkBarTxt"></b></p>
+  <input id="linkQ" placeholder="품목명·카테고리 검색" autocomplete="off">
+  <div id="linkList" style="max-height:46vh; overflow:auto; margin-top:8px; border-top:1px solid var(--line)"></div>
+  <div class="mbtns"><button class="btn ghost" id="linkCancel">취소</button></div>
+</div></div>
+
 <!-- 직원 로그인 -->
 <div class="ovl" id="loginOvl"><div class="modal" style="max-width:340px">
   <h2>👤 직원 로그인</h2>
@@ -1163,7 +1172,10 @@ async function doScan(code){
       showScanResult("bad",
         `<div class="big">❌ 등록되지 않은 바코드</div>
          <div class="muted" style="margin-bottom:8px">${esc(r.bar)}</div>
-         <button class="btn small" onclick="registerScanned('${esc(r.bar)}','${esc((r.gs1&&r.gs1.expiry)||"")}')">이 바코드로 품목 등록</button>`);
+         <div style="display:flex; gap:8px; flex-wrap:wrap">
+           <button class="btn small" onclick="linkScanned('${esc(r.bar)}')">🔗 기존 품목에 연결</button>
+           <button class="btn small ghost" onclick="registerScanned('${esc(r.bar)}','${esc((r.gs1&&r.gs1.expiry)||"")}')">＋ 신규 품목 등록</button>
+         </div>`);
       return;
     }
     beep(true);
@@ -1188,6 +1200,54 @@ async function doScan(code){
 $("scanIn").addEventListener("keydown",e=>{
   if(e.key==="Enter"){ e.preventDefault(); doScan($("scanIn").value); }
 });
+
+/* ---------- 스캔한 바코드를 기존 품목에 연결 ---------- */
+let LINK_BAR="";
+function normBar(code){
+  /* GS1 데이터매트릭스(01+GTIN14...)면 EAN-13으로 정규화해 저장 —
+     그래야 줄무늬 바코드로 찍어도 같은 품목이 인식됨 */
+  code=String(code||"").trim();
+  if(code.length>16 && code.startsWith("01")){
+    const gtin=code.slice(2,16).replace(/^0+/,"");
+    if(gtin.length>=12) return gtin;
+  }
+  return code;
+}
+window.linkScanned=function(bar){
+  LINK_BAR=normBar(bar);
+  $("linkBarTxt").textContent=LINK_BAR;
+  $("linkQ").value="";
+  renderLinkList("");
+  $("linkOvl").classList.add("show");
+  setTimeout(()=>$("linkQ").focus(),50);
+};
+function renderLinkList(q){
+  q=(q||"").trim().toLowerCase();
+  const list=PRODUCTS
+    .filter(p=>!q || (p.name+" "+(p.cat||"")).toLowerCase().includes(q))
+    .slice(0,40);
+  $("linkList").innerHTML = list.length? list.map(p=>`
+    <div onclick="pickLink('${p.id}')" style="padding:8px 4px; border-bottom:1px solid #F0F4F8; cursor:pointer">
+      <b>${esc(p.name)}</b> <span class="muted">${esc(p.unit||"")}</span><br>
+      <span class="muted" style="font-size:11.5px">${esc(p.cat||"")}${p.bar?` · 기존 바코드: ${esc(p.bar)}`:""}</span>
+    </div>`).join("")
+    : `<div class="muted" style="padding:14px 4px">검색 결과가 없습니다.</div>`;
+}
+$("linkQ").oninput=()=>renderLinkList($("linkQ").value);
+$("linkCancel").onclick=()=>{ $("linkOvl").classList.remove("show"); focusScan(); };
+window.pickLink=async function(id){
+  const p=PRODUCTS.find(x=>x.id===id); if(!p) return;
+  if(p.bar && p.bar!==LINK_BAR &&
+     !confirm(`"${p.name}"에는 이미 바코드(${p.bar})가 있습니다. 새 바코드로 교체할까요?`)) return;
+  try{
+    await API.call("/product",{ id:p.id, name:p.name, cat:p.cat||"", loc:p.loc||"",
+      unit:p.unit||"", bar:LINK_BAR, min:p.min||0, par:p.par||0,
+      alt:p.alt||"", price:p.price||0, vendor:p.vendor||"" });
+    $("linkOvl").classList.remove("show");
+    await refresh(true);
+    doScan(LINK_BAR);   // 연결 직후 원래 하려던 입/출고를 바로 실행
+  }catch(err){ alert("연결 실패: "+err.message); }
+};
 
 window.registerScanned=function(bar, expiry){
   openProd(null);
