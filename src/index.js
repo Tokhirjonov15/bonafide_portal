@@ -9,6 +9,10 @@
    3) 표는 첫 요청 때 자동으로 만들어지고, 새 열도 자동으로 추가된다.
    ============================================================ */
 
+/* PDF 발주서 생성용 (한글 폰트 임베드) */
+import * as PDFLib from "./vendor/pdf-lib.min.js";
+import fontkit from "./vendor/fontkit.umd.min.js";
+
 let schemaReady = false;
 
 const DDL = [
@@ -426,6 +430,120 @@ async function sendExpiryAlerts(env) {
            items: buckets[0].length + buckets[7].length + buckets[30].length };
 }
 
+/* ============================================================
+   발주서 PDF 생성 + 회사 이메일 자동 전송 (매주 수요일 크론)
+   필요 시크릿: RESEND_KEY (resend.com API 키), ORDER_EMAIL (받는 회사 메일)
+   ============================================================ */
+let FONT_CACHE = null;
+async function loadKoreanFont(env) {
+  if (FONT_CACHE) return FONT_CACHE;
+  const res = await env.ASSETS.fetch("https://assets.local/fonts/NotoSansKR-Regular.otf");
+  if (!res.ok) throw new Error("한글 폰트 파일을 찾을 수 없습니다.");
+  FONT_CACHE = await res.arrayBuffer();
+  return FONT_CACHE;
+}
+
+async function buildOrderPdf(env, vendor, items, dateStr) {
+  const { PDFDocument, rgb } = PDFLib;
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const font = await doc.embedFont(await loadKoreanFont(env), { subset: true });
+
+  const W = 595.28, H = 841.89, L = 40, R = W - 40;
+  const col = { idx: L, name: L + 28, alt: L + 300, unit: L + 425, qty: R - 34 };
+  const ink = rgb(0.1, 0.14, 0.2), gray = rgb(0.44, 0.5, 0.57), lineC = rgb(0.78, 0.82, 0.86);
+
+  const fit = (t, maxW, size) => {
+    t = String(t || "");
+    if (font.widthOfTextAtSize(t, size) <= maxW) return t;
+    while (t && font.widthOfTextAtSize(t + "…", size) > maxW) t = t.slice(0, -1);
+    return t + "…";
+  };
+
+  let page, y;
+  const newPage = () => {
+    page = doc.addPage([W, H]); y = H - 52;
+    page.drawText("반듯한정형외과 발주서", { x: L, y, size: 16, font, color: ink }); y -= 20;
+    page.drawText(`발주일: ${dateStr}    거래처: ${vendor}    총 ${items.length}품목`,
+      { x: L, y, size: 10, font, color: gray }); y -= 20;
+    page.drawText("#", { x: col.idx, y, size: 9, font, color: gray });
+    page.drawText("품목", { x: col.name, y, size: 9, font, color: gray });
+    page.drawText("대체품목", { x: col.alt, y, size: 9, font, color: gray });
+    page.drawText("규격", { x: col.unit, y, size: 9, font, color: gray });
+    page.drawText("갯수", { x: col.qty, y, size: 9, font, color: gray });
+    y -= 6;
+    page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: lineC });
+    y -= 14;
+  };
+  newPage();
+
+  items.forEach((p, i) => {
+    if (y < 80) newPage();
+    page.drawText(String(i + 1), { x: col.idx, y, size: 9.5, font, color: gray });
+    page.drawText(fit(p.name, col.alt - col.name - 8, 9.5), { x: col.name, y, size: 9.5, font, color: ink });
+    page.drawText(fit(p.alt, col.unit - col.alt - 8, 9), { x: col.alt, y, size: 9, font, color: gray });
+    page.drawText(fit(p.unit, col.qty - col.unit - 8, 9), { x: col.unit, y, size: 9, font, color: gray });
+    page.drawText(String(p.need), { x: col.qty, y, size: 10.5, font, color: ink });
+    y -= 16;
+  });
+
+  y -= 10;
+  if (y < 70) newPage();
+  page.drawText("· 품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.", { x: L, y, size: 8.5, font, color: gray });
+  y -= 13;
+  page.drawText("· 거래명세서는 제품에 동봉해 주세요.", { x: L, y, size: 8.5, font, color: gray });
+
+  return await doc.save();
+}
+
+function bytesToB64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+}
+
+async function sendOrderEmail(env) {
+  if (!env.RESEND_KEY || !env.ORDER_EMAIL) {
+    return { sent: 0, error: "이메일이 설정되지 않았습니다 (RESEND_KEY / ORDER_EMAIL 시크릿 필요)." };
+  }
+  const byVendor = await buildOrders(env);
+  const vendors = Object.keys(byVendor).sort((a, b) => a.localeCompare(b, "ko"));
+
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const dateStr = `${d.getUTCFullYear()}.${d.getUTCMonth() + 1}.${d.getUTCDate()}(${days[d.getUTCDay()]})`;
+  const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+
+  const attachments = [];
+  for (const v of vendors) {
+    const bytes = await buildOrderPdf(env, v, byVendor[v], dateStr);
+    attachments.push({ filename: `발주서_${v}_${ymd}.pdf`, content: bytesToB64(bytes) });
+  }
+
+  const listHtml = vendors.length
+    ? `<ul>${vendors.map(v => `<li><b>${v}</b> — ${byVendor[v].length}품목</li>`).join("")}</ul>
+       <p>첨부된 PDF를 확인 후 각 거래처(카톡)로 전달해 주세요.</p>`
+    : `<p>오늘 발주할 품목이 없습니다 🎉</p>`;
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${env.RESEND_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      from: "반듯한정형외과 재고 <onboarding@resend.dev>",
+      to: [env.ORDER_EMAIL],
+      subject: `[반듯한정형외과] 발주서 ${dateStr}` + (vendors.length ? ` — 거래처 ${vendors.length}곳` : " — 발주 없음"),
+      html: `<h2>반듯한정형외과 발주서 · ${dateStr}</h2>${listHtml}
+             <p style="color:#888;font-size:12px">재고 시스템에서 자동 발송된 메일입니다.</p>`,
+      attachments
+    })
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) return { sent: 0, error: "이메일 전송 실패: " + (out.message || res.status) };
+  return { sent: 1, vendors: vendors.length };
+}
+
 async function currentStock(env, pid) {
   const row = await env.DB.prepare(`
     SELECT COALESCE(SUM(CASE WHEN type='in' THEN qty ELSE -qty END),0) AS stock
@@ -644,6 +762,13 @@ async function handleApi(request, env, url, ident) {
     return json({ ok: true, ...r });
   }
 
+  /* 발주서 PDF를 회사 이메일로 지금 보내기 (수동 실행·테스트용) */
+  if (path === "/order/email" && method === "POST") {
+    const r = await sendOrderEmail(env);
+    if (r.error) return json({ error: r.error }, 400);
+    return json({ ok: true, ...r });
+  }
+
   /* 유통기한 알림 지금 보내기 (테스트용) */
   if (path === "/expiry/send" && method === "POST") {
     const r = await sendExpiryAlerts(env);
@@ -701,6 +826,7 @@ export default {
     await ensureSchema(env);
     if (event.cron === "0 0 * * 3") {
       ctx.waitUntil(sendOrders(env).catch(() => {}));
+      ctx.waitUntil(sendOrderEmail(env).catch(() => {}));
     } else if (event.cron === "0 0 * * *") {
       ctx.waitUntil(sendExpiryAlerts(env).catch(() => {}));
     } else {
