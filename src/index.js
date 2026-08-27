@@ -203,7 +203,9 @@ async function listMovements(env, limit = 300) {
   return results || [];
 }
 
-/* 출고 시 유통기한이 빠른 로트부터 차감(FEFO). 기록 문장 배열을 만들어 준다. */
+/* 출고 시 유통기한이 빠른 로트부터 차감(FEFO).
+   기록 문장 배열과 함께 "어느 묶음에서 꺼냈는지"(took)도 돌려준다 —
+   화면에서 직원에게 실제로 꺼낼 묶음을 안내하기 위함. */
 async function buildOutStatements(env, pid, qty, memo, who) {
   const { results } = await env.DB.prepare(`
     SELECT expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty
@@ -213,7 +215,7 @@ async function buildOutStatements(env, pid, qty, memo, who) {
     ORDER BY expiry
   `).bind(pid).all();
 
-  const stmts = [];
+  const stmts = [], took = [];
   let remain = qty;
   for (const b of (results || [])) {
     if (remain <= 0) break;
@@ -221,14 +223,16 @@ async function buildOutStatements(env, pid, qty, memo, who) {
     stmts.push(env.DB.prepare(
       `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'out',?,?,?,?,'',?)`
     ).bind(uid(), pid, take, memo, who, b.expiry, Date.now()));
+    took.push({ expiry: b.expiry, qty: take });
     remain -= take;
   }
   if (remain > 0) {
     stmts.push(env.DB.prepare(
       `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'out',?,?,?,'','',?)`
     ).bind(uid(), pid, remain, memo, who, Date.now()));
+    took.push({ expiry: "", qty: remain });
   }
-  return stmts;
+  return { stmts, took };
 }
 
 /* 바코드로 품목 찾기: 전체 일치 → GS1(01+GTIN14) → 끝 13자리 */
@@ -622,15 +626,17 @@ async function handleApi(request, env, url, ident) {
     const qty = n(body.qty);
     if (!pid || qty <= 0) return json({ error: "품목과 수량을 확인하세요." }, 400);
 
+    let took = [];
     if (type === "in") {
       await env.DB.prepare(
         `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
       ).bind(uid(), pid, qty, s(body.memo), actor, normDate(body.expiry), s(body.lot), Date.now()).run();
     } else {
-      const stmts = await buildOutStatements(env, pid, qty, s(body.memo), actor);
-      await env.DB.batch(stmts);
+      const r = await buildOutStatements(env, pid, qty, s(body.memo), actor);
+      await env.DB.batch(r.stmts);
+      took = r.took;
     }
-    return json({ ok: true, stock: await currentStock(env, pid) });
+    return json({ ok: true, took, stock: await currentStock(env, pid) });
   }
 
   /* 스캐너 전용: 바코드 하나로 입고/출고 */
@@ -643,6 +649,14 @@ async function handleApi(request, env, url, ident) {
     const p = await findByBarcode(env, raw);
     if (!p) return json({ notFound: true, bar: raw, gs1: parseGs1(raw) });
 
+    /* 스캔 화면에서 선택한 보관위치: 품목에 위치가 비어 있으면 자동 저장 */
+    const locSel = s(body.loc);
+    if (locSel && !(p.loc || "").trim()) {
+      await env.DB.prepare(`UPDATE products SET loc=? WHERE id=?`).bind(locSel, p.id).run();
+      p.loc = locSel;
+    }
+
+    let took = [];
     if (mode === "in") {
       const g = parseGs1(raw);
       const expiry = normDate(body.expiry) || g.expiry;
@@ -650,10 +664,11 @@ async function handleApi(request, env, url, ident) {
         `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
       ).bind(uid(), p.id, qty, "스캔 입고", actor, expiry, g.lot, Date.now()).run();
     } else {
-      const stmts = await buildOutStatements(env, p.id, qty, "스캔 출고", actor);
-      await env.DB.batch(stmts);
+      const r = await buildOutStatements(env, p.id, qty, "스캔 출고", actor);
+      await env.DB.batch(r.stmts);
+      took = r.took;
     }
-    return json({ ok: true, product: p, mode, qty, stock: await currentStock(env, p.id) });
+    return json({ ok: true, product: p, mode, qty, took, stock: await currentStock(env, p.id) });
   }
 
   /* CSV 일괄 가져오기

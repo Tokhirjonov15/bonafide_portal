@@ -270,6 +270,16 @@
         <button class="btn ghost small" id="expClear">지우기</button>
       </div>
 
+      <div class="expfield">
+        <label>📍 보관위치 (이 기기)</label>
+        <select id="scanLoc" class="fsel" style="flex:1">
+          <option value="10층">10층 (기본)</option>
+          <option value="3층">3층</option>
+          <option value="4층">4층</option>
+        </select>
+      </div>
+      <div class="scanhint" style="margin-top:4px">위치가 비어 있는 품목은 스캔할 때 위 층으로 자동 저장됩니다 · 다른 층 작업 시 바꿔주세요</div>
+
       <div style="text-align:center; margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap">
         <button class="btn ghost" id="camBtn">📱 카메라로 스캔</button>
         <button class="btn ghost" id="photoBtn" title="초점이 안 맞을 때 — 사진을 찍어서 인식">📸 사진 찍어서 인식</button>
@@ -667,7 +677,12 @@ function render(){
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
         <th>유통기한</th><th>입출고</th><th class="hidem"></th>
       </tr></thead><tbody>${rows.map(p=>{
-        const nl=nearestLot(p.id);
+        const ls=lotsOf(p.id);
+        const expCell = !ls.length ? "—"
+          : ls.length===1 || ls[0].expiry===ls[ls.length-1].expiry
+            ? `${esc(ls[0].expiry)} ${expBadge(p.id)}`
+            : `${esc(ls[0].expiry)} ${expBadge(p.id)}<br>
+               <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)} <span class="tag">${ls.length}묶음</span></span>`;
         return `<tr class="${isLow(p)?"low":""}">
           <td><b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
@@ -677,7 +692,7 @@ function render(){
           <td class="hidem muted num">${p.min||0}</td>
           <td class="hidem num">${p.price?won(p.price)+"원":""}</td>
           <td class="hidem muted">${esc(p.vendor||"")}</td>
-          <td class="muted">${nl?esc(nl.expiry):"—"} ${expBadge(p.id)}</td>
+          <td class="muted">${expCell}</td>
           <td>
             <button class="btn small in"  onclick="openMv('${p.id}','in')">＋</button>
             <button class="btn small out" onclick="openMv('${p.id}','out')">－</button>
@@ -1141,6 +1156,10 @@ function setMode(m){
 $("modeIn").onclick=()=>setMode("in");
 $("modeOut").onclick=()=>setMode("out");
 $("expClear").onclick=()=>{ $("scanExp").value=""; focusScan(); };
+/* 이 기기의 창고 층 — 기본 10층, 다른 층에서 작업할 때만 바꾼다 (기기별 기억) */
+$("scanLoc").value=localStorage.getItem("jaego_loc")||"10층";
+if($("scanLoc").selectedIndex<0) $("scanLoc").value="10층";
+$("scanLoc").onchange=()=>{ localStorage.setItem("jaego_loc",$("scanLoc").value); focusScan(); };
 
 function focusScan(){
   if(window.innerWidth<760) return;   // 모바일: 키보드가 자동으로 튀어나오지 않게 (카메라 스캔 위주)
@@ -1173,7 +1192,8 @@ async function doScan(code){
   if(!bar) return;
   $("scanIn").value="";
   try{
-    const r=await API.call("/scan",{ bar, mode:scanMode, qty:1, expiry:$("scanExp").value||"" });
+    const r=await API.call("/scan",{ bar, mode:scanMode, qty:1,
+      expiry:$("scanExp").value||"", loc:$("scanLoc").value||"" });
     if(r.notFound){
       beep(false);
       showScanResult("bad",
@@ -1187,9 +1207,18 @@ async function doScan(code){
     }
     beep(true);
     const sign = r.mode==="in" ? "＋1" : "－1";
+    /* 출고: FEFO가 차감한 묶음을 안내 — 실제로 그 유통기한 묶음을 꺼내야 함 */
+    let takeHint="";
+    if(r.mode==="out" && r.took && r.took.length && r.took[0].expiry){
+      const remainingLots=lotsOf(r.product.id).length;
+      takeHint=`<div style="margin-top:6px; padding:7px 10px; background:var(--cau-bg);
+        border:1px solid var(--cau); border-radius:8px; font-size:14px">
+        ⚠ <b>유통기한 ${esc(r.took[0].expiry)}</b> 묶음에서 꺼내세요${remainingLots>1?" (묶음이 여러 개입니다!)":""}</div>`;
+    }
     showScanResult("ok",
       `<div class="big">${r.mode==="in"?"✅ 입고":"📤 출고"} ${sign} — ${esc(r.product.name)}</div>
-       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${r.product.loc?` · 📍 ${esc(r.product.loc)}`:""}</div>`);
+       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${r.product.loc?` · 📍 ${esc(r.product.loc)}`:""}</div>
+       ${takeHint}`);
     const t=new Date().toTimeString().slice(0,5);
     scanHistory.unshift(`<div class="row"><span class="t">${t}</span>
       <span>${r.mode==="in"?"＋":"－"} ${esc(r.product.name)}</span>
@@ -1260,6 +1289,8 @@ window.registerScanned=function(bar, expiry){
   openProd(null);
   $("pBar").value=bar;
   if(expiry) $("pExp").value=expiry;
+  const loc=$("scanLoc").value;
+  if(loc) $("pLoc").value=loc;      /* 스캔 화면의 층을 새 품목에도 자동 입력 */
   $("pName").focus();
 };
 
@@ -1465,8 +1496,13 @@ window.openMv=function(pid,type){
   const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
   $("mvTitle").textContent=(type==="in"?"입고 ＋":"출고 －");
   $("mvProd").textContent=p.name;
-  const nl=nearestLot(pid);
-  $("mvNow").textContent="현재 재고: "+p.stock+" "+(p.unit||"")+(nl?`  ·  가장 빠른 유통기한 ${nl.expiry}`:"");
+  const nl=nearestLot(pid), lotN=lotsOf(pid).length;
+  if(type==="out" && nl){
+    $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}<br>
+      <span style="color:var(--cau); font-weight:700">⚠ 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;
+  }else{
+    $("mvNow").textContent="현재 재고: "+p.stock+" "+(p.unit||"")+(nl?`  ·  가장 빠른 유통기한 ${nl.expiry}`:"");
+  }
   $("mvQty").value=1; $("mvMemo").value=""; $("mvExp").value="";
   $("mvExpWrap").style.display = (type==="in") ? "" : "none";
   if(ME){
