@@ -665,13 +665,29 @@ export default {
     try {
       await ensureSchema(env);
 
+      /* 임시 진단용 — 문제 해결 후 제거 */
+      if (url.pathname === "/api/auth/diag" && request.method === "GET") {
+        const c = await env.DB.prepare(`SELECT COUNT(*) AS c FROM staff WHERE active=1`).first();
+        const sample = await env.DB.prepare(`SELECT id FROM staff ORDER BY id LIMIT 1`).first();
+        return json({
+          pwSet: !!env.STAFF_PW,
+          pwLen: (env.STAFF_PW || "").length,
+          pwTrimmedLen: (env.STAFF_PW || "").trim().length,
+          staffCount: c ? c.c : 0,
+          firstId: sample ? sample.id : null
+        });
+      }
+
       /* ---- 로그인: 인증 없이 접근 가능한 유일한 곳 ---- */
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
         const b = await request.json().catch(() => ({}));
-        if (!env.STAFF_PW) return json({ error: "관리자가 아직 비밀번호(STAFF_PW)를 설정하지 않았습니다." }, 500);
-        const id = s(b.id);
+        if (!env.STAFF_PW || !env.STAFF_PW.trim()) {
+          return json({ error: "관리자가 아직 비밀번호(STAFF_PW)를 설정하지 않았습니다." }, 500);
+        }
+        const id = s(b.id).toLowerCase();
         const row = await env.DB.prepare(`SELECT id FROM staff WHERE id=? AND active=1`).bind(id).first();
-        if (!row || s(b.pw) !== env.STAFF_PW) {
+        /* 붙여넣기 시 딸려오는 공백·줄바꿈 때문에 실패하지 않도록 양쪽 모두 trim 비교 */
+        if (!row || s(b.pw) !== env.STAFF_PW.trim()) {
           return json({ error: "아이디 또는 비밀번호가 올바르지 않습니다." }, 403);
         }
         return json({ ok: true, id, token: await makeStaffToken(env, id) });
