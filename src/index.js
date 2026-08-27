@@ -46,6 +46,11 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS meta (
      key   TEXT PRIMARY KEY,
      value TEXT
+   )`,
+  `CREATE TABLE IF NOT EXISTS staff (
+     id     TEXT PRIMARY KEY,
+     name   TEXT DEFAULT '',
+     active INTEGER DEFAULT 1
    )`
 ];
 
@@ -65,7 +70,43 @@ async function ensureSchema(env) {
   for (const q of MIGRATIONS) {
     try { await env.DB.prepare(q).run(); } catch (_) { /* 이미 있는 열 */ }
   }
+  /* 직원 아이디 30개 자동 생성 (bd01 ~ bd30) — 이미 있으면 건너뜀 */
+  const c = await env.DB.prepare(`SELECT COUNT(*) AS c FROM staff`).first();
+  if (!c || !c.c) {
+    const stmts = [];
+    for (let i = 1; i <= 30; i++) {
+      stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO staff (id) VALUES (?)`)
+        .bind("bd" + String(i).padStart(2, "0")));
+    }
+    for (let i = 0; i < stmts.length; i += 15) await env.DB.batch(stmts.slice(i, i + 15));
+  }
   schemaReady = true;
+}
+
+/* ============================================================
+   직원 로그인 — 아이디 30개 + 공용 비밀번호(STAFF_PW 시크릿)
+   토큰: id.만료시각.서명(HMAC) — 서버에 세션 저장 불필요, 90일 유효
+   ============================================================ */
+async function hmacSig(env, text) {
+  const keyData = new TextEncoder().encode("bandeut-staff:" + (env.STAFF_PW || ""));
+  const key = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function makeStaffToken(env, id) {
+  const body = id + "." + (Date.now() + 90 * 86400000);
+  return body + "." + await hmacSig(env, body);
+}
+async function staffFromRequest(env, request) {
+  const tok = request.headers.get("x-staff-token") || "";
+  const parts = tok.split(".");
+  if (parts.length !== 3) return null;
+  const [id, exp, sig] = parts;
+  if (!/^\d+$/.test(exp) || +exp < Date.now()) return null;
+  if (sig !== await hmacSig(env, id + "." + exp)) return null;
+  const row = await env.DB.prepare(`SELECT id, name FROM staff WHERE id=? AND active=1`).bind(id).first();
+  return row ? { id: row.id, name: row.name || "" } : null;
 }
 
 /* Cloudflare Access(구글 로그인)로 들어온 사용자 */
@@ -394,14 +435,17 @@ async function currentStock(env, pid) {
 }
 
 /* ---------- 라우팅 ---------- */
-async function handleApi(request, env, url) {
-  await ensureSchema(env);
+async function handleApi(request, env, url, ident) {
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
-  const me = authUser(request);
-  /* 담당자: 로그인 계정(공용 계정)으로 기록. 로그인 전 단계에서는 입력값을 쓴다. */
-  const actor = me ? me.email : s(body.who);
+  const staff = ident && ident.staff;
+  const access = ident && ident.me;
+  /* 화면 표시용 신원 (직원이면 아이디, 관리자면 이메일) */
+  const me = staff ? { email: staff.name ? `${staff.id} (${staff.name})` : staff.id, staff: true }
+                   : access;
+  /* 담당자 기록: 직원 아이디 > 구글 계정 > 직접 입력 */
+  const actor = staff ? staff.id : (access ? access.email : s(body.who));
 
   /* 현황 + 로트 + 최근 기록 */
   if (path === "/state" && method === "GET") {
@@ -618,13 +662,34 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
-    /* 접근 제어: Access(구글 로그인) 우선, 없으면 APP_KEY, 둘 다 없으면 개방 */
-    if (!authUser(request) && env.APP_KEY && request.headers.get("x-app-key") !== env.APP_KEY) {
-      return json({ error: "unauthorized" }, 401);
-    }
-
     try {
-      return await handleApi(request, env, url);
+      await ensureSchema(env);
+
+      /* ---- 로그인 관련: 인증 없이 접근 가능한 두 곳 ---- */
+      if (url.pathname === "/api/auth/ids" && request.method === "GET") {
+        const { results } = await env.DB.prepare(
+          `SELECT id, name FROM staff WHERE active=1 ORDER BY id`).all();
+        return json({ ids: results || [] });
+      }
+      if (url.pathname === "/api/auth/login" && request.method === "POST") {
+        const b = await request.json().catch(() => ({}));
+        if (!env.STAFF_PW) return json({ error: "관리자가 아직 비밀번호(STAFF_PW)를 설정하지 않았습니다." }, 500);
+        const id = s(b.id);
+        const row = await env.DB.prepare(`SELECT id FROM staff WHERE id=? AND active=1`).bind(id).first();
+        if (!row || s(b.pw) !== env.STAFF_PW) {
+          return json({ error: "아이디 또는 비밀번호가 올바르지 않습니다." }, 403);
+        }
+        return json({ ok: true, id, token: await makeStaffToken(env, id) });
+      }
+
+      /* ---- 신원 확인: 직원 토큰 → 구글(Access) → (없으면 로그인 요구) ---- */
+      const staff = await staffFromRequest(env, request);
+      const me = staff ? null : authUser(request);
+      if (!staff && !me) {
+        return json({ error: "로그인이 필요합니다.", needLogin: true }, 401);
+      }
+
+      return await handleApi(request, env, url, { staff, me });
     } catch (err) {
       return json({ error: "서버 오류: " + (err && err.message ? err.message : String(err)) }, 500);
     }

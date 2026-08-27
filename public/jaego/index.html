@@ -307,11 +307,12 @@
       <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
       <input type="file" id="bakFile" accept=".json" hidden>
 
-      <h2 style="font-size:15px; margin:22px 0 8px">임시 암호 (구글 로그인 켜기 전에만)</h2>
-      <div style="display:flex; gap:8px; flex-wrap:wrap">
-        <button class="btn ghost" id="pwBtn">🔑 암호 입력·변경</button>
-        <button class="btn ghost" id="pwClear">암호 지우기</button>
-      </div>
+      <h2 style="font-size:15px; margin:22px 0 8px">로그인</h2>
+      <p class="muted" style="margin-bottom:8px">
+        직원마다 아이디(bd01~bd30)로 로그인하며, 모든 입·출고가 그 아이디로 기록됩니다.<br>
+        비밀번호는 공용이며 관리자가 Cloudflare(STAFF_PW)에서 변경합니다.
+      </p>
+      <button class="btn ghost" id="switchIdBtn">🔁 다른 아이디로 로그인</button>
 
       <h2 style="font-size:15px; margin:22px 0 8px">텔레그램 알림</h2>
       <p class="muted" style="margin-bottom:10px">
@@ -384,6 +385,17 @@
   </div>
 </div></div>
 
+<!-- 직원 로그인 -->
+<div class="ovl" id="loginOvl"><div class="modal" style="max-width:340px">
+  <h2>👤 직원 로그인</h2>
+  <label>아이디</label>
+  <select id="lgId" class="fsel" style="width:100%; padding:9px 11px"></select>
+  <label>비밀번호 (공용)</label>
+  <input id="lgPw" type="password" placeholder="관리자에게 문의" autocomplete="current-password">
+  <p id="lgMsg" style="display:none; color:var(--warn); font-size:13px; margin-top:8px"></p>
+  <div class="mbtns"><button class="btn" id="lgBtn" style="width:100%">로그인</button></div>
+</div></div>
+
 <div id="camBox">
   <div id="camWrap">
     <video id="camVideo" autoplay playsinline muted></video>
@@ -411,28 +423,66 @@ const won=v=>(+v||0).toLocaleString("ko-KR");
 let PRODUCTS=[], LOTS=[], MOVEMENTS=[], ME=null, busy=false;
 let scanMode="in", scanHistory=[];
 
-/* ---------- 서버 통신 ---------- */
+/* ---------- 서버 통신 (직원 토큰 자동 첨부, 401이면 로그인 창) ---------- */
 const API={
-  key: localStorage.getItem("jaego_key")||"",
   async call(path, data){
-    const opt={ headers:{ "x-app-key": this.key } };
-    if(data!==undefined){
-      opt.method="POST";
-      opt.headers["content-type"]="application/json";
-      opt.body=JSON.stringify(data);
-    }
-    const res=await fetch("/api"+path, opt);
+    const doFetch=()=>{
+      const opt={ headers:{ "x-staff-token": localStorage.getItem("jaego_tok")||"" } };
+      if(data!==undefined){
+        opt.method="POST";
+        opt.headers["content-type"]="application/json";
+        opt.body=JSON.stringify(data);
+      }
+      return fetch("/api"+path, opt);
+    };
+    let res=await doFetch();
     if(res.status===401){
-      const pw=prompt("이 시스템은 암호로 보호되어 있습니다.\n직원 암호를 입력하세요:");
-      if(pw===null) throw new Error("암호가 필요합니다.");
-      this.key=pw; localStorage.setItem("jaego_key",pw);
-      return this.call(path,data);
+      await showLogin();          // 로그인 성공까지 대기
+      res=await doFetch();
     }
     const out=await res.json().catch(()=>({error:"응답을 읽을 수 없습니다."}));
     if(!res.ok) throw new Error(out.error||("오류 "+res.status));
     return out;
   }
 };
+
+/* ---------- 직원 로그인 창 ---------- */
+let loginWaiters=[], loginShown=false;
+async function showLogin(){
+  return new Promise(async resolve=>{
+    loginWaiters.push(resolve);
+    if(loginShown) return;
+    loginShown=true;
+    try{
+      const r=await fetch("/api/auth/ids").then(x=>x.json());
+      const saved=localStorage.getItem("jaego_id")||"";
+      $("lgId").innerHTML=(r.ids||[]).map(s=>
+        `<option value="${esc(s.id)}">${esc(s.id)}${s.name?` — ${esc(s.name)}`:""}</option>`).join("");
+      if(saved) $("lgId").value=saved;
+    }catch(_){ $("lgId").innerHTML=""; }
+    $("lgMsg").style.display="none"; $("lgPw").value="";
+    $("loginOvl").classList.add("show");
+    setTimeout(()=>$("lgPw").focus(),50);
+  });
+}
+$("lgBtn").onclick=async()=>{
+  $("lgBtn").disabled=true; $("lgMsg").style.display="none";
+  try{
+    const res=await fetch("/api/auth/login",{method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({id:$("lgId").value, pw:$("lgPw").value})});
+    const out=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(out.error||"로그인 실패");
+    localStorage.setItem("jaego_tok", out.token);
+    localStorage.setItem("jaego_id", out.id);
+    $("loginOvl").classList.remove("show");
+    loginShown=false;
+    const ws=loginWaiters; loginWaiters=[]; ws.forEach(f=>f());
+  }catch(err){
+    $("lgMsg").textContent=err.message; $("lgMsg").style.display="";
+  }finally{ $("lgBtn").disabled=false; }
+};
+$("lgPw").addEventListener("keydown",e=>{ if(e.key==="Enter") $("lgBtn").click(); });
 
 function setConn(state,text){ const el=$("conn"); el.className="conn "+state; el.textContent=text; }
 function showErr(msg){ $("errWrap").innerHTML = msg? `<div class="errbox">⚠ ${esc(msg)}</div>` : ""; }
@@ -655,6 +705,14 @@ function bar(label, val, max, color, suffix){
     <div class="btrack"><div class="bfill" style="width:${val>0?w:0}%; background:${color}"></div></div>
     <span class="bn">${won(val)}${suffix||""}</span></div>`;
 }
+/* 이름이 긴 항목용: 이름을 윗줄에 전체 표시, 막대는 아랫줄 */
+function barWide(label, val, max, color, suffix){
+  const w=max>0? Math.max(1, Math.round(val/max*100)) : 0;
+  return `<div style="padding:3px 0">
+    <div style="font-size:12px; margin-bottom:2px">${esc(label)}</div>
+    <div class="brow" style="padding:0"><div class="btrack"><div class="bfill" style="width:${val>0?w:0}%; background:${color}"></div></div>
+    <span class="bn">${won(val)}${suffix||""}</span></div></div>`;
+}
 
 let EXP_PERIOD="12", EXP_VENDOR="";
 function expFiltered(){
@@ -758,7 +816,7 @@ function renderStats(){
         venList.map(([v,c])=>bar(v, c, maxV, "var(--accent)", "원")).join(""):""}
 
       ${itemList.length?`<div class="muted" style="font-weight:700; margin:12px 0 4px">품목별 지출 TOP 15</div>`+
-        itemList.map(([n,c])=>bar(n.length>10?n.slice(0,10)+"…":n, c, maxI, "#7C6FD8", "원")).join(""):""}
+        itemList.map(([n,c])=>barWide(n, c, maxI, "#7C6FD8", "원")).join(""):""}
 
       ${recent.length?`<div class="muted" style="font-weight:700; margin:12px 0 4px">최근 입고 내역 (${Math.min(30,recent.length)}건)</div>
       <div style="overflow-x:auto"><table style="box-shadow:none"><thead><tr>
@@ -1359,16 +1417,16 @@ $("expTestBtn").onclick=async()=>{
   finally{ $("expTestBtn").disabled=false; }
 };
 
-/* ---------- 암호 ---------- */
-$("pwBtn").onclick=()=>{
-  const pw=prompt("직원 암호를 입력하세요:", API.key);
-  if(pw===null) return;
-  API.key=pw; localStorage.setItem("jaego_key",pw); refresh();
-};
-$("pwClear").onclick=()=>{
-  API.key=""; localStorage.removeItem("jaego_key");
-  alert("이 기기에 저장된 암호를 지웠습니다.");
-};
+/* ---------- 로그인 전환 / 로그아웃 ---------- */
+function staffLogout(){
+  localStorage.removeItem("jaego_tok");
+  location.reload();
+}
+$("switchIdBtn").onclick=staffLogout;
+$("logoutLink").addEventListener("click",e=>{
+  if(ME && ME.staff){ e.preventDefault(); staffLogout(); }
+  /* 구글(Access) 모드면 기본 href(/cdn-cgi/access/logout)로 이동 */
+});
 
 /* ---------- 시작 ---------- */
 setMode("in");
