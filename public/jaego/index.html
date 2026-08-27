@@ -11,6 +11,7 @@
     --warn:#B03A2E; --warn-bg:#FCEEEC; --cau:#9A5B10; --cau-bg:#FBF3E4;
   }
   *{box-sizing:border-box; margin:0; padding:0}
+  html,body{max-width:100%; overflow-x:hidden}   /* 가로 스크롤 원천 차단 */
   body{
     font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif; color:var(--ink); font-size:14px;
     background:
@@ -129,7 +130,9 @@
   .caubox b{color:var(--cau)}
 
   /* ===== 스캔 모드 ===== */
-  .scanwrap{background:var(--card); border-radius:12px; padding:18px; max-width:620px; margin:0 auto; box-shadow:0 4px 18px rgba(29,95,184,.08)}
+  .scanwrap{background:var(--card); border-radius:12px; padding:18px; width:100%; max-width:620px; margin:0 auto; box-shadow:0 4px 18px rgba(29,95,184,.08)}
+  /* 넓은 표는 페이지가 아니라 자기 영역 안에서만 가로 스크롤 */
+  #stockWrap,#logWrap,.ordbody,.statbox{overflow-x:auto}
   .modes{display:flex; gap:10px; margin-bottom:16px}
   .modes button{
     flex:1; border:2px solid var(--line); background:var(--card); color:var(--ink2);
@@ -205,7 +208,8 @@
 
     .scanwrap{padding:12px; border-radius:10px}
     .modes{gap:6px; margin-bottom:12px}
-    .modes button{font-size:16px; padding:13px 6px; white-space:nowrap}
+    .modes button{font-size:16px; padding:13px 4px; white-space:nowrap; min-width:0}
+    .scanwrap{max-width:100%}
     #scanIn{font-size:16px; padding:12px}
     .scanhint{font-size:11px}
     .expfield{flex-wrap:wrap; gap:6px}
@@ -460,9 +464,12 @@
     <div id="camFrame"></div>
   </div>
   <span class="hint" id="camHint">바코드를 화면에 비추세요</span>
-  <div id="zoomWrap" style="display:none; width:min(92vw,560px); align-items:center; gap:10px">
-    <span style="color:#fff; font-size:12px">🔍</span>
-    <input type="range" id="zoomRange" style="flex:1">
+  <div style="display:flex; gap:10px; align-items:center; width:min(92vw,560px)">
+    <button class="btn ghost small" id="torchBtn" style="display:none">🔦 조명</button>
+    <div id="zoomWrap" style="display:none; flex:1; align-items:center; gap:10px">
+      <span style="color:#fff; font-size:12px">🔍</span>
+      <input type="range" id="zoomRange" style="flex:1">
+    </div>
   </div>
   <span class="tip">💡 <b>초점이 맞는 만큼만</b> 가까이 — 흐려지면 조금 뒤로 물러나세요<br>
     흐림이 계속되면 <b>📸 사진 찍어서 인식</b>을 쓰면 확실합니다</span>
@@ -1278,9 +1285,12 @@ const CAM_CONSTRAINTS={ video:{
 
 /* 연속 자동초점 + (지원되면) 확대 슬라이더.
    확대가 되면 멀리서도 바코드를 크게 볼 수 있어 초점 문제가 사라집니다. */
+let torchOn=false;
 function setupCamControls(stream){
   const track=stream && stream.getVideoTracks && stream.getVideoTracks()[0];
   $("zoomWrap").style.display="none";
+  $("torchBtn").style.display="none";
+  torchOn=false;
   if(!track) return;
   try{ track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(()=>{}); }catch(_){}
   try{
@@ -1291,6 +1301,14 @@ function setupCamControls(stream){
       z.value=(track.getSettings&&track.getSettings().zoom)||caps.zoom.min;
       z.oninput=()=>{ track.applyConstraints({advanced:[{zoom:+z.value}]}).catch(()=>{}); };
       $("zoomWrap").style.display="flex";
+    }
+    if(caps && caps.torch){
+      $("torchBtn").style.display="";
+      $("torchBtn").onclick=()=>{
+        torchOn=!torchOn;
+        track.applyConstraints({advanced:[{torch:torchOn}]}).catch(()=>{});
+        $("torchBtn").textContent=torchOn?"🔦 조명 끄기":"🔦 조명";
+      };
     }
   }catch(_){}
 }
