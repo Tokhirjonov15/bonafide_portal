@@ -665,19 +665,6 @@ export default {
     try {
       await ensureSchema(env);
 
-      /* 임시 진단용 — 문제 해결 후 제거 */
-      if (url.pathname === "/api/auth/diag" && request.method === "GET") {
-        const c = await env.DB.prepare(`SELECT COUNT(*) AS c FROM staff WHERE active=1`).first();
-        const sample = await env.DB.prepare(`SELECT id FROM staff ORDER BY id LIMIT 1`).first();
-        return json({
-          pwSet: !!env.STAFF_PW,
-          pwLen: (env.STAFF_PW || "").length,
-          pwTrimmedLen: (env.STAFF_PW || "").trim().length,
-          staffCount: c ? c.c : 0,
-          firstId: sample ? sample.id : null
-        });
-      }
-
       /* ---- 로그인: 인증 없이 접근 가능한 유일한 곳 ---- */
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
         const b = await request.json().catch(() => ({}));
