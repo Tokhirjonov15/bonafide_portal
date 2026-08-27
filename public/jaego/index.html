@@ -389,7 +389,7 @@
 <div class="ovl" id="loginOvl"><div class="modal" style="max-width:340px">
   <h2>👤 직원 로그인</h2>
   <label>아이디</label>
-  <select id="lgId" class="fsel" style="width:100%; padding:9px 11px"></select>
+  <input id="lgId" placeholder="예) bd07" autocomplete="username" autocapitalize="off" spellcheck="false">
   <label>비밀번호 (공용)</label>
   <input id="lgPw" type="password" placeholder="관리자에게 문의" autocomplete="current-password">
   <p id="lgMsg" style="display:none; color:var(--warn); font-size:13px; margin-top:8px"></p>
@@ -453,16 +453,11 @@ async function showLogin(){
     loginWaiters.push(resolve);
     if(loginShown) return;
     loginShown=true;
-    try{
-      const r=await fetch("/api/auth/ids").then(x=>x.json());
-      const saved=localStorage.getItem("jaego_id")||"";
-      $("lgId").innerHTML=(r.ids||[]).map(s=>
-        `<option value="${esc(s.id)}">${esc(s.id)}${s.name?` — ${esc(s.name)}`:""}</option>`).join("");
-      if(saved) $("lgId").value=saved;
-    }catch(_){ $("lgId").innerHTML=""; }
+    const saved=localStorage.getItem("jaego_id")||"";
+    $("lgId").value=saved;
     $("lgMsg").style.display="none"; $("lgPw").value="";
     $("loginOvl").classList.add("show");
-    setTimeout(()=>$("lgPw").focus(),50);
+    setTimeout(()=>(saved?$("lgPw"):$("lgId")).focus(),50);
   });
 }
 $("lgBtn").onclick=async()=>{
@@ -470,7 +465,7 @@ $("lgBtn").onclick=async()=>{
   try{
     const res=await fetch("/api/auth/login",{method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({id:$("lgId").value, pw:$("lgPw").value})});
+      body:JSON.stringify({id:$("lgId").value.trim().toLowerCase(), pw:$("lgPw").value})});
     const out=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(out.error||"로그인 실패");
     localStorage.setItem("jaego_tok", out.token);
@@ -483,6 +478,7 @@ $("lgBtn").onclick=async()=>{
   }finally{ $("lgBtn").disabled=false; }
 };
 $("lgPw").addEventListener("keydown",e=>{ if(e.key==="Enter") $("lgBtn").click(); });
+$("lgId").addEventListener("keydown",e=>{ if(e.key==="Enter") $("lgPw").focus(); });
 
 function setConn(state,text){ const el=$("conn"); el.className="conn "+state; el.textContent=text; }
 function showErr(msg){ $("errWrap").innerHTML = msg? `<div class="errbox">⚠ ${esc(msg)}</div>` : ""; }

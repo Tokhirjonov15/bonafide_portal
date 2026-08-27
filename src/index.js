@@ -665,12 +665,7 @@ export default {
     try {
       await ensureSchema(env);
 
-      /* ---- 로그인 관련: 인증 없이 접근 가능한 두 곳 ---- */
-      if (url.pathname === "/api/auth/ids" && request.method === "GET") {
-        const { results } = await env.DB.prepare(
-          `SELECT id, name FROM staff WHERE active=1 ORDER BY id`).all();
-        return json({ ids: results || [] });
-      }
+      /* ---- 로그인: 인증 없이 접근 가능한 유일한 곳 ---- */
       if (url.pathname === "/api/auth/login" && request.method === "POST") {
         const b = await request.json().catch(() => ({}));
         if (!env.STAFF_PW) return json({ error: "관리자가 아직 비밀번호(STAFF_PW)를 설정하지 않았습니다." }, 500);
