@@ -1237,6 +1237,25 @@ $("scanIn").addEventListener("keydown",e=>{
   if(e.key==="Enter"){ e.preventDefault(); doScan($("scanIn").value); }
 });
 
+/* 스캔 탭이 열려 있으면 입력칸에 포커스가 없어도 스캐너 입력을 받는다.
+   (블루투스 스캐너를 휴대폰에 연결했을 때 화면을 만질 필요가 없도록)
+   스캐너는 글자를 매우 빠르게 연속 입력하므로 사람 타이핑과 구분된다. */
+let hwBuf="", hwLast=0;
+document.addEventListener("keydown",e=>{
+  if($("pgScan").style.display==="none") return;
+  const ae=document.activeElement;
+  if(ae && (ae.tagName==="INPUT"||ae.tagName==="TEXTAREA"||ae.tagName==="SELECT")) return;
+  if(document.querySelector(".ovl.show")) return;   /* 모달 열려 있으면 무시 */
+  const now=Date.now();
+  if(now-hwLast>500) hwBuf="";
+  hwLast=now;
+  if(e.key==="Enter"){
+    if(hwBuf.length>=4){ const b=hwBuf; hwBuf=""; e.preventDefault(); doScan(b); }
+    return;
+  }
+  if(e.key.length===1) hwBuf+=e.key;
+});
+
 /* ---------- 스캔한 바코드를 기존 품목에 연결 ---------- */
 let LINK_BAR="";
 function normBar(code){
