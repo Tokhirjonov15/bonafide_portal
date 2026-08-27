@@ -1167,7 +1167,10 @@ function focusScan(){
   if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")) return;
   setTimeout(()=>$("scanIn").focus(), 30);
 }
-$("pgScan").addEventListener("click",e=>{ if(e.target.tagName!=="BUTTON"&&e.target.tagName!=="INPUT") focusScan(); });
+$("pgScan").addEventListener("click",e=>{
+  /* 버튼·입력칸·선택상자·달력 등을 누를 때는 포커스를 빼앗지 않는다 */
+  if(!e.target.closest("button, input, select, textarea, label")) focusScan();
+});
 
 /* 소리 알림 */
 let AC=null;
