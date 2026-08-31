@@ -98,8 +98,11 @@ async function hmacSig(env, text) {
   return btoa(String.fromCharCode(...new Uint8Array(sig)))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+/* 세션 30분 — 단, 작업(POST)할 때마다 새 토큰이 발급되어 연장된다.
+   즉 계속 일하는 직원은 로그아웃되지 않고, 방치된 기기만 30분 뒤 잠긴다. */
+const SESSION_MS = 30 * 60 * 1000;
 async function makeStaffToken(env, id) {
-  const body = id + "." + (Date.now() + 90 * 86400000);
+  const body = id + "." + (Date.now() + SESSION_MS);
   return body + "." + await hmacSig(env, body);
 }
 async function staffFromRequest(env, request) {
@@ -827,7 +830,15 @@ export default {
         return json({ error: "로그인이 필요합니다.", needLogin: true }, 401);
       }
 
-      return await handleApi(request, env, url, { staff, me });
+      const resp = await handleApi(request, env, url, { staff, me });
+      /* 작업 요청(POST)마다 세션 30분 연장 — 새 토큰을 헤더로 내려준다.
+         (배경 자동 새로고침 GET은 연장하지 않음 → 방치된 기기는 만료됨) */
+      if (staff && request.method === "POST") {
+        const r2 = new Response(resp.body, resp);
+        r2.headers.set("x-staff-refresh", await makeStaffToken(env, staff.id));
+        return r2;
+      }
+      return resp;
     } catch (err) {
       return json({ error: "서버 오류: " + (err && err.message ? err.message : String(err)) }, 500);
     }

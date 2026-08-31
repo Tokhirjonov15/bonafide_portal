@@ -234,6 +234,7 @@
 <header>
   <h1>📦 반듯한 재고</h1>
   <span class="conn wait" id="conn">연결 중…</span>
+  <span class="conn" id="sessLeft" style="display:none"></span>
   <span class="sub" id="statLine"></span>
   <button id="bellBtn" title="유통기한·발주 알림">🔔<span id="bellBadge"></span></button>
   <nav>
@@ -373,7 +374,8 @@
       <h2 style="font-size:15px; margin:22px 0 8px">로그인</h2>
       <p class="muted" style="margin-bottom:8px">
         본인 아이디로 로그인하면 모든 입·출고가 그 아이디로 기록됩니다.<br>
-        아이디·비밀번호는 관리자에게 문의하세요.
+        아이디·비밀번호는 관리자에게 문의하세요.<br>
+        <b>30분 동안 작업이 없으면 자동으로 로그아웃</b>되어 다시 로그인해야 합니다.
       </p>
       <button class="btn ghost" id="switchIdBtn">🔁 다른 아이디로 로그인</button>
 
@@ -515,11 +517,32 @@ const API={
       await showLogin();          // 로그인 성공까지 대기
       res=await doFetch();
     }
+    /* 작업할 때마다 서버가 내려주는 연장 토큰 저장 (30분 세션 연장) */
+    const nt=res.headers.get("x-staff-refresh");
+    if(nt){ localStorage.setItem("jaego_tok", nt); updateSessLeft(); }
     const out=await res.json().catch(()=>({error:"응답을 읽을 수 없습니다."}));
     if(!res.ok) throw new Error(out.error||("오류 "+res.status));
     return out;
   }
 };
+
+/* ---------- 세션 남은 시간 표시 (헤더) ---------- */
+function updateSessLeft(){
+  const el=$("sessLeft");
+  const tok=localStorage.getItem("jaego_tok")||"";
+  const parts=tok.split(".");
+  if(!(ME&&ME.staff) || parts.length!==3 || !/^\d+$/.test(parts[1])){
+    el.style.display="none"; return;
+  }
+  const leftMs=+parts[1]-Date.now();
+  if(leftMs<=0){ el.style.display="none"; return; }
+  const min=Math.ceil(leftMs/60000);
+  el.textContent="⏱ "+min+"분";
+  el.className="conn "+(min<=5?"off":"wait");
+  el.title="자동 로그아웃까지 남은 시간 · 작업하면 30분으로 다시 연장됩니다";
+  el.style.display="";
+}
+setInterval(updateSessLeft, 20000);
 
 /* ---------- 직원 로그인 창 ---------- */
 let loginWaiters=[], loginShown=false;
@@ -567,6 +590,7 @@ async function refresh(silent){
     PRODUCTS=d.products||[]; LOTS=d.lots||[]; MOVEMENTS=d.movements||[]; ME=d.me||null;
     setConn("on", ME ? ("👤 "+ME.email) : "☁ 클라우드 연결됨");
     $("logoutLink").style.display = ME ? "" : "none";
+    updateSessLeft();
     showErr(""); render();
   }catch(err){
     setConn("off","⚠ 연결 안 됨");
