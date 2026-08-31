@@ -608,6 +608,7 @@ async function refresh(silent){
     setConn("on", ME ? ("👤 "+ME.email) : "☁ 클라우드 연결됨");
     $("logoutLink").style.display = ME ? "" : "none";
     $("adminBox").style.display = (ME && ME.admin) ? "" : "none";
+    if(ME && ME.admin && !STAFF_CACHE) loadStaffList();   // 기록에 이름 표시용
     updateSessLeft();
     showErr(""); render();
   }catch(err){
@@ -752,6 +753,15 @@ function render(){
         </tr>${lotDetail}`;
       }).join("")}</tbody></table>`;
 
+  /* 담당 표시: 직원에게는 아이디만, 관리자에게는 "아이디 (이름)" */
+  const whoDisp=w=>{
+    if(!w) return "";
+    if(ME && ME.admin && STAFF_CACHE){
+      const st=STAFF_CACHE.find(x=>x.id===w);
+      if(st && st.name) return `${w} (${st.name})`;
+    }
+    return w;
+  };
   $("logWrap").innerHTML = MOVEMENTS.length
     ? `<table><thead><tr>
         <th>일시</th><th>구분</th><th>품목</th><th>수량</th><th class="hidem">유통기한</th>
@@ -763,7 +773,7 @@ function render(){
           <td>${m.type==="in"?'<b style="color:var(--ok)">입고</b>':'<b style="color:var(--warn)">출고</b>'}</td>
           <td>${esc(m.pname||"(삭제된 품목)")}</td><td class="qty">${m.qty}</td>
           <td class="hidem muted">${esc(m.expiry||"")}</td>
-          <td class="hidem muted">${esc(m.memo||"")}</td><td class="hidem muted">${esc(m.who||"")}</td></tr>`;
+          <td class="hidem muted">${esc(m.memo||"")}</td><td class="hidem muted">${esc(whoDisp(m.who))}</td></tr>`;
       }).join("")}</tbody></table>`
     : `<div class="empty">기록이 없습니다.</div>`;
 
@@ -1702,6 +1712,7 @@ async function loadStaffList(){
   }catch(err){
     $("staffListWrap").innerHTML=`<span class="muted" style="color:var(--warn)">${esc(err.message)}</span>`;
   }
+  render();   // 기록 탭의 담당 이름 표시 갱신
 }
 window.saveStaff=async function(id, active){
   const name=($("sn_"+id)||{}).value||"";
