@@ -111,6 +111,11 @@
   .chev.open{transform:rotate(90deg)}
   .ordbody{margin-top:8px}
 
+  /* 재고 현황 — 유통기한 묶음(로트) 펼치기 */
+  .lotchev{cursor:pointer; user-select:none; margin-right:4px}
+  .lotrow td{background:#F4F8FC; font-size:12px; padding:6px 10px 6px 30px; color:var(--ink2)}
+  .lotrow .lotitem{display:inline-block; margin-right:16px; padding:2px 0}
+
   /* ===== 통계 ===== */
   .statcards{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px}
   .statcard{flex:1; min-width:150px; background:var(--card); border-radius:10px; padding:12px 14px;
@@ -702,13 +707,21 @@ function render(){
         <th>유통기한</th><th>입출고</th><th class="hidem"></th>
       </tr></thead><tbody>${rows.map(p=>{
         const ls=lotsOf(p.id);
+        const open=!!LOT_OPEN[p.id];
         const expCell = !ls.length ? "—"
           : ls.length===1 || ls[0].expiry===ls[ls.length-1].expiry
             ? `${esc(ls[0].expiry)} ${expBadge(p.id)}`
             : `${esc(ls[0].expiry)} ${expBadge(p.id)}<br>
                <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)} <span class="tag">${ls.length}묶음</span></span>`;
+        const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="10">
+          📦 유통기한별 묶음: ${ls.map(l=>{
+            const dd=daysLeft(l.expiry);
+            const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
+                        : dd<=60?` <span class="exptag">D-${dd}</span>` : ` <span class="muted">D-${dd}</span>`;
+            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge}</span>`;
+          }).join("")}</td></tr>` : "";
         return `<tr class="${isLow(p)?"low":""}">
-          <td><b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}
+          <td>${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
           <td class="hidem muted">${esc(p.loc||"")}</td>
@@ -722,7 +735,7 @@ function render(){
             <button class="btn small out" onclick="openMv('${p.id}','out')">－</button>
           </td>
           <td class="hidem"><button class="btn small ghost" onclick="openProd('${p.id}')">수정</button></td>
-        </tr>`;
+        </tr>${lotDetail}`;
       }).join("")}</tbody></table>`;
 
   $("logWrap").innerHTML = MOVEMENTS.length
@@ -1000,7 +1013,7 @@ function renderAlerts(){
     html+=`<div class="grp g${s}">${G[s]} (${grp.length})</div>`;
     html+=grp.map(i=>`<div class="arow">
       <b>${esc(i.p.name)}</b>
-      <span class="muted">${i.l.qty}${esc(i.p.unit||"")}${i.p.loc?` · ${esc(i.p.loc)}`:""}</span>
+      <span class="muted">${i.l.qty}개${i.p.unit && !/^1=1/.test(i.p.unit)?` (${esc(i.p.unit)})`:""}${i.p.loc?` · ${esc(i.p.loc)}`:""}</span>
       <span class="dd" style="color:${i.sev===0?"var(--warn)":i.sev===1?"var(--cau)":"#8a7a10"}">
         ${i.dd<0?`${-i.dd}일 지남`:i.dd===0?"오늘":`D-${i.dd}`}</span>
     </div>`).join("");
@@ -1033,6 +1046,10 @@ document.addEventListener("click",e=>{
   $("alertPanel").classList.remove("show");
 });
 $("q").oninput=render;
+
+/* 재고 현황 — 유통기한 묶음 펼치기 상태 */
+const LOT_OPEN={};
+window.toggleLots=function(id){ LOT_OPEN[id]=!LOT_OPEN[id]; render(); };
 
 /* ============================================================
    발주 — 주문시점 이하 품목을 거래처별로 묶어 문안 생성
