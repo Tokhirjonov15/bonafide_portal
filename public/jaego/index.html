@@ -103,6 +103,7 @@
     border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:13px}
   .fsel{border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px;
     font-family:inherit; background:var(--card); max-width:220px}
+  svg.lucide{vertical-align:-2px}
 
   /* 발주 카드 접기/펴기 */
   .ordhead{display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none}
@@ -238,20 +239,20 @@
 <body>
 
 <header>
-  <h1>📦 반듯한 재고</h1>
+  <h1><i data-lucide="package"></i> 반듯한 재고</h1>
   <span class="conn wait" id="conn">연결 중…</span>
   <span class="conn" id="sessLeft" style="display:none"></span>
   <span class="sub" id="statLine"></span>
-  <button id="bellBtn" title="유통기한·발주 알림">🔔<span id="bellBadge"></span></button>
+  <button id="bellBtn" title="유통기한·발주 알림"><i data-lucide="bell-ring"></i><span id="bellBadge"></span></button>
   <nav>
-    <a class="homelink" href="../index.html">🏠 포털</a>
-    <a class="homelink" id="logoutLink" href="/cdn-cgi/access/logout" style="display:none">⎋ 로그아웃</a>
-    <button id="tabScan" class="on">📷 스캔</button>
-    <button id="tabStock">재고 현황</button>
-    <button id="tabOrder">📋 발주</button>
-    <button id="tabStats">📊 통계</button>
-    <button id="tabLog">입출고 기록</button>
-    <button id="tabSet">설정·백업</button>
+    <a class="homelink" href="../index.html"><i data-lucide="house"></i> 포털</a>
+    <a class="homelink" id="logoutLink" href="/cdn-cgi/access/logout" style="display:none"><i data-lucide="log-out"></i> 로그아웃</a>
+    <button id="tabScan" class="on"><i data-lucide="scan"></i> 스캔</button>
+    <button id="tabStock"><i data-lucide="boxes"></i> 재고 현황</button>
+    <button id="tabOrder"><i data-lucide="file"></i> 발주</button>
+    <button id="tabStats"><i data-lucide="chart-no-axes-combined"></i> 통계</button>
+    <button id="tabLog"><i data-lucide="history"></i> 입출고 기록</button>
+    <button id="tabSet"><i data-lucide="settings"></i> 설정·백업</button>
   </nav>
 </header>
 
@@ -262,8 +263,8 @@
   <section id="pgScan">
     <div class="scanwrap">
       <div class="modes">
-        <button id="modeIn"  class="on in">＋ 입고<span class="mlong"> (들어옴)</span></button>
-        <button id="modeOut" class="out">－ 출고<span class="mlong"> (나감)</span></button>
+        <button id="modeIn"  class="on in"><i data-lucide="plus"></i> 입고<span class="mlong"> (들어옴)</span></button>
+        <button id="modeOut" class="out"><i data-lucide="minus"></i> 출고<span class="mlong"> (나감)</span></button>
       </div>
 
       <input id="scanIn" placeholder="바코드를 찍으세요" autocomplete="off">
@@ -278,7 +279,7 @@
       </div>
 
       <div class="expfield">
-        <label>📍 보관위치 (이 기기)</label>
+        <label><i data-lucide="map-pin"></i> 보관위치 (이 기기)</label>
         <select id="scanLoc" class="fsel" style="flex:1">
           <option value="10층">10층 (기본)</option>
           <option value="3층">3층</option>
@@ -288,8 +289,8 @@
       <div class="scanhint" style="margin-top:4px">위치가 비어 있는 품목은 스캔할 때 위 층으로 자동 저장됩니다 · 다른 층 작업 시 바꿔주세요</div>
 
       <div style="text-align:center; margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap">
-        <button class="btn ghost" id="camBtn">📱 카메라로 스캔</button>
-        <button class="btn ghost" id="photoBtn" title="초점이 안 맞을 때 — 사진을 찍어서 인식">📸 사진 찍어서 인식</button>
+        <button class="btn ghost" id="camBtn"><i data-lucide="focus"></i> 카메라로 스캔</button>
+        <button class="btn ghost" id="photoBtn" title="초점이 안 맞을 때 — 사진을 찍어서 인식"><i data-lucide="camera"></i> 사진 찍어서 인식</button>
       </div>
       <input type="file" id="photoFile" accept="image/*" capture="environment" hidden>
 
@@ -307,8 +308,8 @@
     <div id="expAlert"></div>
     <div class="bar">
       <input type="search" id="q" placeholder="품목명·카테고리·바코드 검색">
-      <button class="btn ghost" id="reloadBtn" title="다시 불러오기">↻</button>
-      <button class="btn" id="addBtn">＋ 품목 추가</button>
+      <button class="btn ghost" id="reloadBtn" title="다시 불러오기"><i data-lucide="refresh-cw"></i></button>
+      <button class="btn" id="addBtn"><i data-lucide="plus"></i> 품목 추가</button>
     </div>
     <div class="bar" style="margin-top:-4px">
       <select id="catFilter" class="fsel"><option value="">전체 분류</option></select>
@@ -328,13 +329,13 @@
   <!-- ===== 발주 ===== -->
   <section id="pgOrder" style="display:none">
     <div class="caubox" style="margin-bottom:12px">
-      <b>📋 발주 기준:</b> 현재 재고가 <b>주문시점 이하</b>인 품목이 자동으로 올라옵니다.
+      <b><i data-lucide="file"></i> 발주 기준:</b> 현재 재고가 <b>주문시점 이하</b>인 품목이 자동으로 올라옵니다.
       주문 수량 = 필요수량 − 현재 재고. (필요수량·주문시점 둘 다 0인 품목은 제외)<br>
       <span class="muted">매주 <b>수요일 오전 9시</b>: 문안은 텔레그램으로, <b>발주서 PDF는 회사 이메일로</b> 자동 전송됩니다.
       관리자가 확인 후 각 거래처(카톡)로 전달합니다. 품절·대체품 문의는 간호관리자 확인 후 처리.</span>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
-        <button class="btn small" id="tgSendBtn">✈️ 텔레그램으로 지금 보내기</button>
-        <button class="btn small ghost" id="emailSendBtn">📧 발주서 PDF 이메일로 보내기</button>
+        <button class="btn small" id="tgSendBtn"><i data-lucide="send"></i> 텔레그램으로 지금 보내기</button>
+        <button class="btn small ghost" id="emailSendBtn"><i data-lucide="mail"></i> 발주서 PDF 이메일로 보내기</button>
       </div>
     </div>
     <div id="orderWrap"></div>
@@ -369,10 +370,10 @@
         <span class="muted">· 주문시점 = 이 수량 이하로 떨어지면 발주 대상 · 필요수량 = 유지 목표 수량 · 모르는 칸은 비워 두세요</span>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
-        <button class="btn" id="csvInBtn">⬆ CSV 가져오기</button>
-        <button class="btn ghost" id="csvOutBtn">⬇ CSV 내보내기</button>
-        <button class="btn ghost" id="bakBtn">💾 전체 백업(JSON)</button>
-        <button class="btn ghost" id="restBtn">↩ 백업 복원</button>
+        <button class="btn" id="csvInBtn"><i data-lucide="file-up"></i> CSV 가져오기</button>
+        <button class="btn ghost" id="csvOutBtn"><i data-lucide="file-down"></i> CSV 내보내기</button>
+        <button class="btn ghost" id="bakBtn"><i data-lucide="save"></i> 전체 백업(JSON)</button>
+        <button class="btn ghost" id="restBtn"><i data-lucide="archive-restore"></i> 백업 복원</button>
       </div>
       <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
       <input type="file" id="bakFile" accept=".json" hidden>
@@ -383,15 +384,15 @@
         아이디·비밀번호는 관리자에게 문의하세요.<br>
         <b>30분 동안 작업이 없으면 자동으로 로그아웃</b>되어 다시 로그인해야 합니다.
       </p>
-      <button class="btn ghost" id="switchIdBtn">🔁 다른 아이디로 로그인</button>
+      <button class="btn ghost" id="switchIdBtn"><i data-lucide="refresh-cw"></i> 다른 아이디로 로그인</button>
 
       <!-- 최고관리자 전용: 직원 아이디 관리 -->
       <div id="adminBox" style="display:none; margin-top:22px; padding-top:14px; border-top:1px solid var(--line)">
-        <h2 style="font-size:15px; margin-bottom:8px">👑 직원 아이디 관리 <span class="muted" style="font-weight:400">(최고관리자 전용)</span></h2>
+        <h2 style="font-size:15px; margin-bottom:8px"><i data-lucide="user-cog"></i> 직원 아이디 관리 <span class="muted" style="font-weight:400">(최고관리자 전용)</span></h2>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
           <input id="newStaffId" placeholder="새 아이디 (영문·숫자)" style="border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-family:inherit; width:150px" autocapitalize="off">
           <input id="newStaffName" placeholder="이름 (선택)" style="border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-family:inherit; width:130px">
-          <button class="btn" id="addStaffBtn">＋ 추가</button>
+          <button class="btn" id="addStaffBtn"><i data-lucide="plus"></i> 추가</button>
         </div>
         <p class="muted" style="margin-bottom:8px">새 아이디는 공용 비밀번호로 바로 로그인할 수 있습니다. 중지된 아이디는 로그인이 차단됩니다(기록은 유지).</p>
         <div id="staffListWrap"><span class="muted">불러오는 중…</span></div>
@@ -403,7 +404,7 @@
         · 매일 <b>오전 9시</b>: 유통기한 알림 — 🟡 30일 전 · 🟠 7일 전 · 🔴 만료 당일<br>
         (봇 구독자 전원에게 전송됩니다)
       </p>
-      <button class="btn ghost" id="expTestBtn">⏰ 유통기한 알림 테스트 전송</button>
+      <button class="btn ghost" id="expTestBtn"><i data-lucide="timer"></i> 유통기한 알림 테스트 전송</button>
 
       <p class="muted" style="margin-top:18px; padding-top:12px; border-top:1px solid var(--line)">
         ☁ 데이터는 Cloudflare D1에 저장되어 모든 기기가 같은 재고를 봅니다 · 화면은 15초마다 자동 갱신<br>
@@ -416,7 +417,7 @@
 <footer>자체 재고관리 v0.3 · 재고 = 입출고 기록의 합계 · 유통기한 FEFO 자동 차감</footer>
 
 <div id="alertPanel">
-  <h3>🔔 알림 <button class="xbtn" id="alertClose">✕</button></h3>
+  <h3><i data-lucide="bell-ring"></i> 알림 <button class="xbtn" id="alertClose">✕</button></h3>
   <div id="alertBody"></div>
 </div>
 
@@ -470,7 +471,7 @@
 
 <!-- 바코드를 기존 품목에 연결 -->
 <div class="ovl" id="linkOvl"><div class="modal">
-  <h2>🔗 기존 품목에 바코드 연결</h2>
+  <h2><i data-lucide="link"></i> 기존 품목에 바코드 연결</h2>
   <p class="muted" style="margin-bottom:8px">바코드: <b id="linkBarTxt"></b></p>
   <input id="linkQ" placeholder="품목명·카테고리 검색" autocomplete="off">
   <div id="linkList" style="max-height:46vh; overflow:auto; margin-top:8px; border-top:1px solid var(--line)"></div>
@@ -479,7 +480,7 @@
 
 <!-- 직원 로그인 -->
 <div class="ovl" id="loginOvl"><div class="modal" style="max-width:340px">
-  <h2>👤 직원 로그인</h2>
+  <h2><i data-lucide="user-round"></i> 직원 로그인</h2>
   <label>아이디</label>
   <input id="lgId" placeholder="아이디" autocomplete="username" autocapitalize="off" spellcheck="false">
   <label>비밀번호</label>
@@ -495,7 +496,7 @@
   </div>
   <span class="hint" id="camHint">바코드를 화면에 비추세요</span>
   <div style="display:flex; gap:10px; align-items:center; width:min(92vw,560px)">
-    <button class="btn ghost small" id="torchBtn" style="display:none">🔦 조명</button>
+    <button class="btn ghost small" id="torchBtn" style="display:none"><i data-lucide="flashlight"></i> 조명</button>
     <div id="zoomWrap" style="display:none; flex:1; align-items:center; gap:10px">
       <span style="color:#fff; font-size:12px">🔍</span>
       <input type="range" id="zoomRange" style="flex:1">
@@ -506,11 +507,18 @@
   <button class="btn ghost" id="camClose">닫기</button>
 </div>
 
+<script src="vendor/lucide.min.js"></script>
 <script>
 "use strict";
 /* ============================================================
    반듯한 재고 v0.3 — 스캔 모드 + 유통기한(로트) + 단가·거래처
    ============================================================ */
+
+/* Lucide 아이콘: <i data-lucide="scan-barcode"></i> → SVG.
+   동적으로 다시 그린 화면에도 적용되도록 render 후마다 호출. */
+function refreshIcons(){
+  try{ lucide.createIcons({attrs:{width:"1em", height:"1em", "stroke-width":2}}); }catch(_){}
+}
 const $=id=>document.getElementById(id);
 const esc=s=>(""+(s??"")).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const won=v=>(+v||0).toLocaleString("ko-KR");
@@ -555,7 +563,7 @@ function updateSessLeft(){
   const leftMs=+parts[1]-Date.now();
   if(leftMs<=0){ el.style.display="none"; return; }
   const min=Math.ceil(leftMs/60000);
-  el.textContent="⏱ "+min+"분";
+  el.innerHTML='<i data-lucide="timer"></i> '+min+"분"; refreshIcons();
   el.className="conn "+(min<=5?"off":"wait");
   el.title="자동 로그아웃까지 남은 시간 · 작업하면 30분으로 다시 연장됩니다";
   el.style.display="";
@@ -597,7 +605,10 @@ $("lgPw").addEventListener("keydown",e=>{ if(e.key==="Enter") $("lgBtn").click()
 $("lgId").addEventListener("keydown",e=>{ if(e.key==="Enter") $("lgPw").focus(); });
 
 function setConn(state,text){ const el=$("conn"); el.className="conn "+state; el.textContent=text; }
-function showErr(msg){ $("errWrap").innerHTML = msg? `<div class="errbox">⚠ ${esc(msg)}</div>` : ""; }
+function showErr(msg){
+  $("errWrap").innerHTML = msg? `<div class="errbox"><i data-lucide="triangle-alert"></i> ${esc(msg)}</div>` : "";
+  if(msg) refreshIcons();
+}
 
 async function refresh(silent){
   if(busy) return;
@@ -606,14 +617,16 @@ async function refresh(silent){
   try{
     const d=await API.call("/state");
     PRODUCTS=d.products||[]; LOTS=d.lots||[]; MOVEMENTS=d.movements||[]; ME=d.me||null;
-    setConn("on", ME ? ("👤 "+ME.email) : "☁ 클라우드 연결됨");
+    if(ME){ const nm=esc(ME.email).replace(" 👑", ' <i data-lucide="user-cog"></i>');
+      const el=$("conn"); el.className="conn on"; el.innerHTML='<i data-lucide="user-round"></i> '+nm; }
+    else setConn("on","☁ 클라우드 연결됨");
     $("logoutLink").style.display = ME ? "" : "none";
     $("adminBox").style.display = (ME && ME.admin) ? "" : "none";
     if(ME && ME.admin && !STAFF_CACHE) loadStaffList();   // 기록에 이름 표시용
     updateSessLeft();
     showErr(""); render();
   }catch(err){
-    setConn("off","⚠ 연결 안 됨");
+    { const el=$("conn"); el.className="conn off"; el.innerHTML='<i data-lucide="triangle-alert"></i> 연결 안 됨'; }
     showErr(err.message+"  —  ↻ 로 다시 시도하세요.");
   }finally{ busy=false; }
 }
@@ -703,20 +716,20 @@ function render(){
   const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
   const soon=LOTS.filter(l=>{ const d=daysLeft(l.expiry); return d!==null && d<=60; }).length;
   $("statLine").textContent=`품목 ${PRODUCTS.length}개 · 발주대상 ${ordN}개 · 기한임박 ${soon}건`;
-  $("tabOrder").textContent = ordN ? `📋 발주 (${ordN})` : "📋 발주";
+  $("tabOrder").innerHTML = '<i data-lucide="file"></i> 발주' + (ordN?` (${ordN})`:"");
 
   /* 유통기한 경고 */
   const warn=LOTS.map(l=>({...l, dd:daysLeft(l.expiry), p:PRODUCTS.find(p=>p.id===l.pid)}))
                  .filter(l=>l.dd!==null && l.dd<=60 && l.p)
                  .sort((a,b)=>a.dd-b.dd);
   $("expAlert").innerHTML = warn.length
-    ? `<div class="caubox"><b>⏰ 유통기한 임박·경과 ${warn.length}건</b><br>
+    ? `<div class="caubox"><b><i data-lucide="timer"></i> 유통기한 임박·경과 ${warn.length}건</b><br>
         ${warn.slice(0,8).map(l=>`${esc(l.p.name)} — ${l.expiry} (${l.dd<0?`<b>${-l.dd}일 지남</b>`:`D-${l.dd}`}) · ${l.qty}${esc(l.p.unit||"")}`).join("<br>")}
         ${warn.length>8?`<br><span class="muted">외 ${warn.length-8}건</span>`:""}</div>`
     : "";
 
   $("stockWrap").innerHTML = !PRODUCTS.length
-    ? `<div class="empty">품목이 없습니다.<br><b>＋ 품목 추가</b> 또는 <b>설정·백업 → CSV 가져오기</b>로 시작하세요.</div>`
+    ? `<div class="empty">품목이 없습니다.<br><b><i data-lucide="plus"></i> 품목 추가</b> 또는 <b>설정·백업 → CSV 가져오기</b>로 시작하세요.</div>`
     : `<table><thead><tr>
         <th>품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
@@ -730,7 +743,7 @@ function render(){
             : `${esc(ls[0].expiry)} ${expBadge(p.id)}<br>
                <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)} <span class="tag">${ls.length}묶음</span></span>`;
         const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="10">
-          📦 유통기한별 묶음: ${ls.map(l=>{
+          <i data-lucide="boxes"></i> 유통기한별 묶음: ${ls.map(l=>{
             const dd=daysLeft(l.expiry);
             const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
                         : dd<=60?` <span class="exptag">D-${dd}</span>` : ` <span class="muted">D-${dd}</span>`;
@@ -747,8 +760,8 @@ function render(){
           <td class="hidem muted">${esc(p.vendor||"")}</td>
           <td class="muted">${expCell}</td>
           <td>
-            <button class="btn small in"  onclick="openMv('${p.id}','in')">＋</button>
-            <button class="btn small out" onclick="openMv('${p.id}','out')">－</button>
+            <button class="btn small in"  onclick="openMv('${p.id}','in')"><i data-lucide="plus"></i></button>
+            <button class="btn small out" onclick="openMv('${p.id}','out')"><i data-lucide="minus"></i></button>
           </td>
           <td class="hidem"><button class="btn small ghost" onclick="openProd('${p.id}')">수정</button></td>
         </tr>${lotDetail}`;
@@ -815,6 +828,7 @@ function render(){
 
   renderOrder();
   renderAlerts();
+  refreshIcons();   /* 동적으로 그려진 모든 아이콘을 SVG로 변환 */
 }
 $("locFilter").onchange=render;
 $("catFilter").onchange=render;
@@ -832,7 +846,7 @@ async function loadStats(force){
     STATS=await API.call("/stats");
     renderStats();
   }catch(err){
-    $("statsWrap").innerHTML=`<div class="errbox">⚠ 통계를 불러오지 못했습니다: ${esc(err.message)}</div>`;
+    $("statsWrap").innerHTML=`<div class="errbox"><i data-lucide="triangle-alert"></i> 통계를 불러오지 못했습니다: ${esc(err.message)}</div>`;
   }
 }
 $("statsReload").onclick=()=>loadStats(true);
@@ -910,7 +924,7 @@ function renderStats(){
     .map(({key,test})=>{
       const list=PRODUCTS.filter(test);
       const val=list.reduce((s,p)=>s+Math.max(0,p.stock)*(p.price||0),0);
-      return `<tr><td><b>📍 ${esc(key)}</b></td><td class="num">${list.length}</td>
+      return `<tr><td><b><i data-lucide="map-pin"></i> ${esc(key)}</b></td><td class="num">${list.length}</td>
         <td class="num">${won(val)}원</td></tr>`;
     }).join("");
 
@@ -931,7 +945,7 @@ function renderStats(){
     </div>
 
     <div class="statbox">
-      <h3>💰 지출</h3>
+      <h3><i data-lucide="wallet"></i> 지출</h3>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
         <select id="expPeriod" class="fsel">
           <option value="12">최근 12개월</option>
@@ -970,7 +984,7 @@ function renderStats(){
     </div>
 
     <div class="statbox">
-      <h3>🏆 출고 TOP 15 — 최근 12개월</h3>
+      <h3><i data-lucide="trophy"></i> 출고 TOP 15 — 최근 12개월</h3>
       ${top.length? `<table style="box-shadow:none"><thead><tr><th>#</th><th>품목</th><th class="num">출고량</th></tr></thead>
         <tbody>${top.map((t,i)=>`<tr><td class="muted">${i+1}</td><td>${esc(t.name)} <span class="muted">${esc(t.unit||"")}</span></td>
         <td class="num qty">${won(t.q)}</td></tr>`).join("")}</tbody></table>`
@@ -978,7 +992,7 @@ function renderStats(){
     </div>
 
     <div class="statbox">
-      <h3>🏢 거래처</h3>
+      <h3><i data-lucide="building"></i> 거래처</h3>
       <table style="box-shadow:none"><thead><tr>
         <th>거래처</th><th class="num">품목수</th><th class="num">발주필요</th>
         <th class="num">재고금액</th><th class="num">이번달 입고금액</th>
@@ -986,7 +1000,7 @@ function renderStats(){
     </div>
 
     <div class="statbox">
-      <h3>📍 보관위치</h3>
+      <h3><i data-lucide="map-pin"></i> 보관위치</h3>
       <table style="box-shadow:none"><thead><tr>
         <th>위치</th><th class="num">품목수</th><th class="num">재고금액</th>
       </tr></thead><tbody>${locRows}</tbody></table>
@@ -998,6 +1012,7 @@ function renderStats(){
   $("expVendor").value=EXP_VENDOR;
   if($("expVendor").selectedIndex<0){ EXP_VENDOR=""; $("expVendor").value=""; }
   $("expPeriod").onchange=e=>{ EXP_PERIOD=e.target.value; renderStats(); };
+  refreshIcons();
   $("expVendor").onchange=e=>{ EXP_VENDOR=e.target.value; renderStats(); };
 }
 
@@ -1031,7 +1046,7 @@ function renderAlerts(){
   const G=["🔴 만료됨 — 즉시 사용 또는 폐기","🟠 7일 이내 만료","🟡 30일 이내 만료"];
   let html="";
   if(ordN) html+=`<div class="arow" style="cursor:pointer" onclick="$('tabOrder').click();$('alertPanel').classList.remove('show')">
-    <b>📋 발주 대상 ${ordN}품목</b><span class="dd" style="color:var(--accent)">발주 탭 →</span></div>`;
+    <b><i data-lucide="file"></i> 발주 대상 ${ordN}품목</b><span class="dd" style="color:var(--accent)">발주 탭 →</span></div>`;
   for(let s=0;s<3;s++){
     const grp=items.filter(i=>i.sev===s);
     if(!grp.length) continue;
@@ -1043,7 +1058,7 @@ function renderAlerts(){
         ${i.dd<0?`${-i.dd}일 지남`:i.dd===0?"오늘":`D-${i.dd}`}</span>
     </div>`).join("");
   }
-  $("alertBody").innerHTML = html || `<div class="aempty">🎉 알림이 없습니다</div>`;
+  $("alertBody").innerHTML = html || `<div class="aempty"><i data-lucide="party-popper"></i> 알림이 없습니다</div>`;
 
   /* 하루 한 번 자동 표시 (읽지 않은 알림이 있을 때만) */
   if(unread){
@@ -1101,7 +1116,7 @@ function orderMessage(vendor, items){
 function renderOrder(){
   const items=orderItems();
   if(!items.length){
-    $("orderWrap").innerHTML=`<div class="empty">🎉 지금 발주할 품목이 없습니다.<br>
+    $("orderWrap").innerHTML=`<div class="empty"><i data-lucide="party-popper"></i> 지금 발주할 품목이 없습니다.<br>
       <span class="muted">재고가 주문시점 이하로 떨어지면 여기에 자동으로 표시됩니다.</span></div>`;
     return;
   }
@@ -1113,10 +1128,10 @@ function renderOrder(){
     <div style="background:var(--card); border-radius:10px; padding:14px 16px; margin-bottom:14px">
       <div class="ordhead" onclick="toggleOrder('${esc(v)}')">
         <span class="chev ${open?"open":""}">▶</span>
-        <b style="font-size:15px">🏢 ${esc(v)}</b>
+        <b style="font-size:15px"><i data-lucide="building"></i> ${esc(v)}</b>
         <span class="tag">${list.length}품목</span>
-        <button class="btn small ghost" style="margin-left:auto" onclick="event.stopPropagation(); printOrder('${esc(v)}')">🖨 발주서 PDF</button>
-        <button class="btn small" onclick="event.stopPropagation(); copyOrder(${i})">📋 문안 복사</button>
+        <button class="btn small ghost" style="margin-left:auto" onclick="event.stopPropagation(); printOrder('${esc(v)}')"><i data-lucide="printer-check"></i> 발주서 PDF</button>
+        <button class="btn small" onclick="event.stopPropagation(); copyOrder(${i})"><i data-lucide="copy"></i> 문안 복사</button>
       </div>
       <div class="ordbody" style="${open?"":"display:none"}">
       <table style="font-size:12.5px; margin-bottom:8px"><thead><tr>
@@ -1254,6 +1269,7 @@ function showScanResult(kind, html){
   const el=$("scanResult");
   el.className="result "+kind;
   el.innerHTML=html;
+  refreshIcons();
 }
 
 async function doScan(code){
@@ -1266,11 +1282,11 @@ async function doScan(code){
     if(r.notFound){
       beep(false);
       showScanResult("bad",
-        `<div class="big">❌ 등록되지 않은 바코드</div>
+        `<div class="big"><i data-lucide="circle-x"></i> 등록되지 않은 바코드</div>
          <div class="muted" style="margin-bottom:8px">${esc(r.bar)}</div>
          <div style="display:flex; gap:8px; flex-wrap:wrap">
-           <button class="btn small" onclick="linkScanned('${esc(r.bar)}')">🔗 기존 품목에 연결</button>
-           <button class="btn small ghost" onclick="registerScanned('${esc(r.bar)}','${esc((r.gs1&&r.gs1.expiry)||"")}')">＋ 신규 품목 등록</button>
+           <button class="btn small" onclick="linkScanned('${esc(r.bar)}')"><i data-lucide="link"></i> 기존 품목에 연결</button>
+           <button class="btn small ghost" onclick="registerScanned('${esc(r.bar)}','${esc((r.gs1&&r.gs1.expiry)||"")}')"><i data-lucide="plus"></i> 신규 품목 등록</button>
          </div>`);
       return;
     }
@@ -1282,11 +1298,11 @@ async function doScan(code){
       const remainingLots=lotsOf(r.product.id).length;
       takeHint=`<div style="margin-top:6px; padding:7px 10px; background:var(--cau-bg);
         border:1px solid var(--cau); border-radius:8px; font-size:14px">
-        ⚠ <b>유통기한 ${esc(r.took[0].expiry)}</b> 묶음에서 꺼내세요${remainingLots>1?" (묶음이 여러 개입니다!)":""}</div>`;
+        <i data-lucide="triangle-alert"></i> <b>유통기한 ${esc(r.took[0].expiry)}</b> 묶음에서 꺼내세요${remainingLots>1?" (묶음이 여러 개입니다!)":""}</div>`;
     }
     showScanResult("ok",
-      `<div class="big">${r.mode==="in"?"✅ 입고":"📤 출고"} ${sign} — ${esc(r.product.name)}</div>
-       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${r.product.loc?` · 📍 ${esc(r.product.loc)}`:""}</div>
+      `<div class="big">${r.mode==="in"?'<i data-lucide="circle-check"></i> 입고':'<i data-lucide="package-open"></i> 출고'} ${sign} — ${esc(r.product.name)}</div>
+       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${r.product.loc?` · <i data-lucide="map-pin"></i> ${esc(r.product.loc)}`:""}</div>
        ${takeHint}`);
     const t=new Date().toTimeString().slice(0,5);
     scanHistory.unshift(`<div class="row"><span class="t">${t}</span>
@@ -1297,7 +1313,7 @@ async function doScan(code){
     refresh(true);
   }catch(err){
     beep(false);
-    showScanResult("bad",`<div class="big">⚠ 오류</div><div>${esc(err.message)}</div>`);
+    showScanResult("bad",`<div class="big"><i data-lucide="triangle-alert"></i> 오류</div><div>${esc(err.message)}</div>`);
   }finally{ focusScan(); }
 }
 
@@ -1426,7 +1442,7 @@ function setupCamControls(stream){
       $("torchBtn").onclick=()=>{
         torchOn=!torchOn;
         track.applyConstraints({advanced:[{torch:torchOn}]}).catch(()=>{});
-        $("torchBtn").textContent=torchOn?"🔦 조명 끄기":"🔦 조명";
+        $("torchBtn").innerHTML=(torchOn?'<i data-lucide="flashlight-off"></i> 조명 끄기':'<i data-lucide="flashlight"></i> 조명'); refreshIcons();
       };
     }
   }catch(_){}
@@ -1480,7 +1496,7 @@ $("photoBtn").onclick=()=>$("photoFile").click();
 $("photoFile").onchange=async e=>{
   const f=e.target.files[0]; e.target.value="";
   if(!f) return;
-  showScanResult("ok",`<div class="big">🔎 사진 분석 중…</div>`);
+  showScanResult("ok",`<div class="big"><i data-lucide="scan-search"></i> 사진 분석 중…</div>`);
   let url=null;
   try{
     if(!window.ZXing) await loadScript("vendor/zxing.min.js");
@@ -1492,7 +1508,7 @@ $("photoFile").onchange=async e=>{
   }catch(err){
     beep(false);
     showScanResult("bad",
-      `<div class="big">❌ 사진에서 바코드를 찾지 못했습니다</div>
+      `<div class="big"><i data-lucide="circle-x"></i> 사진에서 바코드를 찾지 못했습니다</div>
        <div class="muted">바코드가 사진의 절반 이상 크게, 밝고 선명하게 나오도록 다시 찍어 보세요.</div>`);
   }finally{ if(url) URL.revokeObjectURL(url); }
 };
@@ -1582,12 +1598,12 @@ let mvPid=null, mvType="in";
 window.openMv=function(pid,type){
   mvPid=pid; mvType=type;
   const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
-  $("mvTitle").textContent=(type==="in"?"입고 ＋":"출고 －");
+  $("mvTitle").innerHTML=(type==="in"?'<i data-lucide="plus"></i> 입고':'<i data-lucide="minus"></i> 출고');
   $("mvProd").textContent=p.name;
   const nl=nearestLot(pid), lotN=lotsOf(pid).length;
   if(type==="out" && nl){
     $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}<br>
-      <span style="color:var(--cau); font-weight:700">⚠ 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;
+      <span style="color:var(--cau); font-weight:700"><i data-lucide="triangle-alert"></i> 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;
   }else{
     $("mvNow").textContent="현재 재고: "+p.stock+" "+(p.unit||"")+(nl?`  ·  가장 빠른 유통기한 ${nl.expiry}`:"");
   }
@@ -1600,7 +1616,7 @@ window.openMv=function(pid,type){
     $("mvWhoWrap").style.display=""; $("mvWhoAuto").style.display="none";
     $("mvWho").value=localStorage.getItem("jaego_who")||"";
   }
-  $("mvOvl").classList.add("show"); $("mvQty").focus(); $("mvQty").select();
+  $("mvOvl").classList.add("show"); refreshIcons(); $("mvQty").focus(); $("mvQty").select();
 };
 $("mvCancel").onclick=()=>{ $("mvOvl").classList.remove("show"); focusScan(); };
 $("mvSave").onclick=async()=>{
@@ -1701,7 +1717,7 @@ async function loadStaffList(){
       <th>아이디</th><th>이름</th><th style="width:90px">상태</th><th style="width:150px"></th>
     </tr></thead><tbody>${STAFF_CACHE.map(s=>`
       <tr style="${s.active?"":"opacity:.5"}">
-        <td><b>${esc(s.id)}</b>${s.id==="bd01"?" 👑":""}</td>
+        <td><b>${esc(s.id)}</b>${s.id==="bd01"?' <i data-lucide="user-cog"></i>':""}</td>
         <td><input value="${esc(s.name||"")}" id="sn_${esc(s.id)}" placeholder="이름"
              style="border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-family:inherit; width:110px"></td>
         <td>${s.active?'<span class="tag" style="background:#E4F3EA;color:#1A7A4A">사용중</span>':'<span class="tag" style="background:#FCEEEC;color:#B03A2E">중지</span>'}</td>
@@ -1745,6 +1761,7 @@ $("logoutLink").addEventListener("click",e=>{
 
 /* ---------- 시작 ---------- */
 setMode("in");
+refreshIcons();   /* 첫 화면(헤더·스캔·로그인창)의 정적 아이콘 변환 */
 refresh();
 setInterval(()=>{
   if(document.hidden) return;
