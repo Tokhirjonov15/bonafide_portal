@@ -104,6 +104,10 @@
   .fsel{border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px;
     font-family:inherit; background:var(--card); max-width:220px}
   svg.lucide{vertical-align:-2px}
+  .selwrap{position:relative; display:inline-flex}
+  .selwrap .selicon{position:absolute; left:9px; top:50%; transform:translateY(-50%);
+    pointer-events:none; color:var(--ink2); width:14px; height:14px}
+  .selwrap>select{padding-left:28px}
 
   /* 발주 카드 접기/펴기 */
   .ordhead{display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none}
@@ -316,7 +320,7 @@
     </div>
     <div class="bar" style="margin-top:-4px">
       <select id="catFilter" class="fsel"><option value="">전체 분류</option></select>
-      <select id="locFilter" class="fsel"><option value="">📍 전체 위치</option></select>
+      <span class="selwrap"><i data-lucide="map-pin" class="selicon"></i><select id="locFilter" class="fsel"><option value="">전체 위치</option></select></span>
       <select id="stateFilter" class="fsel">
         <option value="">전체 상태</option>
         <option value="low">🔴 부족(발주필요)</option>
@@ -819,7 +823,7 @@ function render(){
   const noLocN=PRODUCTS.filter(p=>!(p.loc||"").trim()).length;
   const keep=locSel;
   $("locFilter").innerHTML=
-    `<option value="">📍 전체 위치</option>`+
+    `<option value="">전체 위치</option>`+
     FLOORS.map(f=>{
       const n=PRODUCTS.filter(p=>(p.loc||"").includes(f)).length;
       return `<option value="${esc(f)}">${esc(f)} (${n})</option>`;
