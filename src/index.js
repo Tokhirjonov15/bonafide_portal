@@ -542,7 +542,8 @@ async function sendOrderEmail(env) {
     headers: { "Authorization": `Bearer ${env.RESEND_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({
       from: "반듯한정형외과 재고 <onboarding@resend.dev>",
-      to: [env.ORDER_EMAIL],
+      /* 쉼표로 여러 주소 지정 가능: "a@x.com, b@y.com" */
+      to: env.ORDER_EMAIL.split(",").map(x => x.trim()).filter(Boolean),
       subject: `[반듯한정형외과] 발주서 ${dateStr}` + (vendors.length ? ` — 거래처 ${vendors.length}곳` : " — 발주 없음"),
       html: `<h2>반듯한정형외과 발주서 · ${dateStr}</h2>${listHtml}
              <p style="color:#888;font-size:12px">재고 시스템에서 자동 발송된 메일입니다.</p>`,
@@ -554,6 +555,30 @@ async function sendOrderEmail(env) {
   return { sent: 1, vendors: vendors.length };
 }
 
+/* 재고가 주문시점 이하로 "떨어지는 순간" 텔레그램 즉시 알림.
+   경계를 넘는 그 한 번만 알리므로 스팸이 되지 않는다. */
+async function notifyOrderCross(env, ctx, pid, prevStock, newStock) {
+  try {
+    if (!env.TELEGRAM_TOKEN) return;
+    const p = await env.DB.prepare(
+      `SELECT name, unit, min_qty AS min, par_qty AS par,
+              COALESCE(NULLIF(vendor,''),'미지정') AS vendor
+       FROM products WHERE id=?`).bind(pid).first();
+    if (!p) return;
+    if (!((p.par || 0) > 0 || (p.min || 0) > 0)) return;      // 둘 다 0 → 대상 아님
+    const min = p.min || 0;
+    if (!(prevStock > min && newStock <= min)) return;         // 경계를 막 넘었을 때만
+    const subs = (await env.DB.prepare(`SELECT chat_id FROM tg_subs`).all()).results || [];
+    if (!subs.length) return;
+    const need = Math.max(1, (p.par || 0) - newStock);
+    const text = `📉 발주 대상 추가\n` +
+      `${p.name}${p.unit ? ` (${p.unit})` : ""}\n` +
+      `현재 재고 ${newStock} (주문시점 ${min}) · 주문수량 ${need}개 · 거래처: ${p.vendor}`;
+    const send = (async () => { for (const s2 of subs) await tgSendTo(env, s2.chat_id, text); })();
+    if (ctx) ctx.waitUntil(send); else await send;
+  } catch (_) { /* 알림 실패가 입출고를 막지 않도록 */ }
+}
+
 async function currentStock(env, pid) {
   const row = await env.DB.prepare(`
     SELECT COALESCE(SUM(CASE WHEN type='in' THEN qty ELSE -qty END),0) AS stock
@@ -563,7 +588,7 @@ async function currentStock(env, pid) {
 }
 
 /* ---------- 라우팅 ---------- */
-async function handleApi(request, env, url, ident) {
+async function handleApi(request, env, url, ident, ctx) {
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = request.method;
   const body = method === "POST" ? await request.json().catch(() => ({})) : {};
@@ -634,6 +659,7 @@ async function handleApi(request, env, url, ident) {
     if (!pid || qty <= 0) return json({ error: "품목과 수량을 확인하세요." }, 400);
 
     let took = [];
+    const prev = await currentStock(env, pid);
     if (type === "in") {
       await env.DB.prepare(
         `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
@@ -642,6 +668,7 @@ async function handleApi(request, env, url, ident) {
       const r = await buildOutStatements(env, pid, qty, s(body.memo), actor);
       await env.DB.batch(r.stmts);
       took = r.took;
+      await notifyOrderCross(env, ctx, pid, prev, prev - qty);
     }
     return json({ ok: true, took, stock: await currentStock(env, pid) });
   }
@@ -664,6 +691,7 @@ async function handleApi(request, env, url, ident) {
     }
 
     let took = [];
+    const prev = await currentStock(env, p.id);
     if (mode === "in") {
       const g = parseGs1(raw);
       const expiry = normDate(body.expiry) || g.expiry;
@@ -674,6 +702,7 @@ async function handleApi(request, env, url, ident) {
       const r = await buildOutStatements(env, p.id, qty, "스캔 출고", actor);
       await env.DB.batch(r.stmts);
       took = r.took;
+      await notifyOrderCross(env, ctx, p.id, prev, prev - qty);
     }
     return json({ ok: true, product: p, mode, qty, took, stock: await currentStock(env, p.id) });
   }
@@ -832,7 +861,7 @@ async function handleApi(request, env, url, ident) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (!url.pathname.startsWith("/api/")) {
@@ -867,7 +896,7 @@ export default {
         return json({ error: "로그인이 필요합니다.", needLogin: true }, 401);
       }
 
-      const resp = await handleApi(request, env, url, { staff, me });
+      const resp = await handleApi(request, env, url, { staff, me }, ctx);
       /* 작업 요청(POST)마다 세션 30분 연장 — 새 토큰을 헤더로 내려준다.
          (배경 자동 새로고침 GET은 연장하지 않음 → 방치된 기기는 만료됨) */
       if (staff && request.method === "POST") {
