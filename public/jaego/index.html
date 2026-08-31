@@ -384,6 +384,18 @@
       </p>
       <button class="btn ghost" id="switchIdBtn">🔁 다른 아이디로 로그인</button>
 
+      <!-- 최고관리자 전용: 직원 아이디 관리 -->
+      <div id="adminBox" style="display:none; margin-top:22px; padding-top:14px; border-top:1px solid var(--line)">
+        <h2 style="font-size:15px; margin-bottom:8px">👑 직원 아이디 관리 <span class="muted" style="font-weight:400">(최고관리자 전용)</span></h2>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px">
+          <input id="newStaffId" placeholder="새 아이디 (영문·숫자)" style="border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-family:inherit; width:150px" autocapitalize="off">
+          <input id="newStaffName" placeholder="이름 (선택)" style="border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-family:inherit; width:130px">
+          <button class="btn" id="addStaffBtn">＋ 추가</button>
+        </div>
+        <p class="muted" style="margin-bottom:8px">새 아이디는 공용 비밀번호로 바로 로그인할 수 있습니다. 중지된 아이디는 로그인이 차단됩니다(기록은 유지).</p>
+        <div id="staffListWrap"><span class="muted">불러오는 중…</span></div>
+      </div>
+
       <h2 style="font-size:15px; margin:22px 0 8px">텔레그램 알림</h2>
       <p class="muted" style="margin-bottom:10px">
         · 매주 <b>수요일 9시</b>: 발주 문안 자동 전송<br>
@@ -595,6 +607,7 @@ async function refresh(silent){
     PRODUCTS=d.products||[]; LOTS=d.lots||[]; MOVEMENTS=d.movements||[]; ME=d.me||null;
     setConn("on", ME ? ("👤 "+ME.email) : "☁ 클라우드 연결됨");
     $("logoutLink").style.display = ME ? "" : "none";
+    $("adminBox").style.display = (ME && ME.admin) ? "" : "none";
     updateSessLeft();
     showErr(""); render();
   }catch(err){
@@ -611,6 +624,7 @@ for(const t in tabs){
     render();
     if(t==="tabScan") focusScan();
     if(t==="tabStats") loadStats();
+    if(t==="tabSet" && ME && ME.admin) loadStaffList();
   };
 }
 $("reloadBtn").onclick=()=>refresh();
@@ -1662,6 +1676,48 @@ $("expTestBtn").onclick=async()=>{
                   : "오늘 알릴 유통기한 항목이 없습니다 (D-30 / D-7 / 당일만 알림).");
   }catch(err){ alert(err.message); }
   finally{ $("expTestBtn").disabled=false; }
+};
+
+/* ============================================================
+   👑 직원 아이디 관리 (최고관리자 bd01 전용)
+   ============================================================ */
+let STAFF_CACHE=null;
+async function loadStaffList(){
+  try{
+    const r=await API.call("/staff/list");
+    STAFF_CACHE=r.staff||[];
+    $("staffListWrap").innerHTML=`<table style="box-shadow:none; max-width:560px"><thead><tr>
+      <th>아이디</th><th>이름</th><th style="width:90px">상태</th><th style="width:150px"></th>
+    </tr></thead><tbody>${STAFF_CACHE.map(s=>`
+      <tr style="${s.active?"":"opacity:.5"}">
+        <td><b>${esc(s.id)}</b>${s.id==="bd01"?" 👑":""}</td>
+        <td><input value="${esc(s.name||"")}" id="sn_${esc(s.id)}" placeholder="이름"
+             style="border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-family:inherit; width:110px"></td>
+        <td>${s.active?'<span class="tag" style="background:#E4F3EA;color:#1A7A4A">사용중</span>':'<span class="tag" style="background:#FCEEEC;color:#B03A2E">중지</span>'}</td>
+        <td>
+          <button class="btn small ghost" onclick="saveStaff('${esc(s.id)}',${s.active?1:0})">이름저장</button>
+          ${s.id==="bd01"?"":`<button class="btn small ghost" onclick="saveStaff('${esc(s.id)}',${s.active?0:1})">${s.active?"중지":"재사용"}</button>`}
+        </td>
+      </tr>`).join("")}</tbody></table>`;
+  }catch(err){
+    $("staffListWrap").innerHTML=`<span class="muted" style="color:var(--warn)">${esc(err.message)}</span>`;
+  }
+}
+window.saveStaff=async function(id, active){
+  const name=($("sn_"+id)||{}).value||"";
+  try{
+    await API.call("/staff/update",{id, name:name.trim(), active});
+    loadStaffList();
+  }catch(err){ alert(err.message); }
+};
+$("addStaffBtn").onclick=async()=>{
+  const id=$("newStaffId").value.trim().toLowerCase();
+  if(!id){ alert("아이디를 입력하세요."); return; }
+  try{
+    await API.call("/staff/add",{id, name:$("newStaffName").value.trim()});
+    $("newStaffId").value=""; $("newStaffName").value="";
+    loadStaffList();
+  }catch(err){ alert(err.message); }
 };
 
 /* ---------- 로그인 전환 / 로그아웃 ---------- */

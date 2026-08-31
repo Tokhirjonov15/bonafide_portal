@@ -98,6 +98,9 @@ async function hmacSig(env, text) {
   return btoa(String.fromCharCode(...new Uint8Array(sig)))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
+/* 최고관리자 계정 — 비밀번호는 ADMIN_PW 시크릿으로 별도 관리 */
+const ADMIN_ID = "bd01";
+
 /* 세션 30분 — 단, 작업(POST)할 때마다 새 토큰이 발급되어 연장된다.
    즉 계속 일하는 직원은 로그아웃되지 않고, 방치된 기기만 30분 뒤 잠긴다. */
 const SESSION_MS = 30 * 60 * 1000;
@@ -113,7 +116,7 @@ async function staffFromRequest(env, request) {
   if (!/^\d+$/.test(exp) || +exp < Date.now()) return null;
   if (sig !== await hmacSig(env, id + "." + exp)) return null;
   const row = await env.DB.prepare(`SELECT id, name FROM staff WHERE id=? AND active=1`).bind(id).first();
-  return row ? { id: row.id, name: row.name || "" } : null;
+  return row ? { id: row.id, name: row.name || "", admin: row.id === ADMIN_ID } : null;
 }
 
 /* Cloudflare Access(구글 로그인)로 들어온 사용자 */
@@ -567,7 +570,8 @@ async function handleApi(request, env, url, ident) {
   const staff = ident && ident.staff;
   const access = ident && ident.me;
   /* 화면 표시용 신원 (직원이면 아이디, 관리자면 이메일) */
-  const me = staff ? { email: staff.name ? `${staff.id} (${staff.name})` : staff.id, staff: true }
+  const me = staff ? { email: (staff.name ? `${staff.id} (${staff.name})` : staff.id) + (staff.admin ? " 👑" : ""),
+                       staff: true, admin: !!staff.admin }
                    : access;
   /* 담당자 기록: 직원 아이디 > 구글 계정 > 직접 입력 */
   const actor = staff ? staff.id : (access ? access.email : s(body.who));
@@ -794,6 +798,36 @@ async function handleApi(request, env, url, ident) {
     return json({ ok: true, ...r });
   }
 
+  /* ---- 최고관리자 전용: 직원 아이디 관리 ---- */
+  if (path.startsWith("/staff/")) {
+    if (!staff || !staff.admin) return json({ error: "관리자만 사용할 수 있습니다." }, 403);
+
+    if (path === "/staff/list" && method === "GET") {
+      const { results } = await env.DB.prepare(
+        `SELECT id, name, active FROM staff ORDER BY id`).all();
+      return json({ staff: results || [] });
+    }
+    if (path === "/staff/add" && method === "POST") {
+      const id = s(body.id).toLowerCase();
+      if (!/^[a-z0-9]{2,16}$/.test(id))
+        return json({ error: "아이디는 영문 소문자·숫자 2~16자로 만들어 주세요." }, 400);
+      const dup = await env.DB.prepare(`SELECT id FROM staff WHERE id=?`).bind(id).first();
+      if (dup) return json({ error: "이미 있는 아이디입니다: " + id }, 400);
+      await env.DB.prepare(`INSERT INTO staff (id, name, active) VALUES (?,?,1)`)
+        .bind(id, s(body.name)).run();
+      return json({ ok: true, id });
+    }
+    if (path === "/staff/update" && method === "POST") {
+      const id = s(body.id).toLowerCase();
+      const active = body.active ? 1 : 0;
+      if (id === ADMIN_ID && !active)
+        return json({ error: "관리자 계정은 중지할 수 없습니다." }, 400);
+      await env.DB.prepare(`UPDATE staff SET name=?, active=? WHERE id=?`)
+        .bind(s(body.name), active, id).run();
+      return json({ ok: true });
+    }
+  }
+
   return json({ error: "알 수 없는 요청: " + path }, 404);
 }
 
@@ -816,8 +850,11 @@ export default {
         }
         const id = s(b.id).toLowerCase();
         const row = await env.DB.prepare(`SELECT id FROM staff WHERE id=? AND active=1`).bind(id).first();
-        /* 붙여넣기 시 딸려오는 공백·줄바꿈 때문에 실패하지 않도록 양쪽 모두 trim 비교 */
-        if (!row || s(b.pw) !== env.STAFF_PW.trim()) {
+        /* 최고관리자(bd01)는 ADMIN_PW, 일반 직원은 공용 STAFF_PW로 확인 */
+        const expected = (id === ADMIN_ID)
+          ? (env.ADMIN_PW || env.STAFF_PW).trim()
+          : env.STAFF_PW.trim();
+        if (!row || s(b.pw) !== expected) {
           return json({ error: "아이디 또는 비밀번호가 올바르지 않습니다." }, 403);
         }
         return json({ ok: true, id, token: await makeStaffToken(env, id) });
