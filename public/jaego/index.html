@@ -267,7 +267,10 @@
         <button id="modeOut" class="out"><i data-lucide="minus"></i> 출고<span class="mlong"> (나감)</span></button>
       </div>
 
-      <input id="scanIn" placeholder="바코드를 찍으세요" autocomplete="off">
+      <div style="display:flex; gap:8px">
+        <input id="scanIn" placeholder="바코드를 찍으세요" autocomplete="off" style="flex:1; min-width:0">
+        <button class="btn" id="scanGoBtn" title="입력한 바코드 처리" style="padding:0 18px"><i data-lucide="corner-down-left"></i></button>
+      </div>
       <div class="scanhint">
         USB 스캐너로 찍으면 바로 처리됩니다 · 이 칸은 항상 준비 상태로 유지됩니다
       </div>
@@ -1321,6 +1324,8 @@ async function doScan(code){
 $("scanIn").addEventListener("keydown",e=>{
   if(e.key==="Enter"){ e.preventDefault(); doScan($("scanIn").value); }
 });
+/* 휴대폰에서 직접 입력했을 때 누르는 확인 버튼 */
+$("scanGoBtn").onclick=()=>doScan($("scanIn").value);
 
 /* 스캔 탭이 열려 있으면 입력칸에 포커스가 없어도 스캐너 입력을 받는다.
    (블루투스 스캐너를 휴대폰에 연결했을 때 화면을 만질 필요가 없도록)
