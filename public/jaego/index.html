@@ -1650,6 +1650,25 @@ $("mvQty").addEventListener("keydown",e=>{ if(e.key==="Enter") $("mvSave").click
    CSV / 백업
    ============================================================ */
 $("csvInBtn").onclick=()=>$("csvFile").click();
+/* 올바른 CSV 한 줄 파서: 따옴표 안의 쉼표·이중따옴표("")를 정확히 처리 */
+function parseCsvLine(line){
+  const out=[]; let cur="", inQ=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(inQ){
+      if(ch==='"'){
+        if(line[i+1]==='"'){ cur+='"'; i++; }   // "" → "
+        else inQ=false;
+      }else cur+=ch;
+    }else{
+      if(ch==='"') inQ=true;
+      else if(ch===","){ out.push(cur.trim()); cur=""; }
+      else cur+=ch;
+    }
+  }
+  out.push(cur.trim());
+  return out;
+}
 $("csvFile").onchange=async e=>{
   const f=e.target.files[0]; if(!f) return;
   let text=await f.text();
@@ -1657,7 +1676,7 @@ $("csvFile").onchange=async e=>{
   const rows=[];
   const lines=text.split(/\r?\n/).filter(l=>l.trim());
   for(let i=0;i<lines.length;i++){
-    const c=lines[i].split(",").map(x=>x.trim().replace(/^"|"$/g,""));
+    const c=parseCsvLine(lines[i]);
     if(i===0 && (c[0].includes("품목")||c[0].toLowerCase().includes("name"))) continue;
     rows.push(c);
   }
