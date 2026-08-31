@@ -93,10 +93,10 @@
   .num{font-variant-numeric:tabular-nums; text-align:right}
   .low td{background:var(--warn-bg)}
   .low .qty{color:var(--warn)}
-  .tag{font-size:11px; background:var(--accent-soft); color:#2A4A75; border-radius:10px; padding:1px 8px}
-  .lowtag{font-size:11px; background:var(--warn); color:#fff; border-radius:10px; padding:1px 8px; font-weight:700}
-  .exptag{font-size:11px; background:var(--cau); color:#fff; border-radius:10px; padding:1px 8px; font-weight:700}
-  .expold{font-size:11px; background:#6B2B22; color:#fff; border-radius:10px; padding:1px 8px; font-weight:700}
+  .tag{font-size:11px; background:var(--accent-soft); color:#2A4A75; border-radius:10px; padding:1px 8px; white-space:nowrap; display:inline-block}
+  .lowtag{font-size:11px; background:var(--warn); color:#fff; border-radius:10px; padding:1px 8px; font-weight:700; white-space:nowrap; display:inline-block}
+  .exptag{font-size:11px; background:var(--cau); color:#fff; border-radius:10px; padding:1px 8px; font-weight:700; white-space:nowrap; display:inline-block}
+  .expold{font-size:11px; background:#6B2B22; color:#fff; border-radius:10px; padding:1px 8px; font-weight:700; white-space:nowrap; display:inline-block}
   .muted{color:var(--ink2); font-size:12px}
   .empty{text-align:center; padding:44px 10px; color:var(--ink2); background:var(--card); border-radius:10px}
   .errbox{background:var(--warn-bg); border:1px solid var(--warn); color:var(--warn);
@@ -113,8 +113,9 @@
 
   /* 재고 현황 — 유통기한 묶음(로트) 펼치기 */
   .lotchev{cursor:pointer; user-select:none; margin-right:4px}
-  .lotrow td{background:#F4F8FC; font-size:12px; padding:6px 10px 6px 30px; color:var(--ink2)}
-  .lotrow .lotitem{display:inline-block; margin-right:16px; padding:2px 0}
+  .lotrow td{background:#F4F8FC; font-size:12px; padding:8px 10px 8px 30px; color:var(--ink2)}
+  .lotrow .lotitem{display:block; padding:3px 0; border-bottom:1px dashed #E2EAF2}
+  .lotrow .lotitem:last-child{border-bottom:none}
 
   /* ===== 통계 ===== */
   .statcards{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px}
