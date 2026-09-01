@@ -346,6 +346,16 @@
       </div>
     </div>
     <div id="orderWrap"></div>
+
+    <!-- 이메일로 전송된 발주서 PDF 자동 보관함 -->
+    <div style="background:var(--card); border-radius:10px; padding:14px 16px; margin-top:14px">
+      <div class="ordhead" onclick="toggleArchive()">
+        <span class="chev" id="archChev">▶</span>
+        <b style="font-size:15px"><i data-lucide="archive"></i> 지난 발주서 보관함</b>
+        <span class="muted" style="font-size:12px">이메일 전송 시 자동 저장</span>
+      </div>
+      <div id="archBody" style="display:none"></div>
+    </div>
   </section>
 
   <!-- ===== 통계 ===== -->
@@ -714,6 +724,9 @@ function render(){
   const q=($("q").value||"").trim().toLowerCase();
   const locSel=$("locFilter").value, catSel=$("catFilter").value,
         stateSel=$("stateFilter").value, venSel=$("venFilter").value;
+  /* 정렬용: 품목별 가장 빠른 유통기한 — 기한이 임박한 품목이 위로 (기한 없는 품목은 이름순으로 뒤에) */
+  const firstExp={};
+  for(const l of LOTS){ if(l.expiry && (!firstExp[l.pid] || l.expiry<firstExp[l.pid])) firstExp[l.pid]=l.expiry; }
   const rows=PRODUCTS
     .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")+" "+(p.loc||"")).toLowerCase().includes(q))
     .filter(p=>{
@@ -724,7 +737,9 @@ function render(){
     .filter(p=>!catSel || kindOf(p)===catSel)
     .filter(p=>!venSel || (p.vendor||"미지정")===venSel)
     .filter(p=>matchState(p, stateSel))
-    .sort((a,b)=> (isLow(a)?0:1)-(isLow(b)?0:1) || a.name.localeCompare(b.name,"ko"));
+    .sort((a,b)=> (isLow(a)?0:1)-(isLow(b)?0:1)
+      || (firstExp[a.id]||"9999").localeCompare(firstExp[b.id]||"9999")
+      || a.name.localeCompare(b.name,"ko"));
 
   const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
   const soon=LOTS.filter(l=>{ const d=daysLeft(l.expiry); return d!==null && d<=60; }).length;
@@ -1253,10 +1268,60 @@ $("emailSendBtn").onclick=async()=>{
   $("emailSendBtn").disabled=true;
   try{
     const r=await API.call("/order/email",{});
-    alert(r.vendors ? `전송 완료 — 거래처 ${r.vendors}곳의 발주서 PDF를 이메일로 보냈습니다.`
+    alert(r.vendors ? `전송 완료 — 거래처 ${r.vendors}곳의 발주서 PDF를 이메일로 보냈습니다.\n(보관함에도 저장되었습니다)`
                     : "발주할 품목이 없다는 메일을 보냈습니다.");
+    if($("archBody").style.display!=="none") await loadArchive();   // 보관함이 열려 있으면 갱신
   }catch(err){ alert(err.message); }
   finally{ $("emailSendBtn").disabled=false; }
+};
+
+/* ============================================================
+   지난 발주서 보관함 — 이메일 전송 시 서버가 저장한 PDF 목록/다운로드
+   ============================================================ */
+window.toggleArchive=async function(){
+  const b=$("archBody"), open=b.style.display==="none";
+  b.style.display=open?"":"none";
+  $("archChev").classList.toggle("open", open);
+  if(open) await loadArchive();
+};
+async function loadArchive(){
+  $("archBody").innerHTML='<div class="muted" style="padding:10px 0">불러오는 중…</div>';
+  try{
+    const r=await API.call("/order/pdfs");
+    if(!r.list || !r.list.length){
+      $("archBody").innerHTML='<div class="muted" style="padding:10px 0">보관된 발주서가 없습니다. 수요일 자동 전송(또는 수동 전송) 시 자동으로 저장됩니다.</div>';
+      return;
+    }
+    const fmt=ts=>{ const d=new Date(ts+9*3600*1000);
+      return `${d.getUTCFullYear()}.${String(d.getUTCMonth()+1).padStart(2,"0")}.${String(d.getUTCDate()).padStart(2,"0")}`; };
+    const kb=n=>n>=1048576? (n/1048576).toFixed(1)+" MB" : Math.max(1,Math.round(n/1024))+" KB";
+    $("archBody").innerHTML=`
+      <table style="font-size:12.5px; margin-top:10px; box-shadow:none"><thead><tr>
+        <th>날짜</th><th>거래처</th><th class="hidem">크기</th><th></th>
+      </tr></thead><tbody>
+      ${r.list.map(f=>`<tr>
+        <td>${fmt(f.ts)}</td>
+        <td><b>${esc(f.vendor||"")}</b></td>
+        <td class="hidem muted">${kb(f.size||0)}</td>
+        <td style="text-align:right"><button class="btn small ghost" onclick="downloadPdf('${esc(f.id)}','${esc(f.fname||"발주서.pdf")}')"><i data-lucide="download"></i> PDF</button></td>
+      </tr>`).join("")}
+      </tbody></table>`;
+    refreshIcons();
+  }catch(err){
+    $("archBody").innerHTML=`<div class="muted" style="padding:10px 0">목록을 불러오지 못했습니다: ${esc(err.message)}</div>`;
+  }
+}
+window.downloadPdf=async function(id,fname){
+  try{
+    const res=await fetch("/api/order/pdf?id="+encodeURIComponent(id),
+      { headers:{ "x-staff-token": localStorage.getItem("jaego_tok")||"" } });
+    if(!res.ok) throw new Error("다운로드 실패 ("+res.status+")");
+    const blob=await res.blob();
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download=fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+  }catch(err){ alert(err.message); }
 };
 window.copyOrder=async function(i){
   const t=$("orderMsg"+i);

@@ -55,6 +55,14 @@ const DDL = [
      id     TEXT PRIMARY KEY,
      name   TEXT DEFAULT '',
      active INTEGER DEFAULT 1
+   )`,
+  /* 이메일로 전송된 발주서 PDF 보관함 (bytes = base64) */
+  `CREATE TABLE IF NOT EXISTS order_pdfs (
+     id     TEXT PRIMARY KEY,
+     vendor TEXT DEFAULT '',
+     fname  TEXT DEFAULT '',
+     ts     INTEGER,
+     bytes  TEXT
    )`
 ];
 
@@ -568,9 +576,13 @@ async function sendOrderEmail(env) {
   const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
 
   const attachments = [];
+  const toSave = [];
   for (const v of vendors) {
     const bytes = await buildOrderPdf(env, v, byVendor[v], dateStr);
-    attachments.push({ filename: `발주서_${v}_${ymd}.pdf`, content: bytesToB64(bytes) });
+    const fname = `발주서_${v}_${ymd}.pdf`;
+    const b64 = bytesToB64(bytes);
+    attachments.push({ filename: fname, content: b64 });
+    toSave.push({ v, fname, b64 });
   }
 
   const listHtml = vendors.length
@@ -593,7 +605,12 @@ async function sendOrderEmail(env) {
   });
   const out = await res.json().catch(() => ({}));
   if (!res.ok) return { sent: 0, error: "이메일 전송 실패: " + (out.message || res.status) };
-  return { sent: 1, vendors: vendors.length };
+  /* 전송 성공 → 발주서 보관함에 저장 (발주가 있었던 주만) */
+  for (const sv of toSave) {
+    await env.DB.prepare(`INSERT INTO order_pdfs (id,vendor,fname,ts,bytes) VALUES (?,?,?,?,?)`)
+      .bind(uid(), sv.v, sv.fname, Date.now(), sv.b64).run();
+  }
+  return { sent: 1, vendors: vendors.length, saved: toSave.length };
 }
 
 /* 재고가 주문시점 이하로 "떨어지는 순간" 텔레그램 즉시 알림.
@@ -869,6 +886,26 @@ async function handleApi(request, env, url, ident, ctx) {
     const r = await sendOrderEmail(env);
     if (r.error) return json({ error: r.error }, 400);
     return json({ ok: true, ...r });
+  }
+
+  /* 보관된 발주서 — 목록 / PDF 다운로드 */
+  if (path === "/order/pdfs" && method === "GET") {
+    const { results } = await env.DB.prepare(
+      `SELECT id, vendor, fname, ts, length(bytes) AS size
+       FROM order_pdfs ORDER BY ts DESC LIMIT 300`).all();
+    return json({ list: results || [] });
+  }
+  if (path === "/order/pdf" && method === "GET") {
+    const row = await env.DB.prepare(`SELECT fname, bytes FROM order_pdfs WHERE id=?`)
+      .bind(url.searchParams.get("id") || "").first();
+    if (!row) return json({ error: "발주서를 찾을 수 없습니다." }, 404);
+    const bin = atob(row.bytes);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Response(buf, { headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(row.fname || "order.pdf")}`
+    }});
   }
 
   /* 유통기한 알림 지금 보내기 (테스트용) */
