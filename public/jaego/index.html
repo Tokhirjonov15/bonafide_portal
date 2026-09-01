@@ -338,17 +338,16 @@
     <div class="caubox" style="margin-bottom:12px">
       <b><i data-lucide="file"></i> 발주 기준:</b> 현재 재고가 <b>주문시점 이하</b>인 품목이 자동으로 올라옵니다.
       주문 수량 = 필요수량 − 현재 재고. (필요수량·주문시점 둘 다 0인 품목은 제외)<br>
-      <span class="muted">매주 <b>수요일 오전 9시</b>: 문안은 텔레그램으로, <b>발주서 PDF는 회사 이메일로</b> 자동 전송됩니다.
-      관리자가 확인 후 각 거래처(카톡)로 전달합니다. 품절·대체품 문의는 간호관리자 확인 후 처리.</span>
+      <span class="muted">매주 <b>수요일 오전 9시</b>: 발주 문안이 텔레그램으로 자동 전송됩니다.
+      관리자가 접속해서 거래처별 <b>[발주서 PDF]</b> 버튼으로 발주서를 저장한 뒤 각 거래처(카톡)로 전달합니다. 품절·대체품 문의는 간호관리자 확인 후 처리.</span>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap">
         <button class="btn small" id="tgSendBtn"><i data-lucide="send"></i> 텔레그램으로 지금 보내기</button>
-        <button class="btn small ghost" id="emailSendBtn"><i data-lucide="mail"></i> 발주서 PDF 이메일로 보내기</button>
       </div>
     </div>
     <div id="orderWrap"></div>
 
-    <!-- 이메일로 전송된 발주서 PDF 자동 보관함 -->
-    <div style="background:var(--card); border-radius:10px; padding:14px 16px; margin-top:14px">
+    <!-- 이메일로 전송된 발주서 PDF 자동 보관함 — 이메일 기능과 함께 임시 숨김 (복원: display:none 제거) -->
+    <div style="display:none; background:var(--card); border-radius:10px; padding:14px 16px; margin-top:14px">
       <div class="ordhead" onclick="toggleArchive()">
         <span class="chev" id="archChev">▶</span>
         <b style="font-size:15px"><i data-lucide="archive"></i> 지난 발주서 보관함</b>
@@ -1263,17 +1262,7 @@ window.printOrder=function(vendor){
   w.document.write(html); w.document.close();
 };
 
-$("emailSendBtn").onclick=async()=>{
-  if(!confirm("발주서 PDF를 회사 이메일로 지금 보낼까요?")) return;
-  $("emailSendBtn").disabled=true;
-  try{
-    const r=await API.call("/order/email",{});
-    alert(r.vendors ? `전송 완료 — 거래처 ${r.vendors}곳의 발주서 PDF를 이메일로 보냈습니다.\n(보관함에도 저장되었습니다)`
-                    : "발주할 품목이 없다는 메일을 보냈습니다.");
-    if($("archBody").style.display!=="none") await loadArchive();   // 보관함이 열려 있으면 갱신
-  }catch(err){ alert(err.message); }
-  finally{ $("emailSendBtn").disabled=false; }
-};
+/* 이메일 전송 버튼은 요금제 결정 전까지 임시 제거 (서버 API /order/email 은 유지) */
 
 /* ============================================================
    지난 발주서 보관함 — 이메일 전송 시 서버가 저장한 PDF 목록/다운로드

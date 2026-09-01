@@ -1006,7 +1006,9 @@ export default {
     await ensureSchema(env);
     if (event.cron === "0 0 * * 3") {
       ctx.waitUntil(sendOrders(env).catch(() => {}));
-      ctx.waitUntil(sendOrderEmail(env).catch(() => {}));
+      /* 이메일 PDF 자동 발송은 요금제 결정 전까지 임시 중단
+         (무료 요금제 CPU 제한으로 1102 오류 — 유료 전환 시 아래 줄 복원)
+      ctx.waitUntil(sendOrderEmail(env).catch(() => {})); */
     } else if (event.cron === "0 0 * * *") {
       ctx.waitUntil(sendExpiryAlerts(env).catch(() => {}));
     } else {
