@@ -64,6 +64,8 @@ const MIGRATIONS = [
   `ALTER TABLE products  ADD COLUMN vendor TEXT DEFAULT ''`,
   `ALTER TABLE products  ADD COLUMN par_qty INTEGER DEFAULT 0`,
   `ALTER TABLE products  ADD COLUMN alt    TEXT DEFAULT ''`,
+  `ALTER TABLE products  ADD COLUMN order_unit  INTEGER DEFAULT 0`,
+  `ALTER TABLE products  ADD COLUMN order_group TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`
 ];
@@ -150,6 +152,7 @@ async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
            p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
+           p.order_unit AS ounit, p.order_group AS ogrp,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -284,20 +287,52 @@ function orderMessageText(vendor, items, dateStr) {
     let l = `- ${p.name}`;
     if (p.unit) l += ` (${p.unit})`;
     l += ` : ${p.need}개`;
+    if (p.moq) l += ` [${p.moq}]`;
     if (p.alt) l += `  ※대체가능: ${p.alt}`;
     return l;
   });
+  const gnotes = [...new Set(items.filter((p) => p.gnote).map((p) => p.gnote))];
   return `[반듯한정형외과 발주] ${dateStr}\n거래처: ${vendor || "미지정"}\n` +
          lines.join("\n") +
+         (gnotes.length ? "\n※ " + gnotes.join("\n※ ") : "") +
          "\n\n품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.";
+}
+
+/* 최소발주수량(박스 단위) 적용:
+   - order_unit>1 인 품목: 주문수량을 그 배수로 올림 (예: 헥시딘 1박스=20개)
+   - order_group 이 같은 품목들(예: 목발 XS~XL): "합계"가 단위의 배수가 되도록,
+     모자란 만큼을 가장 많이 필요한 사이즈에 얹는다 (ex. S 3 + L 7 = 총 10) */
+function applyOrderUnits(items) {
+  const groups = {};
+  for (const p of items) {
+    const g = (p.ogrp || "").trim();
+    if (g) { (groups[g] = groups[g] || []).push(p); continue; }
+    const u = p.ounit || 0;
+    if (u > 1) {
+      p.need = Math.ceil(p.need / u) * u;
+      p.moq = `${u}개 단위`;
+    }
+  }
+  for (const [g, list] of Object.entries(groups)) {
+    const u = Math.max(1, ...list.map((p) => p.ounit || 0));
+    if (u <= 1) continue;
+    const total = list.reduce((s2, p) => s2 + p.need, 0);
+    const target = Math.ceil(total / u) * u;
+    if (target > total) {
+      const top = list.reduce((a, b) => (b.need > a.need ? b : a));
+      top.need += target - total;
+    }
+    for (const p of list) p.gnote = `${g}: 사이즈 합계 ${target}개 (${u}개 단위 발주)`;
+  }
+  return items;
 }
 
 async function buildOrders(env) {
   const products = await listProducts(env);
-  const items = products
+  const items = applyOrderUnits(products
     .filter((p) => (p.par || 0) > 0 || (p.min || 0) > 0)
     .filter((p) => p.stock <= (p.min || 0))
-    .map((p) => ({ ...p, need: Math.max(1, (p.par || 0) - p.stock) }));
+    .map((p) => ({ ...p, need: Math.max(1, (p.par || 0) - p.stock) })));
   const byVendor = {};
   for (const p of items) {
     const v = p.vendor || "미지정";
@@ -414,16 +449,22 @@ async function sendExpiryAlerts(env) {
   const pmap = {};
   for (const p of products) pmap[p.id] = p;
 
-  const buckets = { 0: [], 7: [], 30: [] };
+  /* 오늘부터 정확히 7개월 뒤 날짜 — 그날이 유통기한인 로트는 거래처 교환 요청 대상 */
+  const t7 = new Date(kstToday());
+  const m7date = new Date(Date.UTC(t7.getUTCFullYear(), t7.getUTCMonth() + 7, t7.getUTCDate()))
+                   .toISOString().slice(0, 10);
+
+  const buckets = { 0: [], 7: [], 30: [], m7: [] };
   for (const l of lots) {
     const p = pmap[l.pid];
     if (!p) continue;
+    const line = `- ${p.name}${p.unit ? ` (${p.unit})` : ""} : ${l.qty}개 · ${l.expiry}${p.loc ? ` · ${p.loc}` : ""}`;
     const dd = expiryDaysLeft(l.expiry);
-    if (dd === 0 || dd === 7 || dd === 30) {
-      buckets[dd].push(`- ${p.name}${p.unit ? ` (${p.unit})` : ""} : ${l.qty}개 · ${l.expiry}${p.loc ? ` · ${p.loc}` : ""}`);
-    }
+    if (dd === 0 || dd === 7 || dd === 30) buckets[dd].push(line);
+    else if (l.expiry === m7date) buckets.m7.push(line);
   }
-  if (!buckets[0].length && !buckets[7].length && !buckets[30].length) {
+  const total = buckets[0].length + buckets[7].length + buckets[30].length + buckets.m7.length;
+  if (!total) {
     return { sent: 0, vendors: 0, note: "오늘 알릴 유통기한 항목이 없습니다." };
   }
 
@@ -433,11 +474,11 @@ async function sendExpiryAlerts(env) {
   if (buckets[0].length)  text += `\n🔴 오늘 만료 — 즉시 사용 또는 폐기:\n${buckets[0].join("\n")}\n`;
   if (buckets[7].length)  text += `\n🟠 7일 남음 — 우선 사용:\n${buckets[7].join("\n")}\n`;
   if (buckets[30].length) text += `\n🟡 30일 남음:\n${buckets[30].join("\n")}\n`;
+  if (buckets.m7.length)  text += `\n🔵 7개월 남음 — 거래처 교환 요청 검토:\n${buckets.m7.join("\n")}\n`;
 
   let ok = 0;
   for (const sub of subs) { if (await tgSendTo(env, sub.chat_id, text.trim())) ok++; }
-  return { sent: ok, subscribers: subs.length,
-           items: buckets[0].length + buckets[7].length + buckets[30].length };
+  return { sent: ok, subscribers: subs.length, items: total };
 }
 
 /* ============================================================
@@ -562,6 +603,7 @@ async function notifyOrderCross(env, ctx, pid, prevStock, newStock) {
     if (!env.TELEGRAM_TOKEN) return;
     const p = await env.DB.prepare(
       `SELECT name, unit, min_qty AS min, par_qty AS par,
+              order_unit AS ounit, order_group AS ogrp,
               COALESCE(NULLIF(vendor,''),'미지정') AS vendor
        FROM products WHERE id=?`).bind(pid).first();
     if (!p) return;
@@ -570,10 +612,17 @@ async function notifyOrderCross(env, ctx, pid, prevStock, newStock) {
     if (!(prevStock > min && newStock <= min)) return;         // 경계를 막 넘었을 때만
     const subs = (await env.DB.prepare(`SELECT chat_id FROM tg_subs`).all()).results || [];
     if (!subs.length) return;
-    const need = Math.max(1, (p.par || 0) - newStock);
+    let need = Math.max(1, (p.par || 0) - newStock);
+    let moq = "";
+    if (!(p.ogrp || "").trim() && (p.ounit || 0) > 1) {
+      need = Math.ceil(need / p.ounit) * p.ounit;
+      moq = ` [${p.ounit}개 단위]`;
+    }
     const text = `📉 발주 대상 추가\n` +
       `${p.name}${p.unit ? ` (${p.unit})` : ""}\n` +
-      `현재 재고 ${newStock} (주문시점 ${min}) · 주문수량 ${need}개 · 거래처: ${p.vendor}`;
+      `현재 재고 ${newStock} (주문시점 ${min}) · 주문수량 ${need}개${moq} · 거래처: ${p.vendor}` +
+      ((p.ogrp || "").trim() && (p.ounit || 0) > 1
+        ? `\n※ ${p.ogrp}: 사이즈 합계 ${p.ounit}개 단위로 발주` : "");
     const send = (async () => { for (const s2 of subs) await tgSendTo(env, s2.chat_id, text); })();
     if (ctx) ctx.waitUntil(send); else await send;
   } catch (_) { /* 알림 실패가 입출고를 막지 않도록 */ }
@@ -616,19 +665,21 @@ async function handleApi(request, env, url, ident, ctx) {
 
     if (body.id) {
       await env.DB.prepare(
-        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=? WHERE id=?`
+        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=? WHERE id=?`
       ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
-             n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor), s(body.id)).run();
+             n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
+             n(body.ounit), s(body.ogrp), s(body.id)).run();
       return json({ ok: true, id: body.id });
     }
 
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
-             n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor), Date.now())
+             n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
+             n(body.ounit), s(body.ogrp), Date.now())
     ];
     const init = n(body.init);
     if (init > 0) {

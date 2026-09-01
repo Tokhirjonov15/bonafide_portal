@@ -60,7 +60,7 @@
   #alertPanel.show{display:block}
   #alertPanel h3{font-size:14px; margin-bottom:10px; display:flex; align-items:center}
   #alertPanel .grp{font-size:12px; font-weight:700; margin:10px 0 4px}
-  #alertPanel .g0{color:var(--warn)} #alertPanel .g1{color:var(--cau)} #alertPanel .g2{color:#8a7a10}
+  #alertPanel .g0{color:var(--warn)} #alertPanel .g1{color:var(--cau)} #alertPanel .g2{color:#8a7a10} #alertPanel .g3{color:var(--accent)}
   #alertPanel .arow{
     font-size:12.5px; padding:5px 0; border-bottom:1px solid #F0F4F8;
     display:flex; gap:8px; align-items:baseline;
@@ -447,6 +447,12 @@
     <div><label>거래처 (구입처)</label><input id="pVendor" list="venList" placeholder="예) 한대표님 / 메디풀"><datalist id="venList"></datalist></div>
     <div><label>대체품목</label><input id="pAlt" placeholder="선택사항"></div>
   </div>
+  <div class="mrow">
+    <div><label>발주단위 (1박스 수량)</label><input id="pOunit" type="number" min="0" value="0" placeholder="예) 20"></div>
+    <div><label>발주그룹 (합계 단위 적용)</label><input id="pOgrp" placeholder="예) 목발"></div>
+  </div>
+  <div class="muted" style="font-size:11.5px; margin:-4px 0 8px">
+    · 발주단위: 주문수량을 이 배수로 올림 (예: 20 → 1박스=20개) · 발주그룹: 같은 그룹의 <b>합계</b>가 단위의 배수가 되도록 맞춤 (예: 목발 S 3 + L 7 = 총 10)</div>
   <label>바코드 (스캔하거나 입력)</label><input id="pBar" placeholder="선택사항">
   <div id="pInitWrap">
     <div class="mrow">
@@ -1028,6 +1034,9 @@ function renderStats(){
    하루에 한 번, 알림이 있으면 자동으로 패널이 열립니다.
    ============================================================ */
 function alertList(){
+  /* 7개월 경계 — 이 안에 만료되는 약품은 거래처 교환 요청 후보 */
+  const now=new Date();
+  const lim7=new Date(now.getFullYear(), now.getMonth()+7, now.getDate());
   const out=[];
   for(const l of LOTS){
     const p=PRODUCTS.find(x=>x.id===l.pid); if(!p) continue;
@@ -1035,6 +1044,7 @@ function alertList(){
     if(dd<=0)       out.push({sev:0, dd, p, l});
     else if(dd<=7)  out.push({sev:1, dd, p, l});
     else if(dd<=30) out.push({sev:2, dd, p, l});
+    else if(new Date(l.expiry)<=lim7) out.push({sev:3, dd, p, l});
   }
   out.sort((a,b)=>a.sev-b.sev || a.dd-b.dd);
   return out;
@@ -1050,18 +1060,18 @@ function renderAlerts(){
   const unread = total>0 && localStorage.getItem("jaego_alert_seen")!==ALERT_SIG;
   $("bellBadge").style.display = unread? "block" : "none";
 
-  const G=["🔴 만료됨 — 즉시 사용 또는 폐기","🟠 7일 이내 만료","🟡 30일 이내 만료"];
+  const G=["🔴 만료됨 — 즉시 사용 또는 폐기","🟠 7일 이내 만료","🟡 30일 이내 만료","🔵 7개월 이내 만료 — 교환 요청 검토"];
   let html="";
   if(ordN) html+=`<div class="arow" style="cursor:pointer" onclick="$('tabOrder').click();$('alertPanel').classList.remove('show')">
     <b><i data-lucide="file"></i> 발주 대상 ${ordN}품목</b><span class="dd" style="color:var(--accent)">발주 탭 →</span></div>`;
-  for(let s=0;s<3;s++){
+  for(let s=0;s<4;s++){
     const grp=items.filter(i=>i.sev===s);
     if(!grp.length) continue;
     html+=`<div class="grp g${s}">${G[s]} (${grp.length})</div>`;
     html+=grp.map(i=>`<div class="arow">
       <b>${esc(i.p.name)}</b>
       <span class="muted">${i.l.qty}개${i.p.unit && !/^1=1/.test(i.p.unit)?` (${esc(i.p.unit)})`:""}${i.p.loc?` · ${esc(i.p.loc)}`:""}</span>
-      <span class="dd" style="color:${i.sev===0?"var(--warn)":i.sev===1?"var(--cau)":"#8a7a10"}">
+      <span class="dd" style="color:${i.sev===0?"var(--warn)":i.sev===1?"var(--cau)":i.sev===2?"#8a7a10":"var(--accent)"}">
         ${i.dd<0?`${-i.dd}일 지남`:i.dd===0?"오늘":`D-${i.dd}`}</span>
     </div>`).join("");
   }
@@ -1101,11 +1111,34 @@ window.toggleLots=function(id){ LOT_OPEN[id]=!LOT_OPEN[id]; render(); };
 /* ============================================================
    발주 — 주문시점 이하 품목을 거래처별로 묶어 문안 생성
    ============================================================ */
+/* 최소발주수량(박스 단위) — 서버(buildOrders)와 같은 규칙:
+   발주단위 배수로 올림 + 발주그룹(목발 등)은 합계를 단위에 맞춤 */
+function applyOrderUnits(items){
+  const groups={};
+  for(const p of items){
+    const g=(p.ogrp||"").trim();
+    if(g){ (groups[g]=groups[g]||[]).push(p); continue; }
+    const u=p.ounit||0;
+    if(u>1){ p.need=Math.ceil(p.need/u)*u; p.moq=`${u}개 단위`; }
+  }
+  for(const [g,list] of Object.entries(groups)){
+    const u=Math.max(1,...list.map(p=>p.ounit||0));
+    if(u<=1) continue;
+    const total=list.reduce((s,p)=>s+p.need,0);
+    const target=Math.ceil(total/u)*u;
+    if(target>total){
+      const top=list.reduce((a,b)=>b.need>a.need?b:a);
+      top.need+=target-total;
+    }
+    for(const p of list) p.gnote=`${g}: 사이즈 합계 ${target}개 (${u}개 단위 발주)`;
+  }
+  return items;
+}
 function orderItems(){
-  return PRODUCTS
+  return applyOrderUnits(PRODUCTS
     .filter(p=>((p.par||0)>0 || (p.min||0)>0))      // 둘 다 0 → 발주 대상 아님
     .filter(p=>p.stock<=(p.min||0))
-    .map(p=>({...p, need: Math.max(1,(p.par||0)-p.stock)}));
+    .map(p=>({...p, need: Math.max(1,(p.par||0)-p.stock)})));
 }
 function orderMessage(vendor, items){
   const d=new Date();
@@ -1115,10 +1148,14 @@ function orderMessage(vendor, items){
     let l=`- ${p.name}`;
     if(p.unit) l+=` (${p.unit})`;
     l+=` : ${p.need}개`;
+    if(p.moq) l+=` [${p.moq}]`;
     if(p.alt) l+=`  ※대체가능: ${p.alt}`;
     return l;
   });
-  return head+lines.join("\n")+"\n\n품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.";
+  const gnotes=[...new Set(items.filter(p=>p.gnote).map(p=>p.gnote))];
+  return head+lines.join("\n")
+    +(gnotes.length? "\n※ "+gnotes.join("\n※ ") : "")
+    +"\n\n품절이거나 대체품 발송이 필요한 경우 회신 부탁드립니다.";
 }
 function renderOrder(){
   const items=orderItems();
@@ -1147,7 +1184,7 @@ function renderOrder(){
       ${list.map(p=>`<tr>
         <td>${esc(p.name)} <span class="muted">${esc(p.unit||"")}</span></td>
         <td class="qty">${p.stock}</td><td class="muted num">${p.min||0}</td><td class="muted num">${p.par||0}</td>
-        <td class="qty" style="color:var(--accent)">${p.need}</td>
+        <td class="qty" style="color:var(--accent)">${p.need}${(p.moq||p.gnote)?`<div class="muted" style="font-size:10px; font-weight:400">${esc(p.moq||p.gnote)}</div>`:""}</td>
         <td class="hidem muted">${esc(p.alt||"")}</td>
       </tr>`).join("")}
       </tbody></table>
@@ -1565,6 +1602,7 @@ window.openProd=function(id){
   $("pMin").value=p?(p.min||0):0; $("pBar").value=p?(p.bar||""):"";
   $("pPar").value=p?(p.par||0):0; $("pAlt").value=p?(p.alt||""):"";
   $("pPrice").value=p?(p.price||0):0; $("pVendor").value=p?(p.vendor||""):"";
+  $("pOunit").value=p?(p.ounit||0):0; $("pOgrp").value=p?(p.ogrp||""):"";
   $("pInitWrap").style.display=p?"none":"";
   $("prodDel").style.display=p?"":"none";
   $("pInit").value=0; $("pExp").value="";
@@ -1580,7 +1618,8 @@ $("prodSave").onclick=async()=>{
     cat:$("pCat").value.trim(), loc:$("pLoc").value.trim(), unit:$("pUnit").value.trim(),
     bar:$("pBar").value.trim(), min:+$("pMin").value||0,
     par:+$("pPar").value||0, alt:$("pAlt").value.trim(),
-    price:+$("pPrice").value||0, vendor:$("pVendor").value.trim() };
+    price:+$("pPrice").value||0, vendor:$("pVendor").value.trim(),
+    ounit:+$("pOunit").value||0, ogrp:$("pOgrp").value.trim() };
   if(!editId){ payload.init=+$("pInit").value||0; payload.expiry=$("pExp").value||""; }
   $("prodSave").disabled=true;
   try{
