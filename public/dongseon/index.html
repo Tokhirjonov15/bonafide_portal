@@ -778,25 +778,25 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <div class="topbar">
   <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg></div>반듯한 동선관리</div>
   <button class="btn primary" onclick="openAdd()">+ 환자 추가</button>
-  <div class="search">🔍<input id="search" placeholder="환자 검색 (이름·병록번호)"></div>
+  <div class="search"><i data-lucide="search"></i><input id="search" placeholder="환자 검색 (이름·병록번호)"></div>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
-  <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴">☰</button>
+  <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
   <div class="top-actions" id="topActions">
-    <button class="btn" id="mineBtn" onclick="toggleChatMine()">🙋 담당알람<span id="mineBadge"></span></button>
-    <button class="btn" id="chatBtn" onclick="toggleChatAll()">🔔 전체알람<span id="chatBadge"></span></button>
-    <button class="btn" id="viewBtn" onclick="openView()">👁 방 보기</button>
-    <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()">🖥 대기화면</button>
-    <button class="btn" id="patMgrBtn" onclick="openHistory()">👥 환자 관리</button>
-    <button class="btn" id="statsBtn" style="display:none" onclick="openStats()">📊 통계</button>
-    <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()">🧩 루틴 동선</button>
+    <button class="btn" id="mineBtn" onclick="toggleChatMine()"><i data-lucide="hand"></i> 담당알람<span id="mineBadge"></span></button>
+    <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
+    <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
+    <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
+    <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
+    <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
+    <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
   </div>
   <div class="user-pill" id="userPill" style="display:none" onclick="openAccount()">
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
     <span class="role-tag" id="userRole">직원</span>
   </div>
-  <button class="btn" id="themeBtn" onclick="toggleTheme()" title="밝게/어둡게 전환">🌙</button>
+  <button class="btn" id="themeBtn" onclick="toggleTheme()" title="밝게/어둡게 전환"><i data-lucide="moon"></i></button>
   <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃">⎋ 로그아웃</button>
 </div>
 
@@ -804,21 +804,21 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <div class="main-row" id="mainRow">
   <div class="board-col">
     <div class="board-toolbar" id="boardToolbar">
-      <button class="gtab tb-act" onclick="openBirdView()" title="모든 방 환자 위치를 한눈에">🦅 버드뷰</button>
-      <button class="gtab tb-act" id="compactBtn" onclick="toggleCompact()" title="카드를 간략히/자세히 전환 — 방이 붐빌 때 한눈에 보기">🔲 간략히</button>
+      <button class="gtab tb-act" onclick="openBirdView()" title="모든 방 환자 위치를 한눈에"><i data-lucide="bird"></i> 버드뷰</button>
+      <button class="gtab tb-act" id="compactBtn" onclick="toggleCompact()" title="카드를 간략히/자세히 전환 — 방이 붐빌 때 한눈에 보기"><i data-lucide="list"></i> 간략히</button>
       <div class="group-tabs" id="groupTabs"></div>
-      <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)">📋 내원 목록</button>
+      <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
     </div>
     <div class="board" id="board"></div>
   </div>
   <div class="side-panel" id="chatMine">
-    <div class="chat-head">🙋 담당 알람
+    <div class="chat-head"><i data-lucide="hand"></i> 담당 알람
       <label class="mute-tg" title="팝업/소리 끄기 — 목록엔 계속 쌓입니다"><input type="checkbox" id="muteChk2" onchange="toggleMute(this.checked)"> 팝업 끄기</label>
       <button onclick="toggleChatMine()">×</button></div>
     <div class="chat-body" id="chatBodyMine"></div>
   </div>
   <div class="side-panel" id="chatAll">
-    <div class="chat-head">🔔 전체 알람
+    <div class="chat-head"><i data-lucide="bell-ring"></i> 전체 알람
       <label class="mute-tg" title="팝업/소리 끄기 — 목록엔 계속 쌓입니다"><input type="checkbox" id="muteChk" onchange="toggleMute(this.checked)"> 팝업 끄기</label>
       <button onclick="toggleChatAll()">×</button></div>
     <div class="chat-body" id="chatBodyAll"></div>
@@ -841,7 +841,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 루틴 동선 목록 모달 -->
 <div class="modal-bg" id="routineModal">
   <div class="modal" style="width:480px">
-    <h3>🧩 루틴 동선 관리</h3>
+    <h3><i data-lucide="puzzle"></i> 루틴 동선 관리</h3>
     <div class="body">
       <p class="hint">자주 쓰는 동선을 미리 만들어 두면, 접수 시 버튼 한 번으로 여러 단계를 한꺼번에 넣을 수 있어요. (관리자 전용)</p>
       <div id="routineList" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -875,12 +875,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 방 보기(표시/숨김) 모달 -->
 <div class="modal-bg" id="viewModal">
   <div class="modal" style="width:380px">
-    <h3>👁 방 보기 설정</h3>
+    <h3><i data-lucide="eye"></i> 방 보기 설정</h3>
     <div class="body">
       <p class="hint">내 화면에 표시할 방을 선택하세요. (내 계정에만 적용)</p>
       <div id="viewList" style="display:flex;flex-direction:column;gap:6px"></div>
       <p class="hint" style="margin-top:10px">💡 보드에서 방 제목 왼쪽 <b>⠿</b>를 드래그하면 <b>내 화면의 방 순서</b>를 바꿀 수 있어요(자주 쓰는 방을 앞으로). 이것도 내 계정에만 적용됩니다.</p>
-      <button class="btn sm" onclick="resetMyRoomOrder()">↺ 내 방 순서 초기화 (기본 순서로)</button>
+      <button class="btn sm" onclick="resetMyRoomOrder()"><i data-lucide="rotate-ccw"></i> 내 방 순서 초기화 (기본 순서로)</button>
     </div>
     <div class="foot"><button class="btn primary" onclick="closeView()">닫기</button></div>
   </div>
@@ -901,7 +901,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 접근/활동 기록(감사) 모달 -->
 <div class="modal-bg" id="auditModal">
   <div class="modal" style="width:min(94vw,760px)">
-    <h3>🔒 접근·활동 기록</h3>
+    <h3><i data-lucide="lock"></i> 접근·활동 기록</h3>
     <div class="body">
       <div class="vlist-head" style="margin-bottom:10px">
         <span class="vl-title">기록 <b id="auditCount">0건</b></span>
@@ -923,7 +923,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 통계 모달 -->
 <div class="modal-bg" id="statsModal">
   <div class="modal" style="width:560px">
-    <h3>📊 통계</h3>
+    <h3><i data-lucide="chart-column"></i> 통계</h3>
     <div class="body" id="statsBody"></div>
     <div class="foot"><button class="btn primary" onclick="closeStats()">닫기</button></div>
   </div>
@@ -932,7 +932,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 환자 기록(내원 아카이브) 모달 -->
 <div class="modal-bg" id="historyModal">
   <div class="modal" style="width:620px">
-    <h3>👥 환자 관리</h3>
+    <h3><i data-lucide="users"></i> 환자 관리</h3>
     <div class="body">
       <input id="histSearch" placeholder="환자 검색 (이름·병록번호) — 누르면 과거 기록이 모두 보여요" oninput="renderHistory()" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:0">
       <div id="histList" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -948,7 +948,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 버드뷰 모달 -->
 <div class="modal-bg" id="birdModal">
   <div class="modal" style="width:min(96vw,1100px)">
-    <h3>🦅 버드뷰 — 환자 위치 한눈에</h3>
+    <h3><i data-lucide="bird"></i> 버드뷰 — 환자 위치 한눈에</h3>
     <div class="body" id="birdBody"></div>
     <div class="foot"><button class="btn primary" onclick="closeBirdView()">닫기</button></div>
   </div>
@@ -962,14 +962,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <input id="waitMsgInput" class="wait-msg-input" placeholder="안내 문구 입력 (예: 진료 순서를 안내해 드립니다)" oninput="setWaitMsg(this.value)">
     <div class="wait-roomsel" id="waitRoomSel"></div>
     <span class="wait-ctl" title="여러 방을 선택했을 때 한 방씩 돌아가며 표시하는 간격 (0 = 모두 한 화면에)">⟳ 회전 <input id="waitRotInp" type="number" min="0" max="120" onchange="setWaitRotSec(this.value)">초</span>
-    <span class="wait-ctl" title="대기 목록 글자 크기 (%)">🔠 글자 <input id="waitFontInp" type="number" min="50" max="250" step="10" onchange="setWaitFontPct(this.value)">%</span>
-    <span class="wait-ctl" title="상단 안내 문구 글자 크기 (%)">📢 안내 <input id="waitHeadInp" type="number" min="50" max="300" step="10" onchange="setWaitHeadPct(this.value)">%</span>
-    <label class="btn sm" style="cursor:pointer">🖼 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitBg(event)"></label>
+    <span class="wait-ctl" title="대기 목록 글자 크기 (%)"><i data-lucide="type"></i> 글자 <input id="waitFontInp" type="number" min="50" max="250" step="10" onchange="setWaitFontPct(this.value)">%</span>
+    <span class="wait-ctl" title="상단 안내 문구 글자 크기 (%)"><i data-lucide="megaphone"></i> 안내 <input id="waitHeadInp" type="number" min="50" max="300" step="10" onchange="setWaitHeadPct(this.value)">%</span>
+    <label class="btn sm" style="cursor:pointer"><i data-lucide="image"></i> 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitBg(event)"></label>
     <button class="btn sm" onclick="clearWaitBg()">배경 없음</button>
-    <button class="btn sm" onclick="toggleWaitControls()">🙈 컨트롤 숨기기</button>
+    <button class="btn sm" onclick="toggleWaitControls()"><i data-lucide="eye-off"></i> 컨트롤 숨기기</button>
     <button class="btn sm" onclick="closeWaitScreen()">✕ 닫기</button>
   </div>
-  <button class="wait-gear" id="waitGear" onclick="toggleWaitControls()" title="설정 표시/숨기기">⚙</button>
+  <button class="wait-gear" id="waitGear" onclick="toggleWaitControls()" title="설정 표시/숨기기"><i data-lucide="settings"></i></button>
   <div class="wait-stage">
     <div class="wait-header">
       <div class="wait-brand">
@@ -1034,8 +1034,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <button class="btn ghost-red" id="delBtn" onclick="deletePatient()">삭제</button>
         <span id="editActions" style="display:none;gap:6px">
           <button type="button" class="btn" id="editDesigBtn" title="지정 진료 표시 토글" onclick="editDesignate()">지정</button>
-          <button type="button" class="btn" title="JS PACS에서 이 병록번호의 촬영 리스트 열기" onclick="openPacsFor()">🩻 PACS</button>
-          <button type="button" class="btn" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="editOpenCert()">📄 서류</button>
+          <button type="button" class="btn" title="JS PACS에서 이 병록번호의 촬영 리스트 열기" onclick="openPacsFor()"><i data-lucide="bone"></i> PACS</button>
+          <button type="button" class="btn" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="editOpenCert()"><i data-lucide="file-text"></i> 서류</button>
         </span>
         <span class="head-sep"></span>
         <button class="btn" onclick="closeModal()">취소</button>
@@ -1045,43 +1045,43 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="body">
       <div class="pcol">
       <div id="reloadSection" class="fld" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px">
-        <label style="color:var(--teal)">🔁 재진 환자 불러오기 (병록번호·이름 검색)</label>
+        <label style="color:var(--teal)"><i data-lucide="repeat"></i> 재진 환자 불러오기 (병록번호·이름 검색)</label>
         <input id="f_reload" list="regOpts" placeholder="저장된 환자를 검색해 선택하면 정보가 채워집니다" oninput="onReloadPick()">
         <datalist id="regOpts"></datalist>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-          <button type="button" class="btn sm" id="reloadHistBtn" onclick="toggleReloadHist()">📁 이 환자 과거 기록 보기 ▾</button>
+          <button type="button" class="btn sm" id="reloadHistBtn" onclick="toggleReloadHist()"><i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾</button>
           <span class="hint">검색·선택한 환자의 과거 내원·상담 기록을 볼 수 있어요.</span>
         </div>
         <div id="reloadHistBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel);max-height:320px;overflow:auto;flex-direction:column;gap:8px"></div>
         <p class="hint" style="margin:6px 0 0">신환은 비워두고 아래에 직접 입력하세요. 저장하면 다음부턴 재진으로 불러올 수 있어요.</p>
       </div>
       <div class="pinfo-fold" id="pinfoFold">
-      <div class="sect-t pf-head" onclick="document.getElementById('pinfoFold').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)">👤 환자 정보 <span class="pf-sum" id="pinfoSummary"></span><span class="pf-caret">▾</span></div>
+      <div class="sect-t pf-head" onclick="document.getElementById('pinfoFold').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="user"></i> 환자 정보 <span class="pf-sum" id="pinfoSummary"></span><span class="pf-caret">▾</span></div>
       <div class="pf-body">
       <div class="row2">
         <div class="fld"><label>병록번호</label><input id="f_mrn" placeholder="6016697"></div>
         <div class="fld"><label>이름</label><input id="f_name" placeholder="홍길동"></div>
       </div>
       <div class="fld"><label>주민번호 앞 7자리 (생년월일-성별)</label><input id="f_rrn" inputmode="numeric" placeholder="예: 901231-1" maxlength="8" oninput="onRRNInput()"><p class="hint" id="rrnHint"></p></div>
-      <div class="fld"><label>📱 휴대폰 번호 <span class="hint">(대기 호출 문자 발송용)</span></label>
+      <div class="fld"><label><i data-lucide="smartphone"></i> 휴대폰 번호 <span class="hint">(대기 호출 문자 발송용)</span></label>
         <input id="f_tel" inputmode="numeric" placeholder="010-1234-5678" maxlength="14">
         <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:5px;cursor:pointer"><input type="checkbox" id="f_smsopt" style="width:auto">문자 받지 않음(호출 문자 제외)</label>
       </div>
-      <div class="fld"><label>🩺 진료의 <span class="hint">(EMR에서 자동, 변경 가능)</span></label>
+      <div class="fld"><label><i data-lucide="stethoscope"></i> 진료의 <span class="hint">(EMR에서 자동, 변경 가능)</span></label>
         <input id="f_doctor" list="doctorOpts" placeholder="예: 홍길동"><datalist id="doctorOpts"></datalist>
       </div>
       <div class="row2">
-        <div class="fld"><label>📅 예약 시간 <span class="hint">(없으면 비워두면 워크인)</span></label><input id="f_reserve" type="time"></div>
-        <div class="fld"><label>🕐 접수 시간 <span class="hint">(기본 현재시각, 수정가능)</span></label><input id="f_receive" type="time"></div>
+        <div class="fld"><label><i data-lucide="calendar"></i> 예약 시간 <span class="hint">(없으면 비워두면 워크인)</span></label><input id="f_reserve" type="time"></div>
+        <div class="fld"><label><i data-lucide="clock"></i> 접수 시간 <span class="hint">(기본 현재시각, 수정가능)</span></label><input id="f_receive" type="time"></div>
       </div>
-      <div class="fld"><label>💰 추가 수납 금액 (원)</label><input id="f_extra" type="number" min="0" placeholder="0" onchange="onExtraFee()"><p class="hint" id="extraHint"></p></div>
+      <div class="fld"><label><i data-lucide="wallet"></i> 추가 수납 금액 (원)</label><input id="f_extra" type="number" min="0" placeholder="0" onchange="onExtraFee()"><p class="hint" id="extraHint"></p></div>
       </div><!-- /pf-body -->
       </div><!-- /pinfo-fold -->
       <div id="routeSection">
       <div class="sect-t" style="margin-top:4px">환자 동선</div>
       <div class="route-build">
         <div id="routinePick" style="display:none">
-          <div class="hint" style="color:var(--teal)">🧩 루틴 동선 (누르면 단계가 한꺼번에 추가돼요)</div>
+          <div class="hint" style="color:var(--teal)"><i data-lucide="puzzle"></i> 루틴 동선 (누르면 단계가 한꺼번에 추가돼요)</div>
           <div class="room-btns" id="routineBtns" style="margin:4px 0 8px"></div>
         </div>
         <div class="route-rows" id="routeRows"></div>
@@ -1093,11 +1093,11 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div><!-- /pcol 좌(정보+동선) -->
       <div class="pcol">
       <div class="pmemo" id="pmemoBox">
-        <div class="pm-head">📌 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
+        <div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
         <textarea id="f_pmemo" rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의… (칸을 벗어나면 즉시 저장)" oninput="cvGrow(this)" onchange="pmemoNow(this.value)"></textarea>
       </div>
       <div class="pcalls" id="callsBox">
-        <div class="pc-head" onclick="document.getElementById('callsBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)">📞 유선 문의 <span class="pc-sum" id="callsSummary">0건</span><span class="pf-caret">▾</span></div>
+        <div class="pc-head" onclick="document.getElementById('callsBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="phone"></i> 유선 문의 <span class="pc-sum" id="callsSummary">0건</span><span class="pf-caret">▾</span></div>
         <div class="pc-body">
           <div id="callsList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:7px"></div>
           <div style="display:flex;gap:6px">
@@ -1108,14 +1108,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         </div>
       </div>
       <div class="pcalls" id="scribeBox">
-        <div class="pc-head" onclick="document.getElementById('scribeBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)">🎙 진료 받아쓰기 기록 <span class="pc-sum" id="scribeSummary">0건</span><span class="pf-caret">▾</span></div>
+        <div class="pc-head" onclick="document.getElementById('scribeBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="mic"></i> 진료 받아쓰기 기록 <span class="pc-sum" id="scribeSummary">0건</span><span class="pf-caret">▾</span></div>
         <div class="pc-body">
           <div id="scribeList" style="display:flex;flex-direction:column;gap:6px"></div>
           <p class="hint" style="margin:6px 0 0">받아쓰기 앱에서 진료 종료 시 자동 저장된 전사·요약입니다(병록번호 기준).</p>
         </div>
       </div>
       <div class="pcalls" id="photoBox">
-        <div class="pc-head" onclick="document.getElementById('photoBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)">📷 환자 사진 <span class="pc-sum" id="photoSummary">0장</span><span class="pf-caret">▾</span></div>
+        <div class="pc-head" onclick="document.getElementById('photoBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="camera"></i> 환자 사진 <span class="pc-sum" id="photoSummary">0장</span><span class="pf-caret">▾</span></div>
         <div class="pc-body">
           <div id="photoGrid" class="photo-grid"></div>
           <div style="display:flex;gap:6px;margin-top:8px">
@@ -1124,7 +1124,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         </div>
       </div>
       <div>
-        <div class="sect-t" style="margin-bottom:6px">💉 준비 지시 <span class="hint" style="font-weight:400">(처치·준비물 — 준비실 도착 시 라벨 인쇄)</span></div>
+        <div class="sect-t" style="margin-bottom:6px"><i data-lucide="syringe"></i> 준비 지시 <span class="hint" style="font-weight:400">(처치·준비물 — 준비실 도착 시 라벨 인쇄)</span></div>
         <div class="fld">
           <label>처치 (무엇을 할지)</label>
           <div id="rxProcChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0"></div>
@@ -1138,12 +1138,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div id="rxPrevList" style="margin-top:8px"></div>
       </div>
       <div id="consultSection" style="display:none">
-        <div class="sect-t" style="margin-bottom:8px">💬 상담 결과</div>
+        <div class="sect-t" style="margin-bottom:8px"><i data-lucide="message-circle"></i> 상담 결과</div>
         <div id="consultRooms" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
 
       <div id="pastConsultSection" style="display:none;margin-top:4px">
-        <button type="button" class="btn" id="pastConsultBtn" style="width:100%" onclick="togglePastConsults()">📋 과거 상담 기록 보기 ▾</button>
+        <button type="button" class="btn" id="pastConsultBtn" style="width:100%" onclick="togglePastConsults()"><i data-lucide="clipboard-list"></i> 과거 상담 기록 보기 ▾</button>
         <div id="pastConsultBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
 
@@ -1161,22 +1161,22 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         </div>
       </div>
       <div id="editSmsSection" style="display:none;margin-top:4px">
-        <button type="button" class="btn" id="editSmsBtn" style="width:100%" onclick="toggleEditSms()">📩 발송 문자 내역 보기 ▾</button>
+        <button type="button" class="btn" id="editSmsBtn" style="width:100%" onclick="toggleEditSms()"><i data-lucide="mail"></i> 발송 문자 내역 보기 ▾</button>
         <div id="editSmsHist" style="display:none;margin-top:8px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
       </div><!-- /pcol 중(상담·전달·문자) -->
       <div class="pcol">
-      <div class="sect-t" style="display:flex;align-items:center;gap:8px">📝 오늘 차팅
+      <div class="sect-t" style="display:flex;align-items:center;gap:8px"><i data-lucide="notebook-pen"></i> 오늘 차팅
         <span style="margin-left:auto;display:inline-flex;gap:4px">
-          <button type="button" class="mini" title="진료의 기본 양식을 오늘 차트에 적용" onclick="editApplyTpl()">📋 기본양식</button>
-          <button type="button" class="mini" title="오늘 차트 내용을 진료의 기본 양식으로 저장" onclick="editSaveTpl()">💾 양식저장</button>
+          <button type="button" class="mini" title="진료의 기본 양식을 오늘 차트에 적용" onclick="editApplyTpl()"><i data-lucide="clipboard"></i> 기본양식</button>
+          <button type="button" class="mini" title="오늘 차트 내용을 진료의 기본 양식으로 저장" onclick="editSaveTpl()"><i data-lucide="save"></i> 양식저장</button>
         </span>
       </div>
       <div class="fld">
         <textarea id="f_chart" class="chart-box" style="min-height:170px" placeholder="오늘 차팅을 입력하세요… (저장 버튼으로 함께 저장됩니다)"></textarea>
         <p class="hint" id="chartCopyHint" style="display:none;color:var(--t-amber)">직전 차트가 복사되었습니다 — 수정 후 저장하세요</p>
       </div>
-      <div class="sect-t" style="display:flex;align-items:center;gap:8px;margin-top:14px;border-top:1px dashed var(--line);padding-top:12px">🔬 오늘 연구 차팅
+      <div class="sect-t" style="display:flex;align-items:center;gap:8px;margin-top:14px;border-top:1px dashed var(--line);padding-top:12px"><i data-lucide="microscope"></i> 오늘 연구 차팅
         <span class="hint" style="font-weight:400;font-size:11px">임상 차트와 별도 저장 · 연구용</span>
       </div>
       <div class="fld">
@@ -1185,8 +1185,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <!-- 지난 기록: 탭으로 전환(길어져도 서로 밀지 않음) -->
       <div class="sect-t" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:14px;border-top:1px solid var(--line);padding-top:12px">지난 기록
         <span style="margin-left:auto;display:inline-flex;gap:5px">
-          <button type="button" class="chart-tab on" data-ptab="clinical" onclick="switchPastTab('clinical')">📋 지난 차트</button>
-          <button type="button" class="chart-tab" data-ptab="research" onclick="switchPastTab('research')">🔬 지난 연구 차트 기록</button>
+          <button type="button" class="chart-tab on" data-ptab="clinical" onclick="switchPastTab('clinical')"><i data-lucide="clipboard-list"></i> 지난 차트</button>
+          <button type="button" class="chart-tab" data-ptab="research" onclick="switchPastTab('research')"><i data-lucide="microscope"></i> 지난 연구 차트 기록</button>
         </span>
       </div>
       <div id="editChartPast" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
@@ -1208,12 +1208,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <button class="btn" onclick="addRoom(false)">+ 방 추가</button>
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>💰 추가 수납 금액 입력 시 자동으로 추가할 방</label>
+        <label><i data-lucide="wallet"></i> 추가 수납 금액 입력 시 자동으로 추가할 방</label>
         <select id="payRoomSel" onchange="setPayRoom(this.value)"></select>
         <p class="hint">접수창에서 추가 수납 금액을 적으면 이 방이 환자 동선 끝에 자동으로 붙습니다.</p>
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>📅 예약배치 — 정시 도착 기준</label>
+        <label><i data-lucide="calendar"></i> 예약배치 — 정시 도착 기준</label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="hint">예약시간</span>
           <input id="punctEarly" type="number" min="0" max="240" style="width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setPunct()">
@@ -1224,7 +1224,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <p class="hint">정시 도착 = 예약시간 전후 이 범위 안에 접수. 정시는 예약시간순 최우선, 너무 일찍 오면 예약시간 도래 전까지 일반 대기, 지각하면 도착시각 순 일반 대기로 합류합니다.</p>
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>🅿️ 주차권 안내 시간</label>
+        <label><i data-lucide="square-parking"></i> 주차권 안내 시간</label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="hint">접수 후</span>
           <input id="parkingMinInp" type="number" min="0" max="720" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setParkingMin(this.value)">
@@ -1233,7 +1233,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <p class="hint">카드의 [지급 완료]를 누르면 표시가 사라지고 지급자·시각이 기록됩니다. 운영해 보며 시간을 조정하세요.</p>
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>🩺 진료의 목록 <span class="hint" style="font-weight:400">(카드에서 빠르게 고를 진료의)</span></label>
+        <label><i data-lucide="stethoscope"></i> 진료의 목록 <span class="hint" style="font-weight:400">(카드에서 빠르게 고를 진료의)</span></label>
         <p class="hint">환자 카드의 진료의 선택·수정에 나타납니다. 쉼표로 구분해 입력하세요. (EMR 연동/직접 입력 시 자동으로 추가됩니다)</p>
         <input id="docListInput" placeholder="예: 홍길동, 임꺽정" onchange="setDocList(this.value)" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--panel2);color:var(--text);outline:0;margin-top:6px">
       </div>
@@ -1528,15 +1528,15 @@ function renderAccount(){
       ${currentUser.team?`<span class="team-tag">${esc(currentUser.team)}</span>`:''}</div>
     </div>
     <div class="acc-sect">
-      <div class="sect-t" style="margin-bottom:6px">📱 모바일 푸시 알림 <span class="hint" style="font-weight:400">(이 기기에만 적용)</span></div>
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="smartphone"></i> 모바일 푸시 알림 <span class="hint" style="font-weight:400">(이 기기에만 적용)</span></div>
       <div id="pushBox"></div>
     </div>
     <div class="acc-sect">
-      <div class="sect-t" style="margin-bottom:6px">🖨 도착 시 라벨 인쇄 <span class="hint" style="font-weight:400">(이 컴퓨터에만 적용)</span></div>
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="printer"></i> 도착 시 라벨 인쇄 <span class="hint" style="font-weight:400">(이 컴퓨터에만 적용)</span></div>
       <p class="hint" style="margin-bottom:8px">선택한 방에 환자가 <b>도착하면 이 컴퓨터에서 라벨이 자동 인쇄</b>됩니다. 방마다 라벨 프린터가 있는 컴퓨터에서, 그 방을 선택하세요.</p>
       <div id="printRoomsList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
       <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:6px">⚡ 인쇄창 없이 완전 자동으로 나오게 하기 (라벨 프린터 PC)</div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:6px"><i data-lucide="zap"></i> 인쇄창 없이 완전 자동으로 나오게 하기 (라벨 프린터 PC)</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn" onclick="downloadPrintLauncher('win')">⬇️ 윈도우용 실행 파일 다운로드</button>
           <button class="btn" onclick="downloadPrintLauncher('mac')">⬇️ 맥용 실행 파일 다운로드</button>
@@ -1544,7 +1544,7 @@ function renderAccount(){
         <div class="hint" style="margin-top:6px;line-height:1.6">받은 파일을 <b>라벨 프린터 연결 PC의 바탕화면</b>에 두고 더블클릭 → 전용 창이 열리면 <b>로그인 후 위에서 자기 방 체크</b> → 창을 켜둔 채로 두면 환자 도착 시 <b>인쇄창 없이 자동으로</b> 라벨이 나옵니다. (라벨 프린터를 <b>기본 프린터</b>로 설정해 두세요. 맥은 최초 1회 터미널에서 <code>chmod +x 파일명</code> 필요)<br>⚠ <b>프린터가 여러 대인 PC</b>는 Windows 설정에서 <b>"Windows에서 내 기본 프린터를 관리" 를 꺼두세요</b> — 켜져 있으면 다른 프린터로 문서를 뽑는 순간 기본 프린터가 바뀌어 라벨이 그쪽으로 나갑니다.<br>⚠ <b>이 전용 창에서 EMR 등 다른 사이트를 열지 마세요</b> — 전용 창의 모든 인쇄는 <b>인쇄창 없이 기본(라벨) 프린터로 바로</b> 나갑니다. EMR 처방전이 "인쇄가 안 되는" 것처럼 보이면, ① EMR을 전용 창이 아닌 <b>일반 크롬</b>에서 열었는지 ② 일반 크롬 바로가기 속성의 "대상"에 <code>--kiosk-printing</code>이 붙어있지 않은지 확인하세요(붙어있으면 삭제 — 무음 인쇄는 이 전용 실행 파일만 사용).</div>
       </div>
       <details style="margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:8px 11px">
-        <summary style="cursor:pointer;font-weight:700;font-size:13px">📖 자동 인쇄 설정 설명서 (눌러서 펼치기)</summary>
+        <summary style="cursor:pointer;font-weight:700;font-size:13px"><i data-lucide="book-open"></i> 자동 인쇄 설정 설명서 (눌러서 펼치기)</summary>
         <div class="hint" style="margin-top:8px;line-height:1.7">
           <b>① 기본 사용</b><br>
           • 이 방 컴퓨터에서 위 목록의 <b>자기 방</b>을 체크하세요.<br>
@@ -1563,9 +1563,9 @@ function renderAccount(){
       </details>
     </div>
     <div class="acc-sect">
-      <div class="sect-t" style="margin-bottom:6px">🔗 EMR(비트플러스) 접수 연동 <span class="hint" style="font-weight:400">(접수 PC마다 1회 설정)</span></div>
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="link"></i> EMR(비트플러스) 접수 연동 <span class="hint" style="font-weight:400">(접수 PC마다 1회 설정)</span></div>
       <div style="padding:10px 12px;border:1px solid var(--teal);border-radius:10px;margin-bottom:10px">
-        <div style="font-weight:800;font-size:13px;margin-bottom:6px">🤖 EMR 접수 연동 확장</div>
+        <div style="font-weight:800;font-size:13px;margin-bottom:6px"><i data-lucide="bot"></i> EMR 접수 연동 확장</div>
         <p class="hint" style="margin:0 0 8px"><b>접수 자동연동</b> — EMR에서 접수등록 시 환자정보(이름·번호·생년월일·시간·전화)가 '환자 추가' 창에 자동 입력됩니다(동선만 선택·저장).</p>
         <a class="btn" href="emr-ext.zip" download="EMR연동_확장.zip" style="text-decoration:none">⬇️ EMR 연동 확장 다운로드</a>
         <div class="hint" style="margin-top:6px;line-height:1.7">
@@ -1583,13 +1583,13 @@ function renderAccount(){
     html+=`<div class="acc-sect">
       <div class="sect-t" style="margin-bottom:8px">데이터 관리</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        <button class="btn sm" onclick="backupData()">💾 전체 백업 (다운로드)</button>
-        <button class="btn sm" onclick="exportResearchData()">🔬 연구 데이터 내보내기 (CSV)</button>
-        <button class="btn sm" onclick="resetSeq()">🔢 등록번호 초기화</button>
-        <button class="btn sm" onclick="openAuditLog()">🔒 접근·활동 기록</button>
-        <button class="btn sm" onclick="runSelfTest()">🧪 자체 점검</button>
-        ${sup?`<button class="btn sm" id="restoreBtn" onclick="document.getElementById('restoreFile').click()">♻️ 백업 복원</button>
-        <button class="btn ghost-red sm" id="wipeAllBtn" onclick="wipeAllRecords()">🗑 전체 기록 삭제</button>
+        <button class="btn sm" onclick="backupData()"><i data-lucide="save"></i> 전체 백업 (다운로드)</button>
+        <button class="btn sm" onclick="exportResearchData()"><i data-lucide="microscope"></i> 연구 데이터 내보내기 (CSV)</button>
+        <button class="btn sm" onclick="resetSeq()"><i data-lucide="hash"></i> 등록번호 초기화</button>
+        <button class="btn sm" onclick="openAuditLog()"><i data-lucide="lock"></i> 접근·활동 기록</button>
+        <button class="btn sm" onclick="runSelfTest()"><i data-lucide="flask-conical"></i> 자체 점검</button>
+        ${sup?`<button class="btn sm" id="restoreBtn" onclick="document.getElementById('restoreFile').click()"><i data-lucide="recycle"></i> 백업 복원</button>
+        <button class="btn ghost-red sm" id="wipeAllBtn" onclick="wipeAllRecords()"><i data-lucide="trash-2"></i> 전체 기록 삭제</button>
         <input type="file" id="restoreFile" accept="application/json,.json" style="display:none" onchange="onRestoreFile(event)">`:''}
       </div>
       <p class="hint" style="margin-top:6px">백업: 모든 환자·내원·통계·등록부·설정을 JSON 파일로 저장합니다.<br>🔬 연구 데이터: 환자정보+임상차트+연구차트를 내원 1건당 1행 CSV로 내보냅니다(엑셀·통계용). <b>개인정보(PHI) 포함 — 연구윤리·개인정보 규정에 맞게 보관하세요.</b><br>등록번호 초기화: 환자 카드의 #번호를 #1부터 다시 시작합니다(날짜가 바뀌면 자동으로도 초기화됨).${sup?`<br>복원: 백업 파일을 불러와 현재 데이터를 그 시점으로 되돌립니다(현재 데이터는 덮어쓰여짐).<br>전체 삭제: 환자·내원·통계·등록부를 모두 지웁니다(되돌릴 수 없음, 방·계정·루틴 설정은 유지).`:`<br><span style="color:var(--sub)">♻️ 복원 · 🗑 전체 삭제는 최고관리자만 사용할 수 있습니다.</span>`}</p>
@@ -2154,8 +2154,8 @@ function renderPushBox(){
   if(!pushSupported()){box.innerHTML='<p class="hint">이 기기는 푸시 알림을 지원하지 않습니다. (아이폰은 "홈 화면에 추가" 후 사용)</p>';return;}
   const on=pushOn();
   box.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <span style="font-weight:700;color:${on?'var(--green)':'var(--sub)'}">${on?'🔔 알림 켜짐':'🔕 알림 꺼짐'}</span>
-    ${on?`<button class="btn sm" onclick="sendTestPush()">🔔 테스트 알림</button><button class="btn sm" onclick="disablePush()">끄기</button>`:`<button class="btn sm primary" onclick="enablePush()">📱 이 기기에서 알림 켜기</button>`}
+    <span style="font-weight:700;color:${on?'var(--green)':'var(--sub)'}">${on?'<i data-lucide="bell"></i> 알림 켜짐':'<i data-lucide="bell-off"></i> 알림 꺼짐'}</span>
+    ${on?`<button class="btn sm" onclick="sendTestPush()"><i data-lucide="bell-ring"></i> 테스트 알림</button><button class="btn sm" onclick="disablePush()">끄기</button>`:`<button class="btn sm primary" onclick="enablePush()">📱 이 기기에서 알림 켜기</button>`}
   </div>
   <p class="hint" style="margin-top:6px">담당 전달사항이 오면 폰이 잠겨 있어도 알림이 옵니다. <b>실제 알림은 "내가 담당자인 방"에 <u>다른 사람</u>이 전달사항을 쓸 때</b> 옵니다(내가 쓴 건 나에게 안 옴). ${FCM_VAPID_KEY?'':'<b style="color:var(--orange)">(관리자 설정 대기 중)</b>'}</p>`;
 }
@@ -2765,7 +2765,7 @@ function renderDischargedBoard(board,q){
   const wrap=document.createElement("div");wrap.className="vlist-wrap";
   wrap.innerHTML=`
     <div class="vlist-head">
-      <span class="vl-title">📋 내원 목록 <b>${rows.length}</b>명</span>
+      <span class="vl-title"><i data-lucide="clipboard-list"></i> 내원 목록 <b>${rows.length}</b>명</span>
       <div class="vl-date">
         <button class="vl-nav" title="이전 날" onclick="visitDateShift(-1)">◀</button>
         <input type="date" value="${ymd}" max="${localYMD(new Date())}" onchange="setVisitDate(this.value)">
@@ -2806,7 +2806,7 @@ function renderDischargedBoard(board,q){
         <td>${esc(r.recv)||'-'}</td>
         <td>${fmtClock(r.totalMs||0)}</td>
         <td>${r.done?r.doneLabel:`<span class="vl-live">${esc(r.status||'진료중')}</span>`}</td>
-        <td>${r.done?`<button class="vl-restore" title="다시 원내(보드)로 되돌리기" onclick="restoreVisit('${esc(r.vid)}')">↩️ 되돌리기</button>`:''} <button class="vl-restore" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(r.mrn,r.name),name:r.name,mrn:r.mrn||'',birth:r.birth||'',sex:r.sex||''}))}')">📄 서류</button> <button class="vl-restore" title="이 환자 과거 기록" onclick="openHistKey('${esc(pKey(r.mrn,r.name))}')">📁</button></td>
+        <td>${r.done?`<button class="vl-restore" title="다시 원내(보드)로 되돌리기" onclick="restoreVisit('${esc(r.vid)}')">↩️ 되돌리기</button>`:''} <button class="vl-restore" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(r.mrn,r.name),name:r.name,mrn:r.mrn||'',birth:r.birth||'',sex:r.sex||''}))}')"><i data-lucide="file-text"></i> 서류</button> <button class="vl-restore" title="이 환자 과거 기록" onclick="openHistKey('${esc(pKey(r.mrn,r.name))}')">📁</button></td>
       </tr>`;}).join("")}</tbody></table>`;
   wrap.appendChild(sc);board.appendChild(wrap);
 }
@@ -2863,7 +2863,7 @@ function renderBirdView(){
     const list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room).sort((a,b)=>roomSort(a,b,room));
     return `<div class="bird-room">
       <div class="bird-rt"><span>${esc(room)}</span><span class="bird-c">${list.length}</span></div>
-      ${list.length?list.map(p=>{const st=p.status||'대기';return `<div class="bird-p st-${p.out?'out':st==='진행'?'prog':st==='준비'?'prep':'wait'}">${p.out?'🚶':''}${p.designated?'⭐':''}${p.seq?`<b>#${p.seq}</b> `:''}<span class="bird-nm">${esc(p.name)}</span><span class="bird-st">${p.out?'외출':esc(st)}</span></div>`;}).join(""):'<div class="bird-empty">—</div>'}
+      ${list.length?list.map(p=>{const st=p.status||'대기';return `<div class="bird-p st-${p.out?'out':st==='진행'?'prog':st==='준비'?'prep':'wait'}">${p.out?'<i data-lucide="footprints"></i>':''}${p.designated?'⭐':''}${p.seq?`<b>#${p.seq}</b> `:''}<span class="bird-nm">${esc(p.name)}</span><span class="bird-st">${p.out?'외출':esc(st)}</span></div>`;}).join(""):'<div class="bird-empty">—</div>'}
     </div>`;
   }).join("")+`</div>`;
 }
@@ -2950,7 +2950,7 @@ function renderWaitScreen(){
   if(sel)sel.innerHTML=ROOMS.map(r=>`<button class="chipf ${waitRooms.includes(r)?'on':''}" onclick="toggleWaitRoom('${esc(r)}')">${esc(r)}</button>`).join("");
   const cols=document.getElementById("waitCols");if(!cols)return;
   const rs=waitRooms.filter(r=>ROOMS.includes(r));
-  if(!rs.length){cols.classList.remove("rot");cols.innerHTML=`<div class="wait-hint">⚙ 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
+  if(!rs.length){cols.classList.remove("rot");cols.innerHTML=`<div class="wait-hint"><i data-lucide="settings"></i> 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
   const rot=waitRotSec>0&&rs.length>1;   // 회전 모드: 한 방씩 크게, N초마다 다음 방
   cols.classList.toggle("rot",rot);
   let showRs=rs;
@@ -2972,12 +2972,12 @@ function renderWaitScreen(){
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
 function smsBtnHtml(p){
-  if(!p.tel) return `<button class="icon-btn" title="휴대폰 번호 없음 — 수정에서 입력" onclick="event.stopPropagation();openEdit('${p.id}')" style="opacity:.45">📱 호출</button>`;
+  if(!p.tel) return `<button class="icon-btn" title="휴대폰 번호 없음 — 수정에서 입력" onclick="event.stopPropagation();openEdit('${p.id}')" style="opacity:.45"><i data-lucide="smartphone"></i> 호출</button>`;
   if(p.smsOptOut) return '';
   if(p.smsFailAt) return `<button class="icon-btn sms fail" title="문자 발송 실패: ${esc(p.smsFailMsg||'')} — 클릭해 다시 시도" onclick="event.stopPropagation();sendCallSms('${p.id}')">📱 재발송</button>`;
   if(p.smsCalledAt){ const _d=new Date(p.smsCalledAt); const _hm=String(_d.getHours()).padStart(2,'0')+':'+String(_d.getMinutes()).padStart(2,'0');
-    return `<button class="icon-btn sms done" title="호출 문자 보냄 (${_hm}) — 클릭해 다시 보내기" onclick="event.stopPropagation();sendCallSms('${p.id}')">📱 ${_hm}</button>`; }
-  return `<button class="icon-btn sms" title="대기 호출 문자 보내기" onclick="event.stopPropagation();sendCallSms('${p.id}')">📱 호출</button>`;
+    return `<button class="icon-btn sms done" title="호출 문자 보냄 (${_hm}) — 클릭해 다시 보내기" onclick="event.stopPropagation();sendCallSms('${p.id}')"><i data-lucide="smartphone"></i> ${_hm}</button>`; }
+  return `<button class="icon-btn sms" title="대기 호출 문자 보내기" onclick="event.stopPropagation();sendCallSms('${p.id}')"><i data-lucide="smartphone"></i> 호출</button>`;
 }
 function cardEl(p){
   const c=document.createElement("div");
@@ -3002,7 +3002,7 @@ function cardEl(p){
   if(isConsultRoom(curRoom(p))){
     const room=curRoom(p);const c=(p.consults&&p.consults[room])||{result:"",reason:"",by:"",at:""};
     consultHtml=`<div class="consult">
-      <div class="cs-t">💬 ${esc(room)} 상담 결과</div>
+      <div class="cs-t"><i data-lucide="message-circle"></i> ${esc(room)} 상담 결과</div>
       <div class="cs-btns">
         <button class="cs-b done ${c.result==='시행'?'on':''}" onclick="event.stopPropagation();setConsultResult('${p.id}','${esc(room)}','시행')">시행</button>
         <button class="cs-b other ${c.result==='기타'?'on':''}" onclick="event.stopPropagation();setConsultResult('${p.id}','${esc(room)}','기타')">기타</button>
@@ -3023,24 +3023,24 @@ function cardEl(p){
   const _rp=(p.rxProc||'').trim(), _ri=(p.rxItems||'').trim();
   // 준비지시 버튼은 제거 — 내용이 있을 때만 요약을 표시(클릭 시 환자 정보 창), 없으면 아무것도 안 보임
   const rxHtml=(_rp||_ri)
-    ? `<div class="rx-sum" onclick="event.stopPropagation();openRx('${p.id}')" title="준비 지시 보기/수정">💉 ${_rp?`<b>${esc(_rp)}</b>`:''}${_rp&&_ri?' · ':''}${_ri?esc(_ri):''}</div>`
+    ? `<div class="rx-sum" onclick="event.stopPropagation();openRx('${p.id}')" title="준비 지시 보기/수정"><i data-lucide="syringe"></i> ${_rp?`<b>${esc(_rp)}</b>`:''}${_rp&&_ri?' · ':''}${_ri?esc(_ri):''}</div>`
     : ``;
   c.innerHTML=`
     <div class="card-top">
       ${p.seq?`<span class="seqno" title="오늘 등록 순서">#${p.seq}</span>`:''}
       <span class="pname">${esc(p.name)}</span>
-      ${p.designated?`<span class="desig-mark" title="지정 진료">⭐ 지정</span>`:''}
+      ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       <span class="card-doc card-doc-top">${doctorChipHtml(p)}</span>
     </div>
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
-    ${p.reserveAt?`<div class="card-time"><span class="t-res">📅 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
-    ${p.out?`<div class="out-banner">🚶 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
-    ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic">🅿️</span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" onclick="event.stopPropagation();toggleParking('${p.id}')">지급 완료</button></div>`:''}
-    ${p.parking?`<div class="park-done" title="클릭: 지급 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')">🅿️ 주차권 지급${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
+    ${p.reserveAt?`<div class="card-time"><span class="t-res"><i data-lucide="calendar"></i> 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
+    ${p.out?`<div class="out-banner"><i data-lucide="footprints"></i> 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
+    ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" onclick="event.stopPropagation();toggleParking('${p.id}')">지급 완료</button></div>`:''}
+    ${p.parking?`<div class="park-done" title="클릭: 지급 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
     <div class="total" data-pid="${p.id}">${totalLabel(p)}</div>
-    ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'💰 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
+    ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     <div class="route"><span class="label">동선 (${p.step+1}/${p.route.length})${dwell}</span>${steps}</div>
-    ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info">🔢 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
+    ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
     <div class="status-row">
       <button class="st-btn wait ${st==='대기'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','대기')">대기</button>
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
@@ -3054,9 +3054,9 @@ function cardEl(p){
     <div class="card-foot">
       <button class="out-btn ${p.out?'on':''}" title="${p.out?'복귀 — 다시 대기열로':'외출 — 잠시 나갔다 옴(시간 정지)'}" onclick="event.stopPropagation();toggleOut('${p.id}')">${p.out?'↩️ 복귀':'🚶 외출'}</button>
       ${smsBtnHtml(p)}
-      <button class="icon-btn" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="event.stopPropagation();openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(p.mrn,p.name),name:p.name,mrn:p.mrn||'',birth:p.birth||'',sex:p.sex||''}))}')">📄 서류</button>
+      <button class="icon-btn" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="event.stopPropagation();openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(p.mrn,p.name),name:p.name,mrn:p.mrn||'',birth:p.birth||'',sex:p.sex||''}))}')"><i data-lucide="file-text"></i> 서류</button>
       <button class="icon-btn" title="환자 정보·차팅 열기" onclick="event.stopPropagation();openEdit('${p.id}')">✎ 수정</button>
-      <button class="icon-btn del" title="이 환자 삭제" onclick="event.stopPropagation();deletePatientById('${p.id}')">🗑 삭제</button>
+      <button class="icon-btn del" title="이 환자 삭제" onclick="event.stopPropagation();deletePatientById('${p.id}')"><i data-lucide="trash-2"></i> 삭제</button>
     </div>`;
   c.addEventListener("dragstart",e=>{draggedPid=p.id;draggedRoom=curRoom(p);e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);c.classList.add("dragging");});
   c.addEventListener("dragend",()=>{c.classList.remove("dragging");document.querySelectorAll(".card.drop-before,.card.drop-after").forEach(x=>x.classList.remove("drop-before","drop-after"));});
@@ -3083,7 +3083,7 @@ function activeMsNow(p){return (p.activeMs||0)+((p.status==='진행'&&!p.out)?Ma
 function dwellMs(p){return waitMsNow(p)+prepMsNow(p)+activeMsNow(p);}
 function outMsNow(p){return (p.outMs||0)+((p.out&&p.outAt)?Math.max(0,Date.now()-new Date(p.outAt).getTime()):0);}  // 외출 누적시간
 function totalMsNow(p){return Math.max(0,(Date.now()-new Date(p.arrivedAt||p.enteredAt).getTime())-outMsNow(p));}  // 원내시간(외출 제외)
-function totalLabel(p){return `🏥 원내 <b>${fmtClock(totalMsNow(p))}</b>`;}
+function totalLabel(p){return `<i data-lucide="hospital"></i> 원내 <b>${fmtClock(totalMsNow(p))}</b>`;}
 function nextSeq(){const t=localYMD(new Date());
   if(seqDate!==t){seqNext=1;seqDate=t;localStorage.setItem("patientBoard_seqdate",t);}  // 날짜 바뀌면 자동 리셋
   // 동시 등록 중복 방지: 다른 기기가 먼저 쓴 오늘 번호(onSnapshot로 동기화됨)보다 항상 크게 매김
@@ -3621,8 +3621,8 @@ function renderStats(){
       <button class="btn sm" style="margin-left:auto" onclick="exportStatsCurrent()">⬇ 엑셀 다운로드</button>
     </div>
     <div class="cf-row" style="margin-bottom:10px;border-bottom:1px solid var(--line2);padding-bottom:8px">
-      <button class="chipf ${statsTab==='time'?'on':''}" onclick="statsTab='time';renderStats()">⏱ 체류 통계</button>
-      <button class="chipf ${statsTab==='consult'?'on':''}" onclick="statsTab='consult';renderStats()">💬 상담 기록</button>
+      <button class="chipf ${statsTab==='time'?'on':''}" onclick="statsTab='time';renderStats()"><i data-lucide="timer"></i> 체류 통계</button>
+      <button class="chipf ${statsTab==='consult'?'on':''}" onclick="statsTab='consult';renderStats()"><i data-lucide="message-circle"></i> 상담 기록</button>
       <span class="hint" style="margin-left:auto">${statsDate?esc(statsDate):'전체 기간'}</span>
     </div>`;
   if(statsTab==='consult'){html+=consultLogHtml();body.innerHTML=html;return;}
@@ -3712,7 +3712,7 @@ async function wipeAllRecords(){
     if(document.getElementById("accountModal").classList.contains("show"))renderAccount();
     alert("모든 환자 기록을 삭제했습니다.");
   }catch(e){console.error("wipe",e);alert("삭제 중 오류가 발생했습니다: "+(e&&e.message||e));}
-  finally{const b=document.getElementById("wipeAllBtn");if(b){b.disabled=false;b.textContent="🗑 전체 기록 삭제";}}
+  finally{const b=document.getElementById("wipeAllBtn");if(b){b.disabled=false;b.innerHTML='<i data-lucide="trash-2"></i> 전체 기록 삭제';}}
 }
 /* admin 전용: 전체 데이터 백업(JSON 다운로드) */
 function backupDump(){   // 백업 전체 스냅샷(테스트 가능하도록 분리) — 새 데이터 종류를 추가하면 반드시 여기에도 포함할 것
@@ -3769,7 +3769,7 @@ async function onRestoreFile(ev){
   const btn=document.getElementById("restoreBtn");if(btn){btn.disabled=true;btn.textContent="복원 중…";}
   try{await applyRestore(dump);alert("백업을 복원했습니다.");}
   catch(e){console.error("restore",e);alert("복원 중 오류가 발생했습니다: "+(e&&e.message||e));}
-  finally{const b=document.getElementById("restoreBtn");if(b){b.disabled=false;b.textContent="♻️ 백업 복원";}}
+  finally{const b=document.getElementById("restoreBtn");if(b){b.disabled=false;b.innerHTML='<i data-lucide="recycle"></i> 백업 복원';}}
 }
 async function writeAllDocs(col,arr,prefix){
   if(!col)return;let b=cloud.db.batch(),n=0;
@@ -3913,8 +3913,8 @@ function visitDetailHtml(v){
     conv+=`</div>`;});});
   let cons="";
   Object.keys(v.consults||{}).forEach(room=>{const c=v.consults[room];if(c&&(c.result||c.reason))cons+=`<div class="hv-note"><b>${esc(room)}</b> <span style="color:${c.result==='시행'?'var(--green)':'var(--orange)'}">${esc(c.result||'-')}</span> ${esc(c.reason||'')} <span class="hint">${c.by?esc(c.by)+' · ':''}${hhmm(c.at)}</span></div>`;});
-  return `${v.doctor?`<div class="hv-sec">진료의</div><div class="hv-route">🩺 ${esc(v.doctor)}</div>`:''}
-    <div class="hv-sec">📝 차팅</div>${chartBoxHtml('v:'+v.id, v.chart||'')}
+  return `${v.doctor?`<div class="hv-sec">진료의</div><div class="hv-route"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</div>`:''}
+    <div class="hv-sec"><i data-lucide="notebook-pen"></i> 차팅</div>${chartBoxHtml('v:'+v.id, v.chart||'')}
     ${smsHistoryHtml(v.smsHistory)}
     <div class="hv-sec">동선</div><div class="hv-route">${route||'(없음)'}</div>
     <div class="hv-sec">방별 시간</div>${rooms||'<div class="hint">기록 없음</div>'}
@@ -3936,15 +3936,15 @@ function saveResearch(cid, text){
 }
 /* 발송 문자 내역 표시 */
 function smsHistoryHtml(list){
-  if(!Array.isArray(list)||!list.length) return `<div class="hv-sec">📩 발송 문자</div><div class="hint">발송 내역 없음</div>`;
+  if(!Array.isArray(list)||!list.length) return `<div class="hv-sec"><i data-lucide="mail"></i> 발송 문자</div><div class="hint">발송 내역 없음</div>`;
   const rows=list.slice().sort((a,b)=>(b.at||0)-(a.at||0)).map(e=>{
     const t=e.at?ymd(new Date(e.at).toISOString()):'-';
     const kind=e.kind==='auto'?'자동':'수동';
     const detail=e.kind==='auto'?`${e.room||''} ${e.pos?e.pos+'번째':''}${e.eta?' · 예상 '+e.eta+'분':''}`:`${e.room||''} 호출`;
-    const who=(e.kind!=='auto'&&e.by)?`<span class="hint" title="보낸 사람">👤 ${esc(e.by)}</span>`:'';
+    const who=(e.kind!=='auto'&&e.by)?`<span class="hint" title="보낸 사람"><i data-lucide="user"></i> ${esc(e.by)}</span>`:'';
     return `<div class="sms-rec"><span class="hint">${t}</span><span class="sms-kind">${kind}</span><span>${esc(detail)}</span>${who}</div>`;
   }).join("");
-  return `<div class="hv-sec">📩 발송 문자 <span class="hint" style="font-weight:400">${list.length}건</span></div>${rows}`;
+  return `<div class="hv-sec"><i data-lucide="mail"></i> 발송 문자 <span class="hint" style="font-weight:400">${list.length}건</span></div>${rows}`;
 }
 /* 차팅 칸 높이 자동 조절 */
 function cvGrow(ta){ ta.style.height='auto'; ta.style.height=Math.min(600,Math.max(54,ta.scrollHeight+2))+'px'; }
@@ -3970,7 +3970,7 @@ function fillEditChart(p){
   const pastCharted = past.filter(v=>(v.chart||'').trim());   // 내용이 있는 지난 차트만 — 빈 기록은 날짜+공란으로 표시하지 않음
   box.innerHTML = pastCharted.length ? pastCharted.map(v=>`
     <div class="cv-item">
-      <div class="cv-date">📅 ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint">🩺 ${esc(v.doctor)}</span>`:''}</div>
+      <div class="cv-date"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}</div>
       <textarea class="cv-ta" oninput="cvGrow(this)" onchange="saveChart('v:${esc(v.id)}',this.value)">${esc(v.chart||'')}</textarea>
     </div>`).join('') : (past.length ? '' : '<div class="hint">지난 내원 기록이 없습니다.</div>');
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
@@ -3978,7 +3978,7 @@ function fillEditChart(p){
   const sec=document.getElementById('editSmsSection'), sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');
   if(sec)sec.style.display=sms.length?'':'none';   // 발송 이력 있을 때만 섹션 표시
   if(sh){ sh.innerHTML=smsHistoryHtml(sms); sh.style.display='none'; }
-  if(sb)sb.textContent=`📩 발송 문자 내역 보기${sms.length?` (${sms.length})`:''} ▾`;
+  if(sb)sb.innerHTML=`<i data-lucide="mail"></i> 발송 문자 내역 보기${sms.length?` (${sms.length})`:''} ▾`;
   requestAnimationFrame(()=>{[...box.querySelectorAll('.cv-ta')].forEach(cvGrow);});
   // 🔬 연구용 차팅(임상과 동일 구조 — 매 내원 별도 + 지난 연구 기록). 단, 직전값 자동복사는 하지 않음(매 내원 새로 기록)
   const rta=document.getElementById('f_research');
@@ -3988,7 +3988,7 @@ function fillEditChart(p){
     const pastR=past.filter(v=>(v.researchChart||'').trim());
     rbox.innerHTML=pastR.length ? pastR.map(v=>`
       <div class="cv-item">
-        <div class="cv-date">📅 ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint">🩺 ${esc(v.doctor)}</span>`:''}</div>
+        <div class="cv-date"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}</div>
         <textarea class="cv-ta" oninput="cvGrow(this)" onchange="saveResearch('v:${esc(v.id)}',this.value)">${esc(v.researchChart||'')}</textarea>
       </div>`).join('') : (past.length ? '' : '<div class="hint">지난 연구 차트 기록이 없습니다.</div>');
     requestAnimationFrame(()=>{cvGrow(rta);[...rbox.querySelectorAll('.cv-ta')].forEach(cvGrow);});
@@ -4065,7 +4065,7 @@ function renderHistory(){
         <span class="hint">${g.mrn?esc(g.mrn)+' · ':''}${esc(g.birth||'')}</span>
         <span class="hint" style="margin-left:auto">방문 ${g.visits.length}회</span>
         <span class="hv-total">${lv?ymd(new Date(lv).toISOString()).slice(0,10):'-'}</span>
-        ${isAdmin()?`<button class="hv-del" title="이 환자 기록 삭제" onclick="event.stopPropagation();deletePatientRecord('${esc(g.key)}')">🗑</button>`:'<span class="hint">›</span>'}
+        ${isAdmin()?`<button class="hv-del" title="이 환자 기록 삭제" onclick="event.stopPropagation();deletePatientRecord('${esc(g.key)}')"><i data-lucide="trash-2"></i></button>`:'<span class="hint">›</span>'}
       </div></div>`;}).join("");
   }else{
     // 특정 환자 상세 (과거 기록 모두)
@@ -4079,10 +4079,10 @@ function renderHistory(){
         <span class="hint"> ${g.mrn?esc(g.mrn)+' · ':''}${esc(g.birth||'')} · 총 ${visits.length}회 내원</span></div>
         <div class="cf-row" style="margin:0 0 0 auto">
           <button class="chipf ${histView==='all'?'on':''}" onclick="histView='all';renderHistory()">전체 기록</button>
-          <button class="chipf ${histView==='consult'?'on':''}" onclick="histView='consult';renderHistory()">💬 상담만</button>
+          <button class="chipf ${histView==='consult'?'on':''}" onclick="histView='consult';renderHistory()"><i data-lucide="message-circle"></i> 상담만</button>
           ${isAdmin()?`<button class="btn sm" onclick="downloadPatientChart('${esc(g.key)}')" title="이 환자 차팅 전체 다운로드(관리자)">⬇️ 차팅 다운로드</button>`:''}
         </div>
-        ${g.mrn?`<div class="pmemo" style="flex:1 1 100%"><div class="pm-head">📌 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
+        ${g.mrn?`<div class="pmemo" style="flex:1 1 100%"><div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
           <textarea rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의…" oninput="cvGrow(this)" onchange="setRegMemo('${esc(g.mrn)}','${esc(g.name)}',this.value)">${esc(regMemo(g.mrn))}</textarea></div>`:''}
       </div>`;
     if(histView==='consult'){
@@ -4096,7 +4096,7 @@ function renderHistory(){
       else{
         const byRoom={};list.forEach(c=>{(byRoom[c.room]||(byRoom[c.room]=[])).push(c);});
         Object.keys(byRoom).forEach(room=>{
-          inner+=`<div class="hv-sec" style="color:var(--teal)">💬 ${esc(room)} <span class="hint" style="font-weight:400">${byRoom[room].length}건</span></div>`;
+          inner+=`<div class="hv-sec" style="color:var(--teal)"><i data-lucide="message-circle"></i> ${esc(room)} <span class="hint" style="font-weight:400">${byRoom[room].length}건</span></div>`;
           byRoom[room].forEach(c=>{const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(c.result)}</span>`:`<span class="hint">결과 미입력</span>`;
             inner+=`<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
         });
@@ -4109,7 +4109,7 @@ function renderHistory(){
       if(livep){
         liveHtml=`<div class="hv-live">
           <div class="hv-sec" style="color:var(--teal);margin-top:0">🟢 오늘 (진행 중)${livep.doctor?` · 🩺 ${esc(livep.doctor)}`:''}</div>
-          <div class="hv-sec">📝 차팅</div>${chartBoxHtml('live:'+livep.id, livep.chart||'')}
+          <div class="hv-sec"><i data-lucide="notebook-pen"></i> 차팅</div>${chartBoxHtml('live:'+livep.id, livep.chart||'')}
           ${smsHistoryHtml(livep.smsHistory)}
         </div>`;
       }
@@ -4117,7 +4117,7 @@ function renderHistory(){
         <div class="hv-head" onclick="this.parentElement.classList.toggle('open')">
           <span class="hint">${ymd(v.dischargedAt)}</span>
           <span class="hv-total" style="margin-left:auto">원내 ${fmtClock(v.totalMs)}</span>
-          ${isAdmin()?`<button class="hv-del" title="이 방문 기록 삭제" onclick="event.stopPropagation();deleteVisit('${esc(v.id)}')">🗑</button>`:''}
+          ${isAdmin()?`<button class="hv-del" title="이 방문 기록 삭제" onclick="event.stopPropagation();deleteVisit('${esc(v.id)}')"><i data-lucide="trash-2"></i></button>`:''}
         </div>
         <div class="hv-detail">${visitDetailHtml(v)}</div></div>`).join(""):'<div class="route-empty">완료된 내원 기록이 없습니다. (현재 보드에 있거나, 아직 내보내기 전입니다)</div>');
       requestAnimationFrame(()=>{[...box.querySelectorAll('.pmemo textarea')].forEach(cvGrow);});
@@ -4206,9 +4206,9 @@ function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)e
 function doctorChipHtml(p){
   const cur=p.doctor||'';
   const opts=[...new Set([cur,...DOCTORS].filter(Boolean))];
-  if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')">🩺 진료의 지정</span>`;
+  if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
-  return `🩺 <select class="doc-sel" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}',this.value)">${optHtml}</select>`;
+  return `<i data-lucide="stethoscope"></i> <select class="doc-sel" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}',this.value)">${optHtml}</select>`;
 }
 /* 카드에서 진료의 빠른 변경(대기 중 진료의 교체) */
 function changeDoctor(pid,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();p.doctor=nv;if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}audit('진료의변경',p.name+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
@@ -4225,8 +4225,8 @@ function reloadTarget(){
 function toggleReloadHist(){
   reloadHistOpen=!reloadHistOpen;
   const b=document.getElementById("reloadHistBody"),btn=document.getElementById("reloadHistBtn");
-  if(reloadHistOpen){renderReloadHistory();b.style.display="flex";btn.textContent="📁 이 환자 과거 기록 접기 ▴";}
-  else{b.style.display="none";btn.textContent="📁 이 환자 과거 기록 보기 ▾";}
+  if(reloadHistOpen){renderReloadHistory();b.style.display="flex";btn.innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 접기 ▴';}
+  else{b.style.display="none";btn.innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾';}
 }
 function renderReloadHistory(){
   const box=document.getElementById("reloadHistBody");if(!box)return;
@@ -4250,7 +4250,7 @@ function openAdd(){
   document.getElementById("pastConsultSection").style.display="none";
   document.getElementById("reloadSection").style.display="";
   fillRegOpts();set("f_reload","");
-  reloadHistOpen=false;document.getElementById("reloadHistBody").style.display="none";document.getElementById("reloadHistBtn").textContent="📁 이 환자 과거 기록 보기 ▾";
+  reloadHistOpen=false;document.getElementById("reloadHistBody").style.display="none";document.getElementById("reloadHistBtn").innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾';
   renderRoomButtons();renderRoutineButtons();renderRouteRows();
   set("f_mrn","");set("f_name","");set("f_rrn","");document.getElementById("rrnHint").textContent="";set("f_extra","");document.getElementById("extraHint").textContent="";
   set("f_reserve","");set("f_receive",nowHM());   // 접수시간 기본 현재시각, 예약은 비움
@@ -4313,15 +4313,15 @@ function initPastConsults(p){
   sec.style.display="";
   const n=patientPastConsults(p).length;
   document.getElementById("pastConsultBody").style.display="none";
-  document.getElementById("pastConsultBtn").textContent=`📋 과거 상담 기록 보기${n?` (${n})`:''} ▾`;
+  document.getElementById("pastConsultBtn").innerHTML=`<i data-lucide="clipboard-list"></i> 과거 상담 기록 보기${n?` (${n})`:''} ▾`;
 }
 function togglePastConsults(){
   if(!editId)return;
   pastConsultOpen=!pastConsultOpen;
   const body=document.getElementById("pastConsultBody"),btn=document.getElementById("pastConsultBtn");
   const p=data.find(x=>x.id===editId);const n=p?patientPastConsults(p).length:0;
-  if(pastConsultOpen){renderPastConsults();body.style.display="";btn.textContent=`📋 과거 상담 기록 접기${n?` (${n})`:''} ▴`;}
-  else{body.style.display="none";btn.textContent=`📋 과거 상담 기록 보기${n?` (${n})`:''} ▾`;}
+  if(pastConsultOpen){renderPastConsults();body.style.display="";btn.innerHTML=`<i data-lucide="clipboard-list"></i> 과거 상담 기록 접기${n?` (${n})`:''} ▴`;}
+  else{body.style.display="none";btn.innerHTML=`<i data-lucide="clipboard-list"></i> 과거 상담 기록 보기${n?` (${n})`:''} ▾`;}
 }
 function renderPastConsults(){
   const p=data.find(x=>x.id===editId);if(!p)return;
@@ -4342,7 +4342,7 @@ function renderConsultEditor(){
   sec.style.display="";
   document.getElementById("consultRooms").innerHTML=rooms.map(room=>{const c=(p.consults&&p.consults[room])||{result:"",reason:"",by:"",at:""};return `
     <div class="nroom">
-      <div class="nrt">💬 ${esc(room)}</div>
+      <div class="nrt"><i data-lucide="message-circle"></i> ${esc(room)}</div>
       <div class="cs-btns" style="margin-bottom:6px">
         <button type="button" class="cs-b done ${c.result==='시행'?'on':''}" onclick="setConsultResult('${p.id}','${esc(room)}','시행')">시행</button>
         <button type="button" class="cs-b other ${c.result==='기타'?'on':''}" onclick="setConsultResult('${p.id}','${esc(room)}','기타')">기타</button>
@@ -4424,7 +4424,7 @@ function fillScribeNotes(mrn){
         <div style="display:flex;gap:8px;align-items:center">
           <span class="hint" style="flex:0 0 auto">${when}</span>
           ${n.room?`<span class="hint">${esc(n.room)}</span>`:''}
-          ${n.byName?`<span class="hint">👤 ${esc(n.byName)}</span>`:''}
+          ${n.byName?`<span class="hint"><i data-lucide="user"></i> ${esc(n.byName)}</span>`:''}
           <span style="flex:1"></span>
           <button type="button" class="btn sm" onclick="var e=document.getElementById('${id}');e.style.display=e.style.display==='none'?'block':'none'">펼치기 ▾</button>
         </div>
@@ -4456,7 +4456,7 @@ function fillCalls(mrn){
     <div class="pcall-item">
       <span class="hint" style="flex:0 0 auto">${ymd(new Date(c.at).toISOString())}</span>
       <span style="flex:1;min-width:0;word-break:break-word">${esc(c.text)}</span>
-      ${c.by?`<span class="hint" style="flex:0 0 auto">👤 ${esc(c.by)}</span>`:''}
+      ${c.by?`<span class="hint" style="flex:0 0 auto"><i data-lucide="user"></i> ${esc(c.by)}</span>`:''}
       <button type="button" class="nx" title="삭제" onclick="delRegCall('${esc(mrn)}','${c.at}')">✕</button>
     </div>`).join(''):'<div class="hint">기록이 없습니다.</div>';
 }
@@ -4528,7 +4528,7 @@ function updateEditActions(p){
   const wrap=document.getElementById('editActions'); if(!wrap)return;
   wrap.style.display=''; wrap.classList.toggle('on', !!p);   // 인라인 display 대신 클래스(모바일 그리드에서 display:contents 적용 위해)
   const b=document.getElementById('editDesigBtn');
-  if(b&&p){ b.textContent=p.designated?'⭐ 지정됨':'지정'; b.style.borderColor=p.designated?'var(--t-amber)':''; b.style.color=p.designated?'var(--t-amber)':''; }
+  if(b&&p){ b.innerHTML=p.designated?'<i data-lucide="star"></i> 지정됨':'지정'; b.style.borderColor=p.designated?'var(--t-amber)':''; b.style.color=p.designated?'var(--t-amber)':''; }
 }
 function editDesignate(){ if(!editId)return; toggleDesignated(editId); updateEditActions(data.find(x=>x.id===editId)); }
 function editOpenCert(){ if(!editId)return; const p=data.find(x=>x.id===editId); if(!p)return;
@@ -4539,11 +4539,11 @@ function submitNote(){
   if(noteRoomSel&&addNote(editId,noteRoomSel,inp.value))inp.value="";
 }
 /* 밝게/어둡게 테마 토글 — 토큰 전환(localStorage 저장) */
-function applyThemeBtn(){const t=document.documentElement.dataset.theme||'light';const b=document.getElementById('themeBtn');if(b)b.textContent=(t==='light')?'🌙':'☀️';}
+function applyThemeBtn(){const t=document.documentElement.dataset.theme||'light';const b=document.getElementById('themeBtn');if(b)b.innerHTML=(t==='light')?'<i data-lucide="moon"></i>':'<i data-lucide="sun"></i>';}
 function toggleTheme(){const cur=document.documentElement.dataset.theme||'light';const next=(cur==='light')?'dark':'light';document.documentElement.dataset.theme=next;try{localStorage.setItem('pb_theme',next);}catch(e){}applyThemeBtn();}
 applyThemeBtn();
 /* ── 간략히 보기: 붐빌 때 카드 축약(부가정보 숨김·여백 축소). 전체 카드 스크롤은 그대로, 클릭 시 전체 표시 ── */
-function applyCompact(){document.body.classList.toggle('compact',COMPACT);const b=document.getElementById('compactBtn');if(b){b.textContent=COMPACT?'🔳 자세히':'🔲 간략히';b.classList.toggle('on',COMPACT);}}
+function applyCompact(){document.body.classList.toggle('compact',COMPACT);const b=document.getElementById('compactBtn');if(b){b.innerHTML=COMPACT?'<i data-lucide="layout-grid"></i> 자세히':'<i data-lucide="list"></i> 간략히';b.classList.toggle('on',COMPACT);}}
 function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard_compact',COMPACT?'1':'0');}catch(e){}applyCompact();}
 applyCompact();
 try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의 명단을 EMR 확장에 1회 전달(로그인 전 캐시)
@@ -4941,6 +4941,29 @@ document.getElementById('board').addEventListener('wheel',e=>{
 },{passive:false});
 
 boot();
+</script>
+
+<!-- ── Lucide 아이콘 (재고관리와 같은 번들 공유) ── -->
+<style>
+  svg.lucide{width:14px;height:14px;vertical-align:-2px;flex:0 0 auto;display:inline-block}
+  .btn svg.lucide,.gtab svg.lucide,.mini svg.lucide{margin-right:1px}
+  h3 svg.lucide,.sect-t svg.lucide,.chat-head svg.lucide{width:16px;height:16px;vertical-align:-3px}
+  #themeBtn svg.lucide,#waitGear svg.lucide,.menu-btn svg.lucide{width:16px;height:16px;vertical-align:-3px;margin:0}
+</style>
+<script src="../jaego/vendor/lucide.min.js"></script>
+<script>
+/* 동적 렌더가 매우 잦은 앱이라, 렌더 함수마다 호출하는 대신
+   DOM 변화를 감지해 새로 생긴 <i data-lucide>만 자동 변환한다.
+   (createIcons는 변환 후 i 태그를 SVG로 대체하므로 무한 루프 없음) */
+(function(){
+  if(!window.lucide) return;
+  let t=null;
+  function refreshIcons(){ try{ lucide.createIcons(); }catch(e){} }
+  new MutationObserver(function(){
+    if(document.querySelector('i[data-lucide]')){ clearTimeout(t); t=setTimeout(refreshIcons,30); }
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  refreshIcons();
+})();
 </script>
 </body>
 </html>
