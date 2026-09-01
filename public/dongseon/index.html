@@ -1262,16 +1262,25 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <script>
 /* ───── 기본값 / 저장 ───── */
 const DEFAULT_ROOMS = ["3층 대기실","x-ray실","진료실1","진료 상담","C-Arm","Sono","처치실"];
+/* ── 데모 기본값: 우리 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
+const DEFAULT_ROUTINES = ()=>[
+  {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','처치실']},
+  {id:'rt_re',    name:'재진 (예시)',     rooms:['3층 대기실','진료실1','처치실']},
+  {id:'rt_inj',   name:'주사 환자 (예시)', rooms:['3층 대기실','진료실1','C-Arm','처치실']}
+];
+const DEFAULT_PROC_SET   = ['C-Arm 주사 (예시)','신경차단술 (예시)','도수치료 (예시)'];
+const DEFAULT_PREP_ITEMS = ['바늘 (예시)','조영제 (예시)','시린지 (예시)'];
+const DEFAULT_DOCTORS    = ['원장님 (예시)'];
 const STORE="patientBoard_v2", ROOMS_STORE="patientBoard_rooms_v2", META_STORE="patientBoard_roommeta_v2", STATS_STORE="patientBoard_stats_v1", REG_STORE="patientBoard_registry_v1", ROUTINE_STORE="patientBoard_routines_v1", VISIT_STORE="patientBoard_visits_v1", PROCMAT_STORE="patientBoard_procmat_v1", PREPITEMS_STORE="patientBoard_prepitems_v1", PROCSET_STORE="patientBoard_procset_v1", PMEMO_STORE="patientBoard_pmemo_v1";
 
 let PROC_MATERIALS = loadProcMat();   // { 처치명: [재료, …] } — 처치별 준비 재료(레거시/라벨 폴백)
 function loadProcMat(){try{const o=JSON.parse(localStorage.getItem(PROCMAT_STORE));if(o&&typeof o==='object')return o;}catch(e){}return {};}
 let PREP_ITEMS = loadPrepItems();      // [준비물, …] — 준비 지시에서 고를 준비물 세트
-function loadPrepItems(){try{const a=JSON.parse(localStorage.getItem(PREPITEMS_STORE));if(Array.isArray(a))return a;}catch(e){}return [];}
+function loadPrepItems(){try{const a=JSON.parse(localStorage.getItem(PREPITEMS_STORE));if(Array.isArray(a))return a;}catch(e){}return DEFAULT_PREP_ITEMS.slice();}
 let PROC_SET = loadProcSet();          // [처치, …] — 준비 지시에서 고를 처치 세트(전역)
-function loadProcSet(){try{const a=JSON.parse(localStorage.getItem(PROCSET_STORE));if(Array.isArray(a))return a;}catch(e){}return [];}
+function loadProcSet(){try{const a=JSON.parse(localStorage.getItem(PROCSET_STORE));if(Array.isArray(a))return a;}catch(e){}return DEFAULT_PROC_SET.slice();}
 let DOCTORS = loadDoctors();           // [진료의명, …] — 진료의 목록(카드 빠른변경·datalist)
-function loadDoctors(){try{const a=JSON.parse(localStorage.getItem('patientBoard_doctors'));if(Array.isArray(a))return a;}catch(e){}return [];}
+function loadDoctors(){try{const a=JSON.parse(localStorage.getItem('patientBoard_doctors'));if(Array.isArray(a))return a;}catch(e){}return DEFAULT_DOCTORS.slice();}
 function saveDoctorsCfg(){localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));cloudSaveConfig();postDoctorsToExt();}
 /* 진료의 명단을 EMR 확장에 전달 → 접수 시 확장이 화면에서 알려진 진료의 이름을 자동 인식 */
 function postDoctorsToExt(){ try{ window.postMessage({__emr:'doctors', list:(Array.isArray(DOCTORS)?DOCTORS.filter(Boolean):[])}, location.origin); }catch(e){} }
@@ -2061,12 +2070,12 @@ function applyCfg(d){
   rebuildStaff();
   migratePmemoFromRegistry(d.registry);   // 레거시: registry에 박혀오던 특이사항·유선문의 → pmemo 문서로 이관 후 색인만 남김
   REGISTRY=capRegistry((Array.isArray(d.registry)?d.registry:[]).map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})));
-  DOCTORS=Array.isArray(d.docList)?d.docList:[];localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
+  DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
   DOC_TEMPLATES=(d.docTemplates&&typeof d.docTemplates==='object')?d.docTemplates:{};localStorage.setItem('patientBoard_doctpl',JSON.stringify(DOC_TEMPLATES));
   PROC_MATERIALS=(d.procMaterials&&typeof d.procMaterials==='object')?d.procMaterials:{};localStorage.setItem(PROCMAT_STORE,JSON.stringify(PROC_MATERIALS));
-  PREP_ITEMS=Array.isArray(d.prepItems)?d.prepItems:[];localStorage.setItem(PREPITEMS_STORE,JSON.stringify(PREP_ITEMS));
-  PROC_SET=Array.isArray(d.procSet)?d.procSet:[];localStorage.setItem(PROCSET_STORE,JSON.stringify(PROC_SET));
-  ROUTINES=Array.isArray(d.routines)?d.routines:[];
+  PREP_ITEMS=Array.isArray(d.prepItems)?d.prepItems:DEFAULT_PREP_ITEMS.slice();localStorage.setItem(PREPITEMS_STORE,JSON.stringify(PREP_ITEMS));
+  PROC_SET=Array.isArray(d.procSet)?d.procSet:DEFAULT_PROC_SET.slice();localStorage.setItem(PROCSET_STORE,JSON.stringify(PROC_SET));
+  ROUTINES=(Array.isArray(d.routines)&&d.routines.length)?d.routines:DEFAULT_ROUTINES();   // 데모: 비어 있으면 예시 루틴 표시 (지점 확정 후 이 fallback 제거)
   PAY_ROOM=d.payRoom||"";localStorage.setItem("patientBoard_payroom",PAY_ROOM);
   if(typeof d.punctEarly==='number'){PUNCT_EARLY=d.punctEarly;localStorage.setItem("patientBoard_punctearly",String(PUNCT_EARLY));}
   if(typeof d.punctLate==='number'){PUNCT_LATE=d.punctLate;localStorage.setItem("patientBoard_punctlate",String(PUNCT_LATE));}
@@ -2227,7 +2236,7 @@ async function migrateIfNeeded(){
   if(cfgSnap.exists)return;
   let old={};
   try{const o=await cloud.db.collection(OLD_COL).doc(HOST_ROOM).get();if(o.exists)old=o.data();}catch(e){}
-  await cloud.ref.set({rooms:old.rooms||[...DEFAULT_ROOMS],roomMeta:old.roomMeta||{},staff:old.staff||[],registry:old.registry||[],seqNext:old.seqNext||1,routines:old.routines||[],payRoom:old.payRoom||"",migratedAt:Date.now(),updatedBy:cloud.user});
+  await cloud.ref.set({rooms:old.rooms||[...DEFAULT_ROOMS],roomMeta:old.roomMeta||{},staff:old.staff||[],registry:old.registry||[],seqNext:old.seqNext||1,routines:(old.routines&&old.routines.length)?old.routines:DEFAULT_ROUTINES(),payRoom:old.payRoom||"",migratedAt:Date.now(),updatedBy:cloud.user});
   const pts=Array.isArray(old.patients)?old.patients:[];
   for(let i=0;i<pts.length;i++){const p=pts[i];if(!p.id)p.id='mg'+i+Math.random().toString(36).slice(2,6);if(typeof p.ord!=='number')p.ord=i+1;await cloud.patientsCol.doc(p.id).set(jclone(p));}
   const vis=Array.isArray(old.visits)?old.visits:[];
@@ -2299,7 +2308,7 @@ function loadMeta(){try{const m=JSON.parse(localStorage.getItem(META_STORE));if(
 function load(){try{const s=JSON.parse(localStorage.getItem(STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
 function loadStats(){try{const s=JSON.parse(localStorage.getItem(STATS_STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
 function loadRegistry(){try{const s=JSON.parse(localStorage.getItem(REG_STORE));if(Array.isArray(s))return capRegistry(s);}catch(e){}return [];}
-function loadRoutines(){try{const s=JSON.parse(localStorage.getItem(ROUTINE_STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
+function loadRoutines(){try{const s=JSON.parse(localStorage.getItem(ROUTINE_STORE));if(Array.isArray(s))return s;}catch(e){}return DEFAULT_ROUTINES();}
 function saveRoutines(){localStorage.setItem(ROUTINE_STORE,JSON.stringify(ROUTINES));cloudSaveConfig();}
 function loadVisits(){try{const s=JSON.parse(localStorage.getItem(VISIT_STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
 function loadSeen(){try{const s=JSON.parse(localStorage.getItem("patientBoard_seen"));if(Array.isArray(s))return s;}catch(e){}return [];}
