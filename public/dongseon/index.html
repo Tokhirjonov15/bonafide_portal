@@ -2083,9 +2083,9 @@ function applyCfg(d){
     ["3층 대기실","x-ray실","CT실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실","수납"]
   ];
   if(_oldDefaults.some(o=>ROOMS.length===o.length&&ROOMS.every((r,i)=>r===o[i])))ROOMS=[...DEFAULT_ROOMS];
-  /* 층 그룹 자동 지정 — 관리자가 직접 그룹을 지정/해제한 방은 건드리지 않음 */
-  ROOMS.forEach(r=>{const g=DEFAULT_ROOM_GROUPS[r];if(g&&!('group' in (ROOM_META[r]||{})))meta(r).group=g;});
   ROOM_META=(d.roomMeta&&typeof d.roomMeta==='object')?d.roomMeta:{};
+  /* 층 그룹 자동 지정(ROOM_META 로드 후!) — 관리자가 직접 그룹을 지정/해제한 방은 건드리지 않음 */
+  ROOMS.forEach(r=>{const g=DEFAULT_ROOM_GROUPS[r];if(g&&!('group' in (ROOM_META[r]||{})))meta(r).group=g;});
   RAW_CFG_STAFF=Array.isArray(d.staff)?d.staff:[];
   STAFF_PREFS=(d.staffPrefs&&typeof d.staffPrefs==='object')?d.staffPrefs:{};
   rebuildStaff();
