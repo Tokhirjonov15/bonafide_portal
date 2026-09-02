@@ -1272,9 +1272,22 @@ const DEFAULT_ROOM_GROUPS = {
   "4층 대기실":"4층","기본물리치료":"4층","SASO":"4층","충격파":"4층",
   "신장분사":"4층","자동차도수":"4층","4층 진료실":"4층","4층 수납":"4층"
 };
-/* 거울 표시 짝: 실제 위치(키)에 있는 환자를 값의 방에도 함께 표시
-   (층간 연계 — 물리치료 중이면 4층 대기실에서도, 4층 진료 중이면 진료실1에서도 보임) */
-const MIRROR_VIEW = { "물리치료":"4층 대기실", "4층 진료실":"진료실1" };
+/* 거울 표시 규칙: 실제 위치(from)의 환자를 to 방에도 함께 표시
+   when 조건이 있으면 그 조건일 때만 (없는 방 이름은 그냥 무시 → 이름 변경에도 안전) */
+function prevRoomFloor(p){const prev=p.route[p.step-1];return prev?(meta(prev).group||''):'';}
+const MIRROR_RULES = [
+  {from:"물리치료",   to:"4층 대기실"},
+  {from:"4층 진료실", to:"진료실1"},
+  {from:"4층 진료실", to:"3층 진료실"},
+  /* 4층에서 3층 진료실로 내려온 환자 → 3층 대기실에서도 보임 (3층 자체 흐름은 제외) */
+  {from:"진료실1",    to:"3층 대기실", when:p=>prevRoomFloor(p)==="4층"},
+  {from:"3층 진료실", to:"3층 대기실", when:p=>prevRoomFloor(p)==="4층"}
+];
+function mirroredHere(p, room){
+  const cr=curRoom(p);
+  if(isPayRoom(room)&&isPayRoom(cr)&&cr!==room)return true;   // 수납 창구끼리는 항상 서로 거울
+  return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
+}
 /* 수납 창구는 서로 동격: 이름에 '수납'이 들어간 방들끼리는 어느 층에서 결제해도 되므로
    서로 거울로 보이고, 각 창구에서 [여기 도착]으로 실제 위치를 확정한다 */
 const isPayRoom = r => /수납/.test(r||'');
@@ -2721,8 +2734,7 @@ function render(){
     if(q) list=list.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
     /* 거울 표시: 실제 위치가 짝 방이면 이 방에도 카드를 함께 표시 (환자 데이터는 하나 —
        어느 쪽에서든 종결·이동하면 실제 환자가 움직이므로 두 카드가 같이 사라지고 하나로 돌아감) */
-    let mirrors=data.filter(p=>{if(p.discharged||!p.route.length)return false;const cr=curRoom(p);
-      return MIRROR_VIEW[cr]===room||(isPayRoom(room)&&isPayRoom(cr)&&cr!==room);}).sort((a,b)=>roomSort(a,b,room));
+    let mirrors=data.filter(p=>!p.discharged&&p.route.length&&mirroredHere(p,room)).sort((a,b)=>roomSort(a,b,room));
     if(q) mirrors=mirrors.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
     const shown=list.length+mirrors.length;
     const m=meta(room);
