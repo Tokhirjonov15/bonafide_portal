@@ -2782,7 +2782,10 @@ function renderGroupTabs(){
   bar.innerHTML=tabs.map(g=>`<button class="gtab ${g===currentGroup?'on':''}" onclick="setGroup('${esc(g)}')">${esc(g)}</button>`).join("");
   const dt=document.getElementById("dischTab");if(dt)dt.classList.toggle("on",currentGroup==="__disch__");
 }
-function setGroup(g){currentGroup=g;if(g!=="__disch__")try{localStorage.setItem("patientBoard_group",g);}catch(e){}render();}
+function setGroup(g){currentGroup=g;if(g!=="__disch__")try{localStorage.setItem("patientBoard_group",g);}catch(e){}
+  render();
+  const b=document.getElementById("board");if(b)b.scrollLeft=0;   // 층 전환 시 항상 왼쪽(첫 방)부터 보이게
+}
 /* 오늘 완료(귀가) 환자 보드 — 당일 내보낸 VISITS를 카드로 */
 /* ── 내원 목록(스프레드시트): 날짜별 · 접수순 · 정렬 · 되돌리기 ── */
 let listDate=null;            // null=오늘
