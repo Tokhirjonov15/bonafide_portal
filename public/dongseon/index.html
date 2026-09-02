@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin>
 <link rel="preload" as="script" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" crossorigin>
-<meta name="theme-color" content="#0a0e15">
+<meta name="theme-color" content="#eef0f8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="동선관리">
@@ -772,7 +772,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 </style>
 </head>
 <body>
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('pb_theme')||'light';}catch(e){document.documentElement.dataset.theme='light';}</script>
+<script>document.documentElement.dataset.theme='light';/* 라이트 테마 고정(다크 모드 제거) */</script>
 
 <!-- 상단 바 -->
 <div class="topbar">
@@ -797,7 +797,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
     <span class="role-tag" id="userRole">직원</span>
   </div>
-  <button class="btn" id="themeBtn" onclick="toggleTheme()" title="밝게/어둡게 전환"><i data-lucide="moon"></i></button>
   <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃">⎋ 로그아웃</button>
 </div>
 
@@ -4569,9 +4568,7 @@ function submitNote(){
   if(noteRoomSel&&addNote(editId,noteRoomSel,inp.value))inp.value="";
 }
 /* 밝게/어둡게 테마 토글 — 토큰 전환(localStorage 저장) */
-function applyThemeBtn(){const t=document.documentElement.dataset.theme||'light';const b=document.getElementById('themeBtn');if(b)b.innerHTML=(t==='light')?'<i data-lucide="moon"></i>':'<i data-lucide="sun"></i>';}
-function toggleTheme(){const cur=document.documentElement.dataset.theme||'light';const next=(cur==='light')?'dark':'light';document.documentElement.dataset.theme=next;try{localStorage.setItem('pb_theme',next);}catch(e){}applyThemeBtn();}
-applyThemeBtn();
+/* 다크 모드 제거 — 라이트 테마 고정 (2026-09) */
 /* ── 간략히 보기: 붐빌 때 카드 축약(부가정보 숨김·여백 축소). 전체 카드 스크롤은 그대로, 클릭 시 전체 표시 ── */
 function applyCompact(){document.body.classList.toggle('compact',COMPACT);const b=document.getElementById('compactBtn');if(b){b.innerHTML=COMPACT?'<i data-lucide="layout-grid"></i> 자세히':'<i data-lucide="list"></i> 간략히';b.classList.toggle('on',COMPACT);}}
 function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard_compact',COMPACT?'1':'0');}catch(e){}applyCompact();}
