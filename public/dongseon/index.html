@@ -360,6 +360,8 @@
   #modal.adding .body{display:grid;grid-template-columns:1fr 1fr}
   #modal.adding .body>.pcol:nth-child(3){display:none}
   #modal.adding .body>.pcol:nth-child(2)>*:not(#pmemoBox):not(#callsBox):not(#routeSection){display:none}
+  /* 추가(접수) 모드 간소화: 문자수신·예약/접수시간·추가수납·동선 숨김 — 수정 모드에서는 그대로 표시 */
+  #modal.adding #smsOptWrap,#modal.adding #rowTimes,#modal.adding #fldExtra,#modal.adding #routeSection{display:none!important}
   .desig-btn{margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--sub);border-radius:7px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0}
   .desig-btn.on{background:#f5b301;border-color:#f5b301;color:#3a2e00}
   .card.designated{box-shadow:inset 4px 0 0 #f5b301}
@@ -1060,16 +1062,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="fld"><label>주민번호 앞 7자리 (생년월일-성별)</label><input id="f_rrn" inputmode="numeric" placeholder="예: 901231-1" maxlength="8" oninput="onRRNInput()"><p class="hint" id="rrnHint"></p></div>
       <div class="fld"><label><i data-lucide="smartphone"></i> 휴대폰 번호 <span class="hint">(대기 호출 문자 발송용)</span></label>
         <input id="f_tel" inputmode="numeric" placeholder="010-1234-5678" maxlength="14">
-        <label class="hint" style="display:flex;align-items:center;gap:6px;margin-top:5px;cursor:pointer"><input type="checkbox" id="f_smsopt" style="width:auto">문자 받지 않음(호출 문자 제외)</label>
+        <label class="hint" id="smsOptWrap" style="display:flex;align-items:center;gap:6px;margin-top:5px;cursor:pointer"><input type="checkbox" id="f_smsopt" style="width:auto">문자 받지 않음(호출 문자 제외)</label>
       </div>
       <div class="fld"><label><i data-lucide="stethoscope"></i> 진료의 <span class="hint">(EMR에서 자동, 변경 가능)</span></label>
         <input id="f_doctor" list="doctorOpts" placeholder="예: 홍길동"><datalist id="doctorOpts"></datalist>
       </div>
-      <div class="row2">
+      <div class="row2" id="rowTimes">
         <div class="fld"><label><i data-lucide="calendar"></i> 예약 시간 <span class="hint">(없으면 비워두면 워크인)</span></label><input id="f_reserve" type="time"></div>
         <div class="fld"><label><i data-lucide="clock"></i> 접수 시간 <span class="hint">(기본 현재시각, 수정가능)</span></label><input id="f_receive" type="time"></div>
       </div>
-      <div class="fld"><label><i data-lucide="wallet"></i> 추가 수납 금액 (원)</label><input id="f_extra" type="number" min="0" placeholder="0" onchange="onExtraFee()"><p class="hint" id="extraHint"></p></div>
+      <div class="fld" id="fldExtra"><label><i data-lucide="wallet"></i> 추가 수납 금액 (원)</label><input id="f_extra" type="number" min="0" placeholder="0" onchange="onExtraFee()"><p class="hint" id="extraHint"></p></div>
       <div class="fld"><label><i data-lucide="shield-check"></i> 실비보험 유무 <span class="hint">(미체크 = 없음)</span></label>
         <label style="display:flex;align-items:center;gap:7px;font-size:13px;padding:8px 2px;cursor:pointer"><input type="checkbox" id="f_silbi" onchange="onSilbi()"> 실비보험 있음</label></div>
       <div class="fld"><label>실비보험 한도 (원)</label><input id="f_silbiLimit" type="number" min="0" placeholder="0" disabled></div>
@@ -2638,7 +2640,15 @@ function rrnFromBirth(birth,sex){if(!birth||!/^\d{4}-\d{2}-\d{2}$/.test(birth))r
   const female=(sex==='여');let g;
   if(y<1900)g=female?0:9;else if(y<2000)g=female?2:1;else g=female?4:3;
   return yy+mmdd+'-'+g;}
-function onRRNInput(){const v=document.getElementById("f_rrn").value;const h=document.getElementById("rrnHint");if(!h)return;
+function onRRNInput(){
+  const inp=document.getElementById("f_rrn");
+  /* 숫자만 입력받고, 6자리째를 치는 순간 '-'를 자동으로 붙인다 (지울 때는 다시 붙이지 않아 백스페이스가 자연스럽다) */
+  {const raw=inp.value, ds=raw.replace(/\D/g,'').slice(0,7);
+   let fmt=ds.length>6?ds.slice(0,6)+'-'+ds.slice(6):ds;
+   if(ds.length===6&&raw.length>(onRRNInput._last||0))fmt=ds+'-';
+   if(raw!==fmt)inp.value=fmt;
+   onRRNInput._last=inp.value.length;}
+  const v=inp.value;const h=document.getElementById("rrnHint");if(!h)return;
   const digits=(v||'').replace(/\D/g,'');if(!digits){h.textContent="";h.style.color="";return;}
   const r=parseRRN(v);
   if(r){h.textContent="→ "+r.birth+" · "+r.sex+(age(r.birth)?" ("+age(r.birth)+")":"");h.style.color="var(--green)";}
