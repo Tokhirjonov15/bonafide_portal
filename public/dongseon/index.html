@@ -2756,7 +2756,7 @@ function render(){
         <span class="col-count${shown?' has':''}" title="이 방 환자 수">${shown}명</span>
       </div>
       ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
-      <div class="owners-row">${ownersHtml}<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button></div>`;
+      <div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의"><i data-lucide="stethoscope"></i> ${esc(m.doctors.join(', '))}</span>`:''}${ownersHtml}<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button></div>`;
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
 
@@ -4330,7 +4330,9 @@ function fillRegOpts(){document.getElementById("regOpts").innerHTML=REGISTRY.map
 function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)el.innerHTML=DOCTORS.map(d=>`<option value="${esc(d)}">`).join("");}
 function doctorChipHtml(p){
   const cur=p.doctor||'';
-  const opts=[...new Set([cur,...DOCTORS].filter(Boolean))];
+  const _r=curRoom(p);
+  const roomDocs=_r?(meta(_r).doctors||[]):[];   // 이 방 전담 진료의를 목록 맨 위에
+  const opts=[...new Set([cur,...roomDocs,...DOCTORS].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="stethoscope"></i> <select class="doc-sel" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}',this.value)">${optHtml}</select>`;
@@ -4832,6 +4834,7 @@ function renderRoomsList(){
       <span class="rmname">${esc(r)}</span>
       <input class="rgroup" list="groupOpts" placeholder="그룹(선택)" value="${esc(meta(r).group||'')}" onchange="setRoomGroup(${i},this.value)" title="같은 그룹끼리 탭으로 묶여요">
       <input class="rgroup" placeholder="대기화면 표시명(선택)" value="${esc(meta(r).waitName||'')}" onchange="setRoomWaitName(${i},this.value)" title="대기화면에서 환자에게 보일 친절한 방 이름 (비우면 원래 이름)" style="flex:0 0 150px">
+      <input class="rgroup" placeholder="진료의(쉼표로 여러 명)" value="${esc((meta(r).doctors||[]).join(', '))}" onchange="setRoomDoctors(${i},this.value)" title="이 방 전담 진료의 — 방 머리에 표시되고, 카드의 진료의 선택에서 맨 위에 나옵니다" style="flex:0 0 140px">
       <label class="rmconsult" title="이 방의 진행 단계 수"><span>단계</span><select onchange="setStages(${i},this.value)" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:3px 5px;font-size:12px"><option value="2" ${stagesOf(r)===2?'selected':''}>2 (대기·종결)</option><option value="3" ${stagesOf(r)===3?'selected':''}>3 (+진행)</option><option value="4" ${stagesOf(r)===4?'selected':''}>4 (+준비)</option></select></label>
       <label class="rmconsult" title="예약자를 예약시간순으로 우선 배치"><input type="checkbox" ${meta(r).resOrder?'checked':''} onchange="setResOrder(${i},this.checked)"> <i data-lucide="calendar"></i> 예약배치</label>
       <label class="rmconsult" title="이 방에 상담 결과 기록칸 표시"><input type="checkbox" ${meta(r).consult?'checked':''} onchange="setConsult(${i},this.checked)"> <i data-lucide="message-circle"></i> 상담</label>
@@ -4891,6 +4894,13 @@ function reorderRoom(from,to){if(from==null||from===to||from<0||to<0||to>=ROOMS.
   const it=ROOMS.splice(from,1)[0];ROOMS.splice(to,0,it);saveRooms();render();renderRoomsList();}
 function setRoomGroup(i,v){if(!isAdmin())return;meta(ROOMS[i]).group=v.trim();saveRooms();render();renderRoomsList();}
 function setRoomWaitName(i,v){if(!isAdmin())return;meta(ROOMS[i]).waitName=v.trim();saveRooms();if(waitOpen)renderWaitScreen();}
+/* 방 전담 진료의 — 새 이름은 전체 진료의 목록에도 자동 등록 */
+function setRoomDoctors(i,v){if(!isAdmin())return;
+  const names=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
+  meta(ROOMS[i]).doctors=names;
+  let grew=false;names.forEach(n=>{if(!DOCTORS.includes(n)){DOCTORS.push(n);grew=true;}});
+  if(grew)saveDoctorsCfg();
+  saveRooms();render();}
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
 function allProcNames(){const set=[];ROOMS.forEach(r=>{(meta(r).procs||[]).forEach(pr=>{if(pr&&!set.includes(pr))set.push(pr);});});return set;}
@@ -5105,6 +5115,9 @@ boot();
   /* 수납 거울 카드의 [여기 도착] 버튼 */
   .claim-btn{margin-left:8px;border:0;border-radius:5px;background:var(--blue);color:#fff;font-size:10.5px;font-weight:700;padding:2px 9px;cursor:pointer}
   .claim-btn:hover{background:var(--blue-d)}
+  /* 방 전담 진료의 표시 */
+  .col-doc{font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-bg);border-radius:20px;padding:1px 9px;margin-right:2px;white-space:nowrap}
+  .col-doc svg.lucide{width:11px;height:11px;vertical-align:-1px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
 <script>
