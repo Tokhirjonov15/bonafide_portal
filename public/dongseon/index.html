@@ -3326,7 +3326,8 @@ function archiveVisit(p){
     routeFull:[...p.route],receiveAt:p.receiveAt||"",reserveAt:p.reserveAt||"",
     arrivedAt:p.arrivedAt||p.enteredAt,dischargedAt,
     totalMs:p.arrivedAt?Math.max(0,new Date(dischargedAt)-new Date(p.arrivedAt)):0,
-    rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",enteredAt:v.enteredAt,leftAt:v.leftAt})),
+    rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",doctor:docFor(p,v.room),enteredAt:v.enteredAt,leftAt:v.leftAt})),
+    roomDocs:JSON.parse(JSON.stringify(p.roomDocs||{})),
     notes:JSON.parse(JSON.stringify(p.notes||{})),
     consults:JSON.parse(JSON.stringify(p.consults||{})),
     chart:p.chart||"",
@@ -4030,7 +4031,7 @@ function patientGroups(){
 function lastVisitMs(g){return g.visits.reduce((m,v)=>Math.max(m,new Date(v.dischargedAt).getTime()||0),0);}
 function visitDetailHtml(v){
   const route=(v.routeFull||[]).map(esc).join(" › ");
-  const rooms=(v.rooms||[]).map(r=>`<div class="hv-room"><span class="hv-r">${esc(r.room)}</span>${r.proc?`<span class="hint" style="color:#6366f1;font-weight:700">🔹${esc(r.proc)}</span>`:''}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs)}</span>${(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs)}</span>`:''}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs)}</span></div>`).join("");
+  const rooms=(v.rooms||[]).map(r=>`<div class="hv-room"><span class="hv-r">${esc(r.room)}</span>${r.doctor?`<span class="hint" style="color:var(--teal);font-weight:700">🩺${esc(r.doctor)}</span>`:''}${r.proc?`<span class="hint" style="color:#6366f1;font-weight:700">🔹${esc(r.proc)}</span>`:''}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs)}</span>${(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs)}</span>`:''}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs)}</span></div>`).join("");
   let conv="";
   Object.keys(v.notes||{}).forEach(room=>{(v.notes[room]||[]).forEach(n=>{
     conv+=`<div class="hv-note"><b>${esc(room)}</b> ${esc(n.text)} <span class="hint">${n.by?esc(n.by)+' · ':''}${hhmm(n.at)}${n.done&&n.doneBy?' · ✓'+esc(n.doneBy):''}</span>`;
@@ -4328,17 +4329,24 @@ function reorderRoute(from,to){if(from==null||from===to||from<0||to<0||to>=route
 
 function fillRegOpts(){document.getElementById("regOpts").innerHTML=REGISTRY.map(r=>`<option value="${esc((r.name||'')+' '+(r.mrn||''))}">`).join("");}
 function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)el.innerHTML=DOCTORS.map(d=>`<option value="${esc(d)}">`).join("");}
+/* 방별 담당 진료의: 같은 환자라도 방마다 다른 진료의를 지정할 수 있다.
+   지정이 없는 방은 기본 진료의(접수 시 입력한 p.doctor)를 따른다. */
+function docFor(p,room){return (p.roomDocs&&p.roomDocs[room])||p.doctor||'';}
 function doctorChipHtml(p){
-  const cur=p.doctor||'';
-  const _r=curRoom(p);
+  const _r=curRoom(p)||'';
+  const cur=docFor(p,_r);
   const roomDocs=_r?(meta(_r).doctors||[]):[];   // 이 방 전담 진료의를 목록 맨 위에
   const opts=[...new Set([cur,...roomDocs,...DOCTORS].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
-  return `<i data-lucide="stethoscope"></i> <select class="doc-sel" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}',this.value)">${optHtml}</select>`;
+  return `<i data-lucide="stethoscope"></i> <select class="doc-sel" title="이 방(${esc(_r)})에서의 담당 진료의 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
 }
-/* 카드에서 진료의 빠른 변경(대기 중 진료의 교체) */
-function changeDoctor(pid,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();p.doctor=nv;if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}audit('진료의변경',p.name+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
+/* 카드에서 진료의 빠른 변경 — 현재 방에 대해서만 기록 */
+function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
+  p.roomDocs=p.roomDocs||{};
+  if(nv)p.roomDocs[room]=nv; else delete p.roomDocs[room];
+  if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}
+  audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=REGISTRY.find(x=>((x.name||'')+' '+(x.mrn||''))===v);if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});}if(reloadHistOpen)renderReloadHistory();}
 /* 환자 추가 창 — 재진 검색한 환자의 과거 기록 인라인 펼침 */
 let reloadHistOpen=false;
