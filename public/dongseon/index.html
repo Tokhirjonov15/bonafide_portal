@@ -4335,8 +4335,12 @@ function docFor(p,room){return (p.roomDocs&&p.roomDocs[room])||p.doctor||'';}
 function doctorChipHtml(p){
   const _r=curRoom(p)||'';
   const cur=docFor(p,_r);
-  const roomDocs=_r?(meta(_r).doctors||[]):[];   // 이 방 전담 진료의를 목록 맨 위에
-  const opts=[...new Set([cur,...roomDocs,...DOCTORS].filter(Boolean))];
+  const roomDocs=_r?(meta(_r).doctors||[]):[];
+  /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
+     지정이 없는 방만 전체 진료의 목록으로 폴백. 이미 선택된 값은 항상 보존. */
+  const opts=roomDocs.length
+    ? [...new Set([cur,...roomDocs].filter(Boolean))]
+    : [...new Set([cur,...DOCTORS].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="stethoscope"></i> <select class="doc-sel" title="이 방(${esc(_r)})에서의 담당 진료의 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
