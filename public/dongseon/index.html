@@ -1194,7 +1194,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 진료실 관리 모달 -->
 <div class="modal-bg" id="roomsModal">
   <div class="modal">
-    <h3>진료실(방) 관리</h3>
+    <h3><i data-lucide="door-open"></i> 진료실(방) 관리</h3>
     <div class="body">
       <p class="hint">진료실 이름과 순서만 관리합니다. ⠿를 드래그해 순서를 바꾸세요. (관리자 전용)</p>
       <div id="roomsList" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -1233,17 +1233,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <input id="docListInput" placeholder="예: 홍길동, 임꺽정" onchange="setDocList(this.value)" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--panel2);color:var(--text);outline:0;margin-top:6px">
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>🔹 처치 세트 <span class="hint" style="font-weight:400">(준비 지시에서 골라 넣을 처치)</span></label>
+        <label><i data-lucide="list-checks"></i> 처치 세트 <span class="hint" style="font-weight:400">(준비 지시에서 골라 넣을 처치)</span></label>
         <p class="hint">'준비 지시' 창에서 칩으로 눌러 넣을 처치 목록입니다. 쉼표로 구분해 입력하세요. (의사는 여기에 없는 것도 직접 입력·수정 가능)</p>
         <input id="procSetInput" placeholder="예: C-Arm 주사, 신경차단술, 도수치료, Sono 주사" onchange="setProcSet(this.value)" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--panel2);color:var(--text);outline:0;margin-top:6px">
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>🧰 준비물 세트 <span class="hint" style="font-weight:400">(준비 지시에서 골라 넣을 항목)</span></label>
+        <label><i data-lucide="package"></i> 준비물 세트 <span class="hint" style="font-weight:400">(준비 지시에서 골라 넣을 항목)</span></label>
         <p class="hint">'준비 지시' 창에서 칩으로 눌러 넣을 준비물 목록입니다. 쉼표로 구분해 입력하세요. (의사는 여기에 없는 것도 직접 입력·수정 가능)</p>
         <input id="prepItemsInput" placeholder="예: 26G 바늘, 조영제, 리도카인, 드레싱, 생리식염수" onchange="setPrepItems(this.value)" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--panel2);color:var(--text);outline:0;margin-top:6px">
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
-        <label>🧰 처치별 준비 재료 <span class="hint" style="font-weight:400">(선택 — 처치 칩 보조용)</span></label>
+        <label><i data-lucide="package-open"></i> 처치별 준비 재료 <span class="hint" style="font-weight:400">(선택 — 처치 칩 보조용)</span></label>
         <p class="hint">처치마다 재료를 적어두면 처치 칩 목록에 함께 나옵니다. (준비 지시에는 자동 연동되지 않습니다 · 쉼표로 구분)</p>
         <div id="procMatList" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>
       </div>
@@ -2546,7 +2546,7 @@ function toggleOwner(room,name){name=name||(currentUser&&currentUser.name);if(!n
 function cycleOwnerRole(room,name){name=name||(currentUser&&currentUser.name);if(!name)return;const o=meta(room).owners.find(o=>o.name===name);if(!o)return;o.role=o.role==='주'?'부':'주';saveRooms();render();if(ownersRoom===room)renderOwners();}
 /* ── 담당자 지정 팝업: 누구나 다른 직원을 지정/해제·주부 변경 ── */
 let ownersRoom=null;
-function openOwners(room){ownersRoom=room;document.getElementById('ownersTitle').textContent='🧑‍⚕️ '+room+' 담당자';renderOwners();document.getElementById('ownersModal').classList.add('show');}
+function openOwners(room){ownersRoom=room;document.getElementById('ownersTitle').innerHTML='<i data-lucide="user-cog"></i> '+esc(room)+' 담당자';renderOwners();document.getElementById('ownersModal').classList.add('show');}
 function closeOwners(){ownersRoom=null;document.getElementById('ownersModal').classList.remove('show');}
 function renderOwners(){
   const room=ownersRoom;if(!room)return;const m=meta(room);
@@ -2663,6 +2663,27 @@ function roomQueue(room){return data.filter(p=>!p.discharged&&!p.out&&p.route.le
 function waitInfo(p){const room=curRoom(p);if(!room||p.out)return null;const list=roomQueue(room);const idx=list.findIndex(x=>x.id===p.id);if(idx<0)return null;return {room,ahead:idx,pos:idx+1,etaSec:idx*roomSvcSec(room)};}
 function etaText(sec){sec=Math.max(0,Math.round(sec));if(sec<60)return sec+'초';const m=Math.floor(sec/60),s=sec%60;return s?`${m}분 ${s}초`:`${m}분`;}
 /* ───── 렌더 ───── */
+/* ── 방(컬럼)별 환자 검색: 환자가 있는 방의 머리에 🔍 버튼 → 이름·병록번호로 그 방만 필터 ── */
+let COL_Q={}, COL_SEARCH_OPEN={}, COL_FOCUS=null;
+window.toggleColSearch=function(room){
+  COL_SEARCH_OPEN[room]=!COL_SEARCH_OPEN[room];
+  if(!COL_SEARCH_OPEN[room]){delete COL_Q[room];COL_FOCUS=null;}
+  else COL_FOCUS=room;
+  render();
+};
+window.colSearchInput=function(room,v){COL_Q[room]=(v||'').trim();COL_FOCUS=room;applyColFilter(room);};
+function colMatch(p,q){if(!q)return true;q=q.toLowerCase();return (p.name||'').toLowerCase().includes(q)||(p.mrn||'').toLowerCase().includes(q);}
+function applyColFilter(room){
+  const body=document.querySelector(`.col-body[data-room="${CSS.escape(room)}"]`);if(!body)return;
+  const q=COL_Q[room]||'';
+  body.querySelectorAll('.card[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);el.style.display=(p&&colMatch(p,q))?'':'none';});
+}
+function applyColFilters(){
+  Object.keys(COL_Q).forEach(applyColFilter);
+  /* 자동 리렌더 후에도 입력 포커스 유지 */
+  if(COL_FOCUS){const inp=document.querySelector(`.col-search input[data-room="${CSS.escape(COL_FOCUS)}"]`);
+    if(inp&&document.activeElement!==inp){inp.focus();try{inp.setSelectionRange(inp.value.length,inp.value.length);}catch(e){}}}
+}
 function render(){
   normalizeData();
   const board=document.getElementById("board");
@@ -2692,8 +2713,10 @@ function render(){
         <span class="col-grip" draggable="true" title="드래그: 내 화면의 방 순서 바꾸기 (내 계정에만 적용)">⠿</span>
         <label class="owner-chk" title="이 방 담당하기"><input type="checkbox" ${mineOwner?'checked':''} onclick="event.stopPropagation();toggleOwner('${esc(room)}')">담당</label>
         <span class="col-title">${esc(room)}</span>
+        ${list.length?`<button class="col-search-btn${COL_Q[room]?' on':''}" title="이 방에서 환자 검색 (이름·병록번호)" onclick="event.stopPropagation();toggleColSearch('${esc(room)}')"><i data-lucide="search"></i></button>`:''}
         <span class="col-count${list.length?' has':''}" title="이 방 환자 수">${list.length}명</span>
       </div>
+      ${(list.length&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
       <div class="owners-row">${ownersHtml}<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button></div>`;
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
@@ -2731,6 +2754,7 @@ function render(){
   if(birdOpen)renderBirdView();
   if(waitOpen)renderWaitScreen();
   if(window.lucide)try{lucide.createIcons();}catch(e){}   // 아이콘 즉시 변환(옵저버 지연 없이 같은 프레임)
+  applyColFilters();   // 방별 검색 필터 재적용 + 입력 포커스 복원
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=isAdmin()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
@@ -3008,6 +3032,7 @@ function smsBtnHtml(p){
 function cardEl(p){
   const c=document.createElement("div");
   c.className="card"+(p.designated?" designated":"")+(p.out?" out":"");c.draggable=true;
+  c.dataset.pid=p.id;   // 방별 검색 필터용
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
   const last=p.step>=p.route.length-1;
   // 동선 전체
@@ -4726,12 +4751,12 @@ function renderRoomsList(){
       <input class="rgroup" list="groupOpts" placeholder="그룹(선택)" value="${esc(meta(r).group||'')}" onchange="setRoomGroup(${i},this.value)" title="같은 그룹끼리 탭으로 묶여요">
       <input class="rgroup" placeholder="대기화면 표시명(선택)" value="${esc(meta(r).waitName||'')}" onchange="setRoomWaitName(${i},this.value)" title="대기화면에서 환자에게 보일 친절한 방 이름 (비우면 원래 이름)" style="flex:0 0 150px">
       <label class="rmconsult" title="이 방의 진행 단계 수"><span>단계</span><select onchange="setStages(${i},this.value)" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:3px 5px;font-size:12px"><option value="2" ${stagesOf(r)===2?'selected':''}>2 (대기·종결)</option><option value="3" ${stagesOf(r)===3?'selected':''}>3 (+진행)</option><option value="4" ${stagesOf(r)===4?'selected':''}>4 (+준비)</option></select></label>
-      <label class="rmconsult" title="예약자를 예약시간순으로 우선 배치"><input type="checkbox" ${meta(r).resOrder?'checked':''} onchange="setResOrder(${i},this.checked)"> 📅 예약배치</label>
-      <label class="rmconsult" title="이 방에 상담 결과 기록칸 표시"><input type="checkbox" ${meta(r).consult?'checked':''} onchange="setConsult(${i},this.checked)"> 💬 상담</label>
-      <button class="mini" onclick="renameRoom(${i})">✎ 이름</button>
+      <label class="rmconsult" title="예약자를 예약시간순으로 우선 배치"><input type="checkbox" ${meta(r).resOrder?'checked':''} onchange="setResOrder(${i},this.checked)"> <i data-lucide="calendar"></i> 예약배치</label>
+      <label class="rmconsult" title="이 방에 상담 결과 기록칸 표시"><input type="checkbox" ${meta(r).consult?'checked':''} onchange="setConsult(${i},this.checked)"> <i data-lucide="message-circle"></i> 상담</label>
+      <button class="mini" onclick="renameRoom(${i})"><i data-lucide="pencil"></i> 이름</button>
       <button class="mini" onclick="deleteRoom(${i})" style="color:var(--red)">✕</button>
       <div class="rmsms">
-        <label title="이 방에서 자동으로 대기 안내 문자 발송"><input type="checkbox" ${meta(r).smsAuto?'checked':''} onchange="setSmsAuto(${i},this.checked)"> 📱 <b>자동 문자</b></label>
+        <label title="이 방에서 자동으로 대기 안내 문자 발송"><input type="checkbox" ${meta(r).smsAuto?'checked':''} onchange="setSmsAuto(${i},this.checked)"> <i data-lucide="smartphone"></i> <b>자동 문자</b></label>
         <span class="${meta(r).smsAuto?'':'off'}">환자당 <input type="number" min="0" max="180" value="${Math.floor(roomSvcSec(r)/60)}" onchange="setRoomSvc(${i},this.value,null)">분 <input type="number" min="0" max="59" value="${roomSvcSec(r)%60}" onchange="setRoomSvc(${i},null,this.value)">초</span>
         <label class="${meta(r).smsAuto?'':'off'}" title="방에 도착했을 때(앞에 대기 있으면) 발송"><input type="checkbox" ${meta(r).smsOnEnter?'checked':''} onchange="setSmsOnEnter(${i},this.checked)"> 도착 시</label>
         <span class="${meta(r).smsAuto?'':'off'}" title="앞 대기 인원이 이 숫자가 되면 발송(쉼표로 여러 개, 예: 2,0)">앞대기 <input type="text" placeholder="예: 2,0" value="${esc((meta(r).smsAhead||[]).join(','))}" onchange="setSmsAhead(${i},this.value)">명일 때</span>
@@ -4976,6 +5001,14 @@ boot();
   .btn svg.lucide,.gtab svg.lucide,.mini svg.lucide{margin-right:1px}
   h3 svg.lucide,.sect-t svg.lucide,.chat-head svg.lucide{width:16px;height:16px;vertical-align:-3px}
   #themeBtn svg.lucide,#waitGear svg.lucide,.menu-btn svg.lucide{width:16px;height:16px;vertical-align:-3px;margin:0}
+  /* 방별 환자 검색 */
+  .col-search-btn{border:1px solid var(--line);background:var(--panel2);color:var(--sub);border-radius:7px;width:22px;height:22px;display:inline-grid;place-items:center;cursor:pointer;padding:0;flex:0 0 auto}
+  .col-search-btn:hover{color:var(--blue);border-color:var(--blue)}
+  .col-search-btn.on{color:#fff;background:var(--blue);border-color:transparent}
+  .col-search-btn svg.lucide{width:12px;height:12px;margin:0;vertical-align:0}
+  .col-search{padding:2px 10px 7px}
+  .col-search input{width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;background:var(--panel);color:var(--text);outline:0}
+  .col-search input:focus{border-color:var(--blue)}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
 <script>
