@@ -780,6 +780,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <button class="btn primary" onclick="openAdd()">+ 환자 추가</button>
   <div class="search"><i data-lucide="search"></i><input id="search" placeholder="환자 검색 (이름·병록번호)"></div>
   <div class="group-tabs" id="groupTabs"></div>
+  <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
@@ -803,11 +804,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 보드 + 알람 패널(밀어내기 도킹) -->
 <div class="main-row" id="mainRow">
   <div class="board-col">
-    <div class="board-toolbar" id="boardToolbar">
-      <button class="gtab tb-act" onclick="openBirdView()" title="모든 방 환자 위치를 한눈에"><i data-lucide="bird"></i> 버드뷰</button>
-      <button class="gtab tb-act" id="compactBtn" onclick="toggleCompact()" title="카드를 간략히/자세히 전환 — 방이 붐빌 때 한눈에 보기"><i data-lucide="list"></i> 간략히</button>
-      <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
-    </div>
     <div class="board" id="board"></div>
   </div>
   <div class="side-panel" id="chatMine">
@@ -1307,7 +1303,7 @@ let PMEMO = loadPmemo();      // 특이사항·유선문의 = 환자별 개별 �
 let ROUTINES = loadRoutines();// 루틴 동선 템플릿 [{id,name,rooms:[]}]
 let VISITS = loadVisits();    // 완료 내원 기록 아카이브 (동선·시간·대화)
 let routineDraft = [], routineEditId = null;
-let COMPACT = (()=>{try{return localStorage.getItem('patientBoard_compact')==='1';}catch(e){return false;}})();   // 간략히 보기(카드 축약)
+let COMPACT = false;   // 간략히 보기 제거 — 항상 전체 카드 표시(단일 UI)
 let editId = null;
 let routeDraft = [];          // 모달에서 작성 중인 동선
 let noteRoomSel = "";         // 전달사항 작성 시 선택된 방
@@ -2734,6 +2730,7 @@ function render(){
   renderChat();
   if(birdOpen)renderBirdView();
   if(waitOpen)renderWaitScreen();
+  if(window.lucide)try{lucide.createIcons();}catch(e){}   // 아이콘 즉시 변환(옵저버 지연 없이 같은 프레임)
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=isAdmin()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
@@ -4943,8 +4940,11 @@ document.addEventListener("keydown",e=>{
 
 // 1초마다 대기/진행 타이머 텍스트만 갱신(전체 리렌더 없이)
 function tickTimers(){if(!currentUser)return;
+  let hasIcon=false;
   document.querySelectorAll('.dwell[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.innerHTML=dwellLabel(p);});
-  document.querySelectorAll('.total[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.innerHTML=totalLabel(p);});}
+  document.querySelectorAll('.total[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p){el.innerHTML=totalLabel(p);hasIcon=true;}});
+  /* 새로 넣은 <i data-lucide>를 같은 프레임에 즉시 SVG로 변환 — 옵저버 지연(30ms)로 인한 깜빡임 방지 */
+  if(hasIcon&&window.lucide)try{lucide.createIcons();}catch(e){}}
 setInterval(tickTimers,1000);
 // 30초마다 보드 리프레시(모달 안 열려 있을 때만)
 setInterval(()=>{if(currentUser&&!document.querySelector(".modal-bg.show"))render();},30000);
