@@ -1268,6 +1268,9 @@ const DEFAULT_ROOM_GROUPS = {
   "4층 대기실":"4층","기본물리치료":"4층","SASO":"4층","충격파":"4층",
   "신장분사":"4층","자동차도수":"4층","4층 진료실":"4층"
 };
+/* 거울 표시 짝: 실제 위치(키)에 있는 환자를 값의 방에도 함께 표시
+   (층간 연계 — 물리치료 중이면 4층 대기실에서도, 4층 진료 중이면 진료실1에서도 보임) */
+const MIRROR_VIEW = { "물리치료":"4층 대기실", "4층 진료실":"진료실1" };
 /* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
   {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','수납']},
@@ -2698,6 +2701,11 @@ function render(){
   visibleRooms().forEach(room=>{
     let list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room).sort((a,b)=>roomSort(a,b,room));
     if(q) list=list.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
+    /* 거울 표시: 실제 위치가 짝 방이면 이 방에도 카드를 함께 표시 (환자 데이터는 하나 —
+       어느 쪽에서든 종결·이동하면 실제 환자가 움직이므로 두 카드가 같이 사라지고 하나로 돌아감) */
+    let mirrors=data.filter(p=>!p.discharged&&p.route.length&&MIRROR_VIEW[curRoom(p)]===room).sort((a,b)=>roomSort(a,b,room));
+    if(q) mirrors=mirrors.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
+    const shown=list.length+mirrors.length;
     const m=meta(room);
     const mineOwner=currentUser&&isOwner(room,currentUser.name);
     const ownersHtml=m.owners.length?m.owners.map(o=>{
@@ -2713,16 +2721,22 @@ function render(){
         <span class="col-grip" draggable="true" title="드래그: 내 화면의 방 순서 바꾸기 (내 계정에만 적용)">⠿</span>
         <label class="owner-chk" title="이 방 담당하기"><input type="checkbox" ${mineOwner?'checked':''} onclick="event.stopPropagation();toggleOwner('${esc(room)}')">담당</label>
         <span class="col-title">${esc(room)}</span>
-        ${list.length?`<button class="col-search-btn${COL_Q[room]?' on':''}" title="이 방에서 환자 검색 (이름·병록번호)" onclick="event.stopPropagation();toggleColSearch('${esc(room)}')"><i data-lucide="search"></i></button>`:''}
-        <span class="col-count${list.length?' has':''}" title="이 방 환자 수">${list.length}명</span>
+        ${shown?`<button class="col-search-btn${COL_Q[room]?' on':''}" title="이 방에서 환자 검색 (이름·병록번호)" onclick="event.stopPropagation();toggleColSearch('${esc(room)}')"><i data-lucide="search"></i></button>`:''}
+        <span class="col-count${shown?' has':''}" title="이 방 환자 수">${shown}명</span>
       </div>
-      ${(list.length&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
+      ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
       <div class="owners-row">${ownersHtml}<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button></div>`;
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
 
-    if(list.length===0){body.innerHTML=`<div class="col-empty">대기 환자가 없어요.</div>`;}
-    else{list.forEach(p=>body.appendChild(cardEl(p)));}
+    if(shown===0){body.innerHTML=`<div class="col-empty">대기 환자가 없어요.</div>`;}
+    else{
+      list.forEach(p=>body.appendChild(cardEl(p)));
+      mirrors.forEach(p=>{const el=cardEl(p);el.classList.add('mirror');
+        const tag=document.createElement('div');tag.className='mirror-tag';
+        tag.innerHTML='<i data-lucide="footprints"></i> 실제 위치: '+esc(curRoom(p));
+        el.prepend(tag);body.appendChild(el);});
+    }
 
     body.addEventListener("dragover",e=>{if(draggedColRoom)return;e.preventDefault();body.classList.add("drag-over")});
     body.addEventListener("dragleave",()=>body.classList.remove("drag-over"));
@@ -5009,6 +5023,10 @@ boot();
   .col-search{padding:2px 10px 7px}
   .col-search input{width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;background:var(--panel);color:var(--text);outline:0}
   .col-search input:focus{border-color:var(--blue)}
+  /* 거울 카드 — 실제 위치는 짝 방, 여기엔 참고용으로 함께 표시 */
+  .card.mirror{border-style:dashed;opacity:.92}
+  .mirror-tag{font-size:10.5px;font-weight:700;color:var(--t-sky);background:var(--blue-bg);border-radius:6px;padding:2px 8px;margin-bottom:6px;display:inline-block}
+  .mirror-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
 <script>
