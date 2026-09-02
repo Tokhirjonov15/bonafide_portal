@@ -779,6 +779,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="brand"><div class="logo"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg></div>반듯한 동선관리</div>
   <button class="btn primary" onclick="openAdd()">+ 환자 추가</button>
   <div class="search"><i data-lucide="search"></i><input id="search" placeholder="환자 검색 (이름·병록번호)"></div>
+  <div class="group-tabs" id="groupTabs"></div>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
@@ -806,7 +807,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="board-toolbar" id="boardToolbar">
       <button class="gtab tb-act" onclick="openBirdView()" title="모든 방 환자 위치를 한눈에"><i data-lucide="bird"></i> 버드뷰</button>
       <button class="gtab tb-act" id="compactBtn" onclick="toggleCompact()" title="카드를 간략히/자세히 전환 — 방이 붐빌 때 한눈에 보기"><i data-lucide="list"></i> 간략히</button>
-      <div class="group-tabs" id="groupTabs"></div>
       <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
     </div>
     <div class="board" id="board"></div>
@@ -1261,12 +1261,24 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 
 <script>
 /* ───── 기본값 / 저장 ───── */
-const DEFAULT_ROOMS = ["3층 대기실","x-ray실","진료실1","진료 상담","C-Arm","Sono","처치실"];
-/* ── 데모 기본값: 우리 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
+/* 방 목록 (2026-09 지점 확정) — 3층 + 4층, 수납은 공용(그룹 없음 → 모든 층 탭에 표시) */
+const DEFAULT_ROOMS = [
+  "3층 대기실","x-ray실","CT실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실",
+  "4층 대기실","기본물리치료","SASO","충격파","신장분사","자동차도수","4층 진료실",
+  "수납"
+];
+const DEFAULT_ROOM_GROUPS = {
+  "3층 대기실":"3층","x-ray실":"3층","CT실":"3층","진료실1":"3층","진료 상담":"3층",
+  "C-Arm":"3층","Sono":"3층","근전도검사":"3층","물리치료":"3층","처치실":"3층",
+  "4층 대기실":"4층","기본물리치료":"4층","SASO":"4층","충격파":"4층",
+  "신장분사":"4층","자동차도수":"4층","4층 진료실":"4층"
+};
+/* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
-  {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','처치실']},
-  {id:'rt_re',    name:'재진 (예시)',     rooms:['3층 대기실','진료실1','처치실']},
-  {id:'rt_inj',   name:'주사 환자 (예시)', rooms:['3층 대기실','진료실1','C-Arm','처치실']}
+  {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','수납']},
+  {id:'rt_re',    name:'재진 (예시)',     rooms:['3층 대기실','진료실1','물리치료','수납']},
+  {id:'rt_inj',   name:'주사 환자 (예시)', rooms:['3층 대기실','진료실1','C-Arm','처치실','수납']},
+  {id:'rt_4f',    name:'4층 물리치료 (예시)', rooms:['4층 대기실','기본물리치료','충격파','수납']}
 ];
 const DEFAULT_PROC_SET   = ['C-Arm 주사 (예시)','신경차단술 (예시)','도수치료 (예시)'];
 const DEFAULT_PREP_ITEMS = ['바늘 (예시)','조영제 (예시)','시린지 (예시)'];
@@ -1302,7 +1314,7 @@ let routeDraft = [];          // 모달에서 작성 중인 동선
 let noteRoomSel = "";         // 전달사항 작성 시 선택된 방
 let draggedPid = null, draggedRoom = null;  // 카드 드래그 상태
 let draggedColRoom = null;                   // 컬럼(방) 드래그 상태 — 내 방 순서 변경용
-let currentGroup = "전체";    // 보드 그룹 탭
+let currentGroup = localStorage.getItem("patientBoard_group")||"3층";    // 보드 그룹(층) 탭 — 기기별 마지막 선택 기억
 let seenAlarms = new Set(loadSeen());  // 이미 알린 항목(기기별) — 중복 알람 방지
 let alarmsSeeded = false;     // 첫 스냅샷은 시드(기존 항목 알람 안 함)
 let seqNext = (parseInt(localStorage.getItem("patientBoard_seq"))||1);  // 등록 순서 번호
@@ -2064,6 +2076,15 @@ function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
+  /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
+  const _oldDefaults=[
+    ["3층 대기실","x-ray실","진료실1","진료 상담","C-Arm","Sono","처치실"],
+    ["3층 대기실","x-ray실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실","수납"],
+    ["3층 대기실","x-ray실","CT실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실","수납"]
+  ];
+  if(_oldDefaults.some(o=>ROOMS.length===o.length&&ROOMS.every((r,i)=>r===o[i])))ROOMS=[...DEFAULT_ROOMS];
+  /* 층 그룹 자동 지정 — 관리자가 직접 그룹을 지정/해제한 방은 건드리지 않음 */
+  ROOMS.forEach(r=>{const g=DEFAULT_ROOM_GROUPS[r];if(g&&!('group' in (ROOM_META[r]||{})))meta(r).group=g;});
   ROOM_META=(d.roomMeta&&typeof d.roomMeta==='object')?d.roomMeta:{};
   RAW_CFG_STAFF=Array.isArray(d.staff)?d.staff:[];
   STAFF_PREFS=(d.staffPrefs&&typeof d.staffPrefs==='object')?d.staffPrefs:{};
@@ -2571,7 +2592,7 @@ function reorderMyRoom(from,to,before){if(!from||!to||from===to)return;
   let i=cur.indexOf(to);if(i<0)return;if(!before)i++;
   cur.splice(i,0,from);saveMyRoomOrder(cur);render();}
 function visibleRooms(){const h=hiddenSet();let rs=orderedRooms().filter(r=>!h.has(r));
-  if(currentGroup&&currentGroup!=="전체")rs=rs.filter(r=>(meta(r).group||"")===currentGroup);
+  if(currentGroup&&currentGroup!=="전체")rs=rs.filter(r=>{const g=meta(r).group||"";return !g||g===currentGroup;});   // 그룹 없는 방(수납 등 공용)은 모든 층 탭에 표시
   return rs;}
 function isMuted(){return !!(currentUser&&currentUser.mutePopups);}
 /* ── 방 그룹 ── */
@@ -2726,7 +2747,7 @@ function renderGroupTabs(){
   bar.innerHTML=tabs.map(g=>`<button class="gtab ${g===currentGroup?'on':''}" onclick="setGroup('${esc(g)}')">${esc(g)}</button>`).join("");
   const dt=document.getElementById("dischTab");if(dt)dt.classList.toggle("on",currentGroup==="__disch__");
 }
-function setGroup(g){currentGroup=g;render();}
+function setGroup(g){currentGroup=g;if(g!=="__disch__")try{localStorage.setItem("patientBoard_group",g);}catch(e){}render();}
 /* 오늘 완료(귀가) 환자 보드 — 당일 내보낸 VISITS를 카드로 */
 /* ── 내원 목록(스프레드시트): 날짜별 · 접수순 · 정렬 · 되돌리기 ── */
 let listDate=null;            // null=오늘
@@ -4585,7 +4606,7 @@ function savePatient(){
   if(!name){alert("이름을 입력하세요.");return;}
   const extra=Number(get("f_extra")||0);
   if(extra>0&&PAY_ROOM&&!routeDraft.includes(PAY_ROOM))routeDraft.push(PAY_ROOM);  // 추가 수납 시 자동 경로
-  if(!routeDraft.length){alert("동선을 1개 이상 추가하세요.");return;}
+  if(!routeDraft.length)routeDraft.push(ROOMS[0]||"3층 대기실");   // 동선 미선택 → 기본 대기실에서 시작(직원이 이후 상황에 맞게 이동)
   const rrn=get("f_rrn");let _birth="",_sex="";
   if(rrn){const rp=parseRRN(rrn);if(!rp){alert("주민번호 앞 7자리를 정확히 입력하세요. (예: 901231-1)");return;}_birth=rp.birth;_sex=rp.sex;}
   const mrn=get("f_mrn");
