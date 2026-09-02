@@ -1070,6 +1070,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="fld"><label><i data-lucide="clock"></i> 접수 시간 <span class="hint">(기본 현재시각, 수정가능)</span></label><input id="f_receive" type="time"></div>
       </div>
       <div class="fld"><label><i data-lucide="wallet"></i> 추가 수납 금액 (원)</label><input id="f_extra" type="number" min="0" placeholder="0" onchange="onExtraFee()"><p class="hint" id="extraHint"></p></div>
+      <div class="fld"><label><i data-lucide="shield-check"></i> 실비보험 유무 <span class="hint">(미체크 = 없음)</span></label>
+        <label style="display:flex;align-items:center;gap:7px;font-size:13px;padding:8px 2px;cursor:pointer"><input type="checkbox" id="f_silbi" onchange="onSilbi()"> 실비보험 있음</label></div>
+      <div class="fld"><label>실비보험 한도 (원)</label><input id="f_silbiLimit" type="number" min="0" placeholder="0" disabled></div>
       </div><!-- /pf-body -->
       </div><!-- /pinfo-fold -->
       <div id="routeSection">
@@ -3047,6 +3050,20 @@ function smsBtnHtml(p){
     return `<button class="icon-btn sms done" title="호출 문자 보냄 (${_hm}) — 클릭해 다시 보내기" onclick="event.stopPropagation();sendCallSms('${p.id}')"><i data-lucide="smartphone"></i> ${_hm}</button>`; }
   return `<button class="icon-btn sms" title="대기 호출 문자 보내기" onclick="event.stopPropagation();sendCallSms('${p.id}')"><i data-lucide="smartphone"></i> 호출</button>`;
 }
+/* ── 치료 횟수 집계: 같은 병록번호의 과거 내원 기록에서 그 방을 실제 거친 횟수 + 오늘 ──
+   한도 제한/차단은 없음 — 참고용 표시만 (간호팀 요청 2026-09) */
+const TREAT_COUNT_ROOMS=["충격파","신장분사","자동차도수"];
+function treatCount(p,room){
+  let n=0;
+  if(p.mrn){
+    for(const v of (Array.isArray(VISITS)?VISITS:[])){
+      if((v.mrn||'')!==p.mrn)continue;
+      const rs=(Array.isArray(v.rooms)&&v.rooms.length)?v.rooms.map(r=>r&&r.room):(v.routeFull||[]);
+      if(rs.includes(room))n++;
+    }
+  }
+  return n+1;   // + 오늘(현재 내원)
+}
 function cardEl(p){
   const c=document.createElement("div");
   c.className="card"+(p.designated?" designated":"")+(p.out?" out":"");c.draggable=true;
@@ -3089,6 +3106,7 @@ function cardEl(p){
       `<div class="note"><b>${esc(r)}</b>${p.notes[r].map((n,i)=>noteLineHtml(p,r,i,n)).join("")}</div>`).join("");
     if(rows)notesHtml=`<div class="notes">${rows}</div>`;
   }
+  const _cur=curRoom(p);
   const _rp=(p.rxProc||'').trim(), _ri=(p.rxItems||'').trim();
   // 준비지시 버튼은 제거 — 내용이 있을 때만 요약을 표시(클릭 시 환자 정보 창), 없으면 아무것도 안 보임
   const rxHtml=(_rp||_ri)
@@ -3108,7 +3126,9 @@ function cardEl(p){
     ${p.parking?`<div class="park-done" title="클릭: 지급 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
     <div class="total" data-pid="${p.id}">${totalLabel(p)}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
+    ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label">동선 (${p.step+1}/${p.route.length})${dwell}</span>${steps}</div>
+    ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘)"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
     <div class="status-row">
       <button class="st-btn wait ${st==='대기'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','대기')">대기</button>
@@ -3279,6 +3299,7 @@ function archiveVisit(p){
     chart:p.chart||"",
     researchChart:p.researchChart||"",
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
+    silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,
     smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[]
   };
   VISITS.push(rec);if(VISITS.length>3000)VISITS=VISITS.slice(-3000);
@@ -4324,6 +4345,7 @@ function openAdd(){
   reloadHistOpen=false;document.getElementById("reloadHistBody").style.display="none";document.getElementById("reloadHistBtn").innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾';
   renderRoomButtons();renderRoutineButtons();renderRouteRows();
   set("f_mrn","");set("f_name","");set("f_rrn","");document.getElementById("rrnHint").textContent="";set("f_extra","");document.getElementById("extraHint").textContent="";
+  {const sb=document.getElementById("f_silbi");if(sb)sb.checked=false;}set("f_silbiLimit","");onSilbi();
   set("f_reserve","");set("f_receive",nowHM());   // 접수시간 기본 현재시각, 예약은 비움
   set("f_tel","");{const o=document.getElementById("f_smsopt");if(o)o.checked=false;}
   set("f_doctor","");fillDoctorOpts();
@@ -4350,6 +4372,7 @@ function openEdit(pid){
   document.getElementById("reloadSection").style.display="none";
   renderRoomButtons();renderRoutineButtons();renderRouteRows();
   set("f_mrn",p.mrn);set("f_name",p.name);set("f_rrn",rrnFromBirth(p.birth,p.sex));onRRNInput();set("f_extra",p.extraFee||"");document.getElementById("extraHint").textContent="";
+  {const sb=document.getElementById("f_silbi");if(sb)sb.checked=!!p.silbi;}set("f_silbiLimit",p.silbiLimit||"");onSilbi();
   set("f_reserve",p.reserveAt||"");set("f_receive",p.receiveAt||"");
   set("f_tel",p.tel||"");{const o=document.getElementById("f_smsopt");if(o)o.checked=!!p.smsOptOut;}
   set("f_doctor",p.doctor||"");fillDoctorOpts();
@@ -4653,12 +4676,15 @@ function savePatient(){
   const doctor=(get("f_doctor")||"").trim();
   if(doctor&&!DOCTORS.includes(doctor)){DOCTORS.push(doctor);saveDoctorsCfg();}  // 새 진료의는 목록에 자동 추가
   const smsOptOut=!!(document.getElementById("f_smsopt")&&document.getElementById("f_smsopt").checked);
+  const _silbi=!!(document.getElementById("f_silbi")&&document.getElementById("f_silbi").checked);   // 실비보험 유무(기본: 없음)
+  const _silbiLimit=_silbi?Number(get("f_silbiLimit")||0):0;
   if(editId){
     const p=data.find(x=>x.id===editId);
     if(mrn&&mrn!==p.mrn){const c=mrnConflict(mrn,name);if(c){alert(`병록번호 ${mrn}는 이미 '${c.name}'님으로 등록되어 있습니다. 다른 번호를 사용하세요.`);return;}}
     const sameStart=p.route[p.step];
     if((p.extraFee||0)!==extra)p.paid=false;  // 금액 바뀌면 수납완료 해제
     p.mrn=mrn;p.name=name;p.birth=_birth;p.sex=_sex;p.extraFee=extra;p.route=[...routeDraft];p.tel=tel;p.smsOptOut=smsOptOut;p.doctor=doctor;p.chart=document.getElementById('f_chart').value;p.researchChart=document.getElementById('f_research').value;
+    p.silbi=_silbi;p.silbiLimit=_silbiLimit;
     p.rxProc=get('rxProc');p.rxItems=get('rxItems');
     p.reserveAt=get("f_reserve")||"";p.receiveAt=get("f_receive")||"";
     const ni=p.route.indexOf(sameStart);p.step=ni>=0?ni:Math.min(p.step,p.route.length-1);
@@ -4673,13 +4699,16 @@ function savePatient(){
     const dup=data.find(x=>!x.discharged && ( (mrn&&(x.mrn||"").trim()===mrn) || (!mrn&&!(x.mrn||"").trim()&&(x.name||"").trim()===name) ));
     if(dup){alert(`'${dup.name}'님은 이미 접수되어 동선에 있습니다. (현재 위치: ${curRoom(dup)||'보드'}${dup.out?' · 외출 중':''})\n중복 접수는 할 수 없습니다.`+(!mrn?`\n※ 동명이인이라면 병록번호를 입력해 구분해 주세요.`:''));return;}
     const _now=new Date().toISOString();
-    const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
+    const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     audit('환자추가',name+(mrn?' ('+mrn+')':''));
     data.push(p);save(p);cloudSaveConfig();render();closeModal();enteredRoom(p,curRoom(p));return;
   }
 }
+/* 실비보험 체크 ↔ 한도 입력 활성화 */
+window.onSilbi=function(){const c=document.getElementById("f_silbi"),l=document.getElementById("f_silbiLimit");
+  if(!c||!l)return;l.disabled=!c.checked;if(!c.checked)l.value="";};
 function deletePatient(){if(editId){const p=data.find(x=>x.id===editId);if(confirm("이 환자를 삭제할까요?")){audit('환자삭제',(p&&p.name)||'');cloudDelPatient(editId);data=data.filter(x=>x.id!==editId);save();render();closeModal();}}}
 function deletePatientById(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if(!confirm(`'${p.name}'님을 보드에서 삭제할까요?\n(되돌릴 수 없습니다)`))return;
@@ -5033,6 +5062,13 @@ boot();
   .card.mirror{border-style:dashed;opacity:.92}
   .mirror-tag{font-size:10.5px;font-weight:700;color:var(--t-sky);background:var(--blue-bg);border-radius:6px;padding:2px 8px;margin-bottom:6px;display:inline-block}
   .mirror-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
+  /* 치료 횟수 표시 (충격파·신장분사·자동차도수) */
+  .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 0 2px;display:inline-block}
+  .treat-count b{font-size:12.5px}
+  .treat-count svg.lucide{width:11px;height:11px;vertical-align:-1px}
+  /* 실비보험 표시 */
+  .silbi-tag{font-size:11.5px;font-weight:700;color:var(--t-green);background:var(--green-bg);border-radius:6px;padding:3px 9px;margin:4px 0 2px;display:inline-block}
+  .silbi-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
 <script>
