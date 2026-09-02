@@ -1223,7 +1223,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span class="hint">접수 후</span>
           <input id="parkingMinInp" type="number" min="0" max="720" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setParkingMin(this.value)">
-          <span class="hint">분이 지나면 환자 카드에 '🅿️ 주차권 안내'가 강조 표시됩니다 (0 = 사용 안 함)</span>
+          <span class="hint">분이 지난 환자가 <b>수납</b>으로 이동하면 카드에 '주차권 안내'가 표시됩니다 (0 = 사용 안 함)</span>
         </div>
         <p class="hint">카드의 [지급 완료]를 누르면 표시가 사라지고 지급자·시각이 기록됩니다. 운영해 보며 시간을 조정하세요.</p>
       </div>
@@ -1320,7 +1320,7 @@ let seqDate = localStorage.getItem("patientBoard_seqdate")||"";  // 등록번호
 let PAY_ROOM = localStorage.getItem("patientBoard_payroom")||"";  // 추가 수납 시 자동 추가할 방
 let PUNCT_EARLY = (function(){const v=parseInt(localStorage.getItem("patientBoard_punctearly"));return isNaN(v)?30:v;})();  // 예약 N분 전부터 정시 인정
 let PUNCT_LATE  = (function(){const v=parseInt(localStorage.getItem("patientBoard_punctlate"));return isNaN(v)?10:v;})();   // 예약 N분 후까지 정시 인정
-let PARKING_MIN = (function(){const v=parseInt(localStorage.getItem("patientBoard_parkingmin"));return isNaN(v)?120:v;})(); // 접수 후 N분 지나면 카드에 '주차권 안내' 표시 (0=끔, 관리자 조정)
+let PARKING_MIN = (function(){const v=parseInt(localStorage.getItem("patientBoard_parkingmin"));return isNaN(v)?10:v;})(); // 접수 N분 경과 + 수납 도착 시 '주차권 안내' 표시 (0=끔, 관리자 조정)
 function won(n){return Number(n||0).toLocaleString("ko-KR");}
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
 
@@ -1844,10 +1844,11 @@ async function runSelfTest(){
     {const _pm=PARKING_MIN;
      try{
        PARKING_MIN=120;
-       const old={arrivedAt:new Date(Date.now()-125*60000).toISOString()};
-       const fresh={arrivedAt:new Date(Date.now()-10*60000).toISOString()};
+       const old={arrivedAt:new Date(Date.now()-125*60000).toISOString(),route:['수납'],step:0};
+       const fresh={arrivedAt:new Date(Date.now()-10*60000).toISOString(),route:['수납'],step:0};
        ok('주차권: 접수 후 임계 경과 시 표시 대상', parkingDue(old)===true && parkingDue(fresh)===false);
-       ok('주차권: 종결 환자 제외', parkingDue({arrivedAt:old.arrivedAt,discharged:true})===false);
+       ok('주차권: 수납 외 방에서는 미표시', parkingDue({arrivedAt:old.arrivedAt,route:['처치실'],step:0})===false);
+       ok('주차권: 종결 환자 제외', parkingDue({arrivedAt:old.arrivedAt,route:['수납'],step:0,discharged:true})===false);
        PARKING_MIN=0;
        ok('주차권: 0분=기능 끔', parkingDue(old)===false);
        PARKING_MIN=90;
@@ -2098,7 +2099,7 @@ function applyCfg(d){
   PAY_ROOM=d.payRoom||"";localStorage.setItem("patientBoard_payroom",PAY_ROOM);
   if(typeof d.punctEarly==='number'){PUNCT_EARLY=d.punctEarly;localStorage.setItem("patientBoard_punctearly",String(PUNCT_EARLY));}
   if(typeof d.punctLate==='number'){PUNCT_LATE=d.punctLate;localStorage.setItem("patientBoard_punctlate",String(PUNCT_LATE));}
-  if(typeof d.parkingMin==='number'){PARKING_MIN=d.parkingMin;localStorage.setItem("patientBoard_parkingmin",String(PARKING_MIN));}
+  if(typeof d.parkingMin==='number'){PARKING_MIN=(d.parkingMin===120?10:d.parkingMin);localStorage.setItem("patientBoard_parkingmin",String(PARKING_MIN));}   // 120=옛 기본값 → 확정값 10분으로 1회 교체
   const maxSeq=data.reduce((m,p)=>Math.max(m,p.seq||0),0);
   const _today=localYMD(new Date());
   if(d.seqDate&&d.seqDate!==_today){seqNext=1;seqDate=_today;}  // 클라우드 기록이 어제면 새 날 → #1부터
@@ -3235,7 +3236,9 @@ function togglePaid(pid){const p=data.find(x=>x.id===pid);if(!p)return;const tar
 function recvMs(p){   // 접수 시각(오늘 HH:MM 우선, 없으면 등록 시각)
   if(p.receiveAt&&/^\d{1,2}:\d{2}$/.test(p.receiveAt)){const d=new Date();const a=p.receiveAt.split(':');d.setHours(+a[0],+a[1],0,0);return d.getTime();}
   const t=new Date(p.arrivedAt||p.enteredAt||0).getTime();return isNaN(t)?0:t;}
-function parkingDue(p){if(!(PARKING_MIN>0)||p.discharged)return false;const b=recvMs(p);return b>0&&(Date.now()-b)>=PARKING_MIN*60000;}
+function parkingDue(p){if(!(PARKING_MIN>0)||p.discharged)return false;
+  if(curRoom(p)!=='수납')return false;   // 치료 중에는 표시하지 않음 — 수납으로 이동했을 때만
+  const b=recvMs(p);return b>0&&(Date.now()-b)>=PARKING_MIN*60000;}
 function parkingThresholdText(){const h=Math.floor(PARKING_MIN/60),m=PARKING_MIN%60;
   return h>0?(m>0?h+'시간 '+m+'분':h+'시간'):m+'분';}
 function applyParking(d,val){if(val)d.parking=val;else delete d.parking;return d;}
