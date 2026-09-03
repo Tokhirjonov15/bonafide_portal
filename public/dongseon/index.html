@@ -164,15 +164,16 @@
   .wait-stage{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:0;overflow:hidden;min-height:0}
   .wait-header{display:flex;align-items:flex-end;justify-content:space-between;gap:26px;padding:30px 46px 20px}
   .wait-brand{display:flex;flex-direction:column;gap:5px;min-width:0}
-  .wait-title{font-size:calc(clamp(24px,3.3vw,46px) * var(--wheadscale,1));font-weight:800;color:#15294a;letter-spacing:-.7px;line-height:1.08;text-shadow:0 1px 0 rgba(255,255,255,.6)}
-  .wait-title:empty::before{content:"진료 순서 안내"}
-  .wait-sub{font-size:calc(clamp(12px,1.15vw,17px) * var(--wheadscale,1));font-weight:600;color:#64759a;letter-spacing:.3px}
+  .wait-title{font-size:calc(clamp(30px,4.4vw,64px) * var(--wheadscale,1));font-weight:900;color:#16325c;letter-spacing:-1.2px;line-height:1.06;text-shadow:0 1px 0 rgba(255,255,255,.6)}
+  .wait-title:empty::before{content:"365일 진료하는 반듯한 정형외과"}
+  .wait-sub{font-size:calc(clamp(13px,1.35vw,21px) * var(--wheadscale,1));font-weight:700;color:#1d2f4f;letter-spacing:-.2px;margin-top:8px}
+  .wait-underline{width:76px;height:6px;border-radius:4px;background:#4f6af0;margin-top:12px}
   .wait-clock{text-align:right;flex-shrink:0;line-height:1}
   .wc-time{font-size:clamp(30px,3.5vw,50px);font-weight:800;color:#1e3a6b;font-variant-numeric:tabular-nums;letter-spacing:1.5px}
   .wc-date{font-size:clamp(11px,1.05vw,15px);font-weight:700;color:#6b7c97;margin-top:5px;letter-spacing:.4px}
-  .wait-cols{flex:1;display:flex;gap:26px;align-items:stretch;justify-content:center;flex-wrap:wrap;padding:6px 40px 40px;overflow:auto;min-height:0}
+  .wait-cols{flex:1;display:flex;gap:26px;align-items:stretch;justify-content:center;flex-wrap:wrap;padding:20px 40px 34px;overflow:auto;min-height:0}
   /* 회전 모드: 한 방을 크게 — 세로(column) 배치로 카드가 화면 아래까지 꽉 차게(세로 모니터 대응) */
-  .wait-cols.rot{flex-direction:column;flex-wrap:nowrap;align-items:center;gap:10px;padding:6px 24px 12px}
+  .wait-cols.rot{flex-direction:column;flex-wrap:nowrap;align-items:center;gap:10px;padding:20px 24px 12px}
   .wait-cols.rot .wait-col{flex:1 1 auto;width:min(calc(94vw / var(--wzoom,1)),calc(1020px / var(--wzoom,1)));max-width:none;min-height:0;align-self:center}  /* zoom 역보정 → 확대해도 화면폭 안 넘음 */
   .wait-ct>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* 긴 방 이름은 말줄임 */
   .wait-cols.rot .wait-ct{font-size:clamp(26px,3vw,44px);padding:20px 28px}
@@ -186,9 +187,10 @@
   .wrd.on{background:#2f6bff;box-shadow:0 0 0 4px rgba(47,107,255,.18)}
   .wait-ctl{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:800;color:#26344a;background:#fff;border:1px solid #cdd7e3;border-radius:10px;padding:5px 9px;white-space:nowrap}
   .wait-ctl input{width:52px;border:1px solid #cdd7e3;border-radius:6px;padding:3px 4px;font-size:12.5px;font-weight:700;text-align:center;color:#26344a;background:#fff}
-  .wait-col{flex:1 1 calc(300px / var(--wzoom,1));min-width:calc(280px / var(--wzoom,1));max-width:calc(540px / var(--wzoom,1));display:flex;flex-direction:column;background:rgba(255,255,255,.78);border:1px solid rgba(255,255,255,.85);border-radius:24px;box-shadow:0 18px 44px rgba(30,52,96,.11),0 2px 6px rgba(30,52,96,.05);overflow:hidden;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-  .wait-ct{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:clamp(19px,2vw,30px);font-weight:800;color:#fff;padding:16px 22px;background:linear-gradient(135deg,#2f6bff 0%,#4f8cff 100%);letter-spacing:-.3px;box-shadow:0 4px 14px rgba(47,107,255,.28)}
-  .wait-ct .wc-count{font-size:.6em;font-weight:800;background:rgba(255,255,255,.25);padding:4px 14px;border-radius:30px;min-width:2em;text-align:center}
+  .wait-col{position:relative;flex:1 1 calc(300px / var(--wzoom,1));min-width:calc(280px / var(--wzoom,1));max-width:calc(540px / var(--wzoom,1));display:flex;flex-direction:column;background:#fff;border:0;border-radius:18px;box-shadow:0 16px 40px rgba(20,40,80,.14),0 2px 6px rgba(20,40,80,.06);overflow:visible}
+  .wait-cnt-badge{position:absolute;top:-13px;right:14px;z-index:2;font-size:clamp(12px,1.1vw,17px);font-weight:800;color:#fff;background:linear-gradient(135deg,#3b82f6,#2563eb);padding:5px 16px;border-radius:30px;box-shadow:0 6px 16px rgba(37,99,235,.35)}
+  .wait-ct{display:flex;align-items:center;justify-content:center;gap:12px;font-size:clamp(19px,2vw,30px);font-weight:800;color:#fff;padding:15px 22px;margin:20px 20px 6px;border-radius:12px;background:#16325c;letter-spacing:-.3px;box-shadow:0 6px 16px rgba(22,50,92,.24);text-align:center}
+  .wait-ct>span:first-child{text-align:center}
   .wait-list{flex:1;display:flex;flex-direction:column;gap:3px;padding:10px 12px;min-height:0;overflow:auto}
   .wait-p{display:flex;align-items:center;gap:16px;padding:13px 14px;border-radius:16px;transition:background .2s}
   .wait-num{flex:0 0 auto;width:clamp(34px,2.6vw,46px);height:clamp(34px,2.6vw,46px);border-radius:50%;background:#eef3fc;color:#3b6bd6;font-size:clamp(15px,1.4vw,21px);font-weight:800;display:flex;align-items:center;justify-content:center}
@@ -202,6 +204,7 @@
   @keyframes waitPulse{0%,100%{opacity:1}50%{opacity:.6}}
   .wait-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#9aa8bf;font-size:clamp(16px,1.4vw,22px);font-weight:600;padding:34px}
   .wait-hint{color:#7387a0;font-size:20px;text-align:center;padding:40px;width:100%}
+  .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:center;padding:15px 22px;font-size:clamp(14px,1.5vw,24px);letter-spacing:-.2px}
   /* ── 보드 ── */
   .board{flex:1;min-width:0;display:flex;gap:14px;padding:16px 18px;overflow-x:auto;overflow-y:hidden}
   .col{flex:0 0 300px;min-width:0;max-width:300px;display:flex;flex-direction:column;min-height:0;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 9px 6px}
@@ -972,11 +975,13 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="wait-header">
       <div class="wait-brand">
         <div class="wait-title" id="waitHeadline"></div>
-        <div class="wait-sub">진료 순서대로 안내해 드립니다 · 잠시만 기다려 주세요</div>
+        <div class="wait-sub">시술 5만례 이상 전문의료진 | 대학병원급 진료 시스템 | 풍부한 임상경험 기반 진료 | 숙련된 의료진 상주 진료</div>
+        <div class="wait-underline"></div>
       </div>
       <div class="wait-clock"><div class="wc-time" id="waitClock">--:--</div><div class="wc-date" id="waitDate"></div></div>
     </div>
     <div class="wait-cols" id="waitCols"></div>
+    <div class="wait-foot">위 내용은 치료 대기자 명단입니다 &nbsp;·&nbsp; 상황에 따라 실제 치료 순서가 표시 순서와 다를 수 있습니다</div>
   </div>
 </div>
 
@@ -3097,16 +3102,20 @@ function renderWaitScreen(){
     const rows=list.length
       ? list.map((p,i)=>{const st=p.status||'대기';const prep=st==='준비',prog=st==='진행';
           return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
-      : '<div class="wait-empty">대기 환자 없음</div>';
+      : '<div class="wait-empty">현재 대기 환자 없음</div>';
     return `<div class="wait-col">
-      <div class="wait-ct"><span>${esc(waitRoomLabel(room))}</span><span class="wc-count">${list.length}</span></div>
+      <span class="wait-cnt-badge">대기 ${list.length}명</span>
+      <div class="wait-ct"><span>${esc(waitRoomLabel(room))}</span></div>
       <div class="wait-list">${rows}</div>
     </div>`;
   }).join("")+dotsHtml;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
+// 문자 발송 업체 미계약 → 호출 버튼 임시 숨김 (SHOW_CALL_BTN=true로 복원)
+const SHOW_CALL_BTN=false;
 function smsBtnHtml(p){
+  if(!SHOW_CALL_BTN) return '';
   if(!p.tel) return `<button class="icon-btn" title="휴대폰 번호 없음 — 수정에서 입력" onclick="event.stopPropagation();openEdit('${p.id}')" style="opacity:.45"><i data-lucide="smartphone"></i> 호출</button>`;
   if(p.smsOptOut) return '';
   if(p.smsFailAt) return `<button class="icon-btn sms fail" title="문자 발송 실패: ${esc(p.smsFailMsg||'')} — 클릭해 다시 시도" onclick="event.stopPropagation();sendCallSms('${p.id}')">📱 재발송</button>`;
