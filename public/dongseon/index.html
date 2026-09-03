@@ -205,15 +205,12 @@
   .wait-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#9aa8bf;font-size:clamp(16px,1.4vw,22px);font-weight:600;padding:34px}
   .wait-hint{color:#7387a0;font-size:20px;text-align:center;padding:40px;width:100%}
   .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:center;padding:15px 22px;font-size:clamp(14px,1.5vw,24px);letter-spacing:-.2px}
-  /* ── 충격파·신장분사 치료 시트 ── */
-  .sheet-screen{position:fixed;inset:0;z-index:290;display:none;flex-direction:column;background:#f4f6fa;color:#1f2a37;color-scheme:light}
-  .sheet-screen.show{display:flex}
-  .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;background:#fff;border-bottom:1px solid #dfe5ee;flex-shrink:0}
-  .sheet-title{font-size:19px;font-weight:800;color:#16325c}
-  .sheet-title svg.lucide{width:18px;height:18px;vertical-align:-3px}
-  .sheet-sub{font-size:12.5px;font-weight:700;color:#6b7c97;margin-top:2px}
-  .sheet-body{flex:1;overflow:auto;padding:18px 22px}
-  .sheet-tbl{border-collapse:collapse;width:100%;background:#fff;font-size:13px}
+  /* ── 충격파·신장분사 치료 시트 (대기화면 안 카드) ── */
+  .wait-sheetcol{flex:1 1 100%;max-width:min(1240px,100%)}
+  .wait-sheetcol .wait-list{overflow:auto;padding:12px 16px 16px}
+  .sheet-wrap{overflow:auto}
+  .sheet-legend{font-size:clamp(11px,1vw,15px);font-weight:700;color:#6b7c97;padding:8px 2px 0}
+  .sheet-tbl{border-collapse:collapse;width:100%;background:#fff;font-size:clamp(12px,1.15vw,17px)}
   .sheet-tbl th,.sheet-tbl td{border:1px solid #b9c3d4;padding:6px 8px;text-align:center;vertical-align:middle;min-width:110px}
   .sheet-tbl thead th{font-size:14px;font-weight:800;color:#1f2a37;padding:9px 8px;position:sticky;top:0;z-index:1}
   .sheet-tbl th.sheet-time{background:#eef1f6;font-weight:800;color:#3c4a5f;min-width:64px;width:64px}
@@ -815,7 +812,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
-    <button class="btn" id="sheetBtn" onclick="openTreatSheet()"><i data-lucide="table"></i> 치료 시트</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
@@ -1222,18 +1218,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div><!-- /pcol 우(차트 전용) -->
     </div>
   </div>
-</div>
-
-<!-- 충격파·신장분사 치료 시트 (전체화면) -->
-<div id="sheetScreen" class="sheet-screen">
-  <div class="sheet-head">
-    <div>
-      <div class="sheet-title"><i data-lucide="table"></i> 충격파 · 신장분사 치료 시트</div>
-      <div class="sheet-sub" id="sheetDate"></div>
-    </div>
-    <button class="btn sm" onclick="closeTreatSheet()">✕ 닫기</button>
-  </div>
-  <div class="sheet-body" id="sheetBody"></div>
 </div>
 
 <!-- 휴무 관리 모달 (관리자) -->
@@ -2875,7 +2859,6 @@ function render(){
   renderChat();
   if(birdOpen)renderBirdView();
   if(waitOpen)renderWaitScreen();
-  if(sheetOpen)renderTreatSheet();
   if(window.lucide)try{lucide.createIcons();}catch(e){}   // 아이콘 즉시 변환(옵저버 지연 없이 같은 프레임)
   applyColFilters();   // 방별 검색 필터 재적용 + 입력 포커스 복원
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=isAdmin()?"":"none";
@@ -3136,14 +3119,26 @@ function renderWaitScreen(){
   const sel=document.getElementById("waitRoomSel");
   if(sel)sel.innerHTML=ROOMS.map(r=>`<button class="chipf ${waitRooms.includes(r)?'on':''}" onclick="toggleWaitRoom('${esc(r)}')">${esc(r)}</button>`).join("");
   const cols=document.getElementById("waitCols");if(!cols)return;
-  const rs=waitRooms.filter(r=>ROOMS.includes(r));
+  let rs=waitRooms.filter(r=>ROOMS.includes(r));
+  /* 충격파·신장분사가 선택되면 개별 대기열 대신 치료 시트 한 판으로 표시 */
+  const hasSheet=rs.some(r=>SHEET_ROOMS.includes(r));
+  rs=rs.filter(r=>!SHEET_ROOMS.includes(r));
+  if(hasSheet)rs.push("__SHEET__");
   if(!rs.length){cols.classList.remove("rot");cols.innerHTML=`<div class="wait-hint"><i data-lucide="settings"></i> 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
   const rot=waitRotSec>0&&rs.length>1;   // 회전 모드: 한 방씩 크게, N초마다 다음 방
   cols.classList.toggle("rot",rot);
   let showRs=rs;
   if(rot){waitRotIdx=((waitRotIdx%rs.length)+rs.length)%rs.length;showRs=[rs[waitRotIdx]];}
-  const dotsHtml=rot?`<div class="wait-rot-dots">${rs.map((r,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(waitRoomLabel(r))}"></span>`).join("")}</div>`:'';
+  const dotsHtml=rot?`<div class="wait-rot-dots">${rs.map((r,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(r==='__SHEET__'?'충격파·신장분사':waitRoomLabel(r))}"></span>`).join("")}</div>`:'';
   cols.innerHTML=showRs.map(room=>{
+    if(room==='__SHEET__'){
+      const cnt=sheetRecords().length;
+      return `<div class="wait-col wait-sheetcol">
+        <span class="wait-cnt-badge">오늘 ${cnt}건</span>
+        <div class="wait-ct"><span>충격파 · 신장분사</span></div>
+        <div class="wait-list">${treatSheetTableHtml(true)}</div>
+      </div>`;
+    }
     const list=data.filter(p=>!p.discharged&&!p.out&&p.route.length&&curRoom(p)===room).sort((a,b)=>roomSort(a,b,room)); // 대기·준비·진행 모두 표시
     list.sort((a,b)=>{const w=s=>s==='진행'?0:(s==='준비'?1:2);return w(a.status||'대기')-w(b.status||'대기');}); // 진행→준비→대기 순 (안정 정렬로 같은 상태끼리는 기존 순서 유지)
     const rows=list.length
@@ -3161,9 +3156,6 @@ function renderWaitScreen(){
 /* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
 const SHEET_ROOMS=["충격파","신장분사"];
 const SHEET_COLORS=["#d9ead3","#fce5cd","#fff2cc","#d9d2e9","#cfe2f3","#f4cccc","#ead1dc","#d0e0e3"];
-let sheetOpen=false;
-window.openTreatSheet=function(){sheetOpen=true;document.getElementById("sheetScreen").classList.add("show");renderTreatSheet();};
-window.closeTreatSheet=function(){sheetOpen=false;document.getElementById("sheetScreen").classList.remove("show");};
 function sheetRecords(){
   const out=[],today=localYMD(new Date());
   /* 보드의 오늘 기록: 지나간 방(visits 로그) + 현재 방 */
@@ -3188,18 +3180,15 @@ function sheetRecords(){
   });
   return out;
 }
-function renderTreatSheet(){
-  const body=document.getElementById("sheetBody");if(!body||!sheetOpen)return;
-  const d=new Date();
-  document.getElementById("sheetDate").textContent=
-    `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${["일","월","화","수","목","금","토"][d.getDay()]})`;
+/* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김) */
+function treatSheetTableHtml(pf){
   const recs=sheetRecords();
-  /* 열: 두 방에 배정된 담당자(진료의·방사선·간호 전부) 중 오늘 근무자 + 기록에 등장한 사람 */
+  /* 열: 두 방에 배정된 담당자(진료의·간호·방사선) 중 오늘 근무자 + 기록에 등장한 사람 */
   let docs=[];
   SHEET_ROOMS.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
     .forEach(n=>{if(n&&!isOffToday(n)&&!docs.includes(n))docs.push(n);});});
   recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});
-  if(!docs.length){body.innerHTML='<div class="hint" style="padding:30px;text-align:center">충격파·신장분사 방에 담당자가 없습니다.<br>진료실 관리에서 두 방에 진료의/간호사를 입력하세요.</div>';return;}
+  if(!docs.length)return '<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
   /* 행: 30분 슬롯 — 기본 9:00~18:30, 기록이 밖에 있으면 자동 확장 */
   const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
   let s0=18,s1=37;   // 9:00=18, 18:30=37
@@ -3210,15 +3199,17 @@ function renderTreatSheet(){
     const cells=docs.map(doc=>{
       const here=recs.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
       if(!here.length)return '<td></td>';
-      return `<td class="filled">${here.map(x=>`<div class="sheet-p${x.live?' live':''}" title="${esc(x.room)} · ${esc(x.name)}${x.mrn?' ('+esc(x.mrn)+')':''}">
-        <span class="sp-room ${x.room==='충격파'?'sk':'sj'}">${x.room==='충격파'?'충':'신'}</span>${esc(dispName(x.name))}${x.mrn?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`).join("")}</td>`;
+      return `<td class="filled">${here.map(x=>{
+        const nm=pf?maskName(x.name):dispName(x.name);
+        return `<div class="sheet-p${x.live?' live':''}">
+        <span class="sp-room ${x.room==='충격파'?'sk':'sj'}">${x.room==='충격파'?'충':'신'}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;}).join("")}</td>`;
     }).join("");
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
-  body.innerHTML=`<table class="sheet-tbl">
-    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${isOffToday(n)?' (휴무)':''}</th>`).join("")}</tr></thead>
-    <tbody>${rows}</tbody></table>
-    <p class="hint" style="margin-top:8px"><span class="sp-room sk">충</span> 충격파 · <span class="sp-room sj">신</span> 신장분사 · 진하게 = 현재 치료 중 · 시간 = 방 도착 시각(30분 단위)</p>`;
+  return `<div class="sheet-wrap"><table class="sheet-tbl">
+    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody></table></div>
+    <div class="sheet-legend"><span class="sp-room sk">충</span> 충격파 &nbsp; <span class="sp-room sj">신</span> 신장분사 &nbsp;·&nbsp; 파란색 = 현재 치료 중</div>`;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
@@ -5333,7 +5324,7 @@ document.addEventListener("keydown",e=>{
     if(e.key==="ArrowRight"){lightStep(1);return;}
     if(e.key==="Escape"){closePhotoLight();return;}
   }
-  if(e.key==="Escape"){closeModal();closeRooms();closeStaff();closeAccount();closeStats();closeView();closeRoutineEdit();closeRoutines();closeHistory();closeOff();closeTreatSheet();}});
+  if(e.key==="Escape"){closeModal();closeRooms();closeStaff();closeAccount();closeStats();closeView();closeRoutineEdit();closeRoutines();closeHistory();closeOff();}});
 
 // 1초마다 대기/진행 타이머 텍스트만 갱신(전체 리렌더 없이)
 function tickTimers(){if(!currentUser)return;
