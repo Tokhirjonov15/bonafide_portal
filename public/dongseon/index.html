@@ -2722,6 +2722,11 @@ function roomQueue(room){return data.filter(p=>!p.discharged&&!p.out&&p.route.le
 function waitInfo(p){const room=curRoom(p);if(!room||p.out)return null;const list=roomQueue(room);const idx=list.findIndex(x=>x.id===p.id);if(idx<0)return null;return {room,ahead:idx,pos:idx+1,etaSec:idx*roomSvcSec(room)};}
 function etaText(sec){sec=Math.max(0,Math.round(sec));if(sec<60)return sec+'초';const m=Math.floor(sec/60),s=sec%60;return s?`${m}분 ${s}초`:`${m}분`;}
 /* ───── 렌더 ───── */
+/* ── 카드 접기: 동선·전달사항은 기본 접힘, 화살표 클릭 시 펼침 (카드 길이 절약) ── */
+let CARD_OPEN_ROUTE={}, CARD_OPEN_NOTES={};
+window.toggleCardRoute=function(pid){CARD_OPEN_ROUTE[pid]=!CARD_OPEN_ROUTE[pid];render();};
+window.toggleCardNotes=function(pid){CARD_OPEN_NOTES[pid]=!CARD_OPEN_NOTES[pid];render();};
+
 /* ── 방(컬럼)별 환자 검색: 환자가 있는 방의 머리에 🔍 버튼 → 이름·병록번호로 그 방만 필터 ── */
 let COL_Q={}, COL_SEARCH_OPEN={}, COL_FOCUS=null;
 window.toggleColSearch=function(room){
@@ -3162,12 +3167,15 @@ function cardEl(p){
   }
   // 처치는 '준비 지시'(전역 처치 세트)로 통합됨 — 방별 처치 칩 제거
   let procHtml="";
-  // 방별 전달사항
+  // 방별 전달사항 — 기본 접힘, 건수 표시
   let notesHtml="";
   if(p.notes){
-    const rows=[...new Set([...p.route,...Object.keys(p.notes)])].filter(r=>p.notes[r]&&p.notes[r].length).map(r=>
-      `<div class="note"><b>${esc(r)}</b>${p.notes[r].map((n,i)=>noteLineHtml(p,r,i,n)).join("")}</div>`).join("");
-    if(rows)notesHtml=`<div class="notes">${rows}</div>`;
+    let noteCnt=0;
+    const rows=[...new Set([...p.route,...Object.keys(p.notes)])].filter(r=>p.notes[r]&&p.notes[r].length).map(r=>{
+      noteCnt+=p.notes[r].length;
+      return `<div class="note"><b>${esc(r)}</b>${p.notes[r].map((n,i)=>noteLineHtml(p,r,i,n)).join("")}</div>`;}).join("");
+    if(rows){const nOpen=!!CARD_OPEN_NOTES[p.id];
+      notesHtml=`<div class="notes"><div class="fold-head" onclick="event.stopPropagation();toggleCardNotes('${p.id}')" title="전달사항 펼치기/접기"><span class="cchev${nOpen?' open':''}">▶</span>전달사항 <b>${noteCnt}건</b></div>${nOpen?rows:''}</div>`;}
   }
   const _cur=curRoom(p);
   const _rp=(p.rxProc||'').trim(), _ri=(p.rxItems||'').trim();
@@ -3192,7 +3200,7 @@ function cardEl(p){
     <div class="total" data-pid="${p.id}">${totalLabel(p)}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
-    <div class="route"><span class="label">동선 (${p.step+1}/${p.route.length})${dwell}</span>${steps}</div>
+    <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps:''}</div>
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘)"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
@@ -5269,6 +5277,12 @@ boot();
   .prog-log{font-size:11px;color:var(--muted);background:var(--chip);border-radius:6px;padding:3px 9px;margin:3px 0 2px;display:inline-block}
   .prog-log b{color:var(--teal)}
   .prog-log svg.lucide{width:11px;height:11px;vertical-align:-1px}
+  /* 카드 접기 화살표 */
+  .cchev{display:inline-block;font-size:9px;margin-right:5px;color:var(--sub);transition:transform .15s ease}
+  .cchev.open{transform:rotate(90deg)}
+  .fold-head{cursor:pointer;user-select:none}
+  .fold-head:hover .cchev{color:var(--blue)}
+  .notes .fold-head{font-size:11.5px;font-weight:700;color:var(--muted);padding:2px 0}
   /* 수납 거울 카드의 [여기 도착] 버튼 */
   .claim-btn{margin-left:8px;border:0;border-radius:5px;background:var(--blue);color:#fff;font-size:10.5px;font-weight:700;padding:2px 9px;cursor:pointer}
   .claim-btn:hover{background:var(--blue-d)}
