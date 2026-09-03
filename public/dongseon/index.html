@@ -225,6 +225,11 @@
   .sheet-tbl th.sheet-time{background:#eef1f6;font-weight:800;color:#3c4a5f;min-width:64px;width:64px}
   .sheet-tbl td{background:#fff;height:40px}
   .sheet-tbl td.filled{background:#fbfcff}
+  /* 휴무 열 — 진회색(엑셀 시트처럼) */
+  .sheet-tbl thead th.offhead{background:#7d8494;color:#fff}
+  .sheet-tbl thead th.offhead .offsub{font-size:10.5px;font-weight:700;opacity:.85}
+  .sheet-tbl td.offcol{background:#a2a8b3}
+  .sheet-tbl td.filled.offcol{background:#a2a8b3}
   .sheet-p{display:flex;align-items:center;justify-content:center;gap:5px;font-weight:700;color:#223350;padding:2px 0;white-space:nowrap}
   .sheet-p.live{color:#1d4ed8}
   .sheet-p.live .sp-mrn{color:#1d4ed8}
@@ -237,6 +242,9 @@
   .sheet-p.has-note::after{content:"";position:absolute;top:0;right:-4px;border-left:9px solid transparent;border-top:9px solid #e5484d}
   .sheet-note-btn{margin-left:10px;border:0;border-radius:8px;background:rgba(255,255,255,.22);color:#fff;font-size:19px;font-weight:800;width:32px;height:32px;line-height:1;cursor:pointer;flex:0 0 auto}
   .sheet-note-btn:hover{background:rgba(255,255,255,.38)}
+  .sheet-note-btn svg.lucide{width:15px;height:15px;vertical-align:-2px}
+  .sheet-date-inp{margin-left:12px;border:0;border-radius:8px;background:rgba(255,255,255,.22);color:#fff;font-size:12.5px;font-weight:700;padding:5px 8px;color-scheme:dark;cursor:pointer;flex:0 0 auto}
+  .sheet-date-inp:hover{background:rgba(255,255,255,.35)}
   .sheet-note-ovl{position:fixed;inset:0;z-index:330;background:rgba(15,25,40,.38);display:flex;align-items:center;justify-content:center}
   .sheet-note-box{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:18px;display:flex;flex-direction:column;gap:10px;width:min(440px,92vw);color:#1f2a37;color-scheme:light}
   .sheet-note-box b{font-size:15px;color:#16325c}
@@ -1367,10 +1375,12 @@ const isPayRoom = r => /수납/.test(r||'');
 const SHOW_OWNERS = false;
 /* ── 직원 휴무: {이름:{weekly:[요일 0~6], dates:['YYYY-MM-DD']}} — 병원은 연중무휴, 직원별로 관리 ── */
 let OFF_SCHED = {};
-function isOffToday(name){const s=OFF_SCHED[name];if(!s)return false;const d=new Date();
+function isOffOn(name,ymd){const s=OFF_SCHED[name];if(!s)return false;
+  const d=new Date(ymd+"T12:00:00");
   if(Array.isArray(s.weekly)&&s.weekly.includes(d.getDay()))return true;
-  if(Array.isArray(s.dates)&&s.dates.includes(localYMD(d)))return true;
+  if(Array.isArray(s.dates)&&s.dates.includes(ymd))return true;
   return false;}
+function isOffToday(name){return isOffOn(name,localYMD(new Date()));}
 /* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
   {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','3층 수납']},
@@ -2172,7 +2182,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -2195,6 +2205,7 @@ function applyCfg(d){
   DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
   OFF_SCHED=(d.offSched&&typeof d.offSched==='object')?d.offSched:{};
   SHEET_NOTES=(d.sheetNotes&&typeof d.sheetNotes==='object')?d.sheetNotes:{};
+  SHEET_STAFF_HIST=(d.sheetStaffHist&&typeof d.sheetStaffHist==='object')?d.sheetStaffHist:{};
   DOC_TEMPLATES=(d.docTemplates&&typeof d.docTemplates==='object')?d.docTemplates:{};localStorage.setItem('patientBoard_doctpl',JSON.stringify(DOC_TEMPLATES));
   PROC_MATERIALS=(d.procMaterials&&typeof d.procMaterials==='object')?d.procMaterials:{};localStorage.setItem(PROCMAT_STORE,JSON.stringify(PROC_MATERIALS));
   PREP_ITEMS=Array.isArray(d.prepItems)?d.prepItems:DEFAULT_PREP_ITEMS.slice();localStorage.setItem(PREPITEMS_STORE,JSON.stringify(PREP_ITEMS));
@@ -3165,11 +3176,17 @@ function renderWaitScreen(){
   document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.includes("__SHEET__"));
   cols.innerHTML=showRs.map(room=>{
     if(room==='__SHEET__'){
-      const cnt=sheetRecords().length;
+      const cnt=sheetRecords(sheetDate).length;
+      const today=localYMD(new Date());
+      const maxD=(function(){const d=new Date();d.setMonth(d.getMonth()+3);return localYMD(d);})();   // 예약 대비 3개월 앞까지
       return `<div class="wait-col wait-sheetcol">
-        <span class="wait-cnt-badge">오늘 ${cnt}건</span>
-        <div class="wait-ct"><span>충격파 · 신장분사</span><button class="sheet-note-btn" onclick="openSheetNote()" title="시트 메모 쓰기">＋</button></div>
-        <div class="wait-list">${treatSheetTableHtml(true)}</div>
+        <span class="wait-cnt-badge">${sheetDate?esc(sheetDate):'오늘'} ${cnt}건</span>
+        <div class="wait-ct"><span>충격파 · 신장분사${sheetDate?' — '+esc(sheetDate):''}</span>
+          <input type="date" class="sheet-date-inp" value="${esc(sheetDate||today)}" max="${maxD}" onchange="setSheetDate(this.value)" title="지난/예정 시트 보기 (3개월 앞까지)">
+          ${sheetDate?'':'<button class="sheet-note-btn" onclick="openSheetNote()" title="시트 메모 쓰기">＋</button>'}
+          <button class="sheet-note-btn" onclick="printSheet()" title="시트 인쇄/저장"><i data-lucide="printer"></i></button>
+        </div>
+        <div class="wait-list">${treatSheetTableHtml(true,sheetDate)}</div>
       </div>`;
     }
     const list=data.filter(p=>!p.discharged&&!p.out&&p.route.length&&curRoom(p)===room).sort((a,b)=>roomSort(a,b,room)); // 대기·준비·진행 모두 표시
@@ -3189,6 +3206,24 @@ function renderWaitScreen(){
 /* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
 const SHEET_ROOMS=["충격파","신장분사"];
 const SHEET_COLORS=["#d9ead3","#fce5cd","#fff2cc","#d9d2e9","#cfe2f3","#f4cccc","#ead1dc","#d0e0e3"];
+/* 시트 담당자 재직 이력: {이름:{periods:[{from,to?}]}} — 추가된 날부터 표시, 뺀 날부터 숨김(과거 기록은 유지) */
+let SHEET_STAFF_HIST={};
+function sheetStaffActiveOn(name,D){
+  const h=SHEET_STAFF_HIST[name];
+  if(!h||!Array.isArray(h.periods)||!h.periods.length)return true;   // 추적 시작 전부터 있던 직원
+  return h.periods.some(p=>p.from<=D&&(!p.to||D<p.to));
+}
+/* 방 담당자 목록이 바뀔 때 호출 — 새 이름은 오늘부터 시작, 빠진 이름은 오늘로 마감 */
+function updateSheetStaffHist(){
+  const today=localYMD(new Date());
+  const cur=new Set();
+  SHEET_ROOMS.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
+    .forEach(n=>{if(n)cur.add(n);});});
+  cur.forEach(n=>{const h=SHEET_STAFF_HIST[n]||(SHEET_STAFF_HIST[n]={periods:[]});
+    if(!h.periods.some(p=>!p.to))h.periods.push({from:today});});
+  Object.keys(SHEET_STAFF_HIST).forEach(n=>{if(!cur.has(n)){
+    const open=SHEET_STAFF_HIST[n].periods.find(p=>!p.to);if(open)open.to=today;}});
+}
 /* 시트 셀 메모(엑셀 코멘트처럼): {날짜|병록번호|방: {text,by,at}} — 클라우드 설정으로 전 기기 동기화 */
 let SHEET_NOTES={};
 function sheetNoteKey(x){return localYMD(new Date(x.at))+"|"+(x.mrn||x.name)+"|"+x.room;}
@@ -3211,65 +3246,111 @@ window.saveSheetNote=function(){
   const t=document.getElementById("snText").value.trim(),k=sheetNoteKey(x);
   if(t)SHEET_NOTES[k]={text:t,by:(currentUser&&currentUser.name)||"",at:Date.now()};
   else delete SHEET_NOTES[k];
-  /* 이틀 지난 메모 자동 정리(설정문서 비대 방지) */
-  const t0=localYMD(new Date()),t1=localYMD(new Date(Date.now()-86400000));
-  Object.keys(SHEET_NOTES).forEach(key=>{const d0=key.split("|")[0];if(d0!==t0&&d0!==t1)delete SHEET_NOTES[key];});
+  /* 지난 날짜 메모 → 날짜별 보관 문서로 이관(설정문서 비대 방지 + 지난 시트 조회 시 그대로 보임) */
+  const t0=localYMD(new Date()),olds={};
+  Object.keys(SHEET_NOTES).forEach(key=>{const d0=key.split("|")[0];
+    if(d0!==t0){(olds[d0]=olds[d0]||{})[key]=SHEET_NOTES[key];delete SHEET_NOTES[key];}});
+  Object.entries(olds).forEach(([d0,map])=>{try{cloud.ref.collection('sheetNotes').doc(d0).set({notes:map},{merge:true});}catch(e){}});
   audit("시트메모",(x.name||"")+" "+x.room);
   cloudSaveConfig();closeSheetNote();render();
 };
-function sheetRecords(){
-  const out=[],today=localYMD(new Date());
-  /* 보드의 오늘 기록: 지나간 방(visits 로그) + 현재 방 */
-  data.forEach(p=>{if(p.discharged)return;
-    (p.visits||[]).forEach(v=>{
-      if(!SHEET_ROOMS.includes(v.room)||!v.enteredAt)return;
-      if(localYMD(new Date(v.enteredAt))!==today)return;
-      const doc=docFor(p,v.room);if(!doc)return;
-      out.push({doc,room:v.room,at:v.enteredAt,name:p.name,mrn:p.mrn});});
-    const cr=curRoom(p);
-    if(SHEET_ROOMS.includes(cr)&&p.enteredAt){
-      const doc=docFor(p,cr);
-      if(doc)out.push({doc,room:cr,at:p.enteredAt,name:p.name,mrn:p.mrn,live:true});}
-  });
-  /* 오늘 귀가(보관)된 내원 기록 */
+/* 날짜별 시트 기록 — 내원 보관 기록(5년 보존)에서 그날 치를 재구성. 오늘이면 보드의 실시간 기록 포함 */
+function sheetRecords(dateYmd){
+  const out=[],today=localYMD(new Date()),D=dateYmd||today;
+  if(D===today){
+    /* 보드의 오늘 기록: 지나간 방(visits 로그) + 현재 방 */
+    data.forEach(p=>{if(p.discharged)return;
+      (p.visits||[]).forEach(v=>{
+        if(!SHEET_ROOMS.includes(v.room)||!v.enteredAt)return;
+        if(localYMD(new Date(v.enteredAt))!==today)return;
+        const doc=docFor(p,v.room);if(!doc)return;
+        out.push({doc,room:v.room,at:v.enteredAt,name:p.name,mrn:p.mrn});});
+      const cr=curRoom(p);
+      if(SHEET_ROOMS.includes(cr)&&p.enteredAt){
+        const doc=docFor(p,cr);
+        if(doc)out.push({doc,room:cr,at:p.enteredAt,name:p.name,mrn:p.mrn,live:true});}
+    });
+  }
+  /* 보관된 내원 기록에서 그날 방문 */
   (Array.isArray(VISITS)?VISITS:[]).forEach(v=>{
-    if(!v.dischargedAt||localYMD(new Date(v.dischargedAt))!==today)return;
     (v.rooms||[]).forEach(r=>{
       if(!SHEET_ROOMS.includes(r.room))return;
+      const at=r.enteredAt||v.dischargedAt;if(!at||localYMD(new Date(at))!==D)return;
       const doc=r.doctor||((v.roomDocs||{})[r.room])||"";if(!doc)return;
-      out.push({doc,room:r.room,at:r.enteredAt||v.dischargedAt,name:v.name,mrn:v.mrn});});
+      out.push({doc,room:r.room,at,name:v.name,mrn:v.mrn});});
   });
   return out;
 }
-/* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김) */
-function treatSheetTableHtml(pf){
-  const recs=sheetRecords();
-  /* 열: 두 방에 배정된 담당자(진료의·간호·방사선) 중 오늘 근무자 + 기록에 등장한 사람 */
+/* 지난 날짜 선택·메모 이력 */
+let sheetDate=null;              // null=오늘
+let SHEET_NOTES_HIST={};         // {날짜: {키:{text,by,at}}}
+window.setSheetDate=function(v){
+  const today=localYMD(new Date());
+  sheetDate=(!v||v===today)?null:v;
+  if(sheetDate&&!SHEET_NOTES_HIST[sheetDate])loadSheetNotesHist(sheetDate);
+  render();
+};
+function loadSheetNotesHist(d){
+  SHEET_NOTES_HIST[d]={};
+  try{cloud.ref.collection('sheetNotes').doc(d).get()
+    .then(s2=>{SHEET_NOTES_HIST[d]=(s2.exists&&s2.data().notes)||{};render();})
+    .catch(()=>{});}catch(e){}
+}
+/* 시트 인쇄(내부 보관용 — 전체 이름·병록번호 표시) */
+window.printSheet=function(){
+  const d=sheetDate||localYMD(new Date());
+  const w=window.open("","_blank");if(!w){alert("팝업이 차단되었습니다.");return;}
+  const style=`<style>body{font-family:'Malgun Gothic',sans-serif;padding:16px}h2{font-size:17px;margin:0 0 10px}
+    table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #666;padding:5px 7px;text-align:center}
+    thead th{background:#eef1f6}.sheet-time{width:60px;background:#eef1f6}
+    .sp-room{display:inline-block;width:16px;border-radius:4px;color:#fff;font-weight:700;font-size:10px}
+    .sp-room.sk{background:#f59e0b}.sp-room.sj{background:#8b5cf6}
+    .sheet-p{white-space:nowrap}.sp-mrn{color:#777;font-size:10px}
+    .sheet-p.has-note::after{content:" ✱";color:#e5484d}
+    .sheet-legend{font-size:11px;color:#666;margin-top:8px}</style>`;
+  w.document.write(`<html><head><title>치료시트_${d}</title>${style}</head><body>
+    <h2>충격파 · 신장분사 치료 시트 — ${d}</h2>${treatSheetTableHtml(false,sheetDate)}
+    <script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
+  w.document.close();
+};
+/* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김 / dateYmd: 지난 날짜 조회) */
+function treatSheetTableHtml(pf,dateYmd){
+  const D=dateYmd||localYMD(new Date());
+  const isToday=D===localYMD(new Date());
+  const recs=sheetRecords(dateYmd);
+  let NOTES;
+  if(isToday)NOTES=SHEET_NOTES;
+  else{NOTES=Object.assign({},SHEET_NOTES_HIST[dateYmd]||{});
+    Object.keys(SHEET_NOTES).forEach(k=>{if(k.split("|")[0]===dateYmd)NOTES[k]=SHEET_NOTES[k];});}   // 아직 이관 전 메모도 포함
+  /* 열: 두 방 배정 전원(휴무자 포함 — 휴무일이면 열 전체 진회색) + 그날 기록에 등장한 사람 */
   let docs=[];
   SHEET_ROOMS.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
-    .forEach(n=>{if(n&&!isOffToday(n)&&!docs.includes(n))docs.push(n);});});
-  recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});
+    .forEach(n=>{if(n&&sheetStaffActiveOn(n,D)&&!docs.includes(n))docs.push(n);});});   // 그날 재직 중인 사람만
+  recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});                  // 기록이 있으면 퇴직자도 그날엔 표시
   if(!docs.length)return '<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
-  /* 행: 30분 슬롯 — 기본 9:00~18:30, 기록이 밖에 있으면 자동 확장 */
+  const off=n=>isOffOn(n,D);
+  /* 행: 30분 슬롯 — 근무시간 9:00~21:00, 기록이 밖에 있으면 자동 확장 */
   const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
-  let s0=18,s1=37;   // 9:00=18, 18:30=37
+  let s0=18,s1=41;   // 9:00=18 ~ 20:30=41
   recs.forEach(x=>{const s2=slotOf(x.at);if(s2<s0)s0=s2;if(s2>s1)s1=s2;});
   let rows="";
   for(let s2=s0;s2<=s1;s2++){
     const hh=Math.floor(s2/2),mm=s2%2?"30":"00";
     const cells=docs.map(doc=>{
       const here=recs.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
-      if(!here.length)return '<td></td>';
-      return `<td class="filled">${here.map(x=>{
+      if(!here.length)return `<td class="${off(doc)?'offcol':''}"></td>`;
+      return `<td class="filled${off(doc)?' offcol':''}">${here.map(x=>{
         const nm=pf?maskName(x.name):dispName(x.name);
-        const nt=SHEET_NOTES[sheetNoteKey(x)];
+        const nt=NOTES[sheetNoteKey(x)];
         return `<div class="sheet-p${x.live?' live':''}${nt?' has-note':''}"${nt?` title="${esc(nt.text)}${nt.by?' — '+esc(nt.by):''}"`:''}>
         <span class="sp-room ${x.room==='충격파'?'sk':'sj'}">${x.room==='충격파'?'충':'신'}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;}).join("")}</td>`;
     }).join("");
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
   return `<div class="sheet-wrap"><table class="sheet-tbl">
-    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
+    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>off(n)
+      ?`<th class="offhead">${esc(n)}<div class="offsub">휴무</div></th>`
+      :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
     <div class="sheet-legend"><span class="sp-room sk">충</span> 충격파 &nbsp; <span class="sp-room sj">신</span> 신장분사 &nbsp;·&nbsp; 파란색 = 현재 치료 중</div>`;
 }
@@ -5181,13 +5262,13 @@ function setRoomDoctors(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).doctors=names;
   let grew=false;names.forEach(n=>{if(!DOCTORS.includes(n)){DOCTORS.push(n);grew=true;}});
   if(grew)saveDoctorsCfg();
-  saveRooms();render();}
+  updateSheetStaffHist();saveRooms();render();}
 function setRoomNurses(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).nurses=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
-  saveRooms();render();}
+  updateSheetStaffHist();saveRooms();render();}
 function setRoomRads(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).rads=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
-  saveRooms();render();}
+  updateSheetStaffHist();saveRooms();render();}
 
 /* ───── 휴무 관리 (관리자) ───── */
 let OFF_NAMES=[];   // renderOffList가 채움 — 인라인 핸들러는 인덱스로 참조(한글 이름 따옴표 문제 회피)
