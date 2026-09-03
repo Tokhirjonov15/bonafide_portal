@@ -795,6 +795,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
+    <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="calendar-off"></i> 휴무 관리</button>
   </div>
   <div class="user-pill" id="userPill" style="display:none" onclick="openAccount()">
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
@@ -1196,6 +1197,20 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   </div>
 </div>
 
+<!-- 휴무 관리 모달 (관리자) -->
+<div class="modal-bg" id="offModal">
+  <div class="modal" style="width:620px">
+    <h3><i data-lucide="calendar-off"></i> 휴무 관리</h3>
+    <div class="body">
+      <p class="hint">병원은 연중무휴 — 직원별 휴무를 지정하세요. <b>휴무인 직원은 그날</b> 진료의/간호사 선택 목록에서 빠지고 자동 지정되지 않습니다.<br>
+      · 요일 버튼 = 매주 반복 휴무 · 날짜 추가 = 그날 하루만 휴무 (상황에 따라 쉬는 직원용)</p>
+      <div id="offList" style="display:flex;flex-direction:column;gap:12px"></div>
+      <p class="hint" id="offEmpty" style="display:none">아직 등록된 진료의/간호사가 없습니다. 진료실 관리에서 방에 진료의·간호사를 먼저 입력하세요.</p>
+    </div>
+    <div class="foot"><button class="btn primary" onclick="closeOff()">닫기</button></div>
+  </div>
+</div>
+
 <!-- 진료실 관리 모달 -->
 <div class="modal-bg" id="roomsModal">
   <div class="modal">
@@ -1293,6 +1308,12 @@ function mirroredHere(p, room){
 const isPayRoom = r => /수납/.test(r||'');
 /* 방 담당자(주/부) UI 표시 여부 — 혼동을 줄이기 위해 임시 숨김(기능 코드는 유지, true로 바꾸면 복원) */
 const SHOW_OWNERS = false;
+/* ── 직원 휴무: {이름:{weekly:[요일 0~6], dates:['YYYY-MM-DD']}} — 병원은 연중무휴, 직원별로 관리 ── */
+let OFF_SCHED = {};
+function isOffToday(name){const s=OFF_SCHED[name];if(!s)return false;const d=new Date();
+  if(Array.isArray(s.weekly)&&s.weekly.includes(d.getDay()))return true;
+  if(Array.isArray(s.dates)&&s.dates.includes(localYMD(d)))return true;
+  return false;}
 /* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
   {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','3층 수납']},
@@ -2094,7 +2115,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -2115,6 +2136,7 @@ function applyCfg(d){
   migratePmemoFromRegistry(d.registry);   // 레거시: registry에 박혀오던 특이사항·유선문의 → pmemo 문서로 이관 후 색인만 남김
   REGISTRY=capRegistry((Array.isArray(d.registry)?d.registry:[]).map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})));
   DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
+  OFF_SCHED=(d.offSched&&typeof d.offSched==='object')?d.offSched:{};
   DOC_TEMPLATES=(d.docTemplates&&typeof d.docTemplates==='object')?d.docTemplates:{};localStorage.setItem('patientBoard_doctpl',JSON.stringify(DOC_TEMPLATES));
   PROC_MATERIALS=(d.procMaterials&&typeof d.procMaterials==='object')?d.procMaterials:{};localStorage.setItem(PROCMAT_STORE,JSON.stringify(PROC_MATERIALS));
   PREP_ITEMS=Array.isArray(d.prepItems)?d.prepItems:DEFAULT_PREP_ITEMS.slice();localStorage.setItem(PREPITEMS_STORE,JSON.stringify(PREP_ITEMS));
@@ -2758,7 +2780,7 @@ function render(){
         <span class="col-count${shown?' has':''}" title="이 방 환자 수">${shown}명</span>
       </div>
       ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
-      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}`;
+      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>isOffToday(n)?n+'(휴무)':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>isOffToday(n)?n+'(휴무)':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}`;
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
 
@@ -2810,6 +2832,7 @@ function render(){
   applyColFilters();   // 방별 검색 필터 재적용 + 입력 포커스 복원
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=isAdmin()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
+  const ob=document.getElementById("offBtn");if(ob)ob.style.display=isAdmin()?"":"none";
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
 }
 function renderGroupTabs(){
@@ -3268,7 +3291,8 @@ function enterCurrentRoom(p){p.status='대기';const now=new Date().toISOString(
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
 function autoAssignRoomStaff(p){
   const r=curRoom(p);if(!r)return;
-  const ds=meta(r).doctors||[], ns=meta(r).nurses||[];
+  const ds=(meta(r).doctors||[]).filter(n=>!isOffToday(n)),   // 휴무자는 자동 지정 안 됨
+        ns=(meta(r).nurses||[]).filter(n=>!isOffToday(n));
   if(ds.length===1){p.roomDocs=p.roomDocs||{};if(!p.roomDocs[r])p.roomDocs[r]=ds[0];}
   if(ns.length===1){p.roomNurses=p.roomNurses||{};if(!p.roomNurses[r])p.roomNurses[r]=ns[0];}
 }
@@ -3855,7 +3879,7 @@ async function wipeAllRecords(){
 function backupDump(){   // 백업 전체 스냅샷(테스트 가능하도록 분리) — 새 데이터 종류를 추가하면 반드시 여기에도 포함할 것
   return {
     _app:"반듯한 동선관리", _schema:"v3", _exportedAt:new Date().toISOString(), _by:(currentUser&&currentUser.name)||"",
-    config:{rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, members:MEMBERS, registry:REGISTRY, seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN},
+    config:{rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, members:MEMBERS, registry:REGISTRY, seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, offSched:OFF_SCHED},
     patients:data, visits:VISITS, stats:STATS, pmemo:PMEMO   // 특이사항·유선문의(환자별) — 반드시 포함
   };
 }
@@ -3932,6 +3956,7 @@ async function applyRestore(dump){
   if(typeof c.punctEarly==='number')PUNCT_EARLY=c.punctEarly;
   if(typeof c.punctLate==='number')PUNCT_LATE=c.punctLate;
   if(typeof c.parkingMin==='number')PARKING_MIN=c.parkingMin;
+  OFF_SCHED=(c.offSched&&typeof c.offSched==='object')?c.offSched:{};
   localStorage.setItem("patientBoard_punctearly",String(PUNCT_EARLY));localStorage.setItem("patientBoard_punctlate",String(PUNCT_LATE));
   data=Array.isArray(dump.patients)?dump.patients:[];
   VISITS=Array.isArray(dump.visits)?dump.visits:[];
@@ -4346,12 +4371,12 @@ function docFor(p,room){return (p.roomDocs&&p.roomDocs[room])||p.doctor||'';}
 function doctorChipHtml(p){
   const _r=curRoom(p)||'';
   const cur=docFor(p,_r);
-  const roomDocs=_r?(meta(_r).doctors||[]):[];
+  const roomDocs=(_r?(meta(_r).doctors||[]):[]).filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
   /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
      지정이 없는 방만 전체 진료의 목록으로 폴백. 이미 선택된 값은 항상 보존. */
-  const opts=roomDocs.length
+  const opts=(_r&&(meta(_r).doctors||[]).length)
     ? [...new Set([cur,...roomDocs].filter(Boolean))]
-    : [...new Set([cur,...DOCTORS].filter(Boolean))];
+    : [...new Set([cur,...DOCTORS.filter(n=>!isOffToday(n))].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="stethoscope"></i> <select class="doc-sel" title="이 방(${esc(_r)})에서의 담당 진료의 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
@@ -4366,8 +4391,9 @@ function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;
 function nurseFor(p,room){return (p.roomNurses&&p.roomNurses[room])||'';}
 function nurseChipHtml(p){
   const _r=curRoom(p)||''; if(!_r)return '';
-  const list=meta(_r).nurses||[]; const cur=nurseFor(p,_r);
-  if(!list.length&&!cur)return '';
+  const listAll=meta(_r).nurses||[]; const cur=nurseFor(p,_r);
+  if(!listAll.length&&!cur)return '';
+  const list=listAll.filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
   const opts=[...new Set([cur,...list].filter(Boolean))];
   const optHtml=`<option value="">(간호 미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="user"></i> <select class="doc-sel" title="이 방(${esc(_r)})의 담당 간호사 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeNurse('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
@@ -4943,6 +4969,49 @@ function setRoomDoctors(i,v){if(!isAdmin())return;
 function setRoomNurses(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).nurses=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
   saveRooms();render();}
+
+/* ───── 휴무 관리 (관리자) ───── */
+let OFF_NAMES=[];   // renderOffList가 채움 — 인라인 핸들러는 인덱스로 참조(한글 이름 따옴표 문제 회피)
+function offNames(){const s2=new Set();
+  DOCTORS.forEach(n=>{if(n)s2.add(n);});
+  ROOMS.forEach(r=>{(meta(r).doctors||[]).forEach(n=>s2.add(n));(meta(r).nurses||[]).forEach(n=>s2.add(n));});
+  Object.keys(OFF_SCHED).forEach(n=>s2.add(n));
+  return [...s2].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));}
+function offOf(n){const o=OFF_SCHED[n]||(OFF_SCHED[n]={});if(!Array.isArray(o.weekly))o.weekly=[];if(!Array.isArray(o.dates))o.dates=[];return o;}
+window.openOff=function(){if(!isAdmin()){alert("휴무 관리는 관리자만 가능합니다.");return;}renderOffList();document.getElementById("offModal").classList.add("show");};
+window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
+const OFF_DAYS=["일","월","화","수","목","금","토"];
+function renderOffList(){
+  OFF_NAMES=offNames();
+  const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");
+  if(!OFF_NAMES.length){box.innerHTML="";emp.style.display="";return;}
+  emp.style.display="none";
+  const today=new Date().getDay();
+  box.innerHTML=OFF_NAMES.map((n,i)=>{const o=offOf(n);
+    const days=OFF_DAYS.map((d,di)=>`<button type="button" class="offday${o.weekly.includes(di)?' on':''}${di===today?' today':''}" onclick="toggleOffDay(${i},${di})" title="매주 ${d}요일 휴무">${d}</button>`).join("");
+    const dates=o.dates.map(dt=>`<span class="offdate">${dt}<button type="button" onclick="delOffDate(${i},'${dt}')" title="삭제">✕</button></span>`).join("");
+    return `<div class="offrow${isOffToday(n)?' off-today':''}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <b style="min-width:70px">${esc(n)}</b>${isOffToday(n)?'<span class="offtag">오늘 휴무</span>':''}
+        <span class="offdays">${days}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <input type="date" id="offDate${i}" style="padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);color:var(--text)">
+        <button type="button" class="mini" onclick="addOffDate(${i})">+ 하루 휴무 추가</button>
+        ${dates}
+      </div>
+    </div>`;}).join("");
+}
+window.toggleOffDay=function(i,di){const n=OFF_NAMES[i];if(!n)return;const o=offOf(n);
+  const k=o.weekly.indexOf(di);if(k>=0)o.weekly.splice(k,1);else o.weekly.push(di);
+  audit('휴무변경',n+' 요일 '+OFF_DAYS[di]);cloudSaveConfig();renderOffList();render();};
+window.addOffDate=function(i){const n=OFF_NAMES[i];if(!n)return;
+  const v=document.getElementById("offDate"+i).value;if(!v)return;
+  const o=offOf(n);if(!o.dates.includes(v)){o.dates.push(v);o.dates.sort();}
+  audit('휴무변경',n+' '+v);cloudSaveConfig();renderOffList();render();};
+window.delOffDate=function(i,v){const n=OFF_NAMES[i];if(!n)return;
+  const o=offOf(n);o.dates=o.dates.filter(x=>x!==v);
+  audit('휴무변경',n+' '+v+' 취소');cloudSaveConfig();renderOffList();render();};
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
 function allProcNames(){const set=[];ROOMS.forEach(r=>{(meta(r).procs||[]).forEach(pr=>{if(pr&&!set.includes(pr))set.push(pr);});});return set;}
@@ -5077,6 +5146,7 @@ document.addEventListener("click",e=>{const ta=document.getElementById("topActio
 document.getElementById("search").addEventListener("input",render);
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
 document.getElementById("roomsModal").addEventListener("click",e=>{if(e.target.id==="roomsModal")closeRooms()});
+document.getElementById("offModal").addEventListener("click",e=>{if(e.target.id==="offModal")closeOff()});
 document.getElementById("newRoom").addEventListener("keydown",e=>{if(e.key==="Enter")addRoom(false)});
 document.getElementById("noteText").addEventListener("keydown",e=>{if(e.key==="Enter"){if(e.isComposing||e.keyCode===229)return;e.preventDefault();submitNote();}});
 document.getElementById("callText").addEventListener("keydown",e=>{if(e.key==="Enter"){if(e.isComposing||e.keyCode===229)return;e.preventDefault();submitCall();}});
@@ -5095,7 +5165,7 @@ document.addEventListener("keydown",e=>{
     if(e.key==="ArrowRight"){lightStep(1);return;}
     if(e.key==="Escape"){closePhotoLight();return;}
   }
-  if(e.key==="Escape"){closeModal();closeRooms();closeStaff();closeAccount();closeStats();closeView();closeRoutineEdit();closeRoutines();closeHistory();}});
+  if(e.key==="Escape"){closeModal();closeRooms();closeStaff();closeAccount();closeStats();closeView();closeRoutineEdit();closeRoutines();closeHistory();closeOff();}});
 
 // 1초마다 대기/진행 타이머 텍스트만 갱신(전체 리렌더 없이)
 function tickTimers(){if(!currentUser)return;
@@ -5160,6 +5230,16 @@ boot();
   /* 방 전담 진료의 표시 */
   .col-doc{font-size:11px;font-weight:700;color:var(--teal);background:var(--teal-bg);border-radius:20px;padding:1px 9px;margin-right:2px;white-space:nowrap;flex:0 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .col-doc svg.lucide{width:11px;height:11px;vertical-align:-1px}
+  /* 휴무 관리 */
+  .offrow{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2)}
+  .offrow.off-today{border-color:var(--orange)}
+  .offtag{font-size:10.5px;font-weight:800;color:#fff;background:var(--orange);border-radius:10px;padding:1px 8px}
+  .offdays{display:flex;gap:4px}
+  .offday{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--sub);font-size:12px;font-weight:700;cursor:pointer;padding:0}
+  .offday.on{background:var(--red);border-color:transparent;color:#fff}
+  .offday.today{outline:2px solid var(--blue);outline-offset:1px}
+  .offdate{font-size:11.5px;font-weight:700;color:var(--red);background:var(--red-bg);border-radius:6px;padding:2px 4px 2px 8px;display:inline-flex;align-items:center;gap:3px}
+  .offdate button{border:0;background:transparent;color:var(--red);cursor:pointer;font-size:11px;padding:0 3px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
 <script>
