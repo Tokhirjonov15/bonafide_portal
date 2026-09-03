@@ -3033,7 +3033,17 @@ function renderWaitPresetSel(){ const el=document.getElementById("waitPresetSel"
     waitPresets.map((p,i)=>`<button class="chipf ${i===waitCur?'on':''}" title="${esc(p.name||('양식 '+(i+1)))} · 클릭=전환, 더블클릭=이름변경" onclick="loadWaitPreset(${i})" ondblclick="renameWaitPreset(${i})">${i+1}</button>`).join(''); }
 let waitHideControls=localStorage.getItem("patientBoard_waithide")==="1";
 /* 이름 마스킹: 김민수 → 김O수 (가운데 가림, 환자 프라이버시) */
-function maskName(n){n=(n||"").trim();if(n.length<=1)return n;if(n.length===2)return n[0]+"O";return n[0]+"O".repeat(n.length-2)+n[n.length-1];}
+/* 카드 표시용 이름: 한글은 전체 표시, 외국인(라틴 문자) 이름만 최대 12자로 줄임 */
+function dispName(n){n=(n||"").trim();return (/[A-Za-z]/.test(n)&&n.length>12)?n.slice(0,12)+"…":n;}
+/* 이름 마스킹: 2자 '이 O' · 3자 '김 O 민' · 4자 '김 O O 민' … / 외국인(라틴 문자)은 마스킹 없이 최대 12자 */
+function maskName(n){
+  n=(n||"").trim();
+  if(!n)return n;
+  if(/[A-Za-z]/.test(n))return n.length>12?n.slice(0,12)+"…":n;
+  if(n.length<=1)return n;
+  if(n.length===2)return n[0]+" O";
+  return n[0]+" "+Array(n.length-1).join("O ").trim()+" "+n[n.length-1];
+}
 // 휴대폰 번호 정규화(하이픈 자동)·마스킹
 function normTel(v){var d=(v||"").replace(/[^0-9]/g,"");if(!d)return"";if(d.length===11)return d.slice(0,3)+"-"+d.slice(3,7)+"-"+d.slice(7);if(d.length===10)return d.slice(0,3)+"-"+d.slice(3,6)+"-"+d.slice(6);return v.trim();}
 function maskTel(v){var d=(v||"").replace(/[^0-9]/g,"");if(d.length<7)return v||"";return d.slice(0,3)+"-****-"+d.slice(-4);}
@@ -3195,7 +3205,7 @@ function cardEl(p){
   c.innerHTML=`
     <div class="card-top">
       ${p.seq?`<span class="seqno" title="오늘 등록 순서">#${p.seq}</span>`:''}
-      <span class="pname">${esc(p.name)}</span>
+      <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       <span class="card-doc card-doc-top">${doctorChipHtml(p)}</span>
       ${nurseChipHtml(p)?`<span class="card-doc card-doc-top">${nurseChipHtml(p)}</span>`:''}
