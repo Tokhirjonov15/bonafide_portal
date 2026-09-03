@@ -3153,6 +3153,7 @@ function cardEl(p){
       <span class="pname">${esc(p.name)}</span>
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       <span class="card-doc card-doc-top">${doctorChipHtml(p)}</span>
+      ${nurseChipHtml(p)?`<span class="card-doc card-doc-top">${nurseChipHtml(p)}</span>`:''}
     </div>
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.reserveAt?`<div class="card-time"><span class="t-res"><i data-lucide="calendar"></i> 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
@@ -3263,7 +3264,14 @@ function completeVisit(p,finalStatus){
   if(!p.visits)p.visits=[];p.visits.push(rec);STATS.push(rec);if(STATS.length>5000)STATS=STATS.slice(-5000);
   cloudAddStat(rec);
 }
-function enterCurrentRoom(p){p.status='대기';const now=new Date().toISOString();p.enteredAt=now;p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
+function enterCurrentRoom(p){p.status='대기';const now=new Date().toISOString();p.enteredAt=now;p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
+/* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
+function autoAssignRoomStaff(p){
+  const r=curRoom(p);if(!r)return;
+  const ds=meta(r).doctors||[], ns=meta(r).nurses||[];
+  if(ds.length===1){p.roomDocs=p.roomDocs||{};if(!p.roomDocs[r])p.roomDocs[r]=ds[0];}
+  if(ns.length===1){p.roomNurses=p.roomNurses||{};if(!p.roomNurses[r])p.roomNurses[r]=ns[0];}
+}
 function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;if(p.status===st){return;}
   applyStatus(p,st);saveLocal();render();
   cloudPatientTxn(pid,d=>applyStatus(d,st));}
@@ -3328,8 +3336,9 @@ function archiveVisit(p){
     routeFull:[...p.route],receiveAt:p.receiveAt||"",reserveAt:p.reserveAt||"",
     arrivedAt:p.arrivedAt||p.enteredAt,dischargedAt,
     totalMs:p.arrivedAt?Math.max(0,new Date(dischargedAt)-new Date(p.arrivedAt)):0,
-    rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",doctor:docFor(p,v.room),enteredAt:v.enteredAt,leftAt:v.leftAt})),
+    rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",doctor:docFor(p,v.room),nurse:nurseFor(p,v.room),enteredAt:v.enteredAt,leftAt:v.leftAt})),
     roomDocs:JSON.parse(JSON.stringify(p.roomDocs||{})),
+    roomNurses:JSON.parse(JSON.stringify(p.roomNurses||{})),
     notes:JSON.parse(JSON.stringify(p.notes||{})),
     consults:JSON.parse(JSON.stringify(p.consults||{})),
     chart:p.chart||"",
@@ -4033,7 +4042,7 @@ function patientGroups(){
 function lastVisitMs(g){return g.visits.reduce((m,v)=>Math.max(m,new Date(v.dischargedAt).getTime()||0),0);}
 function visitDetailHtml(v){
   const route=(v.routeFull||[]).map(esc).join(" › ");
-  const rooms=(v.rooms||[]).map(r=>`<div class="hv-room"><span class="hv-r">${esc(r.room)}</span>${r.doctor?`<span class="hint" style="color:var(--teal);font-weight:700">🩺${esc(r.doctor)}</span>`:''}${r.proc?`<span class="hint" style="color:#6366f1;font-weight:700">🔹${esc(r.proc)}</span>`:''}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs)}</span>${(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs)}</span>`:''}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs)}</span></div>`).join("");
+  const rooms=(v.rooms||[]).map(r=>`<div class="hv-room"><span class="hv-r">${esc(r.room)}</span>${r.doctor?`<span class="hint" style="color:var(--teal);font-weight:700">🩺${esc(r.doctor)}</span>`:''}${r.nurse?`<span class="hint" style="color:var(--t-bluesoft);font-weight:700">간호 ${esc(r.nurse)}</span>`:''}${r.proc?`<span class="hint" style="color:#6366f1;font-weight:700">🔹${esc(r.proc)}</span>`:''}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs)}</span>${(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs)}</span>`:''}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs)}</span></div>`).join("");
   let conv="";
   Object.keys(v.notes||{}).forEach(room=>{(v.notes[room]||[]).forEach(n=>{
     conv+=`<div class="hv-note"><b>${esc(room)}</b> ${esc(n.text)} <span class="hint">${n.by?esc(n.by)+' · ':''}${hhmm(n.at)}${n.done&&n.doneBy?' · ✓'+esc(n.doneBy):''}</span>`;
@@ -4353,6 +4362,20 @@ function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;
   if(nv)p.roomDocs[room]=nv; else delete p.roomDocs[room];
   if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}
   audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
+/* 방별 담당 간호사 — 방에 간호사 목록이 있을 때만 카드에 선택칸 표시 */
+function nurseFor(p,room){return (p.roomNurses&&p.roomNurses[room])||'';}
+function nurseChipHtml(p){
+  const _r=curRoom(p)||''; if(!_r)return '';
+  const list=meta(_r).nurses||[]; const cur=nurseFor(p,_r);
+  if(!list.length&&!cur)return '';
+  const opts=[...new Set([cur,...list].filter(Boolean))];
+  const optHtml=`<option value="">(간호 미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
+  return `<i data-lucide="user"></i> <select class="doc-sel" title="이 방(${esc(_r)})의 담당 간호사 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeNurse('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
+}
+function changeNurse(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
+  p.roomNurses=p.roomNurses||{};
+  if(nv)p.roomNurses[room]=nv; else delete p.roomNurses[room];
+  audit('간호사변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=REGISTRY.find(x=>((x.name||'')+' '+(x.mrn||''))===v);if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});}if(reloadHistOpen)renderReloadHistory();}
 /* 환자 추가 창 — 재진 검색한 환자의 과거 기록 인라인 펼침 */
 let reloadHistOpen=false;
@@ -4751,6 +4774,7 @@ function savePatient(){
     const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
+    autoAssignRoomStaff(p);   // 첫 방에 전담 진료의/간호사가 1명이면 즉시 지정
     audit('환자추가',name+(mrn?' ('+mrn+')':''));
     data.push(p);save(p);cloudSaveConfig();render();closeModal();enteredRoom(p,curRoom(p));return;
   }
@@ -4848,7 +4872,8 @@ function renderRoomsList(){
       <span class="rmname">${esc(r)}</span>
       <input class="rgroup" list="groupOpts" placeholder="그룹(선택)" value="${esc(meta(r).group||'')}" onchange="setRoomGroup(${i},this.value)" title="같은 그룹끼리 탭으로 묶여요">
       <input class="rgroup" placeholder="대기화면 표시명(선택)" value="${esc(meta(r).waitName||'')}" onchange="setRoomWaitName(${i},this.value)" title="대기화면에서 환자에게 보일 친절한 방 이름 (비우면 원래 이름)" style="flex:0 0 150px">
-      <input class="rgroup" placeholder="진료의(쉼표로 여러 명)" value="${esc((meta(r).doctors||[]).join(', '))}" onchange="setRoomDoctors(${i},this.value)" title="이 방 전담 진료의 — 방 머리에 표시되고, 카드의 진료의 선택에서 맨 위에 나옵니다" style="flex:0 0 140px">
+      <input class="rgroup" placeholder="진료의(쉼표로 여러 명)" value="${esc((meta(r).doctors||[]).join(', '))}" onchange="setRoomDoctors(${i},this.value)" title="이 방 전담 진료의 — 1명이면 도착 시 자동 지정" style="flex:0 0 140px">
+      <input class="rgroup" placeholder="간호사(쉼표)" value="${esc((meta(r).nurses||[]).join(', '))}" onchange="setRoomNurses(${i},this.value)" title="이 방 담당 간호사 — 카드에서 선택, 1명이면 도착 시 자동 지정" style="flex:0 0 120px">
       <label class="rmconsult" title="이 방의 진행 단계 수"><span>단계</span><select onchange="setStages(${i},this.value)" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:3px 5px;font-size:12px"><option value="2" ${stagesOf(r)===2?'selected':''}>2 (대기·종결)</option><option value="3" ${stagesOf(r)===3?'selected':''}>3 (+진행)</option><option value="4" ${stagesOf(r)===4?'selected':''}>4 (+준비)</option></select></label>
       <label class="rmconsult" title="예약자를 예약시간순으로 우선 배치"><input type="checkbox" ${meta(r).resOrder?'checked':''} onchange="setResOrder(${i},this.checked)"> <i data-lucide="calendar"></i> 예약배치</label>
       <label class="rmconsult" title="이 방에 상담 결과 기록칸 표시"><input type="checkbox" ${meta(r).consult?'checked':''} onchange="setConsult(${i},this.checked)"> <i data-lucide="message-circle"></i> 상담</label>
@@ -4914,6 +4939,9 @@ function setRoomDoctors(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).doctors=names;
   let grew=false;names.forEach(n=>{if(!DOCTORS.includes(n)){DOCTORS.push(n);grew=true;}});
   if(grew)saveDoctorsCfg();
+  saveRooms();render();}
+function setRoomNurses(i,v){if(!isAdmin())return;
+  meta(ROOMS[i]).nurses=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
   saveRooms();render();}
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
