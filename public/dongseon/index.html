@@ -208,6 +208,15 @@
   /* ── 충격파·신장분사 치료 시트 (대기화면 안 카드) ── */
   .wait-sheetcol{flex:1 1 100%;max-width:min(1240px,100%)}
   .wait-sheetcol .wait-list{overflow:auto;padding:12px 16px 16px}
+  /* 시트 표시 중: 안쪽 스크롤 제거 → 화면 전체가 세로로 스크롤되어 표가 끝까지 보임 */
+  .wait-screen.sheet-page{overflow-y:auto}
+  .wait-screen.sheet-page .wait-bg{position:fixed}
+  .wait-screen.sheet-page .wait-gear{position:fixed}
+  .wait-screen.sheet-page .wait-stage{overflow:visible;flex:none;min-height:100%}
+  .wait-screen.sheet-page .wait-cols{overflow:visible;flex:none}
+  .wait-screen.sheet-page .wait-sheetcol .wait-list{overflow:visible}
+  .wait-screen.sheet-page .sheet-wrap{overflow-x:auto;overflow-y:visible}
+  .wait-screen.sheet-page .sheet-tbl thead th{position:static}
   .sheet-wrap{overflow:auto}
   .sheet-legend{font-size:clamp(11px,1vw,15px);font-weight:700;color:#6b7c97;padding:8px 2px 0}
   .sheet-tbl{border-collapse:collapse;width:100%;background:#fff;font-size:clamp(12px,1.15vw,17px)}
@@ -3130,6 +3139,7 @@ function renderWaitScreen(){
   let showRs=rs;
   if(rot){waitRotIdx=((waitRotIdx%rs.length)+rs.length)%rs.length;showRs=[rs[waitRotIdx]];}
   const dotsHtml=rot?`<div class="wait-rot-dots">${rs.map((r,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(r==='__SHEET__'?'충격파·신장분사':waitRoomLabel(r))}"></span>`).join("")}</div>`:'';
+  document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.includes("__SHEET__"));
   cols.innerHTML=showRs.map(room=>{
     if(room==='__SHEET__'){
       const cnt=sheetRecords().length;
