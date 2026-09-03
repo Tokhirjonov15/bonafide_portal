@@ -205,6 +205,27 @@
   .wait-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#9aa8bf;font-size:clamp(16px,1.4vw,22px);font-weight:600;padding:34px}
   .wait-hint{color:#7387a0;font-size:20px;text-align:center;padding:40px;width:100%}
   .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:center;padding:15px 22px;font-size:clamp(14px,1.5vw,24px);letter-spacing:-.2px}
+  /* ── 충격파·신장분사 치료 시트 ── */
+  .sheet-screen{position:fixed;inset:0;z-index:290;display:none;flex-direction:column;background:#f4f6fa;color:#1f2a37;color-scheme:light}
+  .sheet-screen.show{display:flex}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 22px;background:#fff;border-bottom:1px solid #dfe5ee;flex-shrink:0}
+  .sheet-title{font-size:19px;font-weight:800;color:#16325c}
+  .sheet-title svg.lucide{width:18px;height:18px;vertical-align:-3px}
+  .sheet-sub{font-size:12.5px;font-weight:700;color:#6b7c97;margin-top:2px}
+  .sheet-body{flex:1;overflow:auto;padding:18px 22px}
+  .sheet-tbl{border-collapse:collapse;width:100%;background:#fff;font-size:13px}
+  .sheet-tbl th,.sheet-tbl td{border:1px solid #b9c3d4;padding:6px 8px;text-align:center;vertical-align:middle;min-width:110px}
+  .sheet-tbl thead th{font-size:14px;font-weight:800;color:#1f2a37;padding:9px 8px;position:sticky;top:0;z-index:1}
+  .sheet-tbl th.sheet-time{background:#eef1f6;font-weight:800;color:#3c4a5f;min-width:64px;width:64px}
+  .sheet-tbl td{background:#fff;height:40px}
+  .sheet-tbl td.filled{background:#fbfcff}
+  .sheet-p{display:flex;align-items:center;justify-content:center;gap:5px;font-weight:700;color:#223350;padding:2px 0;white-space:nowrap}
+  .sheet-p.live{color:#1d4ed8}
+  .sheet-p.live .sp-mrn{color:#1d4ed8}
+  .sp-room{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;font-size:10.5px;font-weight:800;color:#fff;flex:0 0 auto}
+  .sp-room.sk{background:#f59e0b}
+  .sp-room.sj{background:#8b5cf6}
+  .sp-mrn{font-size:11px;font-weight:700;color:#8a97ab}
   /* ── 보드 ── */
   .board{flex:1;min-width:0;display:flex;gap:14px;padding:16px 18px;overflow-x:auto;overflow-y:hidden}
   .col{flex:0 0 300px;min-width:0;max-width:300px;display:flex;flex-direction:column;min-height:0;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 9px 6px}
@@ -794,6 +815,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
+    <button class="btn" id="sheetBtn" onclick="openTreatSheet()"><i data-lucide="table"></i> 치료 시트</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
@@ -1202,6 +1224,18 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   </div>
 </div>
 
+<!-- 충격파·신장분사 치료 시트 (전체화면) -->
+<div id="sheetScreen" class="sheet-screen">
+  <div class="sheet-head">
+    <div>
+      <div class="sheet-title"><i data-lucide="table"></i> 충격파 · 신장분사 치료 시트</div>
+      <div class="sheet-sub" id="sheetDate"></div>
+    </div>
+    <button class="btn sm" onclick="closeTreatSheet()">✕ 닫기</button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
 <!-- 휴무 관리 모달 (관리자) -->
 <div class="modal-bg" id="offModal">
   <div class="modal" style="width:620px">
@@ -1209,7 +1243,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="body">
       <p class="hint">병원은 연중무휴 — 직원별 휴무를 지정하세요. <b>휴무인 직원은 그날</b> 진료의/간호사 선택 목록에서 빠지고 자동 지정되지 않습니다.<br>
       · 요일 버튼 = 매주 반복 휴무 · 날짜 추가 = 그날 하루만 휴무 (상황에 따라 쉬는 직원용)</p>
-      <div class="search" style="margin-bottom:10px;max-width:280px"><i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderOffList()"></div>
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)">
+        <i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderOffList()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
+      </div>
       <div id="offList" style="display:flex;flex-direction:column;gap:12px"></div>
       <p class="hint" id="offEmpty" style="display:none">아직 등록된 진료의/간호사가 없습니다. 진료실 관리에서 방에 진료의·간호사를 먼저 입력하세요.</p>
     </div>
@@ -2839,6 +2875,7 @@ function render(){
   renderChat();
   if(birdOpen)renderBirdView();
   if(waitOpen)renderWaitScreen();
+  if(sheetOpen)renderTreatSheet();
   if(window.lucide)try{lucide.createIcons();}catch(e){}   // 아이콘 즉시 변환(옵저버 지연 없이 같은 프레임)
   applyColFilters();   // 방별 검색 필터 재적용 + 입력 포커스 복원
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=isAdmin()?"":"none";
@@ -3119,6 +3156,69 @@ function renderWaitScreen(){
       <div class="wait-list">${rows}</div>
     </div>`;
   }).join("")+dotsHtml;
+}
+
+/* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
+const SHEET_ROOMS=["충격파","신장분사"];
+const SHEET_COLORS=["#d9ead3","#fce5cd","#fff2cc","#d9d2e9","#cfe2f3","#f4cccc","#ead1dc","#d0e0e3"];
+let sheetOpen=false;
+window.openTreatSheet=function(){sheetOpen=true;document.getElementById("sheetScreen").classList.add("show");renderTreatSheet();};
+window.closeTreatSheet=function(){sheetOpen=false;document.getElementById("sheetScreen").classList.remove("show");};
+function sheetRecords(){
+  const out=[],today=localYMD(new Date());
+  /* 보드의 오늘 기록: 지나간 방(visits 로그) + 현재 방 */
+  data.forEach(p=>{if(p.discharged)return;
+    (p.visits||[]).forEach(v=>{
+      if(!SHEET_ROOMS.includes(v.room)||!v.enteredAt)return;
+      if(localYMD(new Date(v.enteredAt))!==today)return;
+      const doc=docFor(p,v.room);if(!doc)return;
+      out.push({doc,room:v.room,at:v.enteredAt,name:p.name,mrn:p.mrn});});
+    const cr=curRoom(p);
+    if(SHEET_ROOMS.includes(cr)&&p.enteredAt){
+      const doc=docFor(p,cr);
+      if(doc)out.push({doc,room:cr,at:p.enteredAt,name:p.name,mrn:p.mrn,live:true});}
+  });
+  /* 오늘 귀가(보관)된 내원 기록 */
+  (Array.isArray(VISITS)?VISITS:[]).forEach(v=>{
+    if(!v.dischargedAt||localYMD(new Date(v.dischargedAt))!==today)return;
+    (v.rooms||[]).forEach(r=>{
+      if(!SHEET_ROOMS.includes(r.room))return;
+      const doc=r.doctor||((v.roomDocs||{})[r.room])||"";if(!doc)return;
+      out.push({doc,room:r.room,at:r.enteredAt||v.dischargedAt,name:v.name,mrn:v.mrn});});
+  });
+  return out;
+}
+function renderTreatSheet(){
+  const body=document.getElementById("sheetBody");if(!body||!sheetOpen)return;
+  const d=new Date();
+  document.getElementById("sheetDate").textContent=
+    `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${["일","월","화","수","목","금","토"][d.getDay()]})`;
+  const recs=sheetRecords();
+  /* 열: 두 방에 배정된 담당자(진료의·방사선·간호 전부) 중 오늘 근무자 + 기록에 등장한 사람 */
+  let docs=[];
+  SHEET_ROOMS.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
+    .forEach(n=>{if(n&&!isOffToday(n)&&!docs.includes(n))docs.push(n);});});
+  recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});
+  if(!docs.length){body.innerHTML='<div class="hint" style="padding:30px;text-align:center">충격파·신장분사 방에 담당자가 없습니다.<br>진료실 관리에서 두 방에 진료의/간호사를 입력하세요.</div>';return;}
+  /* 행: 30분 슬롯 — 기본 9:00~18:30, 기록이 밖에 있으면 자동 확장 */
+  const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
+  let s0=18,s1=37;   // 9:00=18, 18:30=37
+  recs.forEach(x=>{const s2=slotOf(x.at);if(s2<s0)s0=s2;if(s2>s1)s1=s2;});
+  let rows="";
+  for(let s2=s0;s2<=s1;s2++){
+    const hh=Math.floor(s2/2),mm=s2%2?"30":"00";
+    const cells=docs.map(doc=>{
+      const here=recs.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
+      if(!here.length)return '<td></td>';
+      return `<td class="filled">${here.map(x=>`<div class="sheet-p${x.live?' live':''}" title="${esc(x.room)} · ${esc(x.name)}${x.mrn?' ('+esc(x.mrn)+')':''}">
+        <span class="sp-room ${x.room==='충격파'?'sk':'sj'}">${x.room==='충격파'?'충':'신'}</span>${esc(dispName(x.name))}${x.mrn?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`).join("")}</td>`;
+    }).join("");
+    rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
+  }
+  body.innerHTML=`<table class="sheet-tbl">
+    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${isOffToday(n)?' (휴무)':''}</th>`).join("")}</tr></thead>
+    <tbody>${rows}</tbody></table>
+    <p class="hint" style="margin-top:8px"><span class="sp-room sk">충</span> 충격파 · <span class="sp-room sj">신</span> 신장분사 · 진하게 = 현재 치료 중 · 시간 = 방 도착 시각(30분 단위)</p>`;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
@@ -5233,7 +5333,7 @@ document.addEventListener("keydown",e=>{
     if(e.key==="ArrowRight"){lightStep(1);return;}
     if(e.key==="Escape"){closePhotoLight();return;}
   }
-  if(e.key==="Escape"){closeModal();closeRooms();closeStaff();closeAccount();closeStats();closeView();closeRoutineEdit();closeRoutines();closeHistory();closeOff();}});
+  if(e.key==="Escape"){closeModal();closeRooms();closeStaff();closeAccount();closeStats();closeView();closeRoutineEdit();closeRoutines();closeHistory();closeOff();closeTreatSheet();}});
 
 // 1초마다 대기/진행 타이머 텍스트만 갱신(전체 리렌더 없이)
 function tickTimers(){if(!currentUser)return;
