@@ -232,6 +232,16 @@
   .sp-room.sk{background:#f59e0b}
   .sp-room.sj{background:#8b5cf6}
   .sp-mrn{font-size:11px;font-weight:700;color:#8a97ab}
+  /* 시트 메모(셀 코멘트) — 우상단 빨간 삼각형, 호버 시 title 툴팁 */
+  .sheet-p{position:relative}
+  .sheet-p.has-note::after{content:"";position:absolute;top:0;right:-4px;border-left:9px solid transparent;border-top:9px solid #e5484d}
+  .sheet-note-btn{margin-left:10px;border:0;border-radius:8px;background:rgba(255,255,255,.22);color:#fff;font-size:19px;font-weight:800;width:32px;height:32px;line-height:1;cursor:pointer;flex:0 0 auto}
+  .sheet-note-btn:hover{background:rgba(255,255,255,.38)}
+  .sheet-note-ovl{position:fixed;inset:0;z-index:330;background:rgba(15,25,40,.38);display:flex;align-items:center;justify-content:center}
+  .sheet-note-box{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:18px;display:flex;flex-direction:column;gap:10px;width:min(440px,92vw);color:#1f2a37;color-scheme:light}
+  .sheet-note-box b{font-size:15px;color:#16325c}
+  .sheet-note-box select,.sheet-note-box textarea{border:1px solid #cdd7e3;border-radius:8px;padding:8px 10px;font-size:13px;background:#fff;color:#1f2a37;outline:0}
+  .sheet-note-box textarea{min-height:90px;resize:vertical;font-family:inherit}
   /* ── 보드 ── */
   .board{flex:1;min-width:0;display:flex;gap:14px;padding:16px 18px;overflow-x:auto;overflow-y:hidden}
   .col{flex:0 0 300px;min-width:0;max-width:300px;display:flex;flex-direction:column;min-height:0;background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:10px 9px 6px}
@@ -1009,6 +1019,18 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     </div>
     <div class="wait-cols" id="waitCols"></div>
     <div class="wait-foot">위 내용은 치료 대기자 명단입니다 &nbsp;·&nbsp; 상황에 따라 실제 치료 순서가 표시 순서와 다를 수 있습니다</div>
+  </div>
+  <!-- 시트 메모 입력 (셀 코멘트) -->
+  <div id="sheetNoteOvl" class="sheet-note-ovl" style="display:none" onclick="if(event.target.id==='sheetNoteOvl')closeSheetNote()">
+    <div class="sheet-note-box">
+      <b>시트 메모</b>
+      <select id="snTarget"></select>
+      <textarea id="snText" placeholder="메모 입력… (비우고 저장하면 삭제)"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn sm" onclick="closeSheetNote()">취소</button>
+        <button class="btn sm" onclick="saveSheetNote()" style="background:#2563eb;color:#fff;border-color:transparent">저장</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2150,7 +2172,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -2172,6 +2194,7 @@ function applyCfg(d){
   REGISTRY=capRegistry((Array.isArray(d.registry)?d.registry:[]).map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})));
   DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
   OFF_SCHED=(d.offSched&&typeof d.offSched==='object')?d.offSched:{};
+  SHEET_NOTES=(d.sheetNotes&&typeof d.sheetNotes==='object')?d.sheetNotes:{};
   DOC_TEMPLATES=(d.docTemplates&&typeof d.docTemplates==='object')?d.docTemplates:{};localStorage.setItem('patientBoard_doctpl',JSON.stringify(DOC_TEMPLATES));
   PROC_MATERIALS=(d.procMaterials&&typeof d.procMaterials==='object')?d.procMaterials:{};localStorage.setItem(PROCMAT_STORE,JSON.stringify(PROC_MATERIALS));
   PREP_ITEMS=Array.isArray(d.prepItems)?d.prepItems:DEFAULT_PREP_ITEMS.slice();localStorage.setItem(PREPITEMS_STORE,JSON.stringify(PREP_ITEMS));
@@ -3145,7 +3168,7 @@ function renderWaitScreen(){
       const cnt=sheetRecords().length;
       return `<div class="wait-col wait-sheetcol">
         <span class="wait-cnt-badge">오늘 ${cnt}건</span>
-        <div class="wait-ct"><span>충격파 · 신장분사</span></div>
+        <div class="wait-ct"><span>충격파 · 신장분사</span><button class="sheet-note-btn" onclick="openSheetNote()" title="시트 메모 쓰기">＋</button></div>
         <div class="wait-list">${treatSheetTableHtml(true)}</div>
       </div>`;
     }
@@ -3166,6 +3189,34 @@ function renderWaitScreen(){
 /* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
 const SHEET_ROOMS=["충격파","신장분사"];
 const SHEET_COLORS=["#d9ead3","#fce5cd","#fff2cc","#d9d2e9","#cfe2f3","#f4cccc","#ead1dc","#d0e0e3"];
+/* 시트 셀 메모(엑셀 코멘트처럼): {날짜|병록번호|방: {text,by,at}} — 클라우드 설정으로 전 기기 동기화 */
+let SHEET_NOTES={};
+function sheetNoteKey(x){return localYMD(new Date(x.at))+"|"+(x.mrn||x.name)+"|"+x.room;}
+let SN_ENTRIES=[];
+window.openSheetNote=function(){
+  SN_ENTRIES=sheetRecords().slice().sort((a,b)=>new Date(a.at)-new Date(b.at));
+  if(!SN_ENTRIES.length){alert("오늘 시트 기록이 없습니다.");return;}
+  const sel=document.getElementById("snTarget");
+  sel.innerHTML=SN_ENTRIES.map((x,i)=>{const t=new Date(x.at);
+    const hm=String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
+    return `<option value="${i}">${hm} · ${esc(x.doc)} · ${esc(x.room)} · ${esc(dispName(x.name))}</option>`;}).join("");
+  sel.onchange=snFill;snFill();
+  document.getElementById("sheetNoteOvl").style.display="flex";
+};
+function snFill(){const x=SN_ENTRIES[+document.getElementById("snTarget").value];if(!x)return;
+  const nt=SHEET_NOTES[sheetNoteKey(x)];document.getElementById("snText").value=nt?nt.text:"";}
+window.closeSheetNote=function(){document.getElementById("sheetNoteOvl").style.display="none";};
+window.saveSheetNote=function(){
+  const x=SN_ENTRIES[+document.getElementById("snTarget").value];if(!x)return;
+  const t=document.getElementById("snText").value.trim(),k=sheetNoteKey(x);
+  if(t)SHEET_NOTES[k]={text:t,by:(currentUser&&currentUser.name)||"",at:Date.now()};
+  else delete SHEET_NOTES[k];
+  /* 이틀 지난 메모 자동 정리(설정문서 비대 방지) */
+  const t0=localYMD(new Date()),t1=localYMD(new Date(Date.now()-86400000));
+  Object.keys(SHEET_NOTES).forEach(key=>{const d0=key.split("|")[0];if(d0!==t0&&d0!==t1)delete SHEET_NOTES[key];});
+  audit("시트메모",(x.name||"")+" "+x.room);
+  cloudSaveConfig();closeSheetNote();render();
+};
 function sheetRecords(){
   const out=[],today=localYMD(new Date());
   /* 보드의 오늘 기록: 지나간 방(visits 로그) + 현재 방 */
@@ -3211,7 +3262,8 @@ function treatSheetTableHtml(pf){
       if(!here.length)return '<td></td>';
       return `<td class="filled">${here.map(x=>{
         const nm=pf?maskName(x.name):dispName(x.name);
-        return `<div class="sheet-p${x.live?' live':''}">
+        const nt=SHEET_NOTES[sheetNoteKey(x)];
+        return `<div class="sheet-p${x.live?' live':''}${nt?' has-note':''}"${nt?` title="${esc(nt.text)}${nt.by?' — '+esc(nt.by):''}"`:''}>
         <span class="sp-room ${x.room==='충격파'?'sk':'sj'}">${x.room==='충격파'?'충':'신'}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;}).join("")}</td>`;
     }).join("");
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
