@@ -144,6 +144,9 @@
   .scanwrap{background:var(--card); border-radius:12px; padding:18px; width:100%; max-width:620px; margin:0 auto; box-shadow:0 4px 18px rgba(29,95,184,.08)}
   /* 넓은 표는 페이지가 아니라 자기 영역 안에서만 가로 스크롤 */
   #stockWrap,#logWrap,.ordbody,.statbox{overflow-x:auto}
+  /* 재고 표: 품목명 열만 넓게, 나머지 열은 내용 크기에 딱 맞게(빈 공간이 생기지 않도록) */
+  #stockWrap td:not(:first-child),#stockWrap th:not(:first-child){width:1%;white-space:nowrap}
+  #stockWrap td:first-child{min-width:180px}
   .modes{display:flex; gap:10px; margin-bottom:16px}
   .modes button{
     flex:1; border:2px solid var(--line); background:var(--card); color:var(--ink2);
@@ -1764,11 +1767,14 @@ function printBarLabels(items){
     return Array(x.copies).fill(0).map(()=>`<div class="lb"><div class="nm">${nm}</div><svg id="b${k}" data-code="${x.bar.replace(/"/g,"&quot;")}"></svg>${(k++,"")}</div>`).join("");
   }).join("");
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
-    body{margin:0;padding:2mm;font-family:'Malgun Gothic',sans-serif;display:flex;flex-wrap:wrap;gap:2mm}
-    .lb{width:40mm;height:20mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
-        border:1px dashed #bbb;box-sizing:border-box;page-break-inside:avoid;overflow:hidden}
-    .lb .nm{font-size:7.5pt;font-weight:700;max-width:38mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-    .lb svg{width:36mm;height:13mm}
+    /* 라벨 프린터용: 용지 50×30mm, 라벨 1장 = 1페이지 */
+    @page{size:50mm 30mm;margin:0}
+    body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
+    .lb{width:50mm;height:30mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;
+        border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
+    .lb:last-child{page-break-after:auto;break-after:auto}
+    .lb .nm{font-size:9pt;font-weight:700;max-width:47mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
+    .lb svg{width:46mm;height:17mm}
     @media print{.lb{border:none}}
   </style></head><body>
   ${cells}
