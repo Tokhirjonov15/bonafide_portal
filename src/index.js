@@ -160,7 +160,7 @@ async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
            p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
-           p.order_unit AS ounit, p.order_group AS ogrp,
+           p.order_unit AS ounit, p.order_group AS ogrp, p.created_at,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -253,6 +253,15 @@ async function buildOutStatements(env, pid, qty, memo, who) {
 }
 
 /* 바코드로 품목 찾기: 전체 일치 → GS1(01+GTIN14) → 끝 13자리 */
+/* 박스 크기: 발주단위 우선, 없으면 단위 텍스트 "10=1통(박스)" 형태에서 추출 ("1=1개"는 제외) */
+function boxSizeOf(p) {
+  const u = (p && (p.ounit || p.order_unit)) || 0;
+  if (u > 1) return u;
+  const m = /^\s*(\d+)\s*=\s*1/.exec((p && p.unit) || "");
+  const n2 = m ? parseInt(m[1], 10) : 0;
+  return n2 > 1 ? n2 : 0;
+}
+
 async function findByBarcode(env, raw) {
   const code = s(raw);
   if (!code) return null;
@@ -727,18 +736,28 @@ async function handleApi(request, env, url, ident, ctx) {
     if (!pid || qty <= 0) return json({ error: "품목과 수량을 확인하세요." }, 400);
 
     let took = [];
+    /* 입고는 박스 단위: 박스 크기가 있는 품목은 입력 수량 = 박스 수 → 실제 낱개 수량으로 환산 */
+    let inQty = qty, boxIn = null;
+    if (type === "in") {
+      const prodRow = await env.DB.prepare(`SELECT unit, order_unit AS ounit FROM products WHERE id=?`).bind(pid).first();
+      const bs = boxSizeOf(prodRow || {});
+      if (bs > 1) { inQty = qty * bs; boxIn = { boxes: qty, per: bs }; }
+    }
     const prev = await currentStock(env, pid);
     if (type === "in") {
+      const memoIn = boxIn
+        ? [s(body.memo), `${boxIn.boxes}박스 입고(1박스=${boxIn.per}개)`].filter(Boolean).join(" · ")
+        : s(body.memo);
       await env.DB.prepare(
         `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
-      ).bind(uid(), pid, qty, s(body.memo), actor, normDate(body.expiry), s(body.lot), Date.now()).run();
+      ).bind(uid(), pid, inQty, memoIn, actor, normDate(body.expiry), s(body.lot), Date.now()).run();
     } else {
       const r = await buildOutStatements(env, pid, qty, s(body.memo), actor);
       await env.DB.batch(r.stmts);
       took = r.took;
       await notifyOrderCross(env, ctx, pid, prev, prev - qty);
     }
-    return json({ ok: true, took, stock: await currentStock(env, pid) });
+    return json({ ok: true, took, boxIn, stock: await currentStock(env, pid) });
   }
 
   /* 입출고 취소(되돌리기): 원본은 지우지 않고 반대 방향의 '취소' 기록을 만든다 — 감사 이력 보존 */
@@ -792,20 +811,26 @@ async function handleApi(request, env, url, ident, ctx) {
     }
 
     let took = [];
+    /* 스캔 입고 = 박스 단위(박스 크기가 있으면 1스캔 = 1박스), 출고 = 낱개 */
+    const bs = boxSizeOf(p);
+    let appliedQty = qty, boxIn = null;
+    if (mode === "in" && bs > 1) { appliedQty = qty * bs; boxIn = { boxes: qty, per: bs }; }
     const prev = await currentStock(env, p.id);
     if (mode === "in") {
       const g = parseGs1(raw);
       const expiry = normDate(body.expiry) || g.expiry;
       await env.DB.prepare(
         `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
-      ).bind(uid(), p.id, qty, "스캔 입고", actor, expiry, g.lot, Date.now()).run();
+      ).bind(uid(), p.id, appliedQty,
+             boxIn ? `스캔 입고 ${boxIn.boxes}박스(1박스=${boxIn.per}개)` : "스캔 입고",
+             actor, expiry, g.lot, Date.now()).run();
     } else {
       const r = await buildOutStatements(env, p.id, qty, "스캔 출고", actor);
       await env.DB.batch(r.stmts);
       took = r.took;
       await notifyOrderCross(env, ctx, p.id, prev, prev - qty);
     }
-    return json({ ok: true, product: p, mode, qty, took, stock: await currentStock(env, p.id) });
+    return json({ ok: true, product: p, mode, qty: appliedQty, boxIn, took, stock: await currentStock(env, p.id) });
   }
 
   /* CSV 일괄 가져오기

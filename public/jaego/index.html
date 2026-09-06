@@ -316,6 +316,7 @@
     <div class="bar">
       <input type="search" id="q" placeholder="품목명·카테고리·바코드 검색">
       <button class="btn ghost" id="reloadBtn" title="다시 불러오기"><i data-lucide="refresh-cw"></i></button>
+      <button class="btn ghost" id="todayLabelBtn" title="오늘 추가된 모든 품목의 라벨을 한 번에 인쇄"><i data-lucide="tags"></i> 오늘 품목 라벨</button>
       <button class="btn" id="addBtn"><i data-lucide="plus"></i> 품목 추가</button>
     </div>
     <div class="bar" style="margin-top:-4px">
@@ -484,7 +485,8 @@
   <h2 id="mvTitle">입고</h2>
   <p id="mvProd" style="font-weight:700; margin-bottom:4px"></p>
   <p class="muted" id="mvNow"></p>
-  <label>수량</label><input id="mvQty" type="number" min="1" value="1" class="qbig">
+  <label id="mvQtyLabel">수량</label><input id="mvQty" type="number" min="1" value="1" class="qbig">
+  <p class="muted" id="mvBoxHint" style="display:none; margin:2px 0 6px; color:var(--accent); font-weight:700"></p>
   <div id="mvExpWrap"><label>유통기한 (선택)</label><input id="mvExp" type="date"></div>
   <label>메모 (선택)</label><input id="mvMemo" placeholder="예) OO메디칼 납품 / 물리치료실 사용">
   <div id="mvWhoWrap"><label>담당자</label><input id="mvWho" placeholder="이름"></div>
@@ -705,6 +707,21 @@ function kindOf(p){
   return "물품";
 }
 const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
+/* 박스 크기: 발주단위 우선, 없으면 단위 텍스트 "10=1통(박스)"에서 추출 ("1=1개"는 제외) */
+const boxSizeOf=p=>{
+  const u=(p&&(p.ounit||p.order_unit))||0;
+  if(u>1)return u;
+  const m=/^\s*(\d+)\s*=\s*1/.exec((p&&p.unit)||"");
+  const n=m?parseInt(m[1],10):0;
+  return n>1?n:0;
+};
+/* "47개 = 2박스+7개" 텍스트 */
+const boxTxt=(p,stock)=>{
+  const bs=boxSizeOf(p);
+  if(!(bs>1&&stock>0))return "";
+  const b=Math.floor(stock/bs),r=stock%bs;
+  return `${b}박스${r?`+${r}개`:""} (1박스=${bs})`;
+};
 /* 상태 판정: expired > soon > (low는 별개 축) */
 function prodState(p){
   let expired=false, soon=false;
@@ -785,7 +802,7 @@ function render(){
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
           <td class="hidem muted">${esc(p.loc||"")}</td>
-          <td class="qty">${p.stock} <span class="muted">${esc(p.unit||"")}</span>${(p.ounit>1&&p.stock>0)?`<div class="muted" style="font-size:11px;font-weight:400">${Math.floor(p.stock/p.ounit)}박스${p.stock%p.ounit?`+${p.stock%p.ounit}개`:""} <span style="opacity:.75">(1박스=${p.ounit})</span></div>`:""}</td>
+          <td class="qty">${p.stock} <span class="muted">${esc(p.unit||"")}</span>${boxTxt(p,p.stock)?`<div class="muted" style="font-size:11px;font-weight:400">${esc(boxTxt(p,p.stock))}</div>`:""}</td>
           <td class="hidem muted num">${p.min||0}</td>
           <td class="hidem num">${p.price?won(p.price)+"원":""}</td>
           <td class="hidem muted">${esc(p.vendor||"")}</td>
@@ -1422,7 +1439,9 @@ async function doScan(code){
       return;
     }
     beep(true);
-    const sign = r.mode==="in" ? "＋1" : "－1";
+    const sign = r.mode==="in"
+      ? (r.boxIn?`＋${r.boxIn.boxes}박스(${r.qty}개)`:`＋${r.qty||1}`)
+      : `－${r.qty||1}`;
     /* 출고: FEFO가 차감한 묶음을 안내 — 실제로 그 유통기한 묶음을 꺼내야 함 */
     let takeHint="";
     if(r.mode==="out" && r.took && r.took.length && r.took[0].expiry){
@@ -1433,7 +1452,7 @@ async function doScan(code){
     }
     showScanResult("ok",
       `<div class="big">${r.mode==="in"?'<i data-lucide="circle-check"></i> 입고':'<i data-lucide="package-open"></i> 출고'} ${sign} — ${esc(r.product.name)}</div>
-       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${(function(){const u=r.product.ounit||r.product.order_unit||0;return (u>1&&r.stock>0)?` = <b>${Math.floor(r.stock/u)}박스</b>${r.stock%u?`+${r.stock%u}개`:""} <span class="muted">(1박스=${u})</span>`:"";})()}${r.product.loc?` · <i data-lucide="map-pin"></i> ${esc(r.product.loc)}`:""}</div>
+       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${boxTxt(r.product,r.stock)?` = <b>${esc(boxTxt(r.product,r.stock))}</b>`:""}${r.product.loc?` · <i data-lucide="map-pin"></i> ${esc(r.product.loc)}`:""}</div>
        ${takeHint}`);
     const t=new Date().toTimeString().slice(0,5);
     scanHistory.unshift(`<div class="row"><span class="t">${t}</span>
@@ -1707,16 +1726,37 @@ $("barGenBtn").onclick=()=>{
 $("barPrintBtn").onclick=()=>{
   const bar=$("pBar").value.trim();
   if(!bar){ alert("바코드가 비어 있습니다. 먼저 [내부 바코드 생성]을 누르거나 입력하세요."); return; }
-  printBarLabel(bar, $("pName").value.trim()||"");
+  /* 라벨 장수 = 현재 재고 수량 (재고 0이거나 새 품목이면 1장) */
+  const p=editId?PRODUCTS.find(x=>x.id===editId):null;
+  const copies=(p&&p.stock>0)?p.stock:1;
+  printBarLabels([{bar, name:$("pName").value.trim()||"", copies}]);
 };
-function printBarLabel(bar,name){
-  const n=parseInt(prompt("몇 장 인쇄할까요?","6")||"0",10);
-  if(!n||n<1) return;
+
+/* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (장수 = 각 품목의 현재 재고) */
+$("todayLabelBtn").onclick=()=>{
+  const t=new Date(); t.setHours(0,0,0,0);
+  const todays=PRODUCTS.filter(p=>p.created_at&&p.created_at>=t.getTime());
+  if(!todays.length){ alert("오늘 추가된 품목이 없습니다."); return; }
+  const withBar=todays.filter(p=>(p.bar||"").trim());
+  const noBar=todays.length-withBar.length;
+  if(!withBar.length){ alert(`오늘 추가된 품목 ${todays.length}개 모두 바코드가 없습니다.\n품목 수정에서 [내부 바코드 생성] 후 다시 시도하세요.`); return; }
+  if(noBar>0 && !confirm(`오늘 품목 ${todays.length}개 중 바코드 없는 ${noBar}개는 제외됩니다.\n${withBar.length}개 품목의 라벨을 인쇄할까요?`)) return;
+  printBarLabels(withBar.map(p=>({bar:p.bar.trim(), name:p.name, copies:p.stock>0?p.stock:1})));
+};
+
+/* 라벨 인쇄 공통: items=[{bar,name,copies}] — 장수는 재고 수량만큼 자동 */
+function printBarLabels(items){
+  const total=items.reduce((s,x)=>s+x.copies,0);
+  if(total>600 && !confirm(`라벨이 총 ${total}장입니다. 계속할까요?`)) return;
   const w=window.open("","_blank");
   if(!w){ alert("팝업이 차단되었습니다. 주소창의 팝업 허용을 눌러주세요."); return; }
   const lib=location.origin+"/jaego/vendor/jsbarcode.min.js";
-  const nm=(name||"").replace(/</g,"&lt;");
-  w.document.write(`<html><head><title>라벨_${nm}</title><style>
+  let k=0;
+  const cells=items.map(x=>{
+    const nm=(x.name||"").replace(/</g,"&lt;");
+    return Array(x.copies).fill(0).map(()=>`<div class="lb"><div class="nm">${nm}</div><svg id="b${k}" data-code="${x.bar.replace(/"/g,"&quot;")}"></svg>${(k++,"")}</div>`).join("");
+  }).join("");
+  w.document.write(`<html><head><title>라벨 ${total}장</title><style>
     body{margin:0;padding:2mm;font-family:'Malgun Gothic',sans-serif;display:flex;flex-wrap:wrap;gap:2mm}
     .lb{width:40mm;height:20mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
         border:1px dashed #bbb;box-sizing:border-box;page-break-inside:avoid;overflow:hidden}
@@ -1724,10 +1764,12 @@ function printBarLabel(bar,name){
     .lb svg{width:36mm;height:13mm}
     @media print{.lb{border:none}}
   </style></head><body>
-  ${Array(n).fill(0).map((_,i)=>`<div class="lb"><div class="nm">${nm}</div><svg id="b${i}"></svg></div>`).join("")}
+  ${cells}
   <script src="${lib}"><\/script>
   <script>
-    for(let i=0;i<${n};i++){ JsBarcode("#b"+i, ${JSON.stringify(bar)}, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0}); }
+    document.querySelectorAll("svg[data-code]").forEach(el=>{
+      JsBarcode(el, el.dataset.code, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0});
+    });
     window.onload=()=>setTimeout(()=>window.print(),300);
   <\/script></body></html>`);
   w.document.close();
@@ -1772,7 +1814,17 @@ window.openMv=function(pid,type){
   $("mvTitle").innerHTML=(type==="in"?'<i data-lucide="plus"></i> 입고':'<i data-lucide="minus"></i> 출고');
   $("mvProd").textContent=p.name;
   const nl=nearestLot(pid), lotN=lotsOf(pid).length;
-  const boxTx=(p.ounit>1&&p.stock>0)?` = ${Math.floor(p.stock/p.ounit)}박스${p.stock%p.ounit?`+${p.stock%p.ounit}개`:""} (1박스=${p.ounit})`:"";
+  const bs=boxSizeOf(p);
+  const boxTx=boxTxt(p,p.stock)?` = ${boxTxt(p,p.stock)}`:"";
+  /* 입고는 박스 단위: 수량 입력칸 = 박스 수 */
+  if(type==="in"&&bs>1){
+    $("mvQtyLabel").textContent="수량 (박스)";
+    $("mvBoxHint").style.display="";
+    $("mvBoxHint").textContent=`1박스=${bs}개 — 예: 2 입력 시 ${2*bs}개 입고됩니다`;
+  }else{
+    $("mvQtyLabel").textContent="수량";
+    $("mvBoxHint").style.display="none";
+  }
   if(type==="out" && nl){
     $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}${esc(boxTx)}<br>
       <span style="color:var(--cau); font-weight:700"><i data-lucide="triangle-alert"></i> 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;
