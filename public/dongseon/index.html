@@ -1106,7 +1106,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="pcol">
       <div id="reloadSection" class="fld" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px">
         <label style="color:var(--teal)"><i data-lucide="repeat"></i> 재진 환자 불러오기 (병록번호·이름 검색)</label>
-        <input id="f_reload" list="regOpts" placeholder="저장된 환자를 검색해 선택하면 정보가 채워집니다" oninput="onReloadPick()">
+        <input id="f_reload" list="regOpts" placeholder="이름 또는 병록번호를 입력해 검색" oninput="onReloadInput()">
         <datalist id="regOpts"></datalist>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
           <button type="button" class="btn sm" id="reloadHistBtn" onclick="toggleReloadHist()"><i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾</button>
@@ -1119,7 +1119,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="sect-t pf-head" onclick="document.getElementById('pinfoFold').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="user"></i> 환자 정보 <span class="pf-sum" id="pinfoSummary"></span><span class="pf-caret">▾</span></div>
       <div class="pf-body">
       <div class="row2">
-        <div class="fld"><label>병록번호</label><input id="f_mrn" placeholder="6016697"></div>
+        <div class="fld"><label>병록번호 <span class="hint">(번호만 입력하면 명단에서 자동 완성)</span></label><input id="f_mrn" placeholder="6016697" inputmode="numeric" oninput="onMrnInput()"></div>
         <div class="fld"><label>이름</label><input id="f_name" placeholder="홍길동"></div>
       </div>
       <div class="fld"><label>주민번호 앞 7자리 (생년월일-성별)</label><input id="f_rrn" inputmode="numeric" placeholder="예: 901231-1" maxlength="8" oninput="onRRNInput()"><p class="hint" id="rrnHint"></p></div>
@@ -1717,6 +1717,9 @@ function renderAccount(){
         <button class="btn sm" onclick="resetSeq()"><i data-lucide="hash"></i> 등록번호 초기화</button>
         <button class="btn sm" onclick="openAuditLog()"><i data-lucide="lock"></i> 접근·활동 기록</button>
         <button class="btn sm" onclick="runSelfTest()"><i data-lucide="flask-conical"></i> 자체 점검</button>
+        <button class="btn sm" onclick="importRegistryCsv()" title="비트 EMR에서 내보낸 환자 명단(CSV: 차트번호·수진자명·주민번호)"><i data-lucide="upload"></i> 환자 명단 가져오기 (CSV)</button>
+        <input type="file" id="regCsvFile" accept=".csv,text/csv" style="display:none" onchange="onRegCsvFile(event)">
+        <span class="hint" id="regImpStatus" style="align-self:center">${REGISTRY_EXT.length?`가져온 명단 ${REGISTRY_EXT.length.toLocaleString()}명`:''}</span>
         ${sup?`<button class="btn sm" id="restoreBtn" onclick="document.getElementById('restoreFile').click()"><i data-lucide="recycle"></i> 백업 복원</button>
         <button class="btn ghost-red sm" id="wipeAllBtn" onclick="wipeAllRecords()"><i data-lucide="trash-2"></i> 전체 기록 삭제</button>
         <input type="file" id="restoreFile" accept="application/json,.json" style="display:none" onchange="onRestoreFile(event)">`:''}
@@ -2404,6 +2407,7 @@ async function startHosted(){
       try{await migrateIfNeeded();}catch(e){console.error('migrate',e);}
       try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));}catch(e){}
       try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());localStorage.setItem(STATS_STORE,JSON.stringify(STATS));}catch(e){}
+      try{await loadRegistryExt();}catch(e){console.warn('registryChunks',e);}   // 비트 EMR 대용량 명단(있으면)
       if(cloud.unsub)cloud.unsub();
       cloud.unsub=cloud.ref.onSnapshot(s=>{cloud.active=true;setSync('live');
         if(s.metadata&&s.metadata.hasPendingWrites)return;
@@ -2452,6 +2456,63 @@ function saveLocal(){localStorage.setItem(STORE,JSON.stringify(data));localStora
 function save(p){saveLocal();if(p)cloudSavePatient(p);}
 const REG_CAP=6000;   // 설정 문서 1MB 한도 보호: 등록부는 최근 활동순 6000명까지(초과분=가장 오래 안 온 환자부터 정리)
 function capRegistry(arr){return (Array.isArray(arr)&&arr.length>REG_CAP)?arr.slice(-REG_CAP):(arr||[]);}
+/* ═════ 대용량 환자 명단(비트 EMR 내보내기): registryChunks/{c0..cN} 에 1,000명씩 보관 — 설정문서(1MB)와 분리 ═════ */
+let REGISTRY_EXT=[];          // [{mrn,name,birth,sex}] 읽기 전용 색인(재진 검색·병록번호 자동완성용)
+function regAll(){ if(!REGISTRY_EXT.length)return REGISTRY; const seen=new Set(REGISTRY.map(r=>r.mrn)); return REGISTRY.concat(REGISTRY_EXT.filter(r=>!seen.has(r.mrn))); }
+function regFind(mrn){ mrn=(mrn||'').trim(); if(!mrn)return null; return REGISTRY.find(x=>x.mrn===mrn)||REGISTRY_EXT.find(x=>x.mrn===mrn)||null; }
+async function loadRegistryExt(){
+  if(!cloud.ref)return;
+  const snap=await cloud.ref.collection('registryChunks').get();
+  const out=[];
+  snap.forEach(d=>{const it=(d.data()||{}).items;if(Array.isArray(it))it.forEach(a=>{if(a&&a[0])out.push({mrn:String(a[0]),name:a[1]||'',birth:a[2]||'',sex:a[3]||''});});});
+  REGISTRY_EXT=out;
+}
+/* CSV 한 줄 파싱(따옴표·쉼표 처리) */
+function csvLine(line){const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const c=line[i];
+  if(q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+  else if(c==='"')q=true; else if(c===','){out.push(cur);cur='';} else cur+=c; }
+  out.push(cur);return out.map(s=>s.trim());}
+window.importRegistryCsv=function(){ if(!isAdmin()){alert('관리자만 가능합니다.');return;} document.getElementById('regCsvFile').click(); };
+window.onRegCsvFile=async function(ev){
+  const f=ev.target.files&&ev.target.files[0]; ev.target.value=''; if(!f)return;
+  const st=document.getElementById('regImpStatus'); const say=t=>{if(st)st.textContent=t;};
+  try{
+    const u8=new Uint8Array(await f.arrayBuffer());
+    const bom=u8[0]===0xEF&&u8[1]===0xBB&&u8[2]===0xBF;
+    let text; try{ text=new TextDecoder('utf-8',{fatal:true}).decode(bom?u8.subarray(3):u8); }
+    catch(e){ text=new TextDecoder('euc-kr').decode(u8); }   // 한국 엑셀 기본 CSV(CP949)
+    const lines=text.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length<2){alert('내용이 없습니다.');return;}
+    const hdr=csvLine(lines[0]);
+    const idx=(names)=>hdr.findIndex(h=>names.some(n=>h.replace(/\s/g,'')===n));
+    const iM=idx(['차트번호','병록번호','환자번호']), iN=idx(['수진자명','환자명','이름','성명']), iR=idx(['주민번호','주민등록번호']);
+    if(iM<0||iN<0){alert('차트번호·수진자명 열을 찾지 못했습니다.\n첫 줄: '+hdr.join(', '));return;}
+    const map=new Map();
+    for(let i=1;i<lines.length;i++){const c=csvLine(lines[i]);
+      const mrn=(c[iM]||'').replace(/\D/g,''); const name=(c[iN]||'').trim(); if(!mrn||!name)continue;
+      let birth='',sex=''; if(iR>=0){const d=(c[iR]||'').replace(/\D/g,''); const rp=d.length>=7?parseRRN(d.slice(0,7)):null; if(rp){birth=rp.birth;sex=rp.sex;}}
+      const prev=map.get(mrn);   // 같은 번호 중복: 마지막 줄 기준, 단 생년월일이 비면 이전 값 유지
+      map.set(mrn,[mrn,name,birth||(prev&&prev[2])||'',sex||(prev&&prev[3])||'']);}
+    const items=[...map.values()];
+    if(!items.length){alert('가져올 환자가 없습니다.');return;}
+    if(!confirm(`${items.length.toLocaleString()}명을 가져옵니다.\n(주민번호는 저장하지 않고 생년월일·성별만 추출합니다)\n기존 가져온 명단은 이 파일로 교체됩니다. 계속할까요?`))return;
+    /* 1,000명씩 문서로 저장 — 이전 가져오기의 남는 문서는 삭제 */
+    const col=cloud.ref.collection('registryChunks'), SIZE=1000, nChunks=Math.ceil(items.length/SIZE);
+    const old=await col.get(); const oldIds=[]; old.forEach(d=>oldIds.push(d.id));
+    let batch=cloud.db.batch(), ops=0, done=0;
+    for(let i=0;i<nChunks;i++){
+      batch.set(col.doc('c'+i),{items:items.slice(i*SIZE,(i+1)*SIZE),n:Math.min(SIZE,items.length-i*SIZE),at:Date.now()});
+      ops++; done+=Math.min(SIZE,items.length-i*SIZE);
+      if(ops>=50){await batch.commit();batch=cloud.db.batch();ops=0;say(`저장 중… ${done.toLocaleString()} / ${items.length.toLocaleString()}`);}
+    }
+    oldIds.forEach(id=>{const k=parseInt(id.replace(/^c/,''),10);if(!(k<nChunks)){batch.delete(col.doc(id));ops++;}});
+    if(ops)await batch.commit();
+    REGISTRY_EXT=items.map(a=>({mrn:a[0],name:a[1],birth:a[2],sex:a[3]}));
+    audit('환자명단 가져오기',items.length+'명');
+    say(`✅ 완료 — ${items.length.toLocaleString()}명 (문서 ${nChunks}개)`);
+    alert(`환자 명단 ${items.length.toLocaleString()}명을 가져왔습니다.`);
+  }catch(e){ console.error(e); say(''); alert('가져오기 실패: '+((e&&e.message)||e)); }
+};
 function regUpsert(mrn,name,birth,sex){mrn=(mrn||'').trim();if(!mrn)return;name=name||"";birth=birth||"";sex=sex||"";
   const i=REGISTRY.findIndex(x=>x.mrn===mrn);
   if(i>=0)REGISTRY.splice(i,1);   // 재방문=맨 뒤로 이동(최근활동 보존)
@@ -4644,7 +4705,24 @@ function removeRouteStep(i){routeDraft.splice(i,1);routeChanged();}
 function moveRouteStep(i,d){const j=i+d;if(j<0||j>=routeDraft.length)return;[routeDraft[i],routeDraft[j]]=[routeDraft[j],routeDraft[i]];routeChanged();}
 function reorderRoute(from,to){if(from==null||from===to||from<0||to<0||to>=routeDraft.length)return;const it=routeDraft.splice(from,1)[0];routeDraft.splice(to,0,it);routeChanged();}
 
-function fillRegOpts(){document.getElementById("regOpts").innerHTML=REGISTRY.map(r=>`<option value="${esc((r.name||'')+' '+(r.mrn||''))}">`).join("");}
+/* 재진 검색 목록: 명단이 수만 명이라 입력한 글자로 걸러 최대 30명만 datalist에 채움 */
+function fillRegOpts(q){
+  q=(q||'').trim().toLowerCase();
+  let list;
+  if(!q)list=REGISTRY.slice(-30).reverse();                      // 입력 전: 최근 등록 30명
+  else list=regAll().filter(r=>((r.name||'').toLowerCase().includes(q))||((r.mrn||'').startsWith(q))).slice(0,30);
+  document.getElementById("regOpts").innerHTML=list.map(r=>`<option value="${esc((r.name||'')+' '+(r.mrn||''))}">`).join("");
+}
+window.onReloadInput=function(){ fillRegOpts(document.getElementById("f_reload").value); onReloadPick(); };
+/* 병록번호를 치면 명단에서 찾아 이름·생년월일 자동 채움(빈 칸만) — 비트 접수 후 번호만 입력하는 빠른 등록 */
+window.onMrnInput=function(){
+  const v=(document.getElementById('f_mrn').value||'').replace(/\D/g,'');
+  if(!v)return; const r=regFind(v); if(!r)return;
+  const nm=document.getElementById('f_name'), rr=document.getElementById('f_rrn');
+  if(nm&&!nm.value.trim())nm.value=r.name||'';
+  if(rr&&!rr.value.trim()&&r.birth){rr.value=rrnFromBirth(r.birth,r.sex);onRRNInput();}
+  try{fillPmemo(r.mrn);fillCalls(r.mrn);}catch(e){}
+};
 function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)el.innerHTML=DOCTORS.map(d=>`<option value="${esc(d)}">`).join("");}
 /* 방별 담당 진료의: 같은 환자라도 방마다 다른 진료의를 지정할 수 있다.
    지정이 없는 방은 기본 진료의(접수 시 입력한 p.doctor)를 따른다. */
@@ -4698,12 +4776,12 @@ function changeRad(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;con
   p.roomRads=p.roomRads||{};
   if(nv)p.roomRads[room]=nv; else delete p.roomRads[room];
   audit('방사선변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
-function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=REGISTRY.find(x=>((x.name||'')+' '+(x.mrn||''))===v);if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});}if(reloadHistOpen)renderReloadHistory();}
+function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});}if(reloadHistOpen)renderReloadHistory();}
 /* 환자 추가 창 — 재진 검색한 환자의 과거 기록 인라인 펼침 */
 let reloadHistOpen=false;
 function reloadTarget(){
   const v=document.getElementById("f_reload").value.trim();
-  let r=REGISTRY.find(x=>((x.name||'')+' '+(x.mrn||''))===v);
+  let r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);
   if(r)return {mrn:r.mrn||"",name:r.name||""};
   const mrn=(document.getElementById("f_mrn").value||"").trim(),name=(document.getElementById("f_name").value||"").trim();
   return (mrn||name)?{mrn,name}:null;
@@ -5048,7 +5126,7 @@ function get(id){return document.getElementById(id).value.trim()}
 
 // 같은 병록번호를 다른 환자(이름 다름)가 쓰면 충돌로 본다
 function mrnConflict(mrn,name){mrn=(mrn||"").trim();if(!mrn)return null;
-  const e=REGISTRY.find(x=>(x.mrn||"")===mrn);
+  const e=regFind(mrn);
   return (e&&(e.name||"").trim()!==(name||"").trim())?e:null;}
 function onExtraFee(){
   const v=Number(document.getElementById("f_extra").value||0);
