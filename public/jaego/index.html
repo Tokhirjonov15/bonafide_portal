@@ -146,7 +146,12 @@
   #stockWrap,#logWrap,.ordbody,.statbox{overflow-x:auto}
   /* 재고 표: 품목명 열만 넓게, 나머지 열은 내용 크기에 딱 맞게(빈 공간이 생기지 않도록) */
   #stockWrap td:not(:first-child),#stockWrap th:not(:first-child){width:1%;white-space:nowrap}
-  #stockWrap td:first-child{min-width:180px}
+  #stockWrap td:first-child{min-width:160px}
+  /* 전체 목록에서도 가로 스크롤이 안 생기도록: 여백 축소 + 긴 바코드 줄바꿈 허용 */
+  #stockWrap th{padding:9px 7px}
+  #stockWrap td{padding:8px 7px}
+  #stockWrap td:first-child .muted{word-break:break-all;font-size:11px}
+  #stockWrap .tag{padding:1px 6px}
   .modes{display:flex; gap:10px; margin-bottom:16px}
   .modes button{
     flex:1; border:2px solid var(--line); background:var(--card); color:var(--ink2);
