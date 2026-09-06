@@ -264,7 +264,7 @@ async function findByBarcode(env, raw) {
   if (code.length >= 13) tryCodes.push(code.slice(-13));
   for (const c of tryCodes) {
     const row = await env.DB.prepare(
-      `SELECT id, name, unit, loc FROM products WHERE bar = ? LIMIT 1`
+      `SELECT id, name, unit, loc, order_unit AS ounit FROM products WHERE bar = ? LIMIT 1`
     ).bind(c).first();
     if (row) return row;
   }
@@ -662,7 +662,7 @@ async function handleApi(request, env, url, ident, ctx) {
   const access = ident && ident.me;
   /* 화면 표시용 신원 (직원이면 아이디, 관리자면 이메일) */
   const me = staff ? { email: (staff.name ? `${staff.id} (${staff.name})` : staff.id) + (staff.admin ? " 👑" : ""),
-                       staff: true, admin: !!staff.admin }
+                       id: staff.id, staff: true, admin: !!staff.admin }
                    : access;
   /* 담당자 기록: 직원 아이디 > 구글 계정 > 직접 입력 */
   const actor = staff ? staff.id : (access ? access.email : s(body.who));
@@ -739,6 +739,39 @@ async function handleApi(request, env, url, ident, ctx) {
       await notifyOrderCross(env, ctx, pid, prev, prev - qty);
     }
     return json({ ok: true, took, stock: await currentStock(env, pid) });
+  }
+
+  /* 입출고 취소(되돌리기): 원본은 지우지 않고 반대 방향의 '취소' 기록을 만든다 — 감사 이력 보존 */
+  if (path === "/movement/cancel" && method === "POST") {
+    const mid = s(body.id);
+    if (!mid) return json({ error: "기록 id가 필요합니다." }, 400);
+    const orig = await env.DB.prepare(`SELECT * FROM movements WHERE id=?`).bind(mid).first();
+    if (!orig) return json({ error: "기록을 찾을 수 없습니다." }, 404);
+    if ((orig.memo || "").startsWith("취소:")) return json({ error: "취소 기록은 다시 취소할 수 없습니다." }, 400);
+    const dup = await env.DB.prepare(`SELECT id FROM movements WHERE memo LIKE ?`).bind(`취소:${mid}%`).first();
+    if (dup) return json({ error: "이미 취소된 기록입니다." }, 400);
+    const isAdm = !!(staff && staff.admin);
+    const fresh = Date.now() - (orig.ts || 0) <= 30 * 60 * 1000;
+    if (!isAdm && !(orig.who === actor && fresh))
+      return json({ error: "본인 기록은 30분 이내에만 취소할 수 있습니다. (그 외는 관리자에게 요청하세요)" }, 403);
+    await env.DB.prepare(
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,?,?,?,?,?,?,?)`
+    ).bind(uid(), orig.pid, orig.type === "in" ? "out" : "in", orig.qty,
+           `취소:${mid}`, actor, orig.expiry || "", orig.lot || "", Date.now()).run();
+    return json({ ok: true, stock: await currentStock(env, orig.pid) });
+  }
+
+  /* 로트(입고 묶음)별 유통기한 수정 — 같은 기한의 기록을 일괄 변경, 수정 이력은 0수량 기록으로 남김 */
+  if (path === "/lot/expiry" && method === "POST") {
+    const pid = s(body.pid), from = s(body.from), to = normDate(body.to);
+    if (!pid || !from) return json({ error: "품목과 기존 유통기한이 필요합니다." }, 400);
+    if (!to) return json({ error: "새 유통기한 형식이 올바르지 않습니다. (예: 2027-05-31)" }, 400);
+    const r = await env.DB.prepare(`UPDATE movements SET expiry=? WHERE pid=? AND expiry=?`)
+      .bind(to, pid, from).run();
+    await env.DB.prepare(
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',0,?,?,?,'',?)`
+    ).bind(uid(), pid, `유통기한 수정: ${from} → ${to}`, actor, to, Date.now()).run();
+    return json({ ok: true, changed: (r.meta && r.meta.changes) || 0 });
   }
 
   /* 스캐너 전용: 바코드 하나로 입고/출고 */

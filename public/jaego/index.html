@@ -463,6 +463,10 @@
   <div class="muted" style="font-size:11.5px; margin:-4px 0 8px">
     · 발주단위: 주문수량을 이 배수로 올림 (예: 20 → 1박스=20개) · 발주그룹: 같은 그룹의 <b>합계</b>가 단위의 배수가 되도록 맞춤 (예: 목발 S 3 + L 7 = 총 10)</div>
   <label>바코드 (스캔하거나 입력)</label><input id="pBar" placeholder="선택사항">
+  <div style="display:flex; gap:8px; margin:6px 0 2px">
+    <button type="button" class="btn small ghost" id="barGenBtn" title="바코드 없는 품목용 내부 바코드 생성"><i data-lucide="barcode"></i> 내부 바코드 생성</button>
+    <button type="button" class="btn small ghost" id="barPrintBtn" title="이 바코드를 라벨로 인쇄"><i data-lucide="printer"></i> 라벨 인쇄</button>
+  </div>
   <div id="pInitWrap">
     <div class="mrow">
       <div><label>초기 수량</label><input id="pInit" type="number" min="0" value="0"></div>
@@ -774,14 +778,14 @@ function render(){
             const dd=daysLeft(l.expiry);
             const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
                         : dd<=60?` <span class="exptag">D-${dd}</span>` : ` <span class="muted">D-${dd}</span>`;
-            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge}</span>`;
+            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge} <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 유통기한 수정" onclick="editLotExp('${p.id}','${esc(l.expiry)}')"><i data-lucide="pencil"></i></button></span>`;
           }).join("")}</td></tr>` : "";
         return `<tr class="${isLow(p)?"low":""}">
           <td>${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
           <td class="hidem muted">${esc(p.loc||"")}</td>
-          <td class="qty">${p.stock} <span class="muted">${esc(p.unit||"")}</span></td>
+          <td class="qty">${p.stock} <span class="muted">${esc(p.unit||"")}</span>${(p.ounit>1&&p.stock>0)?`<div class="muted" style="font-size:11px;font-weight:400">${Math.floor(p.stock/p.ounit)}박스${p.stock%p.ounit?`+${p.stock%p.ounit}개`:""} <span style="opacity:.75">(1박스=${p.ounit})</span></div>`:""}</td>
           <td class="hidem muted num">${p.min||0}</td>
           <td class="hidem num">${p.price?won(p.price)+"원":""}</td>
           <td class="hidem muted">${esc(p.vendor||"")}</td>
@@ -803,18 +807,30 @@ function render(){
     }
     return w;
   };
+  /* 되돌리기: '취소:{원본id}' 메모로 짝을 판별 */
+  const cancelledIds=new Set(MOVEMENTS.filter(m=>(m.memo||"").startsWith("취소:")).map(m=>(m.memo||"").slice(3)));
+  const canCancel=m=>{
+    if((m.memo||"").startsWith("취소:")||cancelledIds.has(m.id)||!(m.qty>0))return false;
+    if(!ME)return false;
+    if(ME.admin)return true;
+    return ME.id===m.who && (Date.now()-m.ts)<=30*60*1000;   // 본인 기록 30분 이내
+  };
   $("logWrap").innerHTML = MOVEMENTS.length
     ? `<table><thead><tr>
         <th>일시</th><th>구분</th><th>품목</th><th>수량</th><th class="hidem">유통기한</th>
-        <th class="hidem">메모</th><th class="hidem">담당</th>
+        <th class="hidem">메모</th><th class="hidem">담당</th><th></th>
       </tr></thead><tbody>${MOVEMENTS.map(m=>{
         const d=new Date(m.ts);
         const dt=d.toLocaleDateString("ko-KR")+" "+d.toTimeString().slice(0,5);
-        return `<tr><td class="muted">${dt}</td>
+        const isCxl=(m.memo||"").startsWith("취소:");
+        const memoDisp=isCxl?'<span style="color:var(--warn)">↩ 취소 처리</span>':esc(m.memo||"");
+        const wasCxl=cancelledIds.has(m.id);
+        return `<tr${wasCxl?' style="opacity:.55;text-decoration:line-through"':''}><td class="muted">${dt}</td>
           <td>${m.type==="in"?'<b style="color:var(--ok)">입고</b>':'<b style="color:var(--warn)">출고</b>'}</td>
           <td>${esc(m.pname||"(삭제된 품목)")}</td><td class="qty">${m.qty}</td>
           <td class="hidem muted">${esc(m.expiry||"")}</td>
-          <td class="hidem muted">${esc(m.memo||"")}</td><td class="hidem muted">${esc(whoDisp(m.who))}</td></tr>`;
+          <td class="hidem muted">${memoDisp}</td><td class="hidem muted">${esc(whoDisp(m.who))}</td>
+          <td>${wasCxl?'<span class="tag">취소됨</span>':canCancel(m)?`<button class="btn small ghost" title="이 기록 되돌리기" onclick="cancelMv('${m.id}')"><i data-lucide="undo-2"></i></button>`:''}</td></tr>`;
       }).join("")}</tbody></table>`
     : `<div class="empty">기록이 없습니다.</div>`;
 
@@ -1122,6 +1138,23 @@ $("q").oninput=render;
 const LOT_OPEN={};
 window.toggleLots=function(id){ LOT_OPEN[id]=!LOT_OPEN[id]; render(); };
 
+/* 입출고 기록 되돌리기 — 원본은 남고 반대 방향 '취소' 기록이 생깁니다 */
+window.cancelMv=async function(id){
+  const m=MOVEMENTS.find(x=>x.id===id); if(!m) return;
+  if(!confirm(`이 기록을 되돌릴까요?\n${m.type==="in"?"입고":"출고"} ${m.qty} · ${m.pname||""}\n(반대 방향의 취소 기록이 추가됩니다)`)) return;
+  try{ await API.call("/movement/cancel",{id}); await refresh(true); }
+  catch(e){ alert(e.message); }
+};
+
+/* 로트(입고 묶음) 유통기한 수정 */
+window.editLotExp=async function(pid,from){
+  const to=prompt(`새 유통기한을 입력하세요 (예: 2027-05-31)\n현재: ${from}`, from);
+  if(!to||to.trim()===from) return;
+  try{ const r=await API.call("/lot/expiry",{pid,from,to:to.trim()});
+    alert(`유통기한 수정 완료 — 기록 ${r.changed}건 변경`); await refresh(true); }
+  catch(e){ alert(e.message); }
+};
+
 /* ============================================================
    발주 — 주문시점 이하 품목을 거래처별로 묶어 문안 생성
    ============================================================ */
@@ -1400,7 +1433,7 @@ async function doScan(code){
     }
     showScanResult("ok",
       `<div class="big">${r.mode==="in"?'<i data-lucide="circle-check"></i> 입고':'<i data-lucide="package-open"></i> 출고'} ${sign} — ${esc(r.product.name)}</div>
-       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${r.product.loc?` · <i data-lucide="map-pin"></i> ${esc(r.product.loc)}`:""}</div>
+       <div>현재 재고: <b>${r.stock}</b> ${esc(r.product.unit||"")}${(function(){const u=r.product.ounit||r.product.order_unit||0;return (u>1&&r.stock>0)?` = <b>${Math.floor(r.stock/u)}박스</b>${r.stock%u?`+${r.stock%u}개`:""} <span class="muted">(1박스=${u})</span>`:"";})()}${r.product.loc?` · <i data-lucide="map-pin"></i> ${esc(r.product.loc)}`:""}</div>
        ${takeHint}`);
     const t=new Date().toTimeString().slice(0,5);
     scanHistory.unshift(`<div class="row"><span class="t">${t}</span>
@@ -1663,6 +1696,42 @@ window.openProd=function(id){
   $("prodOvl").classList.add("show"); $("pName").focus();
 };
 $("addBtn").onclick=()=>openProd(null);
+
+/* ── 내부 바코드 생성 + 라벨 인쇄 (제조 바코드가 없는 품목용) ── */
+$("barGenBtn").onclick=()=>{
+  const cur=$("pBar").value.trim();
+  if(cur && !confirm("이미 바코드가 있습니다. 새 내부 바코드로 바꿀까요?")) return;
+  /* BF + 시간 기반 코드(Code128 호환) — 유일성 보장 */
+  $("pBar").value="BF"+Date.now().toString(36).toUpperCase();
+};
+$("barPrintBtn").onclick=()=>{
+  const bar=$("pBar").value.trim();
+  if(!bar){ alert("바코드가 비어 있습니다. 먼저 [내부 바코드 생성]을 누르거나 입력하세요."); return; }
+  printBarLabel(bar, $("pName").value.trim()||"");
+};
+function printBarLabel(bar,name){
+  const n=parseInt(prompt("몇 장 인쇄할까요?","6")||"0",10);
+  if(!n||n<1) return;
+  const w=window.open("","_blank");
+  if(!w){ alert("팝업이 차단되었습니다. 주소창의 팝업 허용을 눌러주세요."); return; }
+  const lib=location.origin+"/jaego/vendor/jsbarcode.min.js";
+  const nm=(name||"").replace(/</g,"&lt;");
+  w.document.write(`<html><head><title>라벨_${nm}</title><style>
+    body{margin:0;padding:2mm;font-family:'Malgun Gothic',sans-serif;display:flex;flex-wrap:wrap;gap:2mm}
+    .lb{width:40mm;height:20mm;display:flex;flex-direction:column;align-items:center;justify-content:center;
+        border:1px dashed #bbb;box-sizing:border-box;page-break-inside:avoid;overflow:hidden}
+    .lb .nm{font-size:7.5pt;font-weight:700;max-width:38mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .lb svg{width:36mm;height:13mm}
+    @media print{.lb{border:none}}
+  </style></head><body>
+  ${Array(n).fill(0).map((_,i)=>`<div class="lb"><div class="nm">${nm}</div><svg id="b${i}"></svg></div>`).join("")}
+  <script src="${lib}"><\/script>
+  <script>
+    for(let i=0;i<${n};i++){ JsBarcode("#b"+i, ${JSON.stringify(bar)}, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0}); }
+    window.onload=()=>setTimeout(()=>window.print(),300);
+  <\/script></body></html>`);
+  w.document.close();
+}
 $("prodCancel").onclick=()=>{ $("prodOvl").classList.remove("show"); focusScan(); };
 
 $("prodSave").onclick=async()=>{
@@ -1703,11 +1772,12 @@ window.openMv=function(pid,type){
   $("mvTitle").innerHTML=(type==="in"?'<i data-lucide="plus"></i> 입고':'<i data-lucide="minus"></i> 출고');
   $("mvProd").textContent=p.name;
   const nl=nearestLot(pid), lotN=lotsOf(pid).length;
+  const boxTx=(p.ounit>1&&p.stock>0)?` = ${Math.floor(p.stock/p.ounit)}박스${p.stock%p.ounit?`+${p.stock%p.ounit}개`:""} (1박스=${p.ounit})`:"";
   if(type==="out" && nl){
-    $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}<br>
+    $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}${esc(boxTx)}<br>
       <span style="color:var(--cau); font-weight:700"><i data-lucide="triangle-alert"></i> 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;
   }else{
-    $("mvNow").textContent="현재 재고: "+p.stock+" "+(p.unit||"")+(nl?`  ·  가장 빠른 유통기한 ${nl.expiry}`:"");
+    $("mvNow").textContent="현재 재고: "+p.stock+" "+(p.unit||"")+boxTx+(nl?`  ·  가장 빠른 유통기한 ${nl.expiry}`:"");
   }
   $("mvQty").value=1; $("mvMemo").value=""; $("mvExp").value="";
   $("mvExpWrap").style.display = (type==="in") ? "" : "none";
