@@ -1135,6 +1135,21 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="fld"><label><i data-lucide="clock"></i> 접수 시간 <span class="hint">(기본 현재시각, 수정가능)</span></label><input id="f_receive" type="time"></div>
       </div>
       <div class="fld" id="fldExtra"><label><i data-lucide="wallet"></i> 추가 수납 금액 (원)</label><input id="f_extra" type="number" min="0" placeholder="0" onchange="onExtraFee()"><p class="hint" id="extraHint"></p></div>
+      <div class="fld"><label><i data-lucide="landmark"></i> 공공보험 <span class="hint">(비트 접수 기준)</span></label>
+        <select id="f_ins">
+          <option value="">없음</option>
+          <option>일반</option>
+          <option>국민건강보험</option>
+          <option>자보-청구분</option>
+          <option>자보-100%</option>
+          <option>공상</option>
+          <option>산재-공단분</option>
+          <option>산재-100%</option>
+          <option>산재-회사부담</option>
+          <option>보호1종</option>
+          <option>보호2종</option>
+          <option>행려</option>
+        </select></div>
       <div class="fld"><label><i data-lucide="shield-check"></i> 실비보험 유무 <span class="hint">(미체크 = 없음)</span></label>
         <label style="display:flex;align-items:center;gap:7px;font-size:13px;padding:8px 2px;cursor:pointer"><input type="checkbox" id="f_silbi" onchange="onSilbi()"> 실비보험 있음</label></div>
       <div class="fld"><label>실비보험 한도 (원)</label><input id="f_silbiLimit" type="number" min="0" placeholder="0" disabled></div>
@@ -3514,6 +3529,7 @@ function cardEl(p){
     ${p.parking?`<div class="park-done" title="클릭: 지급 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
     <div class="total" data-pid="${p.id}">${totalLabel(p)}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
+    ${p.ins?`<div class="ins-tag" title="공공보험"><i data-lucide="landmark"></i> ${esc(p.ins)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps:''}</div>
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘)"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
@@ -3711,7 +3727,7 @@ function archiveVisit(p){
     chart:p.chart||"",
     researchChart:p.researchChart||"",
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
-    silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,
+    silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,ins:p.ins||"",
     smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[]
   };
   VISITS.push(rec);if(VISITS.length>3000)VISITS=VISITS.slice(-3000);
@@ -4819,6 +4835,7 @@ function openAdd(){
   renderRoomButtons();renderRoutineButtons();renderRouteRows();
   set("f_mrn","");set("f_name","");set("f_rrn","");document.getElementById("rrnHint").textContent="";set("f_extra","");document.getElementById("extraHint").textContent="";
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=false;}set("f_silbiLimit","");onSilbi();
+  {const si=document.getElementById("f_ins");if(si)si.value="";}
   set("f_reserve","");set("f_receive",nowHM());   // 접수시간 기본 현재시각, 예약은 비움
   set("f_tel","");{const o=document.getElementById("f_smsopt");if(o)o.checked=false;}
   set("f_doctor","");fillDoctorOpts();
@@ -4846,6 +4863,7 @@ function openEdit(pid){
   renderRoomButtons();renderRoutineButtons();renderRouteRows();
   set("f_mrn",p.mrn);set("f_name",p.name);set("f_rrn",rrnFromBirth(p.birth,p.sex));onRRNInput();set("f_extra",p.extraFee||"");document.getElementById("extraHint").textContent="";
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=!!p.silbi;}set("f_silbiLimit",p.silbiLimit||"");onSilbi();
+  {const si=document.getElementById("f_ins");if(si){si.value=p.ins||"";if(si.value!==(p.ins||""))si.value="";}}
   set("f_reserve",p.reserveAt||"");set("f_receive",p.receiveAt||"");
   set("f_tel",p.tel||"");{const o=document.getElementById("f_smsopt");if(o)o.checked=!!p.smsOptOut;}
   set("f_doctor",p.doctor||"");fillDoctorOpts();
@@ -5151,13 +5169,14 @@ function savePatient(){
   const smsOptOut=!!(document.getElementById("f_smsopt")&&document.getElementById("f_smsopt").checked);
   const _silbi=!!(document.getElementById("f_silbi")&&document.getElementById("f_silbi").checked);   // 실비보험 유무(기본: 없음)
   const _silbiLimit=_silbi?Number(get("f_silbiLimit")||0):0;
+  const _ins=(get("f_ins")||"").trim();   // 공공보험 종류(빈값=없음)
   if(editId){
     const p=data.find(x=>x.id===editId);
     if(mrn&&mrn!==p.mrn){const c=mrnConflict(mrn,name);if(c){alert(`병록번호 ${mrn}는 이미 '${c.name}'님으로 등록되어 있습니다. 다른 번호를 사용하세요.`);return;}}
     const sameStart=p.route[p.step];
     if((p.extraFee||0)!==extra)p.paid=false;  // 금액 바뀌면 수납완료 해제
     p.mrn=mrn;p.name=name;p.birth=_birth;p.sex=_sex;p.extraFee=extra;p.route=[...routeDraft];p.tel=tel;p.smsOptOut=smsOptOut;p.doctor=doctor;p.chart=document.getElementById('f_chart').value;p.researchChart=document.getElementById('f_research').value;
-    p.silbi=_silbi;p.silbiLimit=_silbiLimit;
+    p.silbi=_silbi;p.silbiLimit=_silbiLimit;p.ins=_ins;
     p.rxProc=get('rxProc');p.rxItems=get('rxItems');
     p.reserveAt=get("f_reserve")||"";p.receiveAt=get("f_receive")||"";
     const ni=p.route.indexOf(sameStart);p.step=ni>=0?ni:Math.min(p.step,p.route.length-1);
@@ -5172,7 +5191,7 @@ function savePatient(){
     const dup=data.find(x=>!x.discharged && ( (mrn&&(x.mrn||"").trim()===mrn) || (!mrn&&!(x.mrn||"").trim()&&(x.name||"").trim()===name) ));
     if(dup){alert(`'${dup.name}'님은 이미 접수되어 동선에 있습니다. (현재 위치: ${curRoom(dup)||'보드'}${dup.out?' · 외출 중':''})\n중복 접수는 할 수 없습니다.`+(!mrn?`\n※ 동명이인이라면 병록번호를 입력해 구분해 주세요.`:''));return;}
     const _now=new Date().toISOString();
-    const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
+    const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,ins:_ins,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     autoAssignRoomStaff(p);   // 첫 방에 전담 진료의/간호사가 1명이면 즉시 지정
@@ -5602,6 +5621,9 @@ boot();
   .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 0 2px;display:inline-block}
   .treat-count b{font-size:12.5px}
   .treat-count svg.lucide{width:11px;height:11px;vertical-align:-1px}
+  /* 공공보험 표시 */
+  .ins-tag{font-size:11.5px;font-weight:700;color:var(--t-amber);background:var(--amber-bg);border-radius:6px;padding:3px 9px;margin:4px 4px 2px 0;display:inline-block}
+  .ins-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 실비보험 표시 */
   .silbi-tag{font-size:11.5px;font-weight:700;color:var(--t-green);background:var(--green-bg);border-radius:6px;padding:3px 9px;margin:4px 0 2px;display:inline-block}
   .silbi-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
