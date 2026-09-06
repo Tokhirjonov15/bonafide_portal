@@ -789,7 +789,7 @@ function render(){
     : `<table><thead><tr>
         <th>품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
-        <th>유통기한</th><th>입출고</th><th class="hidem"></th>
+        <th>유통기한</th><th>입출고</th>
       </tr></thead><tbody>${rows.map(p=>{
         const ls=lotsOf(p.id);
         const open=!!LOT_OPEN[p.id];
@@ -797,7 +797,7 @@ function render(){
           : ls.length===1 || ls[0].expiry===ls[ls.length-1].expiry
             ? `${esc(ls[0].expiry)} ${expBadge(p.id)}`
             : `${esc(ls[0].expiry)} ${expBadge(p.id)} <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)}</span> <span class="tag">${ls.length}묶음</span>`;
-        const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="10">
+        const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="9">
           <i data-lucide="boxes"></i> 유통기한별 묶음: ${ls.map(l=>{
             const dd=daysLeft(l.expiry);
             const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
@@ -825,8 +825,8 @@ function render(){
           <td>
             <button class="btn small in"  onclick="openMv('${p.id}','in')"><i data-lucide="plus"></i></button>
             <button class="btn small out" onclick="openMv('${p.id}','out')"><i data-lucide="minus"></i></button>
+            <button class="btn small ghost" title="품목 수정" onclick="openProd('${p.id}')"><i data-lucide="pencil"></i></button>
           </td>
-          <td class="hidem"><button class="btn small ghost" onclick="openProd('${p.id}')">수정</button></td>
         </tr>${lotDetail}`;
       }).join("")}</tbody></table>`;
 
