@@ -823,9 +823,13 @@ function render(){
           <td class="hidem muted">${esc(p.vendor||"")}</td>
           <td class="muted" style="white-space:nowrap">${expCell}</td>
           <td>
-            <button class="btn small in"  onclick="openMv('${p.id}','in')"><i data-lucide="plus"></i></button>
-            <button class="btn small out" onclick="openMv('${p.id}','out')"><i data-lucide="minus"></i></button>
-            <button class="btn small ghost" title="품목 수정" onclick="openProd('${p.id}')"><i data-lucide="pencil"></i></button>
+            <div style="display:flex; gap:4px; align-items:center">
+              <div style="display:flex; flex-direction:column; gap:4px">
+                <button class="btn small in"  onclick="openMv('${p.id}','in')"><i data-lucide="plus"></i></button>
+                <button class="btn small out" onclick="openMv('${p.id}','out')"><i data-lucide="minus"></i></button>
+              </div>
+              <button class="btn small ghost" title="품목 수정" onclick="openProd('${p.id}')"><i data-lucide="pencil"></i></button>
+            </div>
           </td>
         </tr>${lotDetail}`;
       }).join("")}</tbody></table>`;
