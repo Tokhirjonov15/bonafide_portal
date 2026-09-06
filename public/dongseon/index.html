@@ -1695,7 +1695,7 @@ function renderAccount(){
       <div class="sect-t" style="margin-bottom:6px"><i data-lucide="link"></i> EMR(비트플러스) 접수 연동 <span class="hint" style="font-weight:400">(접수 PC마다 1회 설정)</span></div>
       <div style="padding:10px 12px;border:1px solid var(--teal);border-radius:10px;margin-bottom:10px">
         <div style="font-weight:800;font-size:13px;margin-bottom:6px"><i data-lucide="bot"></i> EMR 접수 연동 확장</div>
-        <p class="hint" style="margin:0 0 8px"><b>접수 자동연동</b> — EMR에서 접수등록 시 환자정보(이름·번호·생년월일·시간·전화)가 '환자 추가' 창에 자동 입력됩니다(동선만 선택·저장).</p>
+        <p class="hint" style="margin:0 0 8px"><b>접수 자동연동</b> — 비트플러스에서 접수등록 시 환자정보(이름·병록번호·생년월일·전화·진료의)가 '환자 추가' 창에 자동 입력됩니다. 접수자는 [저장]만 누르면 됩니다(3층 대기실에서 시작).</p>
         <a class="btn" href="emr-ext.zip" download="EMR연동_확장.zip" style="text-decoration:none">⬇️ EMR 연동 확장 다운로드</a>
         <div class="hint" style="margin-top:6px;line-height:1.7">
           <b>설치</b>: 압축 풀기 → <code>chrome://extensions</code> → 개발자 모드 → [압축해제된 확장 로드] → 푼 폴더 선택. 접수연동은 바로 동작. 자세한 내용은 zip 안 <b>설치안내.txt</b>.
@@ -3820,7 +3820,7 @@ function applyEmrPrefill(){
           else { S('f_reserve',rv); kind='예약 '+rv; }
         }
       }
-      try{toast('EMR 접수 정보를 불러왔습니다'+(kind?(' ('+kind+')'):'')+' — 동선을 선택하고 저장하세요');}catch(e){}
+      try{toast('EMR 접수 정보를 불러왔습니다'+(kind?(' ('+kind+')'):'')+' — 확인 후 [저장]을 누르세요');}catch(e){}
     },150);
   }catch(e){ console.warn('EMR 프리필 실패',e); }
 }
