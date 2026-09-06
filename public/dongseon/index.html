@@ -2464,7 +2464,8 @@ async function loadRegistryExt(){
   if(!cloud.ref)return;
   const snap=await cloud.ref.collection('registryChunks').get();
   const out=[];
-  snap.forEach(d=>{const it=(d.data()||{}).items;if(Array.isArray(it))it.forEach(a=>{if(a&&a[0])out.push({mrn:String(a[0]),name:a[1]||'',birth:a[2]||'',sex:a[3]||''});});});
+  /* 항목은 "번호\t이름\t생년월일\t성별" 문자열(Firestore는 배열 안 배열을 허용하지 않음) */
+  snap.forEach(d=>{const it=(d.data()||{}).items;if(Array.isArray(it))it.forEach(s2=>{const a=String(s2||'').split('\t');if(a[0])out.push({mrn:a[0],name:a[1]||'',birth:a[2]||'',sex:a[3]||''});});});
   REGISTRY_EXT=out;
 }
 /* CSV 한 줄 파싱(따옴표·쉼표 처리) */
@@ -2501,7 +2502,7 @@ window.onRegCsvFile=async function(ev){
     const old=await col.get(); const oldIds=[]; old.forEach(d=>oldIds.push(d.id));
     let batch=cloud.db.batch(), ops=0, done=0;
     for(let i=0;i<nChunks;i++){
-      batch.set(col.doc('c'+i),{items:items.slice(i*SIZE,(i+1)*SIZE),n:Math.min(SIZE,items.length-i*SIZE),at:Date.now()});
+      batch.set(col.doc('c'+i),{items:items.slice(i*SIZE,(i+1)*SIZE).map(a=>a.join('\t')),n:Math.min(SIZE,items.length-i*SIZE),at:Date.now()});
       ops++; done+=Math.min(SIZE,items.length-i*SIZE);
       if(ops>=50){await batch.commit();batch=cloud.db.batch();ops=0;say(`저장 중… ${done.toLocaleString()} / ${items.length.toLocaleString()}`);}
     }
