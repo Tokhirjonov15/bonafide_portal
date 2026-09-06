@@ -4968,11 +4968,19 @@ function renderPastConsults(){
 function renderConsultEditor(){
   if(!editId)return;
   const p=data.find(x=>x.id===editId);if(!p)return;
-  const rooms=[...new Set(routeDraft.length?routeDraft:p.route)].filter(isConsultRoom);
+  /* 상담 결과는 '지금 있는 방'이 상담 방일 때만 입력. 다른 상담 방은 이미 기록이 있을 때만 읽기 전용 요약으로 표시 */
+  const cur=curRoom(p);
+  const editable=isConsultRoom(cur)?[cur]:[];
+  const done=Object.keys(p.consults||{}).filter(r=>r!==cur&&p.consults[r]&&(p.consults[r].result||p.consults[r].reason));
   const sec=document.getElementById("consultSection");
-  if(!rooms.length){sec.style.display="none";return;}
+  if(!editable.length&&!done.length){sec.style.display="none";return;}
   sec.style.display="";
-  document.getElementById("consultRooms").innerHTML=rooms.map(room=>{const c=(p.consults&&p.consults[room])||{result:"",reason:"",by:"",at:""};return `
+  const doneHtml=done.map(r=>{const c=p.consults[r];return `<div class="nroom" style="opacity:.85">
+      <div class="nrt"><i data-lucide="message-circle"></i> ${esc(r)} <span class="hint">(기록됨)</span></div>
+      <div class="hint"><span style="color:${c.result==='시행'?'var(--green)':'var(--orange)'};font-weight:700">${esc(c.result||'-')}</span>
+        ${c.reason?' · '+esc(c.reason):''}${c.who?' · 상담자 <b>'+esc(c.who)+'</b>':''}${c.by?' · '+esc(c.by):''} ${hhmm(c.at)}</div>
+    </div>`;}).join("");
+  document.getElementById("consultRooms").innerHTML=doneHtml+editable.map(room=>{const c=(p.consults&&p.consults[room])||{result:"",reason:"",by:"",at:""};return `
     <div class="nroom">
       <div class="nrt"><i data-lucide="message-circle"></i> ${esc(room)}</div>
       ${consultWhoHtml(p,room,c,false)}
