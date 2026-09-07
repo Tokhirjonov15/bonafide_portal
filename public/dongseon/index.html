@@ -569,8 +569,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #modal .modal-head #editStatusRow{order:4;flex:1 1 100%;align-self:stretch}
   #modal .modal-head .family-line{order:5}
   /* 본문: 열 구분을 없애고 상담 결과(상담실일 때) → 특이사항 → 지난 기록 → 오늘 차팅 → 나머지 순으로 */
-  #modal .body{gap:14px}
+  #modal .body{gap:14px;align-items:stretch}
   #modal .body>.pcol{display:contents}
+  #modal .body>.pcol>*{width:100%;max-width:100%;box-sizing:border-box}
+  #modal .body textarea,#modal .body .chart-box{width:100%;max-width:100%;box-sizing:border-box}
   #modal #consultSection{order:-4}
   #modal #pmemoBox{order:-3}
   #modal #pastSection{order:-2}
@@ -5091,7 +5093,7 @@ function renderConsultEditor(){
   if(!editable.length&&!done.length){sec.style.display="none";return;}
   sec.style.display="";
   const doneHtml=done.map(r=>{const c=p.consults[r];return `<div class="nroom" style="opacity:.85">
-      <div class="nrt"><i data-lucide="message-circle"></i> ${esc(r)} <span class="hint">(기록됨)</span></div>
+      ${done.length>1?`<div class="nrt">${esc(r)}</div>`:''}
       <div class="hint"><span style="color:${c.result==='시행'?'var(--green)':'var(--orange)'};font-weight:700">${esc(resLabel(c.result)||'-')}</span>
         ${c.result==='기타'?(' · 사유: <b>'+esc(c.reason||'(미입력)')+'</b>'):''} <span style="opacity:.7">${hhmm(c.at)}</span></div>
     </div>`;}).join("");
