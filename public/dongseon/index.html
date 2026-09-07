@@ -1747,7 +1747,8 @@ function renderAccount(){
         <button class="btn sm" onclick="importRegistryCsv()" title="비트 EMR에서 내보낸 환자 명단(CSV: 차트번호·수진자명·주민번호)"><i data-lucide="upload"></i> 환자 명단 가져오기 (CSV)</button>
         <input type="file" id="regCsvFile" accept=".csv,text/csv" style="display:none" onchange="onRegCsvFile(event)">
         <span class="hint" id="regImpStatus" style="align-self:center">${REGISTRY_EXT.length?`가져온 명단 ${REGISTRY_EXT.length.toLocaleString()}명`:''}</span>
-        ${sup?`<button class="btn sm" id="restoreBtn" onclick="document.getElementById('restoreFile').click()"><i data-lucide="recycle"></i> 백업 복원</button>
+        ${sup?`<button class="btn sm" onclick="bulkCreateStaff()" title="snu01~snu30 계정을 공통 비밀번호로 한 번에 생성"><i data-lucide="users"></i> 직원 계정 일괄 생성 (snu01~30)</button>
+        <button class="btn sm" id="restoreBtn" onclick="document.getElementById('restoreFile').click()"><i data-lucide="recycle"></i> 백업 복원</button>
         <button class="btn ghost-red sm" id="wipeAllBtn" onclick="wipeAllRecords()"><i data-lucide="trash-2"></i> 전체 기록 삭제</button>
         <input type="file" id="restoreFile" accept="application/json,.json" style="display:none" onchange="onRestoreFile(event)">`:''}
       </div>
@@ -5486,6 +5487,35 @@ function setRoomRads(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).rads=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
   updateSheetStaffHist();saveRooms();render();}
 
+/* ───── 직원 계정 일괄 생성: snu01~snu30, 공통 비밀번호 (최고관리자 전용) ───── */
+window.bulkCreateStaff=async function(){
+  if(!isSuper()){alert('최고관리자(admin)만 가능합니다.');return;}
+  const pw=(prompt('snu01 ~ snu30 계정을 만듭니다.\n공통 비밀번호를 입력하세요 (Firebase 규칙: 6자 이상)','snu0101')||'').trim();
+  if(!pw)return;
+  if(pw.length<6){alert('Firebase 규칙상 비밀번호는 6자 이상이어야 합니다.');return;}
+  if(!confirm('snu01(관리자) + snu02~snu30(직원) 계정을 생성합니다. 이미 있는 아이디는 건너뜁니다. 계속할까요?'))return;
+  const made=[],skipped=[],failed=[];
+  const sec=firebase.initializeApp(HOST_FIREBASE_CONFIG,'bulk'+Date.now());
+  try{
+    for(let i=1;i<=30;i++){
+      const name='snu'+String(i).padStart(2,'0');
+      const email=await authEmail(name);
+      if(memByEmail(email)){skipped.push(name);continue;}
+      try{ await sec.auth().createUserWithEmailAndPassword(email,pw); await sec.auth().signOut(); made.push({email,name,role:i===1?'admin':'staff',super:false,team:''}); }
+      catch(e){
+        if(e&&e.code==='auth/email-already-in-use'){ made.push({email,name,role:i===1?'admin':'staff',super:false,team:''}); }   // 인증 계정은 있고 명단만 없음
+        else failed.push(name+': '+((e&&e.code)||e));
+      }
+    }
+  } finally { try{await sec.delete();}catch(_){} }
+  if(made.length){
+    try{ await mutateAcl(members=>{made.forEach(m=>{if(!members.some(x=>x.email===m.email))members.push(m);});return members;}); }
+    catch(e){alert('명단 저장 실패: '+((e&&e.message)||e));return;}
+    audit('계정 일괄생성',made.map(m=>m.name).join(','));
+  }
+  alert(`완료\n생성: ${made.length}개\n건너뜀(이미 있음): ${skipped.length}개${failed.length?'\n실패: '+failed.join(', '):''}`);
+  try{renderStaffList();}catch(e){}
+};
 /* ───── 휴무 관리 (관리자) ───── */
 let OFF_NAMES=[];   // renderOffList가 채움 — 인라인 핸들러는 인덱스로 참조(한글 이름 따옴표 문제 회피)
 function offNames(){const s2=new Set();
