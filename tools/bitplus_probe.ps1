@@ -15,7 +15,9 @@ New-Item -ItemType Directory -Force $out | Out-Null
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing, System.Windows.Forms
 
 # 1) 비트플러스 창 찾기 (제목에 '비트' 또는 'Bit' 가 들어간 창)
-$procs = Get-Process | Where-Object { $_.MainWindowTitle -and ($_.MainWindowTitle -match '비트|Bit|BIT|EMR|차트') }
+# 비트플러스 접수 창(BITRegistrations, 제목 '접수')을 우선, 없으면 BIT 로 시작하는 다른 창
+$procs = Get-Process | Where-Object { $_.MainWindowTitle -and $_.ProcessName -eq 'BITRegistrations' }
+if (-not $procs) { $procs = Get-Process | Where-Object { $_.MainWindowTitle -and $_.ProcessName -match '^BIT' -and $_.ProcessName -ne 'BITMenu' } }
 "=== 창 목록 ===" | Out-File (Join-Path $out 'uia.txt') -Encoding utf8
 Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { "  [$($_.ProcessName)] $($_.MainWindowTitle)" } | Out-File (Join-Path $out 'uia.txt') -Append -Encoding utf8
 if (-not $procs) {
