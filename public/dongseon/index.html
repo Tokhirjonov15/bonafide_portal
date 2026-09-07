@@ -1190,6 +1190,13 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
           <p class="hint" style="margin:6px 0 0">병록번호 기준으로 바로 저장됩니다 — 접수(저장)하지 않아도 기록이 남습니다.</p>
         </div>
       </div>
+      <div class="pcalls" id="familyBox">
+        <div class="pc-head" onclick="document.getElementById('familyBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="users"></i> 가족관계 <span class="pc-sum" id="familySummary"></span><span class="pf-caret">▾</span></div>
+        <div class="pc-body">
+          <input id="f_family" placeholder="예: 보호자 홍길동(부), 배우자 김영희 — 칸을 벗어나면 즉시 저장" onchange="familyNow(this.value)">
+          <p class="hint" style="margin:6px 0 0">비트 명단의 보호자명이 기본으로 표시됩니다. 병록번호 기준으로 바로 저장되며 접수(저장)와 무관하게 유지됩니다.</p>
+        </div>
+      </div>
       <div class="pcalls" id="scribeBox">
         <div class="pc-head" onclick="document.getElementById('scribeBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="mic"></i> 진료 받아쓰기 기록 <span class="pc-sum" id="scribeSummary">0건</span><span class="pf-caret">▾</span></div>
         <div class="pc-body">
@@ -2444,7 +2451,7 @@ async function startHosted(){
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
         const m={};
         s.docs.forEach(d=>{const v=d.data()||{};const mrn=String(v.mrn||d.id||'').trim();if(!mrn)return;
-          const rec={};if(v.memo)rec.memo=v.memo;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
+          const rec={};if(v.memo)rec.memo=v.memo;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
           m[mrn]=rec;});
         PMEMO=m;localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
       },err=>console.error('pmemo snap',err));
@@ -2487,7 +2494,7 @@ async function loadRegistryExt(){
   const snap=await cloud.ref.collection('registryChunks').get();
   const out=[];
   /* 항목은 "번호\t이름\t생년월일\t성별" 문자열(Firestore는 배열 안 배열을 허용하지 않음) */
-  snap.forEach(d=>{const it=(d.data()||{}).items;if(Array.isArray(it))it.forEach(s2=>{const a=String(s2||'').split('\t');if(a[0])out.push({mrn:a[0],name:a[1]||'',birth:a[2]||'',sex:a[3]||''});});});
+  snap.forEach(d=>{const it=(d.data()||{}).items;if(Array.isArray(it))it.forEach(s2=>{const a=String(s2||'').split('\t');if(a[0])out.push({mrn:a[0],name:a[1]||'',birth:a[2]||'',sex:a[3]||'',guardian:a[4]||''});});});
   REGISTRY_EXT=out;
 }
 /* CSV 한 줄 파싱(따옴표·쉼표 처리) */
@@ -2508,14 +2515,15 @@ window.onRegCsvFile=async function(ev){
     if(lines.length<2){alert('내용이 없습니다.');return;}
     const hdr=csvLine(lines[0]);
     const idx=(names)=>hdr.findIndex(h=>names.some(n=>h.replace(/\s/g,'')===n));
-    const iM=idx(['차트번호','병록번호','환자번호']), iN=idx(['수진자명','환자명','이름','성명']), iR=idx(['주민번호','주민등록번호']);
+    const iM=idx(['차트번호','병록번호','환자번호']), iN=idx(['수진자명','환자명','이름','성명']), iR=idx(['주민번호','주민등록번호']), iG=idx(['보호자명','보호자']);
     if(iM<0||iN<0){alert('차트번호·수진자명 열을 찾지 못했습니다.\n첫 줄: '+hdr.join(', '));return;}
     const map=new Map();
     for(let i=1;i<lines.length;i++){const c=csvLine(lines[i]);
       const mrn=(c[iM]||'').replace(/\D/g,''); const name=(c[iN]||'').trim(); if(!mrn||!name)continue;
       let birth='',sex=''; if(iR>=0){const d=(c[iR]||'').replace(/\D/g,''); const rp=d.length>=7?parseRRN(d.slice(0,7)):null; if(rp){birth=rp.birth;sex=rp.sex;}}
-      const prev=map.get(mrn);   // 같은 번호 중복: 마지막 줄 기준, 단 생년월일이 비면 이전 값 유지
-      map.set(mrn,[mrn,name,birth||(prev&&prev[2])||'',sex||(prev&&prev[3])||'']);}
+      const guard=iG>=0?(c[iG]||'').trim():'';
+      const prev=map.get(mrn);   // 같은 번호 중복: 마지막 줄 기준, 단 비어 있는 값은 이전 값 유지
+      map.set(mrn,[mrn,name,birth||(prev&&prev[2])||'',sex||(prev&&prev[3])||'',guard||(prev&&prev[4])||'']);}
     const items=[...map.values()];
     if(!items.length){alert('가져올 환자가 없습니다.');return;}
     if(!confirm(`${items.length.toLocaleString()}명을 가져옵니다.\n(주민번호는 저장하지 않고 생년월일·성별만 추출합니다)\n기존 가져온 명단은 이 파일로 교체됩니다. 계속할까요?`))return;
@@ -2530,7 +2538,7 @@ window.onRegCsvFile=async function(ev){
     }
     oldIds.forEach(id=>{const k=parseInt(id.replace(/^c/,''),10);if(!(k<nChunks)){batch.delete(col.doc(id));ops++;}});
     if(ops)await batch.commit();
-    REGISTRY_EXT=items.map(a=>({mrn:a[0],name:a[1],birth:a[2],sex:a[3]}));
+    REGISTRY_EXT=items.map(a=>({mrn:a[0],name:a[1],birth:a[2],sex:a[3],guardian:a[4]||''}));
     audit('환자명단 가져오기',items.length+'명');
     say(`✅ 완료 — ${items.length.toLocaleString()}명 (문서 ${nChunks}개)`);
     alert(`환자 명단 ${items.length.toLocaleString()}명을 가져왔습니다.`);
@@ -2547,11 +2555,11 @@ function pmKey(mrn){return String(mrn||'').trim().replace(/[^\w-]/g,'_')||'_';} 
 function pmRec(mrn){mrn=(mrn||'').trim();return mrn?(PMEMO[mrn]||null):null;}
 /* 한 환자 문서만 저장(전체 설정이 아니라) → 문서당 ~2KB, 1MB 한도 접근 불가 */
 function pmemoSave(mrn){mrn=(mrn||'').trim();if(!mrn)return;
-  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length));
+  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length));
   if(!has)delete PMEMO[mrn];
   localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));
   if(cloud.active&&cloud.pmemoCol){
-    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),calls:(rec.calls||[]),photos:(rec.photos||[]),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
+    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
     else cloud.pmemoCol.doc(pmKey(mrn)).delete().catch(()=>{});   // 내용이 비면 문서 삭제
   }
 }
@@ -2581,6 +2589,21 @@ function setRegMemo(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||
   PMEMO[mrn]=cur;pmemoSave(mrn);
   try{audit('특이사항수정',(name||cur.name||'')+' ('+mrn+')');}catch(e){}
   return true;}
+/* 가족관계(보호자 등) — 환자별 문서(pmemo.family). 직접 입력이 없으면 비트 명단의 보호자명을 표시 */
+function regFamily(mrn){const r=pmRec(mrn);if(r&&r.family)return r.family;const e=regFind(mrn);return (e&&e.guardian)||'';}
+function setRegFamily(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||'').trim();
+  const cur=PMEMO[mrn]||{};
+  if((cur.family||'')===v)return false;
+  if(v)cur.family=v; else delete cur.family;
+  if(name)cur.name=name;
+  PMEMO[mrn]=cur;pmemoSave(mrn);
+  try{audit('가족관계수정',(name||cur.name||'')+' ('+mrn+')');}catch(e){}
+  return true;}
+function fillFamily(mrn){const el=document.getElementById('f_family');if(!el)return;const v=regFamily(mrn);el.value=v;
+  const sm=document.getElementById('familySummary');if(sm)sm.textContent=v?'있음':'';}
+window.familyNow=function(v){const mrn=((document.getElementById('f_mrn')||{}).value||'').trim();
+  if(!mrn){toast('병록번호를 먼저 입력하세요');return;}
+  if(setRegFamily(mrn,get('f_name'),v))toast('가족관계 저장됨');};
 /* 유선 문의 기록 — 접수 없이도 저장 */
 function regCalls(mrn){const r=pmRec(mrn);return (r&&Array.isArray(r.calls))?r.calls:[];}
 function addRegCall(mrn,name,text){mrn=(mrn||'').trim();text=(text||'').trim();if(!mrn||!text)return false;
@@ -5089,7 +5112,7 @@ function pmemoNow(v){
   if(setRegMemo(mrn,get('f_name'),v))toast('📌 특이사항 저장됨');
 }
 /* 유선 문의 UI — 목록 렌더 + 즉시 저장 */
-function fillCalls(mrn){
+function fillCalls(mrn){fillFamily(mrn);
   const list=document.getElementById('callsList'),sum=document.getElementById('callsSummary');
   if(!list||!sum)return;
   const calls=regCalls(mrn);
