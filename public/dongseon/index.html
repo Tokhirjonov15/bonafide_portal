@@ -1460,8 +1460,11 @@ function isOffAt(name,dt){const d=dt||new Date();const ymd=localYMD(d);
   return hm<h.from||hm>=h.to;}
 /* 지금 이 시각 기준 — 선택 목록·자동 지정에서 제외할지 판단 (시간제 근무자는 근무시간 밖이면 제외) */
 function isOffToday(name){return isOffAt(name,new Date());}
-/* 표시용 라벨: '휴무' / '근무 외' / '' */
-function offLabel(name){const d=new Date();if(isOffOn(name,localYMD(d)))return "휴무";return isOffAt(name,d)?"근무 외":"";}
+/* 표시용 라벨: '휴무' / '출근 예정'(아직 근무 시작 전) / '퇴근'(근무 종료 후) / '' (근무 중·종일) */
+function offLabel(name){const d=new Date();const ymd=localYMD(d);if(isOffOn(name,ymd))return "휴무";
+  const h=workHoursOn(name,ymd);if(!h)return "";
+  const hm=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  if(hm<h.from)return "출근 예정";if(hm>=h.to)return "퇴근";return "";}
 /* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
   {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','3층 수납']},
@@ -5631,7 +5634,7 @@ function renderOffList(){
       </div>`:'';
     const dateHours=Object.keys(o.dateHours).sort().map(dt=>{const h=parseHours(o.dateHours[dt]);return h?`<span class="offdate hrs">${dt} ${h.from}~${h.to}<button type="button" onclick="delOffDateHours(${i},'${dt}')" title="삭제">✕</button></span>`:'';}).join("");
     const lab=offLabel(n);const th=workHoursOn(n,todayYmd);
-    const tag=lab==='휴무'?'<span class="offtag">오늘 휴무</span>':(th?`<span class="offtag hrs">오늘 ${th.from}~${th.to}${lab?' · 지금 근무 외':''}</span>`:'');
+    const tag=lab==='휴무'?'<span class="offtag">오늘 휴무</span>':(th?`<span class="offtag hrs">오늘 ${th.from}~${th.to}${lab?' · '+lab:' · 근무 중'}</span>`:'');
     return `<div class="offrow${lab?' off-today':''}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <b style="min-width:70px">${esc(n)}</b>${tag}
