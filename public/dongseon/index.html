@@ -2854,13 +2854,13 @@ function consultWhoHtml(p,room,c,stop){
   const ev=stop?' onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"':'';
   const dcur=consultDoc(p,room,c);
   const dopts=[...new Set([dcur,...consultDocPool()].filter(Boolean))];
-  return `<div class="cs-who"><span class="hint">상담자</span>
-    <select class="cs-reason cs-who-sel"${ev} onchange="setConsultWho('${p.id}','${esc(room)}',this.value)">
-      <option value="">(미지정)</option>${opts.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n)}</option>`).join("")}
-    </select></div>
-    <div class="cs-who"><span class="hint">담당의</span>
+  return `<div class="cs-who"><span class="hint">원장님</span>
     <select class="cs-reason cs-doc-sel"${ev} onchange="setConsultDoc('${p.id}','${esc(room)}',this.value)">
       <option value="">(미지정)</option>${dopts.map(n=>`<option value="${esc(n)}" ${n===dcur?'selected':''}>${esc(n)}</option>`).join("")}
+    </select></div>
+    <div class="cs-who"><span class="hint">담당의</span>
+    <select class="cs-reason cs-who-sel"${ev} onchange="setConsultWho('${p.id}','${esc(room)}',this.value)">
+      <option value="">(미지정)</option>${opts.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n)}</option>`).join("")}
     </select></div>`;
 }
 function setConsultWho(pid,room,who){const p=data.find(x=>x.id===pid);if(!p)return;getConsult(p,room);
@@ -3592,7 +3592,7 @@ function cardEl(p){
         <button class="cs-b other ${c.result==='기타'?'on':''}" onclick="event.stopPropagation();setConsultResult('${p.id}','${esc(room)}','기타')">시행 안 함</button>
       </div>
       ${c.result==='기타'?consultReasonHtml(p.id,room,c,true):''}
-      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.who?`상담자: <b>${esc(c.who)}</b> · `:''}${c.doc?`담당의: <b>${esc(c.doc)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
+      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.doc?`원장님: <b>${esc(c.doc)}</b> · `:''}${c.who?`담당의: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
     </div>`;
   }
   // 처치는 '준비 지시'(전역 처치 세트)로 통합됨 — 방별 처치 칩 제거
@@ -4719,7 +4719,7 @@ function renderHistory(){
         Object.keys(byRoom).forEach(room=>{
           inner+=`<div class="hv-sec" style="color:var(--teal)"><i data-lucide="message-circle"></i> ${esc(room)} <span class="hint" style="font-weight:400">${byRoom[room].length}건</span></div>`;
           byRoom[room].forEach(c=>{const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
-            inner+=`<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">🩺${esc(c.who)}</span>`:''}${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">담당의 ${esc(c.doc)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
+            inner+=`<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당의 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
         });
       }
       box.innerHTML=head+inner;
@@ -4772,7 +4772,7 @@ function consultLogHtml(){
   let curDate="";
   list.forEach(c=>{const ds=dateLabel(c.at);if(ds!==curDate){curDate=ds;html+=`<div class="cl-date">${ds}</div>`;}
     const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
-    html+=`<div class="cl-rec"><span class="cl-time">${hhmm(c.at)||'-'}</span>${consultRoom==='전체'?`<span class="cl-room">${esc(c.room)}</span>`:''}<span class="cl-name">${esc(c.name)}${c.mrn?`<span class="hint" style="font-weight:400"> ${esc(c.mrn)}</span>`:''}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">🩺${esc(c.who)}</span>`:''}${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">담당의 ${esc(c.doc)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
+    html+=`<div class="cl-rec"><span class="cl-time">${hhmm(c.at)||'-'}</span>${consultRoom==='전체'?`<span class="cl-room">${esc(c.room)}</span>`:''}<span class="cl-name">${esc(c.name)}${c.mrn?`<span class="hint" style="font-weight:400"> ${esc(c.mrn)}</span>`:''}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당의 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
   return html;
 }
 /* 상담 기록 CSV(엑셀) */
@@ -4783,11 +4783,11 @@ function exportConsults(){
   if(consultRoom!=='전체')all=all.filter(c=>c.room===consultRoom);
   all=all.slice().sort((a,b)=>(new Date(a.at)-new Date(b.at))||0);
   if(!all.length){alert("내보낼 상담 기록이 없습니다.");return;}
-  const header=["날짜","시각","방","환자명","병록번호","결과","사유","상담자","담당의","작성자","상태"];
+  const header=["날짜","시각","방","환자명","병록번호","결과","사유","원장님","담당의","작성자","상태"];
   const out=[header];
   all.forEach(c=>{const d=new Date(c.at);
     out.push([isNaN(d)?"":localYMD(d), isNaN(d)?"":String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),
-      c.room||"",c.name||"",c.mrn||"",resLabel(c.result),c.reason||"",c.who||"",c.doc||"",c.by||"",c.live?"진행중":"종결"]);});
+      c.room||"",c.name||"",c.mrn||"",resLabel(c.result),c.reason||"",c.doc||"",c.who||"",c.by||"",c.live?"진행중":"종결"]);});
   const tag=consultRoom!=='전체'?("_"+consultRoom):(statsDate?("_"+statsDate):"_전체기간");
   downloadCSV("상담기록"+tag+".csv",out);
 }
@@ -5014,7 +5014,7 @@ function renderPastConsults(){
   const list=patientPastConsults(p);
   if(!list.length){box.innerHTML=`<div class="route-empty" style="padding:2px">과거 상담 기록이 없습니다.</div>`;return;}
   box.innerHTML=list.map(c=>{const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
-    return `<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span><span class="cl-room">${esc(c.room)}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">🩺${esc(c.who)}</span>`:''}${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">담당의 ${esc(c.doc)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}</div>`;}).join("");
+    return `<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span><span class="cl-room">${esc(c.room)}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당의 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}</div>`;}).join("");
 }
 
 /* 상담 결과 편집기 (편집 모달 내) */
@@ -5031,7 +5031,7 @@ function renderConsultEditor(){
   const doneHtml=done.map(r=>{const c=p.consults[r];return `<div class="nroom" style="opacity:.85">
       <div class="nrt"><i data-lucide="message-circle"></i> ${esc(r)} <span class="hint">(기록됨)</span></div>
       <div class="hint"><span style="color:${c.result==='시행'?'var(--green)':'var(--orange)'};font-weight:700">${esc(resLabel(c.result)||'-')}</span>
-        ${c.reason?' · '+esc(c.reason):''}${c.who?' · 상담자 <b>'+esc(c.who)+'</b>':''}${c.doc?' · 담당의 <b>'+esc(c.doc)+'</b>':''}${c.by?' · '+esc(c.by):''} ${hhmm(c.at)}</div>
+        ${c.reason?' · '+esc(c.reason):''}${c.doc?' · 원장님 <b>'+esc(c.doc)+'</b>':''}${c.who?' · 담당의 <b>'+esc(c.who)+'</b>':''}${c.by?' · '+esc(c.by):''} ${hhmm(c.at)}</div>
     </div>`;}).join("");
   document.getElementById("consultRooms").innerHTML=doneHtml+editable.map(room=>{const c=(p.consults&&p.consults[room])||{result:"",reason:"",by:"",at:""};return `
     <div class="nroom">
@@ -5042,7 +5042,7 @@ function renderConsultEditor(){
         <button type="button" class="cs-b other ${c.result==='기타'?'on':''}" onclick="setConsultResult('${p.id}','${esc(room)}','기타')">시행 안 함</button>
       </div>
       ${c.result==='기타'?consultReasonHtml(p.id,room,c,false):''}
-      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.who?`상담자: <b>${esc(c.who)}</b> · `:''}${c.doc?`담당의: <b>${esc(c.doc)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
+      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.doc?`원장님: <b>${esc(c.doc)}</b> · `:''}${c.who?`담당의: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
     </div>`;}).join("");
 }
 /* 전달사항 편집기 (편집 모달 내) */
