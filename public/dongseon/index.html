@@ -556,6 +556,32 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 .modal-head .head-sep{width:1px;height:20px;background:var(--line)}
 .modal-head .kbd{font-size:10px;font-weight:700;opacity:.7;border:1px solid rgba(255,255,255,.35);border-radius:4px;padding:0 4px;margin-left:3px}
 @media (max-width:640px){ .modal-head{flex-direction:column;align-items:stretch} .modal-head .head-actions{margin-left:0} }
+/* 가족관계 줄: 헤더 버튼 아래 한 줄 전체 */
+.modal-head .family-line{flex:1 1 100%;margin-top:0;padding:6px 10px;font-size:12.5px}
+/* 좁은 창(1열): 제목 왼쪽 · 버튼 오른쪽 같은 줄 → 이름/번호 → 상태 → 가족관계 */
+@media (max-width:1100px){
+  #modal .modal-head{gap:8px 10px}
+  #modal .modal-head h3{order:1}
+  #modal .modal-head .head-actions{order:2;margin-left:auto;flex-wrap:nowrap}
+  #modal .modal-head .head-actions .btn{padding:6px 9px;font-size:12px}
+  #modal .modal-head .kbd{display:none}
+  #modal .modal-head #mhPatient{order:3;flex:1 1 100%}
+  #modal .modal-head #editStatusRow{order:4;flex:1 1 100%;align-self:stretch}
+  #modal .modal-head .family-line{order:5}
+  /* 본문: 열 구분을 없애고 특이사항 → 지난 기록 → 오늘 차팅 → 나머지 순으로 */
+  #modal .body{gap:14px}
+  #modal .body>.pcol{display:contents}
+  #modal #pmemoBox{order:-3}
+  #modal #pastSection{order:-2}
+  #modal #todaySection{order:-1}
+  #modal #pastSection .sect-t{margin-top:0;border-top:0;padding-top:0}
+}
+/* 지난 기록: 날짜 줄만 보이고 ▾ 누르면 내용 펼침 */
+.cv-item.fold .cv-date{cursor:pointer;margin-bottom:0;user-select:none}
+.cv-item.fold.open .cv-date{margin-bottom:6px}
+.cv-item.fold:not(.open) .cv-ta{display:none}
+.cv-caret{margin-left:auto;width:16px;height:16px;opacity:.65;transition:transform .2s;flex-shrink:0}
+.cv-item.fold.open .cv-caret{transform:rotate(180deg)}
 #modal .body{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:16px 24px;align-items:start}
 #modal .pcol{display:flex;flex-direction:column;gap:14px;min-width:0}
 @media (max-width:1460px){ #modal .modal{width:min(1080px,96vw)} #modal .body{grid-template-columns:1fr 1.1fr} }
@@ -1108,6 +1134,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <button class="btn" onclick="closeModal()">취소</button>
         <button class="btn primary" onclick="savePatient()">저장 <span class="kbd">⌘S</span></button>
       </div>
+      <div class="family-line" id="familyBox">
+        <i data-lucide="users"></i> <b>가족관계:</b> <span id="familyText">없음</span>
+        <button type="button" class="mini" onclick="editFamily()" title="가족관계 수정">✎</button>
+      </div>
     </div>
     <div class="body">
       <div class="pcol">
@@ -1182,7 +1212,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
         <textarea id="f_pmemo" rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의… (칸을 벗어나면 즉시 저장)" oninput="cvGrow(this)" onchange="pmemoNow(this.value)"></textarea>
       </div>
-      <div class="pcalls" id="callsBox">
+      <div class="pcalls" id="callsBox" style="display:none"><!-- 유선 문의: 사용 안 함(2026-09) -->
         <div class="pc-head" onclick="document.getElementById('callsBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="phone"></i> 유선 문의 <span class="pc-sum" id="callsSummary">0건</span><span class="pf-caret">▾</span></div>
         <div class="pc-body">
           <div id="callsList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:7px"></div>
@@ -1193,11 +1223,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
           <p class="hint" style="margin:6px 0 0">병록번호 기준으로 바로 저장됩니다 — 접수(저장)하지 않아도 기록이 남습니다.</p>
         </div>
       </div>
-      <div class="family-line" id="familyBox">
-        <i data-lucide="users"></i> <b>가족관계:</b> <span id="familyText">없음</span>
-        <button type="button" class="mini" onclick="editFamily()" title="가족관계 수정">✎</button>
-      </div>
-      <div class="pcalls" id="scribeBox">
+      <div class="pcalls" id="scribeBox" style="display:none"><!-- 진료 받아쓰기: 사용 안 함(2026-09) -->
         <div class="pc-head" onclick="document.getElementById('scribeBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="mic"></i> 진료 받아쓰기 기록 <span class="pc-sum" id="scribeSummary">0건</span><span class="pf-caret">▾</span></div>
         <div class="pc-body">
           <div id="scribeList" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -1256,6 +1282,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div>
       </div><!-- /pcol 중(상담·전달·문자) -->
       <div class="pcol">
+      <div id="todaySection">
       <div class="sect-t" style="display:flex;align-items:center;gap:8px"><i data-lucide="notebook-pen"></i> 오늘 차팅
         <span style="margin-left:auto;display:inline-flex;gap:4px">
           <button type="button" class="mini" title="진료의 기본 양식을 오늘 차트에 적용" onclick="editApplyTpl()"><i data-lucide="clipboard"></i> 기본양식</button>
@@ -1266,21 +1293,26 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <textarea id="f_chart" class="chart-box" style="min-height:170px" placeholder="오늘 차팅을 입력하세요… (저장 버튼으로 함께 저장됩니다)"></textarea>
         <p class="hint" id="chartCopyHint" style="display:none;color:var(--t-amber)">직전 차트가 복사되었습니다 — 수정 후 저장하세요</p>
       </div>
+      </div><!-- /todaySection -->
+      <div id="researchSection" style="display:none"><!-- 연구 차팅: 사용 안 함(2026-09, 원장 지시) — 필요 시 display 제거 -->
       <div class="sect-t" style="display:flex;align-items:center;gap:8px;margin-top:14px;border-top:1px dashed var(--line);padding-top:12px"><i data-lucide="microscope"></i> 오늘 연구 차팅
         <span class="hint" style="font-weight:400;font-size:11px">임상 차트와 별도 저장 · 연구용</span>
       </div>
       <div class="fld">
         <textarea id="f_research" class="chart-box" style="min-height:120px" placeholder="연구용 차팅을 입력하세요… (저장 버튼으로 함께 저장됩니다)"></textarea>
       </div>
+      </div>
       <!-- 지난 기록: 탭으로 전환(길어져도 서로 밀지 않음) -->
+      <div id="pastSection">
       <div class="sect-t" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:14px;border-top:1px solid var(--line);padding-top:12px">지난 기록
         <span style="margin-left:auto;display:inline-flex;gap:5px">
           <button type="button" class="chart-tab on" data-ptab="clinical" onclick="switchPastTab('clinical')"><i data-lucide="clipboard-list"></i> 지난 차트</button>
-          <button type="button" class="chart-tab" data-ptab="research" onclick="switchPastTab('research')"><i data-lucide="microscope"></i> 지난 연구 차트 기록</button>
+          <button type="button" class="chart-tab" data-ptab="research" style="display:none" onclick="switchPastTab('research')"><i data-lucide="microscope"></i> 지난 연구 차트 기록</button>
         </span>
       </div>
       <div id="editChartPast" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
       <div id="editResearchPast" style="display:none;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
+      </div><!-- /pastSection -->
       </div><!-- /pcol 우(차트 전용) -->
     </div>
   </div>
@@ -1650,6 +1682,9 @@ async function doLogin(){
 }
 function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();}
 function logout(){audit('로그아웃');sessionEstablished=false;currentUser=null;if(idleTimer){clearTimeout(idleTimer);idleTimer=null;}localStorage.removeItem(SESSION_KEY);closeAccount();
+  /* 로그아웃 전에 실시간 구독을 먼저 끊는다 — 인증이 사라진 뒤 리스너가 권한 오류를 내며 '연결 권한 오류' 화면이 뜨는 것을 방지 */
+  ['unsub','unsubP','unsubPm','unsubAcl'].forEach(k=>{try{if(typeof cloud[k]==='function'){cloud[k]();}}catch(e){}cloud[k]=null;});
+  cloud.active=false;
   try{if(window.firebase&&firebase.auth&&firebase.auth().currentUser)firebase.auth().signOut();}catch(e){}
   updateUserPill();showLogin();}
 function updateUserPill(){
@@ -2396,7 +2431,10 @@ function loginConnecting(msg){
   document.getElementById('loginOverlay').classList.add('show');
   document.getElementById('loginBody').innerHTML=`<p style="text-align:center;color:var(--muted);padding:14px 0">${msg||'클라우드 연결 준비 중…'}</p>`;
 }
-function cloudErr(err){setSync('err');document.getElementById('loginOverlay').classList.add('show');
+function cloudErr(err){
+  /* 로그아웃 직후 권한 오류는 정상(인증 없음) → 오류 대신 로그인 화면 */
+  try{ if(!(firebase.auth&&firebase.auth().currentUser)&&err&&/permission/i.test(String(err.code||err.message||''))){ showLogin(); return; } }catch(e){}
+  setSync('err');document.getElementById('loginOverlay').classList.add('show');
   document.getElementById('loginBody').innerHTML='<p style="text-align:center;color:var(--red);padding:14px 0">클라우드 연결 권한 오류입니다.<br><small>관리자에게 문의하세요.</small></p>';console.error(err);}
 // 기존 단일문서 → 다중문서 1회 이전(설정문서가 없을 때만)
 async function migrateIfNeeded(){
@@ -4600,8 +4638,8 @@ function fillEditChart(p){
   const box=document.getElementById('editChartPast');
   const pastCharted = past.filter(v=>(v.chart||'').trim());   // 내용이 있는 지난 차트만 — 빈 기록은 날짜+공란으로 표시하지 않음
   box.innerHTML = pastCharted.length ? pastCharted.map(v=>`
-    <div class="cv-item">
-      <div class="cv-date"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}</div>
+    <div class="cv-item fold">
+      <div class="cv-date" onclick="togglePastItem(this.parentNode)" title="누르면 내용이 펼쳐집니다"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}<i data-lucide="chevron-down" class="cv-caret"></i></div>
       <textarea class="cv-ta" oninput="cvGrow(this)" onchange="saveChart('v:${esc(v.id)}',this.value)">${esc(v.chart||'')}</textarea>
     </div>`).join('') : (past.length ? '' : '<div class="hint">지난 내원 기록이 없습니다.</div>');
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
@@ -4618,13 +4656,19 @@ function fillEditChart(p){
     const rbox=document.getElementById('editResearchPast');
     const pastR=past.filter(v=>(v.researchChart||'').trim());
     rbox.innerHTML=pastR.length ? pastR.map(v=>`
-      <div class="cv-item">
-        <div class="cv-date"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}</div>
+      <div class="cv-item fold">
+        <div class="cv-date" onclick="togglePastItem(this.parentNode)" title="누르면 내용이 펼쳐집니다"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}<i data-lucide="chevron-down" class="cv-caret"></i></div>
         <textarea class="cv-ta" oninput="cvGrow(this)" onchange="saveResearch('v:${esc(v.id)}',this.value)">${esc(v.researchChart||'')}</textarea>
       </div>`).join('') : (past.length ? '' : '<div class="hint">지난 연구 차트 기록이 없습니다.</div>');
     requestAnimationFrame(()=>{cvGrow(rta);[...rbox.querySelectorAll('.cv-ta')].forEach(cvGrow);});
     setTimeout(()=>cvGrow(rta),150);
   }
+}
+/* 지난 기록 항목 펼침/접힘 — 펼칠 때 textarea 높이 재계산 */
+function togglePastItem(item){
+  if(!item)return;
+  const open=item.classList.toggle('open');
+  if(open){ const ta=item.querySelector('.cv-ta'); if(ta){ cvGrow(ta); setTimeout(()=>cvGrow(ta),60); } }
 }
 function toggleEditSms(){
   const sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');
@@ -5041,7 +5085,7 @@ function renderConsultEditor(){
   const doneHtml=done.map(r=>{const c=p.consults[r];return `<div class="nroom" style="opacity:.85">
       <div class="nrt"><i data-lucide="message-circle"></i> ${esc(r)} <span class="hint">(기록됨)</span></div>
       <div class="hint"><span style="color:${c.result==='시행'?'var(--green)':'var(--orange)'};font-weight:700">${esc(resLabel(c.result)||'-')}</span>
-        ${c.reason?' · '+esc(c.reason):''}${c.doc?' · 원장님 <b>'+esc(c.doc)+'</b>':''}${c.who?' · 담당의 <b>'+esc(c.who)+'</b>':''}${c.by?' · '+esc(c.by):''} ${hhmm(c.at)}</div>
+        ${c.result==='기타'?(' · 사유: <b>'+esc(c.reason||'(미입력)')+'</b>'):''} <span style="opacity:.7">${hhmm(c.at)}</span></div>
     </div>`;}).join("");
   document.getElementById("consultRooms").innerHTML=doneHtml+editable.map(room=>{const c=(p.consults&&p.consults[room])||{result:"",reason:"",by:"",at:""};return `
     <div class="nroom">
