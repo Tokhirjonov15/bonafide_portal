@@ -568,9 +568,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #modal .modal-head #mhPatient{order:3;flex:1 1 100%}
   #modal .modal-head #editStatusRow{order:4;flex:1 1 100%;align-self:stretch}
   #modal .modal-head .family-line{order:5}
-  /* 본문: 열 구분을 없애고 특이사항 → 지난 기록 → 오늘 차팅 → 나머지 순으로 */
+  /* 본문: 열 구분을 없애고 상담 결과(상담실일 때) → 특이사항 → 지난 기록 → 오늘 차팅 → 나머지 순으로 */
   #modal .body{gap:14px}
   #modal .body>.pcol{display:contents}
+  #modal #consultSection{order:-4}
   #modal #pmemoBox{order:-3}
   #modal #pastSection{order:-2}
   #modal #todaySection{order:-1}
