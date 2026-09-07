@@ -84,13 +84,13 @@ async function ensureSchema(env) {
   for (const q of MIGRATIONS) {
     try { await env.DB.prepare(q).run(); } catch (_) { /* 이미 있는 열 */ }
   }
-  /* 직원 아이디 30개 자동 생성 (bd01 ~ bd30) — 이미 있으면 건너뜀 */
+  /* 직원 아이디 30개 자동 생성 (snu01 ~ snu30) — 이미 있으면 건너뜀 */
   const c = await env.DB.prepare(`SELECT COUNT(*) AS c FROM staff`).first();
   if (!c || !c.c) {
     const stmts = [];
     for (let i = 1; i <= 30; i++) {
       stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO staff (id) VALUES (?)`)
-        .bind("bd" + String(i).padStart(2, "0")));
+        .bind("snu" + String(i).padStart(2, "0")));
     }
     for (let i = 0; i < stmts.length; i += 15) await env.DB.batch(stmts.slice(i, i + 15));
   }
@@ -109,7 +109,7 @@ async function hmacSig(env, text) {
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 /* 최고관리자 계정 — 비밀번호는 ADMIN_PW 시크릿으로 별도 관리 */
-const ADMIN_ID = "bd01";
+const ADMIN_ID = "snu01";
 
 /* 세션 30분 — 단, 작업(POST)할 때마다 새 토큰이 발급되어 연장된다.
    즉 계속 일하는 직원은 로그아웃되지 않고, 방치된 기기만 30분 뒤 잠긴다. */
@@ -1025,7 +1025,7 @@ export default {
         }
         const id = s(b.id).toLowerCase();
         const row = await env.DB.prepare(`SELECT id FROM staff WHERE id=? AND active=1`).bind(id).first();
-        /* 최고관리자(bd01)는 ADMIN_PW, 일반 직원은 공용 STAFF_PW로 확인 */
+        /* 최고관리자(snu01)는 ADMIN_PW, 일반 직원은 공용 STAFF_PW로 확인 */
         const expected = (id === ADMIN_ID)
           ? (env.ADMIN_PW || env.STAFF_PW).trim()
           : env.STAFF_PW.trim();

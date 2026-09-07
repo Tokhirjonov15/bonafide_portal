@@ -1971,7 +1971,7 @@ $("expTestBtn").onclick=async()=>{
 };
 
 /* ============================================================
-   👑 직원 아이디 관리 (최고관리자 bd01 전용)
+   👑 직원 아이디 관리 (최고관리자 snu01 전용)
    ============================================================ */
 let STAFF_CACHE=null;
 async function loadStaffList(){
@@ -1982,13 +1982,13 @@ async function loadStaffList(){
       <th>아이디</th><th>이름</th><th style="width:90px">상태</th><th style="width:150px"></th>
     </tr></thead><tbody>${STAFF_CACHE.map(s=>`
       <tr style="${s.active?"":"opacity:.5"}">
-        <td><b>${esc(s.id)}</b>${s.id==="bd01"?' <i data-lucide="user-cog"></i>':""}</td>
+        <td><b>${esc(s.id)}</b>${s.id==="snu01"?' <i data-lucide="user-cog"></i>':""}</td>
         <td><input value="${esc(s.name||"")}" id="sn_${esc(s.id)}" placeholder="이름"
              style="border:1px solid var(--line); border-radius:6px; padding:4px 8px; font-family:inherit; width:110px"></td>
         <td>${s.active?'<span class="tag" style="background:#E4F3EA;color:#1A7A4A">사용중</span>':'<span class="tag" style="background:#FCEEEC;color:#B03A2E">중지</span>'}</td>
         <td>
           <button class="btn small ghost" onclick="saveStaff('${esc(s.id)}',${s.active?1:0})">이름저장</button>
-          ${s.id==="bd01"?"":`<button class="btn small ghost" onclick="saveStaff('${esc(s.id)}',${s.active?0:1})">${s.active?"중지":"재사용"}</button>`}
+          ${s.id==="snu01"?"":`<button class="btn small ghost" onclick="saveStaff('${esc(s.id)}',${s.active?0:1})">${s.active?"중지":"재사용"}</button>`}
         </td>
       </tr>`).join("")}</tbody></table>`;
   }catch(err){

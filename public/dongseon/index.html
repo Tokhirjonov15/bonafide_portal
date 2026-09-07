@@ -2805,6 +2805,7 @@ function setProc(pid,room,proc){const p=data.find(x=>x.id===pid);if(!p)return;if
   save(p);render();}
 function setConsultResult(pid,room,result){const p=data.find(x=>x.id===pid);if(!p)return;const c=getConsult(p,room);
   const target=(c.result===result?"":result);const f={result:target,by:currentUser?currentUser.name:"",at:new Date().toISOString()};
+  if(target==='시행')f.reason="";   // 시행이면 사유 불필요 — 이전에 고른 사유는 지움
   if(!c.who){const w=docFor(p,room);if(w)f.who=w;}   // 상담자 미지정이면 이 방 담당 진료의를 자동 기록
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));}
@@ -3538,7 +3539,7 @@ function cardEl(p){
         <button class="cs-b done ${c.result==='시행'?'on':''}" onclick="event.stopPropagation();setConsultResult('${p.id}','${esc(room)}','시행')">시행</button>
         <button class="cs-b other ${c.result==='기타'?'on':''}" onclick="event.stopPropagation();setConsultResult('${p.id}','${esc(room)}','기타')">기타</button>
       </div>
-      ${consultReasonHtml(p.id,room,c,true)}
+      ${c.result==='기타'?consultReasonHtml(p.id,room,c,true):''}
       ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.who?`상담자: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
     </div>`;
   }
@@ -4988,7 +4989,7 @@ function renderConsultEditor(){
         <button type="button" class="cs-b done ${c.result==='시행'?'on':''}" onclick="setConsultResult('${p.id}','${esc(room)}','시행')">시행</button>
         <button type="button" class="cs-b other ${c.result==='기타'?'on':''}" onclick="setConsultResult('${p.id}','${esc(room)}','기타')">기타</button>
       </div>
-      ${consultReasonHtml(p.id,room,c,false)}
+      ${c.result==='기타'?consultReasonHtml(p.id,room,c,false):''}
       ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.who?`상담자: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
     </div>`;}).join("");
 }
