@@ -1327,8 +1327,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="modal" style="width:620px">
     <h3><i data-lucide="calendar-off"></i> 휴무 관리</h3>
     <div class="body">
-      <p class="hint">병원은 연중무휴 — 직원별 휴무를 지정하세요. <b>휴무인 직원은 그날</b> 진료의/간호사 선택 목록에서 빠지고 자동 지정되지 않습니다.<br>
-      · 요일 버튼 = 매주 반복 휴무 · 날짜 추가 = 그날 하루만 휴무 (상황에 따라 쉬는 직원용)</p>
+      <p class="hint">병원은 연중무휴 — 직원별 휴무·근무시간을 지정하세요. <b>휴무이거나 근무시간 밖인 직원은</b> 진료의/간호사 선택 목록에서 빠지고 자동 지정되지 않습니다.<br>
+      · 요일 버튼 = 매주 반복 휴무 · 하루 휴무 = 그날만 휴무<br>
+      · 근무시간 = 요일별로 몇 시부터 몇 시까지 일하는지 (비우면 종일). 날짜별 근무시간을 넣으면 그날은 그 시간이 우선</p>
       <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)">
         <i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderOffList()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
       </div>
@@ -1436,14 +1437,31 @@ function mirroredHere(p, room){
 const isPayRoom = r => /수납/.test(r||'');
 /* 방 담당자(주/부) UI 표시 여부 — 혼동을 줄이기 위해 임시 숨김(기능 코드는 유지, true로 바꾸면 복원) */
 const SHOW_OWNERS = false;
-/* ── 직원 휴무: {이름:{weekly:[요일 0~6], dates:['YYYY-MM-DD']}} — 병원은 연중무휴, 직원별로 관리 ── */
+/* ── 직원 휴무·근무시간: {이름:{weekly:[요일 0~6], dates:['YYYY-MM-DD'],
+       hours:{요일:'HH:MM-HH:MM'}, dateHours:{'YYYY-MM-DD':'HH:MM-HH:MM'}}} — 병원은 연중무휴, 직원별로 관리
+   · hours/dateHours 가 없으면 종일 근무. 날짜별 근무시간이 요일 근무시간보다 우선 ── */
 let OFF_SCHED = {};
 function isOffOn(name,ymd){const s=OFF_SCHED[name];if(!s)return false;
   const d=new Date(ymd+"T12:00:00");
   if(Array.isArray(s.weekly)&&s.weekly.includes(d.getDay()))return true;
   if(Array.isArray(s.dates)&&s.dates.includes(ymd))return true;
   return false;}
-function isOffToday(name){return isOffOn(name,localYMD(new Date()));}
+function parseHours(v){const m=/^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(v||"");return m?{from:m[1],to:m[2]}:null;}
+/* 그날 근무시간 — null 이면 종일 */
+function workHoursOn(name,ymd){const s=OFF_SCHED[name];if(!s)return null;
+  const dh=s.dateHours&&s.dateHours[ymd];if(dh)return parseHours(dh);
+  const d=new Date(ymd+"T12:00:00");const wh=s.hours&&s.hours[d.getDay()];
+  return wh?parseHours(wh):null;}
+/* 특정 시각에 근무 외인가 (휴무일이거나 근무시간 밖) */
+function isOffAt(name,dt){const d=dt||new Date();const ymd=localYMD(d);
+  if(isOffOn(name,ymd))return true;
+  const h=workHoursOn(name,ymd);if(!h)return false;
+  const hm=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  return hm<h.from||hm>=h.to;}
+/* 지금 이 시각 기준 — 선택 목록·자동 지정에서 제외할지 판단 (시간제 근무자는 근무시간 밖이면 제외) */
+function isOffToday(name){return isOffAt(name,new Date());}
+/* 표시용 라벨: '휴무' / '근무 외' / '' */
+function offLabel(name){const d=new Date();if(isOffOn(name,localYMD(d)))return "휴무";return isOffAt(name,d)?"근무 외":"";}
 /* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
   {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','3층 수납']},
@@ -3086,7 +3104,7 @@ function render(){
         <span class="col-count${shown?' has':''}" title="이 방 환자 수">${shown}명</span>
       </div>
       ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
-      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>isOffToday(n)?n+'(휴무)':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>isOffToday(n)?n+'(휴무)':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}`;
+      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}`;
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
 
@@ -3564,6 +3582,9 @@ function treatSheetTableHtml(pf,dateYmd){
   recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});                  // 기록이 있으면 퇴직자도 그날엔 표시
   if(!docs.length)return '<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
   const off=n=>isOffOn(n,D);
+  const WH={};docs.forEach(n=>{WH[n]=workHoursOn(n,D);});   // 그날 근무시간(시간제) — 밖의 슬롯은 회색
+  const offSlot=(n,s2)=>{if(off(n))return true;const h=WH[n];if(!h)return false;
+    const hm=String(Math.floor(s2/2)).padStart(2,"0")+":"+(s2%2?"30":"00");return hm<h.from||hm>=h.to;};
   /* 행: 30분 슬롯 — 근무시간 9:00~21:00, 기록이 밖에 있으면 자동 확장 */
   const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
   let s0=18,s1=41;   // 9:00=18 ~ 20:30=41
@@ -3573,8 +3594,8 @@ function treatSheetTableHtml(pf,dateYmd){
     const hh=Math.floor(s2/2),mm=s2%2?"30":"00";
     const cells=docs.map(doc=>{
       const here=recs.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
-      if(!here.length)return `<td class="${off(doc)?'offcol':''}"></td>`;
-      return `<td class="filled${off(doc)?' offcol':''}">${here.map(x=>{
+      if(!here.length)return `<td class="${offSlot(doc,s2)?'offcol':''}"></td>`;
+      return `<td class="filled${offSlot(doc,s2)?' offcol':''}">${here.map(x=>{
         const nm=pf?maskName(x.name):dispName(x.name);
         const nt=NOTES[sheetNoteKey(x)];
         return `<div class="sheet-p${x.live?' live':''}${nt?' has-note':''}"${nt?` title="${esc(nt.text)}${nt.by?' — '+esc(nt.by):''}"`:''}>
@@ -3585,7 +3606,7 @@ function treatSheetTableHtml(pf,dateYmd){
   return `<div class="sheet-wrap"><table class="sheet-tbl">
     <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>off(n)
       ?`<th class="offhead">${esc(n)}<div class="offsub">휴무</div></th>`
-      :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
+      :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${WH[n]?`<div class="offsub">${WH[n].from}~${WH[n].to}</div>`:''}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
     <div class="sheet-legend"><span class="sp-room sk">충</span> 충격파 &nbsp; <span class="sp-room sj">신</span> 신장분사 &nbsp;·&nbsp; 파란색 = 현재 치료 중</div>`;
 }
@@ -5577,7 +5598,9 @@ function offNames(){const s2=new Set();
   ROOMS.forEach(r=>{(meta(r).doctors||[]).forEach(n=>s2.add(n));(meta(r).nurses||[]).forEach(n=>s2.add(n));(meta(r).rads||[]).forEach(n=>s2.add(n));});
   Object.keys(OFF_SCHED).forEach(n=>s2.add(n));
   return [...s2].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));}
-function offOf(n){const o=OFF_SCHED[n]||(OFF_SCHED[n]={});if(!Array.isArray(o.weekly))o.weekly=[];if(!Array.isArray(o.dates))o.dates=[];return o;}
+function offOf(n){const o=OFF_SCHED[n]||(OFF_SCHED[n]={});if(!Array.isArray(o.weekly))o.weekly=[];if(!Array.isArray(o.dates))o.dates=[];
+  if(!o.hours||typeof o.hours!=='object')o.hours={};if(!o.dateHours||typeof o.dateHours!=='object')o.dateHours={};return o;}
+let OFF_HOURS_EDIT=null;   // {name, di} — 지금 편집 중인 요일 근무시간
 window.openOff=function(){if(!isAdmin()){alert("휴무 관리는 관리자만 가능합니다.");return;}renderOffList();document.getElementById("offModal").classList.add("show");};
 window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
 const OFF_DAYS=["일","월","화","수","목","금","토"];
@@ -5588,22 +5611,71 @@ function renderOffList(){
   const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");
   if(!OFF_NAMES.length){box.innerHTML=q?'<p class="hint">검색 결과가 없습니다.</p>':"";emp.style.display=q?"none":"";return;}
   emp.style.display="none";
-  const today=new Date().getDay();
+  const today=new Date().getDay(), todayYmd=localYMD(new Date());
+  const inp='padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);color:var(--text)';
   box.innerHTML=OFF_NAMES.map((n,i)=>{const o=offOf(n);
     const days=OFF_DAYS.map((d,di)=>`<button type="button" class="offday${o.weekly.includes(di)?' on':''}${di===today?' today':''}" onclick="toggleOffDay(${i},${di})" title="매주 ${d}요일 휴무">${d}</button>`).join("");
     const dates=o.dates.map(dt=>`<span class="offdate">${dt}<button type="button" onclick="delOffDate(${i},'${dt}')" title="삭제">✕</button></span>`).join("");
-    return `<div class="offrow${isOffToday(n)?' off-today':''}">
+    /* 요일별 근무시간 칩: 휴무 요일은 표시 안 함, 비어 있으면 종일 */
+    const hourChips=OFF_DAYS.map((d,di)=>{if(o.weekly.includes(di))return '';const h=parseHours(o.hours[di]);
+      const ed=OFF_HOURS_EDIT&&OFF_HOURS_EDIT.name===n&&OFF_HOURS_EDIT.di===di;
+      return `<button type="button" class="offhour${h?' on':''}${ed?' editing':''}${di===today?' today':''}" onclick="editOffHours(${i},${di})" title="${d}요일 근무시간 (누르면 수정)">${d} ${h?h.from+'~'+h.to:'종일'}</button>`;}).join("");
+    const ed=OFF_HOURS_EDIT&&OFF_HOURS_EDIT.name===n?OFF_HOURS_EDIT.di:-1;
+    const edH=ed>=0?parseHours(o.hours[ed]):null;
+    const editor=ed>=0?`<div class="offhour-edit">
+        <b>${OFF_DAYS[ed]}요일 근무시간</b>
+        <input type="time" id="offHf${i}" value="${edH?edH.from:'09:00'}" style="${inp}"> ~ <input type="time" id="offHt${i}" value="${edH?edH.to:'18:00'}" style="${inp}">
+        <button type="button" class="mini" onclick="saveOffHours(${i},${ed})">저장</button>
+        <button type="button" class="mini" onclick="clearOffHours(${i},${ed})">종일로</button>
+        <button type="button" class="mini" onclick="editOffHours(-1,-1)">취소</button>
+      </div>`:'';
+    const dateHours=Object.keys(o.dateHours).sort().map(dt=>{const h=parseHours(o.dateHours[dt]);return h?`<span class="offdate hrs">${dt} ${h.from}~${h.to}<button type="button" onclick="delOffDateHours(${i},'${dt}')" title="삭제">✕</button></span>`:'';}).join("");
+    const lab=offLabel(n);const th=workHoursOn(n,todayYmd);
+    const tag=lab==='휴무'?'<span class="offtag">오늘 휴무</span>':(th?`<span class="offtag hrs">오늘 ${th.from}~${th.to}${lab?' · 지금 근무 외':''}</span>`:'');
+    return `<div class="offrow${lab?' off-today':''}">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <b style="min-width:70px">${esc(n)}</b>${isOffToday(n)?'<span class="offtag">오늘 휴무</span>':''}
+        <b style="min-width:70px">${esc(n)}</b>${tag}
         <span class="offdays">${days}</span>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
-        <input type="date" id="offDate${i}" style="padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);color:var(--text)">
+        <input type="date" id="offDate${i}" style="${inp}">
         <button type="button" class="mini" onclick="addOffDate(${i})">+ 하루 휴무 추가</button>
         ${dates}
       </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:8px">
+        <span class="hint" style="min-width:64px">근무시간</span>${hourChips}
+      </div>
+      ${editor}
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <input type="date" id="offDhDate${i}" style="${inp}">
+        <input type="time" id="offDhF${i}" value="09:00" style="${inp}"> ~ <input type="time" id="offDhT${i}" value="13:00" style="${inp}">
+        <button type="button" class="mini" onclick="addOffDateHours(${i})">+ 날짜별 근무시간</button>
+        ${dateHours}
+      </div>
     </div>`;}).join("");
 }
+/* ── 근무시간 편집 ── */
+window.editOffHours=function(i,di){const n=OFF_NAMES[i];
+  if(!n||di<0||(OFF_HOURS_EDIT&&OFF_HOURS_EDIT.name===n&&OFF_HOURS_EDIT.di===di))OFF_HOURS_EDIT=null;else OFF_HOURS_EDIT={name:n,di};
+  renderOffList();};
+function validHours(f,t){if(!f||!t){alert("시작·종료 시간을 모두 입력하세요.");return false;}if(f>=t){alert("종료 시간은 시작 시간보다 늦어야 합니다.");return false;}return true;}
+window.saveOffHours=function(i,di){const n=OFF_NAMES[i];if(!n)return;
+  const f=(document.getElementById("offHf"+i)||{}).value,t=(document.getElementById("offHt"+i)||{}).value;
+  if(!validHours(f,t))return;
+  offOf(n).hours[di]=f+"-"+t;OFF_HOURS_EDIT=null;
+  audit('근무시간변경',n+' '+OFF_DAYS[di]+' '+f+'~'+t);cloudSaveConfig();renderOffList();render();};
+window.clearOffHours=function(i,di){const n=OFF_NAMES[i];if(!n)return;
+  delete offOf(n).hours[di];OFF_HOURS_EDIT=null;
+  audit('근무시간변경',n+' '+OFF_DAYS[di]+' 종일');cloudSaveConfig();renderOffList();render();};
+window.addOffDateHours=function(i){const n=OFF_NAMES[i];if(!n)return;
+  const v=(document.getElementById("offDhDate"+i)||{}).value;if(!v){alert("날짜를 선택하세요.");return;}
+  const f=(document.getElementById("offDhF"+i)||{}).value,t=(document.getElementById("offDhT"+i)||{}).value;
+  if(!validHours(f,t))return;
+  offOf(n).dateHours[v]=f+"-"+t;
+  audit('근무시간변경',n+' '+v+' '+f+'~'+t);cloudSaveConfig();renderOffList();render();};
+window.delOffDateHours=function(i,v){const n=OFF_NAMES[i];if(!n)return;
+  delete offOf(n).dateHours[v];
+  audit('근무시간변경',n+' '+v+' 근무시간 취소');cloudSaveConfig();renderOffList();render();};
 window.toggleOffDay=function(i,di){const n=OFF_NAMES[i];if(!n)return;const o=offOf(n);
   const k=o.weekly.indexOf(di);if(k>=0)o.weekly.splice(k,1);else o.weekly.push(di);
   audit('휴무변경',n+' 요일 '+OFF_DAYS[di]);cloudSaveConfig();renderOffList();render();};
@@ -5855,6 +5927,14 @@ boot();
   .offday.today{outline:2px solid var(--blue);outline-offset:1px}
   .offdate{font-size:11.5px;font-weight:700;color:var(--red);background:var(--red-bg);border-radius:6px;padding:2px 4px 2px 8px;display:inline-flex;align-items:center;gap:3px}
   .offdate button{border:0;background:transparent;color:var(--red);cursor:pointer;font-size:11px;padding:0 3px}
+  .offdate.hrs{color:var(--blue);background:var(--blue-bg)}
+  .offdate.hrs button{color:var(--blue)}
+  .offtag.hrs{background:var(--blue)}
+  .offhour{height:24px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--sub);font-size:11px;font-weight:700;cursor:pointer;padding:0 7px;white-space:nowrap}
+  .offhour.on{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+  .offhour.editing{outline:2px solid var(--blue);outline-offset:1px}
+  .offhour.today{text-decoration:underline}
+  .offhour-edit{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;border:1px dashed var(--blue);border-radius:8px;background:var(--blue-bg);font-size:12px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
 <script>
