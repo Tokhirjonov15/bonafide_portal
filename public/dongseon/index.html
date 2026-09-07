@@ -434,6 +434,9 @@
   .cs-who{display:flex;align-items:center;gap:6px;margin-bottom:6px}
   .cs-who .hint{flex:0 0 auto;font-weight:700}
   .cs-who select{flex:1;width:auto}
+  .family-line{display:flex;align-items:center;gap:6px;font-size:13px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);margin-top:8px}
+  .family-line svg.lucide{width:14px;height:14px}
+  .family-line .mini{margin-left:auto}
   .cs-meta{font-size:10px;color:var(--sub);margin-top:4px}
   /* 처치 항목 */
   .proc{margin:2px 12px 8px;background:rgba(129,140,248,.1);border:1px solid rgba(129,140,248,.3);border-radius:10px;padding:8px}
@@ -1190,12 +1193,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
           <p class="hint" style="margin:6px 0 0">병록번호 기준으로 바로 저장됩니다 — 접수(저장)하지 않아도 기록이 남습니다.</p>
         </div>
       </div>
-      <div class="pcalls" id="familyBox">
-        <div class="pc-head" onclick="document.getElementById('familyBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="users"></i> 가족관계 <span class="pc-sum" id="familySummary"></span><span class="pf-caret">▾</span></div>
-        <div class="pc-body">
-          <input id="f_family" placeholder="예: 보호자 홍길동(부), 배우자 김영희 — 칸을 벗어나면 즉시 저장" onchange="familyNow(this.value)">
-          <p class="hint" style="margin:6px 0 0">비트 명단의 보호자명이 기본으로 표시됩니다. 병록번호 기준으로 바로 저장되며 접수(저장)와 무관하게 유지됩니다.</p>
-        </div>
+      <div class="family-line" id="familyBox">
+        <i data-lucide="users"></i> <b>가족관계:</b> <span id="familyText">없음</span>
+        <button type="button" class="mini" onclick="editFamily()" title="가족관계 수정">✎</button>
       </div>
       <div class="pcalls" id="scribeBox">
         <div class="pc-head" onclick="document.getElementById('scribeBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="mic"></i> 진료 받아쓰기 기록 <span class="pc-sum" id="scribeSummary">0건</span><span class="pf-caret">▾</span></div>
@@ -2599,11 +2599,20 @@ function setRegFamily(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v
   PMEMO[mrn]=cur;pmemoSave(mrn);
   try{audit('가족관계수정',(name||cur.name||'')+' ('+mrn+')');}catch(e){}
   return true;}
-function fillFamily(mrn){const el=document.getElementById('f_family');if(!el)return;const v=regFamily(mrn);el.value=v;
-  const sm=document.getElementById('familySummary');if(sm)sm.textContent=v?'있음':'';}
-window.familyNow=function(v){const mrn=((document.getElementById('f_mrn')||{}).value||'').trim();
+/* 가족관계 한 줄 표시: 없으면 '없음', 여러 명이면 첫 사람 + 더보기 */
+let FAMILY_PARTS=[];
+function fillFamily(mrn){const el=document.getElementById('familyText');if(!el)return;
+  FAMILY_PARTS=(regFamily(mrn)||'').split(/[,\/·]/).map(x=>x.trim()).filter(Boolean);
+  if(!FAMILY_PARTS.length){el.textContent='없음';return;}
+  if(FAMILY_PARTS.length===1){el.textContent=FAMILY_PARTS[0];return;}
+  el.innerHTML=esc(FAMILY_PARTS[0])+` <a href="#" onclick="event.preventDefault();showAllFamily()" style="color:var(--blue);font-weight:700">더보기(+${FAMILY_PARTS.length-1})…</a>`;}
+window.showAllFamily=function(){const el=document.getElementById('familyText');if(el)el.textContent=FAMILY_PARTS.join(', ');};
+window.editFamily=function(){const mrn=((document.getElementById('f_mrn')||{}).value||'').trim();
   if(!mrn){toast('병록번호를 먼저 입력하세요');return;}
-  if(setRegFamily(mrn,get('f_name'),v))toast('가족관계 저장됨');};
+  const v=prompt('가족관계 (여러 명은 쉼표로 구분)\n예: 보호자 홍길동(부), 배우자 김영희', regFamily(mrn));
+  if(v===null)return;
+  if(setRegFamily(mrn,get('f_name'),v))toast('가족관계 저장됨');
+  fillFamily(mrn);};
 /* 유선 문의 기록 — 접수 없이도 저장 */
 function regCalls(mrn){const r=pmRec(mrn);return (r&&Array.isArray(r.calls))?r.calls:[];}
 function addRegCall(mrn,name,text){mrn=(mrn||'').trim();text=(text||'').trim();if(!mrn||!text)return false;
