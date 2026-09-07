@@ -1288,8 +1288,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div id="todaySection">
       <div class="sect-t" style="display:flex;align-items:center;gap:8px"><i data-lucide="notebook-pen"></i> 오늘 차팅
         <span style="margin-left:auto;display:inline-flex;gap:4px">
-          <button type="button" class="mini" title="진료의 기본 양식을 오늘 차트에 적용" onclick="editApplyTpl()"><i data-lucide="clipboard"></i> 기본양식</button>
-          <button type="button" class="mini" title="오늘 차트 내용을 진료의 기본 양식으로 저장" onclick="editSaveTpl()"><i data-lucide="save"></i> 양식저장</button>
+          <!-- 기본양식·양식저장 버튼: 사용 안 함(2026-09, 원장 지시) — 필요 시 display 제거 -->
+          <button type="button" class="mini" style="display:none" title="진료의 기본 양식을 오늘 차트에 적용" onclick="editApplyTpl()"><i data-lucide="clipboard"></i> 기본양식</button>
+          <button type="button" class="mini" style="display:none" title="오늘 차트 내용을 진료의 기본 양식으로 저장" onclick="editSaveTpl()"><i data-lucide="save"></i> 양식저장</button>
         </span>
       </div>
       <div class="fld">
