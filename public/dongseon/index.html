@@ -804,6 +804,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .st-detail-list{max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:4px}
   .stat-date{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12.5px;color-scheme:dark}
   .stat-rec{display:flex;gap:8px;align-items:center;padding:5px 2px;border-bottom:1px solid var(--line2);font-size:13px}
+  .stat-rec.click{cursor:pointer;border-radius:6px} .stat-rec.click:hover{background:var(--blue-bg)}
   .stat-rec span:first-child{font-weight:600;flex:1}
   /* 환자 기록 */
   .hv-row{border:1px solid var(--line);border-radius:10px;overflow:hidden}
@@ -4484,13 +4485,23 @@ let statsDate='';        // ''=전체, 'YYYY-MM-DD'=특정일
 let statsOpenRoom='';    // 세부 펼친 방 이름
 let statsTab='time';     // 'time'=체류 통계, 'consult'=상담 기록
 function localYMD(x){const d=(x instanceof Date)?x:new Date(x);if(isNaN(d))return"";return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+/* 통계 세부 기록 클릭 → 환자 정보 창(보드/오늘 종결 환자) 또는 환자 관리의 해당 환자 기록 */
+window.openStatRec=function(sid,pid,mrn,name){
+  const p=pid?data.find(x=>x.id===pid):null;
+  if(p){openEdit(p.id);return;}
+  const key=pKey(mrn,name);
+  if(!key){toast('환자를 찾을 수 없습니다');return;}
+  try{document.getElementById('statsModal').classList.remove('show');}catch(e){}
+  openHistKey(key);
+  try{document.getElementById('historyModal').classList.add('show');}catch(e){}
+};
 function statsRecs(){let recs=STATS.slice();if(statsDate)recs=recs.filter(r=>localYMD(r.leftAt||r.enteredAt||r.at)===statsDate);return recs;}
 function statsVis(){let vis=VISITS.slice();if(statsDate)vis=vis.filter(v=>localYMD(v.dischargedAt)===statsDate);return vis;}
 function statRecRow(r){const d=new Date(r.leftAt||r.enteredAt||r.at);
   const dt=isNaN(d)?"":`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   const prepSeg=(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs||0)}</span>`:'';
   const procSeg=r.proc?`<span class="hint" style="color:#6366f1;font-weight:700">🔹${esc(r.proc)}</span>`:'';
-  return `<div class="stat-rec"><span>${esc(r.name||'')}${r.mrn?`<span class="hint" style="font-weight:400"> ${esc(r.mrn)}</span>`:''}</span><span class="hint">${esc(r.room||'')}</span>${procSeg}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs||0)}</span>${prepSeg}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs||0)}</span><span class="hint">체류 ${fmtClock(r.durationMs||0)}</span><span class="hint">${dt}</span></div>`;}
+  return `<div class="stat-rec click" onclick="openStatRec('${esc(r.id||'')}','${esc(r.patientId||'')}','${esc(r.mrn||'')}','${esc(r.name||'')}')" title="누르면 환자 정보가 열립니다"><span>${esc(r.name||'')}${r.mrn?`<span class="hint" style="font-weight:400"> ${esc(r.mrn)}</span>`:''}</span><span class="hint">${esc(r.room||'')}</span>${procSeg}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs||0)}</span>${prepSeg}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs||0)}</span><span class="hint">체류 ${fmtClock(r.durationMs||0)}</span><span class="hint">${dt}</span></div>`;}
 function toggleStatRoom(room){statsOpenRoom=(statsOpenRoom===room?'':room);renderStats();}
 function openStats(){if(!isAdmin())return;statsTab='time';statsOpenRoom='';consultRoom='전체';renderStats();document.getElementById("statsModal").classList.add("show");}
 function closeStats(){document.getElementById("statsModal").classList.remove("show");}
