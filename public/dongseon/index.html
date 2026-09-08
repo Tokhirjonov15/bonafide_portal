@@ -891,7 +891,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
     <span class="role-tag" id="userRole">직원</span>
   </div>
-  <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃">⎋ 로그아웃</button>
+  <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃"><i data-lucide="log-out"></i> 로그아웃</button>
 </div>
 
 <!-- 보드 + 알람 패널(밀어내기 도킹) -->
@@ -1159,7 +1159,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <input id="f_reload" list="regOpts" placeholder="이름 또는 병록번호를 입력해 검색" oninput="onReloadInput()">
         <datalist id="regOpts"></datalist>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-          <button type="button" class="btn sm" id="reloadHistBtn" onclick="toggleReloadHist()"><i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾</button>
+          <button type="button" class="btn sm" id="reloadHistBtn" onclick="toggleReloadHist()"><i data-lucide="folder-open"></i> <span id="reloadHistLbl">이 환자 과거 기록 보기 ▾</span></button>
           <span class="hint">검색·선택한 환자의 과거 내원·상담 기록을 볼 수 있어요.</span>
         </div>
         <div id="reloadHistBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel);max-height:320px;overflow:auto;flex-direction:column;gap:8px"></div>
@@ -1275,7 +1275,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div>
 
       <div id="pastConsultSection" style="display:none;margin-top:4px">
-        <button type="button" class="btn" id="pastConsultBtn" style="width:100%" onclick="togglePastConsults()"><i data-lucide="clipboard-list"></i> 과거 상담 기록 보기 ▾</button>
+        <button type="button" class="btn" id="pastConsultBtn" style="width:100%" onclick="togglePastConsults()"><i data-lucide="clipboard-list"></i> <span id="pastConsultLbl">과거 상담 기록 보기 ▾</span></button>
         <div id="pastConsultBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
 
@@ -1293,7 +1293,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         </div>
       </div>
       <div id="editSmsSection" style="display:none;margin-top:4px">
-        <button type="button" class="btn" id="editSmsBtn" style="width:100%" onclick="toggleEditSms()"><i data-lucide="mail"></i> 발송 문자 내역 보기 ▾</button>
+        <button type="button" class="btn" id="editSmsBtn" style="width:100%" onclick="toggleEditSms()"><i data-lucide="mail"></i> <span id="editSmsLbl">발송 문자 내역 보기 ▾</span></button>
         <div id="editSmsHist" style="display:none;margin-top:8px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
       </div><!-- /pcol 중(상담·전달·문자) -->
@@ -1964,7 +1964,7 @@ function renderAccount(){
         </div>
       </details>
     </div>
-    <div class="acc-sect">
+    <div class="acc-sect" style="display:none"><!-- 크롬 확장 방식 EMR 연동: 비트플러스는 데스크톱 프로그램이라 사용 불가 — 접수 PC 감시 스크립트(tools/bitplus_watcher.ps1)로 대체(2026-09) -->
       <div class="sect-t" style="margin-bottom:6px"><i data-lucide="link"></i> EMR(비트플러스) 접수 연동 <span class="hint" style="font-weight:400">(접수 PC마다 1회 설정)</span></div>
       <div style="padding:10px 12px;border:1px solid var(--teal);border-radius:10px;margin-bottom:10px">
         <div style="font-weight:800;font-size:13px;margin-bottom:6px"><i data-lucide="bot"></i> EMR 접수 연동 확장</div>
@@ -2908,14 +2908,19 @@ function compressImage(file,maxDim,quality){return new Promise((res,rej)=>{
 async function onPhotoPicked(ev){
   const file=ev.target.files&&ev.target.files[0];if(!file||!_photoTarget)return;
   const {mrn,name}=_photoTarget;
-  const note=(prompt('📷 사진 주석 (선택 — 부위·상태 등 메모)\n비워두면 주석 없이 저장됩니다. 나중에 사진을 열어 ✎로 수정할 수 있어요.','')||'').trim();
-  const grid=document.getElementById('photoGrid');if(grid)grid.insertAdjacentHTML('afterbegin','<div class="ph-item ph-loading" id="phLoading">업로드 중…</div>');
+  const noteRaw=prompt('사진 주석 (선택 — 부위·상태 등 메모)\n비워두면 주석 없이 저장됩니다. [취소]를 누르면 사진을 저장하지 않습니다.','');
+  if(noteRaw===null)return;   // 취소 → 업로드하지 않음
+  const note=noteRaw.trim();
+  const grid=document.getElementById('photoGrid');
+  if(grid&&!document.getElementById('phLoading'))grid.insertAdjacentHTML('afterbegin','<div class="ph-item ph-loading" id="phLoading">업로드 중…</div>');
   try{
     const blob=await compressImage(file,1600,0.8);
     if(!cloud.active||!cloud.storage)throw new Error('클라우드 미연결');
     const id='ph'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     const path='patient_photos/'+pmKey(mrn)+'/'+id+'.jpg';
-    await cloud.storage.ref(path).put(blob,{contentType:'image/jpeg'});
+    const task=cloud.storage.ref(path).put(blob,{contentType:'image/jpeg'});
+    await Promise.race([task,new Promise((_,rej)=>setTimeout(()=>{try{task.cancel();}catch(e){}rej(new Error('저장소 응답 없음(30초) — Firebase Storage가 아직 설정되지 않았을 수 있습니다. 관리자에게 문의하세요.'));},30000))]);
+    {const l=document.getElementById('phLoading');if(l)l.remove();}
     const cur=PMEMO[mrn]||{};if(!Array.isArray(cur.photos))cur.photos=[];
     const ph={id,path,at:Date.now(),by:(currentUser&&currentUser.name)||''};if(note)ph.note=note;
     cur.photos.push(ph);
@@ -3426,7 +3431,7 @@ function renderDischargedBoard(board,q){
         <option value="">전체 방</option>
         ${ROOMS.map(r=>`<option value="${esc(r)}" ${listRoom===r?'selected':''}>${esc(r)} 거친 사람</option>`).join("")}
       </select>
-      <span class="hint">${listRoom?`<b>${esc(listRoom)}</b> 거쳐감 · `:''}${isToday?`완료 ${doneCnt} · 진료중 ${liveCnt}`:`${ymd} 완료 ${doneCnt}명`} · 헤더 클릭=정렬, ↩️=다시 원내로</span>
+      <span class="hint">${listRoom?`<b>${esc(listRoom)}</b> 거쳐감 · `:''}${isToday?`완료 ${doneCnt} · 진료중 ${liveCnt}`:`${ymd} 완료 ${doneCnt}명`} · 헤더 클릭=정렬, <i data-lucide="undo-2" style="width:12px;height:12px;vertical-align:-2px"></i>=다시 원내로</span>
     </div>`;
   const sc=document.createElement("div");sc.className="vlist-scroll";
   if(!rows.length){sc.innerHTML=`<div class="vl-empty">${isToday?'오늘 내원한 환자가 없어요.':'이 날짜의 내원 기록이 없어요.'}</div>`;wrap.appendChild(sc);board.appendChild(wrap);return;}
@@ -4885,7 +4890,7 @@ function fillEditChart(p){
   const sec=document.getElementById('editSmsSection'), sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');
   if(sec)sec.style.display=sms.length?'':'none';   // 발송 이력 있을 때만 섹션 표시
   if(sh){ sh.innerHTML=smsHistoryHtml(sms); sh.style.display='none'; }
-  if(sb)sb.innerHTML=`<i data-lucide="mail"></i> 발송 문자 내역 보기${sms.length?` (${sms.length})`:''} ▾`;
+  {const l=document.getElementById('editSmsLbl');if(l)l.textContent=`발송 문자 내역 보기${sms.length?` (${sms.length})`:''} ▾`;}
   requestAnimationFrame(()=>{[...box.querySelectorAll('.cv-ta')].forEach(cvGrow);});
   // 🔬 연구용 차팅(임상과 동일 구조 — 매 내원 별도 + 지난 연구 기록). 단, 직전값 자동복사는 하지 않음(매 내원 새로 기록)
   const rta=document.getElementById('f_research');
@@ -4912,7 +4917,7 @@ function toggleEditSms(){
   const sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');
   const open=sh.style.display!=='none';
   sh.style.display=open?'none':'';
-  sb.textContent=sb.textContent.replace(open?'▴':'▾', open?'▾':'▴');
+  const l=document.getElementById('editSmsLbl');if(l)l.textContent=l.textContent.replace(open?'▴':'▾', open?'▾':'▴').replace(open?'접기':'보기', open?'보기':'접기');
 }
 /* 환자 정보 창의 양식 버튼 — f_doctor·f_chart 기준 */
 function editApplyTpl(){
@@ -5198,8 +5203,9 @@ function reloadTarget(){
 function toggleReloadHist(){
   reloadHistOpen=!reloadHistOpen;
   const b=document.getElementById("reloadHistBody"),btn=document.getElementById("reloadHistBtn");
-  if(reloadHistOpen){renderReloadHistory();b.style.display="flex";btn.innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 접기 ▴';}
-  else{b.style.display="none";btn.innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾';}
+  const lbl=document.getElementById("reloadHistLbl");   // 아이콘은 그대로 두고 글자만 바꿈(아이콘 재생성으로 깜빡이던 문제)
+  if(reloadHistOpen){renderReloadHistory();b.style.display="flex";if(lbl)lbl.textContent='이 환자 과거 기록 접기 ▴';}
+  else{b.style.display="none";if(lbl)lbl.textContent='이 환자 과거 기록 보기 ▾';}
 }
 function renderReloadHistory(){
   const box=document.getElementById("reloadHistBody");if(!box)return;
@@ -5223,7 +5229,7 @@ function openAdd(){
   document.getElementById("pastConsultSection").style.display="none";
   document.getElementById("reloadSection").style.display="";
   fillRegOpts();set("f_reload","");
-  reloadHistOpen=false;document.getElementById("reloadHistBody").style.display="none";document.getElementById("reloadHistBtn").innerHTML='<i data-lucide="folder-open"></i> 이 환자 과거 기록 보기 ▾';
+  reloadHistOpen=false;document.getElementById("reloadHistBody").style.display="none";{const lbl=document.getElementById("reloadHistLbl");if(lbl)lbl.textContent='이 환자 과거 기록 보기 ▾';}
   renderRoomButtons();renderRoutineButtons();renderRouteRows();
   set("f_mrn","");set("f_name","");set("f_rrn","");document.getElementById("rrnHint").textContent="";set("f_extra","");document.getElementById("extraHint").textContent="";
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=false;}set("f_silbiLimit","");onSilbi();
@@ -5296,15 +5302,16 @@ function initPastConsults(p){
   sec.style.display="";
   const n=patientPastConsults(p).length;
   document.getElementById("pastConsultBody").style.display="none";
-  document.getElementById("pastConsultBtn").innerHTML=`<i data-lucide="clipboard-list"></i> 과거 상담 기록 보기${n?` (${n})`:''} ▾`;
+  {const l=document.getElementById("pastConsultLbl");if(l)l.textContent=`과거 상담 기록 보기${n?` (${n})`:''} ▾`;}
 }
 function togglePastConsults(){
   if(!editId)return;
   pastConsultOpen=!pastConsultOpen;
   const body=document.getElementById("pastConsultBody"),btn=document.getElementById("pastConsultBtn");
   const p=data.find(x=>x.id===editId);const n=p?patientPastConsults(p).length:0;
-  if(pastConsultOpen){renderPastConsults();body.style.display="";btn.innerHTML=`<i data-lucide="clipboard-list"></i> 과거 상담 기록 접기${n?` (${n})`:''} ▴`;}
-  else{body.style.display="none";btn.innerHTML=`<i data-lucide="clipboard-list"></i> 과거 상담 기록 보기${n?` (${n})`:''} ▾`;}
+  const lbl=document.getElementById("pastConsultLbl");   // 아이콘은 그대로, 글자만(깜빡임 방지)
+  if(pastConsultOpen){renderPastConsults();body.style.display="";if(lbl)lbl.textContent=`과거 상담 기록 접기${n?` (${n})`:''} ▴`;}
+  else{body.style.display="none";if(lbl)lbl.textContent=`과거 상담 기록 보기${n?` (${n})`:''} ▾`;}
 }
 function renderPastConsults(){
   const p=data.find(x=>x.id===editId);if(!p)return;
@@ -5543,8 +5550,10 @@ document.addEventListener('keydown',function(e){
   if(!document.getElementById('modal').classList.contains('show'))return;
   if(e.isComposing||e.keyCode===229)return;   // 한글 조합 중 Enter/키 무시
   if((e.metaKey||e.ctrlKey)&&(e.key==='s'||e.key==='S'||e.key==='Enter')){ e.preventDefault(); savePatient(); }
-  if((e.metaKey||e.ctrlKey)&&e.key==='ArrowRight'){ e.preventDefault(); editStageMove(1); }   // 다음 단계(대기→준비→진행→종결)
-  if((e.metaKey||e.ctrlKey)&&e.key==='ArrowLeft'){ e.preventDefault(); editStageMove(-1); }   // 이전 단계
+  // 단계 이동 단축키 — 글자 입력 중(차팅·특이사항 등)에는 동작하지 않음: Ctrl+→(단어 이동)로 실수로 종결되는 것 방지
+  const typing=(()=>{const a=document.activeElement;if(!a)return false;const t=(a.tagName||'').toLowerCase();return t==='input'||t==='textarea'||t==='select'||a.isContentEditable;})();
+  if(!typing&&(e.metaKey||e.ctrlKey)&&e.key==='ArrowRight'){ e.preventDefault(); editStageMove(1); }   // 다음 단계(대기→준비→진행→종결)
+  if(!typing&&(e.metaKey||e.ctrlKey)&&e.key==='ArrowLeft'){ e.preventDefault(); editStageMove(-1); }   // 이전 단계
 });
 function set(id,v){document.getElementById(id).value=v??""}
 function get(id){return document.getElementById(id).value.trim()}
