@@ -1895,6 +1895,7 @@ function renderAccount(){
         <button class="btn sm" onclick="resetSeq()"><i data-lucide="hash"></i> 등록번호 초기화</button>
         <button class="btn sm" onclick="openAuditLog()"><i data-lucide="lock"></i> 접근·활동 기록</button>
         <button class="btn sm" onclick="runSelfTest()"><i data-lucide="flask-conical"></i> 자체 점검</button>
+        <button class="btn sm" onclick="openStaffEdit(null)" title="로그인 계정 추가 (예: 비트 연동용 bitbot)"><i data-lucide="user-plus"></i> 계정 추가</button>
         <button class="btn sm" onclick="importRegistryCsv()" title="비트 EMR에서 내보낸 환자 명단(CSV: 차트번호·수진자명·주민번호)"><i data-lucide="upload"></i> 환자 명단 가져오기 (CSV)</button>
         <input type="file" id="regCsvFile" accept=".csv,text/csv" style="display:none" onchange="onRegCsvFile(event)">
         <span class="hint" id="regImpStatus" style="align-self:center">${REGISTRY_EXT.length?`가져온 명단 ${REGISTRY_EXT.length.toLocaleString()}명`:''}</span>
