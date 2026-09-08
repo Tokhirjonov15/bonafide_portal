@@ -1220,6 +1220,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
         <textarea id="f_pmemo" rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의… (칸을 벗어나면 즉시 저장)" oninput="cvGrow(this)" onchange="pmemoNow(this.value)"></textarea>
         <p class="hint" id="bitPrefillHint" style="display:none;margin:6px 0 0;color:var(--blue)"></p>
+        <div class="fld" style="margin-top:8px"><label><i data-lucide="sticky-note"></i> 접수메모(당일) <span class="hint">(비트 접수메모(당일)에서 자동 — 오늘만 해당)</span></label>
+          <input id="f_memoToday" placeholder="예: 11:00 CRYO19(PT4) 수납"></div>
       </div>
       <div class="pcalls" id="callsBox" style="display:none"><!-- 유선 문의: 사용 안 함(2026-09) -->
         <div class="pc-head" onclick="document.getElementById('callsBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="phone"></i> 유선 문의 <span class="pc-sum" id="callsSummary">0건</span><span class="pf-caret">▾</span></div>
@@ -1726,7 +1728,7 @@ function subscribeBitIntake(){
   try{if(cloud.unsubIntake)cloud.unsubIntake();}catch(e){}
   BIT_SUB_DATE=today;
   cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
-    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();
+    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();try{bitBackfillMemo();}catch(e){}
   },err=>console.warn('bitIntake',err));
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
@@ -1777,10 +1779,15 @@ window.bitAccept=function(docId){
   {const si=document.getElementById('f_ins');if(si&&r.ins){si.value=r.ins;if(si.value!==r.ins)si.value='';}}
   if(r.nextResv&&r.nextResv.slice(0,10)===localYMD(new Date())){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)set('f_reserve',m[1]);}
   {const t=new Date(r.seenAt);if(!isNaN(t))set('f_receive',String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'));}
-  {const ta=document.getElementById('f_pmemo');if(ta&&!ta.value.trim()&&r.memoCont){ta.value=r.memoCont;try{updatePmemoPreview();cvGrow(ta);}catch(e){}}}
+  {const ta=document.getElementById('f_pmemo');const combo=bitMemoCombined(r);
+    if(ta&&combo){const cur=ta.value.trim();
+      if(!cur)ta.value=combo;
+      else if(r.memoRx&&!cur.includes(r.memoRx.trim()))ta.value=cur+'\n'+r.memoRx.trim();   // 원외처방 특이사항이 새로 왔으면 덧붙임
+      try{updatePmemoPreview();cvGrow(ta);}catch(e){}}}
+  set('f_memoToday',r.memoToday||'');
   if(r.guardian&&r.relation&&r.relation!=='본인'){const ft=document.getElementById('familyText');if(ft&&(ft.textContent||'').trim()==='없음')ft.textContent=r.guardian+'('+r.relation+')';}
   const h=document.getElementById('bitPrefillHint');
-  if(h){const parts=[r.firstVisit?'최초내원 '+r.firstVisit:'',r.prevVisit?'전진료 '+r.prevVisit:'',r.nextResv?'다음예약 '+r.nextResv:'',r.memoToday?'당일메모: '+r.memoToday:''].filter(Boolean);
+  if(h){const parts=[r.firstVisit?'최초내원 '+r.firstVisit:'',r.prevVisit?'전진료 '+r.prevVisit:'',r.nextResv?'다음예약 '+r.nextResv:''].filter(Boolean);
     h.textContent=parts.length?'비트 정보 — '+parts.join(' · '):'';h.style.display=parts.length?'':'none';}
   BIT_PREFILL={docId,rec:r};
 };
@@ -1789,6 +1796,19 @@ window.bitIgnore=function(docId){
   cloud.intakeCol.doc(docId).set({status:'무시',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()},{merge:true}).catch(e=>console.warn(e));
   audit('비트접수 무시',(r.name||'')+' ('+(r.mrn||'')+')');
 };
+/* 비트 특이사항 = 접수메모(연속) + 원외처방 창의 특이사항 (둘 다 있으면 줄바꿈으로 합침, 같으면 하나만) */
+function bitMemoCombined(r){const a=(r.memoCont||'').trim(),b=(r.memoRx||'').trim();if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
+/* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
+function bitBackfillMemo(){
+  BIT_INTAKE.forEach(r=>{if(r.status!=='접수'||!(r.memoRx||'').trim())return;
+    const mrn=String(r.mrn||'').trim();if(!mrn)return;
+    const p=data.find(x=>!x.discharged&&(x.mrn||'').trim()===mrn);if(!p)return;   // 오늘 보드에 있는 환자만
+    const cur=regMemo(mrn),rx=r.memoRx.trim();
+    if(cur.includes(rx))return;
+    if(setRegMemo(mrn,p.name,cur?cur+'\n'+rx:bitMemoCombined(r)))console.log('비트 특이사항 보충',mrn);
+    if(r.memoToday&&!p.memoToday){p.memoToday=r.memoToday;save(p);}
+  });
+}
 /* 접수 저장 후 호출 — 가족관계 저장, 비트 부가정보 보관, 대기 문서 처리 표시 */
 function bitAfterSave(p){
   const pf=BIT_PREFILL;BIT_PREFILL=null;if(!pf||!p)return;
@@ -3809,6 +3829,7 @@ function cardEl(p){
     <div class="total" data-pid="${p.id}">${totalLabel(p)}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     ${p.ins?`<div class="ins-tag" title="공공보험"><i data-lucide="landmark"></i> ${esc(p.ins)}</div>`:''}
+    ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps:''}</div>
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘)"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
@@ -5122,6 +5143,7 @@ function openAdd(){
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=false;}set("f_silbiLimit","");onSilbi();
   {const si=document.getElementById("f_ins");if(si)si.value="";}
   set("f_reserve","");set("f_receive",nowHM());   // 접수시간 기본 현재시각, 예약은 비움
+  set("f_memoToday","");
   set("f_tel","");{const o=document.getElementById("f_smsopt");if(o)o.checked=false;}
   set("f_doctor","");fillDoctorOpts();
   {const es=document.getElementById("editStatusRow");if(es){es.innerHTML='';es.style.display='none';}const mh=document.getElementById("mhPatient");if(mh)mh.innerHTML='';}
@@ -5151,6 +5173,7 @@ function openEdit(pid){
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=!!p.silbi;}set("f_silbiLimit",p.silbiLimit||"");onSilbi();
   {const si=document.getElementById("f_ins");if(si){si.value=p.ins||"";if(si.value!==(p.ins||""))si.value="";}}
   set("f_reserve",p.reserveAt||"");set("f_receive",p.receiveAt||"");
+  set("f_memoToday",p.memoToday||"");
   set("f_tel",p.tel||"");{const o=document.getElementById("f_smsopt");if(o)o.checked=!!p.smsOptOut;}
   set("f_doctor",p.doctor||"");fillDoctorOpts();
   document.getElementById('modal').classList.remove('adding');
@@ -5473,6 +5496,7 @@ function savePatient(){
     p.silbi=_silbi;p.silbiLimit=_silbiLimit;p.ins=_ins;
     p.rxProc=get('rxProc');p.rxItems=get('rxItems');
     p.reserveAt=get("f_reserve")||"";p.receiveAt=get("f_receive")||"";
+    p.memoToday=get("f_memoToday");
     const ni=p.route.indexOf(sameStart);p.step=ni>=0?ni:Math.min(p.step,p.route.length-1);
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
@@ -5489,6 +5513,7 @@ function savePatient(){
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     autoAssignRoomStaff(p);   // 첫 방에 전담 진료의/간호사가 1명이면 즉시 지정
+    p.memoToday=get("f_memoToday");
     try{bitAfterSave(p);}catch(e){console.warn('bitAfterSave',e);}
     audit('환자추가',name+(mrn?' ('+mrn+')':''));
     data.push(p);save(p);cloudSaveConfig();render();closeModal();enteredRoom(p,curRoom(p));return;
@@ -6036,6 +6061,8 @@ boot();
   .offhour.editing{outline:2px solid var(--blue);outline-offset:1px}
   .offhour.today{text-decoration:underline}
   /* 비트플러스 연동 */
+  .memo-today{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;color:#7c4a03;background:#fff7e6;border:1px solid #fde4b5;border-radius:7px;padding:3px 7px;margin-top:4px;line-height:1.3;word-break:break-all}
+  .memo-today svg.lucide{width:12px;height:12px;flex-shrink:0;margin-top:1px}
   .bit-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;color:var(--sub)}
   .bit-pill .bp{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;background:var(--panel2)}
   .bit-pill .bp i.dot{width:7px;height:7px;border-radius:50%;background:#9aa4b2;display:inline-block}
