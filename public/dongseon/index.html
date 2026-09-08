@@ -58,7 +58,7 @@
   html[data-theme="light"] .t-prep{color:#1d6a94}
   *{box-sizing:border-box}
   html,body{height:100%}
-  html{color-scheme:dark}
+  html{color-scheme:light}   /* 라이트 고정 — 달력·스크롤 등 브라우저 기본 UI도 밝은색(아이콘이 흰색으로 안 보이던 문제) */
   body{
     margin:0;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
     background:var(--bg);color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased;
@@ -121,7 +121,8 @@
   table.vlist td .vnm{font-weight:700;color:var(--text)}
   table.vlist td.wrap{white-space:normal;max-width:240px;color:var(--muted)}
   .vl-live{display:inline-block;font-size:11px;font-weight:800;color:var(--green);background:var(--green-bg);padding:1px 8px;border-radius:20px}
-  .vl-restore{font-size:12px;font-weight:700;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:3px 9px;cursor:pointer}
+  .vl-restore{font-size:12px;font-weight:700;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:3px 9px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;vertical-align:middle}
+  .vl-restore svg.lucide{width:13px;height:13px;flex-shrink:0}
   .vl-restore:hover{color:var(--text)}
   .vl-empty{padding:30px;text-align:center;color:var(--sub)}
   .disch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:10px;align-content:start}
@@ -315,7 +316,8 @@
   .park-done{margin:0 12px 7px;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--green,#1e9e5a);background:rgba(30,158,90,.1);border:1px solid rgba(30,158,90,.35);border-radius:999px;padding:3px 10px;cursor:pointer;width:fit-content}
   .park-done:hover{opacity:.8}
   body.compact .card .park-banner{display:flex}   /* 간략히 보기에서도 주차권 안내는 유지(액션 필요 항목) */
-  .out-btn{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .out-btn{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+  .out-btn svg.lucide{width:13px;height:13px;flex-shrink:0}
   .out-btn:hover{background:var(--panel2)}
   .out-btn.on{background:var(--amber-bg);border-color:var(--orange);color:var(--orange)}
   .desig-mark{color:var(--t-amber);font-size:11px;font-weight:800;white-space:nowrap}
@@ -802,7 +804,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .stat-tb tbody tr.sel{background:var(--teal-bg)}
   .stat-tb tbody tr.st-detail td{background:var(--panel2);padding:10px 12px 12px;border-left:3px solid var(--teal)}
   .st-detail-list{max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:4px}
-  .stat-date{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12.5px;color-scheme:dark}
+  .stat-date{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12.5px;color-scheme:light}
   .stat-rec{display:flex;gap:8px;align-items:center;padding:5px 2px;border-bottom:1px solid var(--line2);font-size:13px}
   .stat-rec.click{cursor:pointer;border-radius:6px} .stat-rec.click:hover{background:var(--blue-bg)}
   .stat-rec span:first-child{font-weight:600;flex:1}
@@ -969,7 +971,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="body">
       <p class="hint">내 화면에 표시할 방을 선택하세요. (내 계정에만 적용)</p>
       <div id="viewList" style="display:flex;flex-direction:column;gap:6px"></div>
-      <p class="hint" style="margin-top:10px">💡 보드에서 방 제목 왼쪽 <b>⠿</b>를 드래그하면 <b>내 화면의 방 순서</b>를 바꿀 수 있어요(자주 쓰는 방을 앞으로). 이것도 내 계정에만 적용됩니다.</p>
+      <p class="hint" style="margin-top:10px;display:flex;gap:6px;align-items:flex-start"><i data-lucide="lightbulb" style="flex-shrink:0;margin-top:2px"></i><span>보드에서 방 제목 왼쪽 <b>⠿</b>를 드래그하면 <b>내 화면의 방 순서</b>를 바꿀 수 있어요(자주 쓰는 방을 앞으로). 이것도 내 계정에만 적용됩니다.</span></p>
       <button class="btn sm" onclick="resetMyRoomOrder()"><i data-lucide="rotate-ccw"></i> 내 방 순서 초기화 (기본 순서로)</button>
     </div>
     <div class="foot"><button class="btn primary" onclick="closeView()">닫기</button></div>
@@ -1927,11 +1929,11 @@ function renderAccount(){
       <span class="role-tag ${currentUser.role==='admin'?'admin':'staff'}">${currentUser.role==='admin'?(currentUser.super?'최고관리자':'관리자'):'직원'}</span>
       ${currentUser.team?`<span class="team-tag">${esc(currentUser.team)}</span>`:''}</div>
     </div>
-    <div class="acc-sect">
+    <div class="acc-sect" style="display:none"><!-- 모바일 푸시(FCM): 이 프로젝트엔 서비스워커·전송 함수가 없어 동작 안 함 — 사용 안 함(2026-09). 필요 시 display 제거 + FCM 설정 -->
       <div class="sect-t" style="margin-bottom:6px"><i data-lucide="smartphone"></i> 모바일 푸시 알림 <span class="hint" style="font-weight:400">(이 기기에만 적용)</span></div>
       <div id="pushBox"></div>
     </div>
-    <div class="acc-sect">
+    <div class="acc-sect" style="display:none"><!-- 도착 시 라벨 인쇄: 준비 지시·라벨 프린터 미사용 — 숨김(2026-09). 필요 시 display 제거 -->
       <div class="sect-t" style="margin-bottom:6px"><i data-lucide="printer"></i> 도착 시 라벨 인쇄 <span class="hint" style="font-weight:400">(이 컴퓨터에만 적용)</span></div>
       <p class="hint" style="margin-bottom:8px">선택한 방에 환자가 <b>도착하면 이 컴퓨터에서 라벨이 자동 인쇄</b>됩니다. 방마다 라벨 프린터가 있는 컴퓨터에서, 그 방을 선택하세요.</p>
       <div id="printRoomsList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
@@ -3454,7 +3456,7 @@ function renderDischargedBoard(board,q){
         <td>${esc(r.recv)||'-'}</td>
         <td>${fmtClock(r.totalMs||0)}</td>
         <td>${r.done?r.doneLabel:`<span class="vl-live">${esc(r.status||'진료중')}</span>`}</td>
-        <td>${r.done?`<button class="vl-restore" title="다시 원내(보드)로 되돌리기" onclick="restoreVisit('${esc(r.vid)}')">↩️ 되돌리기</button>`:''} <button class="vl-restore" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(r.mrn,r.name),name:r.name,mrn:r.mrn||'',birth:r.birth||'',sex:r.sex||''}))}')"><i data-lucide="file-text"></i> 서류</button> <button class="vl-restore" title="이 환자 과거 기록" onclick="openHistKey('${esc(pKey(r.mrn,r.name))}')">📁</button></td>
+        <td>${r.done?`<button class="vl-restore" title="다시 원내(보드)로 되돌리기" onclick="restoreVisit('${esc(r.vid)}')"><i data-lucide="undo-2"></i> 되돌리기</button>`:''} <button class="vl-restore" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(r.mrn,r.name),name:r.name,mrn:r.mrn||'',birth:r.birth||'',sex:r.sex||''}))}')"><i data-lucide="file-text"></i> 서류</button> <button class="vl-restore" title="이 환자 과거 기록" onclick="openHistKey('${esc(pKey(r.mrn,r.name))}')"><i data-lucide="folder-open"></i> 기록</button></td>
       </tr>`;}).join("")}</tbody></table>`;
   wrap.appendChild(sc);board.appendChild(wrap);
 }
@@ -3920,7 +3922,7 @@ function cardEl(p){
     ${consultHtml}
     ${notesHtml}
     <div class="card-foot">
-      <button class="out-btn ${p.out?'on':''}" title="${p.out?'복귀 — 다시 대기열로':'외출 — 잠시 나갔다 옴(시간 정지)'}" onclick="event.stopPropagation();toggleOut('${p.id}')">${p.out?'↩️ 복귀':'🚶 외출'}</button>
+      <button class="out-btn ${p.out?'on':''}" title="${p.out?'복귀 — 다시 대기열로':'외출 — 잠시 나갔다 옴(시간 정지)'}" onclick="event.stopPropagation();toggleOut('${p.id}')">${p.out?'<i data-lucide="undo-2"></i> 복귀':'<i data-lucide="log-out"></i> 외출'}</button>
       ${smsBtnHtml(p)}
       <button class="icon-btn" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="event.stopPropagation();openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(p.mrn,p.name),name:p.name,mrn:p.mrn||'',birth:p.birth||'',sex:p.sex||''}))}')"><i data-lucide="file-text"></i> 서류</button>
       <button class="icon-btn" title="환자 정보·차팅 열기" onclick="event.stopPropagation();openEdit('${p.id}')">✎ 수정</button>
