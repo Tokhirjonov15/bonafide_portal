@@ -4509,7 +4509,30 @@ function statRecRow(r){const d=new Date(r.leftAt||r.enteredAt||r.at);
   const prepSeg=(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs||0)}</span>`:'';
   const procSeg=r.proc?`<span class="hint" style="color:#6366f1;font-weight:700">🔹${esc(r.proc)}</span>`:'';
   return `<div class="stat-rec click" onclick="openStatRec('${esc(r.id||'')}','${esc(r.patientId||'')}','${esc(r.mrn||'')}','${esc(r.name||'')}')" title="누르면 환자 정보가 열립니다"><span>${esc(r.name||'')}${r.mrn?`<span class="hint" style="font-weight:400"> ${esc(r.mrn)}</span>`:''}</span><span class="hint">${esc(r.room||'')}</span>${procSeg}<span class="hint" style="color:var(--t-amber)">대기 ${fmtClock(r.waitMs||0)}</span>${prepSeg}<span class="hint" style="color:var(--red)">진행 ${fmtClock(r.activeMs||0)}</span><span class="hint">체류 ${fmtClock(r.durationMs||0)}</span><span class="hint">${dt}</span></div>`;}
-function toggleStatRoom(room){statsOpenRoom=(statsOpenRoom===room?'':room);renderStats();}
+/* 방 세부 기록 행 HTML (평균 산출에 쓰인 개별 기록) */
+function statRoomDetailHtml(room,recs,anyPrep){
+  const dr=recs.filter(x=>x.room===room);
+  return `<tr class="st-detail" data-room="${esc(room)}"><td colspan="${anyPrep?6:5}">
+    <div class="hint" style="font-weight:700;margin:2px 0 6px">${esc(room)} 세부 기록 · ${dr.length}건 (최근순)</div>
+    <div class="st-detail-list">${dr.slice().reverse().map(statRecRow).join("")||'<div class="hint">기록이 없습니다.</div>'}</div>
+  </td></tr>`;
+}
+/* 방 행 클릭 → 표 전체를 다시 그리지 않고 그 자리에서만 펼침/접힘 (깜빡임 방지) */
+function toggleStatRoom(room){
+  const prev=statsOpenRoom;
+  statsOpenRoom=(statsOpenRoom===room?'':room);
+  const tbl=document.querySelector('#statsContent table.stat-tb');
+  if(!tbl){renderStats();return;}
+  // 이전에 열린 것 닫기
+  if(prev){const d=tbl.querySelector(`tr.st-detail[data-room="${CSS.escape(prev)}"]`);if(d)d.remove();
+    const pr=tbl.querySelector(`tr.click[data-room="${CSS.escape(prev)}"]`);if(pr){pr.classList.remove('sel');const c=pr.querySelector('.st-caret');if(c)c.textContent='▸';}}
+  if(statsOpenRoom){
+    const row=tbl.querySelector(`tr.click[data-room="${CSS.escape(room)}"]`);if(!row){renderStats();return;}
+    const recs=statsRecs();const anyPrep=recs.some(r=>(r.prepMs||0)>0);
+    row.classList.add('sel');const c=row.querySelector('.st-caret');if(c)c.textContent='▾';
+    row.insertAdjacentHTML('afterend',statRoomDetailHtml(room,recs,anyPrep));
+  }
+}
 function openStats(){if(!isAdmin())return;statsTab='time';statsOpenRoom='';consultRoom='전체';renderStats();document.getElementById("statsModal").classList.add("show");}
 function closeStats(){document.getElementById("statsModal").classList.remove("show");}
 function renderStats(){
@@ -4524,36 +4547,43 @@ function renderStats(){
   const vis=statsVis();
   const visAvg=vis.length?vis.reduce((s,v)=>s+(v.totalMs||0),0)/vis.length:0;
   const today=localYMD(new Date());
-  let html=`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-      <button class="chipf ${!statsDate?'on':''}" onclick="statsDate='';statsOpenRoom='';renderStats()">전체</button>
-      <button class="chipf ${statsDate===today?'on':''}" onclick="statsDate='${today}';statsOpenRoom='';renderStats()">오늘</button>
-      <input type="date" class="stat-date" value="${statsDate||''}" onchange="statsDate=this.value;statsOpenRoom='';renderStats()">
-      <button class="btn sm" style="margin-left:auto" onclick="exportStatsCurrent()">⬇ 엑셀 다운로드</button>
+  let head=document.getElementById('statsHead'), content=document.getElementById('statsContent');
+  if(!head||!content){
+    body.innerHTML=`<div id="statsHead">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <button class="chipf" id="stChipAll" onclick="statsDate='';statsOpenRoom='';renderStats()">전체</button>
+      <button class="chipf" id="stChipToday" onclick="statsDate=localYMD(new Date());statsOpenRoom='';renderStats()">오늘</button>
+      <input type="date" class="stat-date" id="stDateInp" onchange="statsDate=this.value;statsOpenRoom='';renderStats()">
+      <button class="btn sm" style="margin-left:auto" onclick="exportStatsCurrent()"><i data-lucide="download"></i> 엑셀 다운로드</button>
     </div>
     <div class="cf-row" style="margin-bottom:10px;border-bottom:1px solid var(--line2);padding-bottom:8px">
-      <button class="chipf ${statsTab==='time'?'on':''}" onclick="statsTab='time';renderStats()"><i data-lucide="timer"></i> 체류 통계</button>
-      <button class="chipf ${statsTab==='consult'?'on':''}" onclick="statsTab='consult';renderStats()"><i data-lucide="message-circle"></i> 상담 기록</button>
-      <span class="hint" style="margin-left:auto">${statsDate?esc(statsDate):'전체 기간'}</span>
-    </div>`;
-  if(statsTab==='consult'){html+=consultLogHtml();body.innerHTML=html;return;}
+      <button class="chipf" id="stTabTime" onclick="statsTab='time';renderStats()"><i data-lucide="timer"></i> 체류 통계</button>
+      <button class="chipf" id="stTabConsult" onclick="statsTab='consult';renderStats()"><i data-lucide="message-circle"></i> 상담 기록</button>
+      <span class="hint" id="stRangeLbl" style="margin-left:auto"></span>
+    </div></div><div id="statsContent"></div>`;
+    head=document.getElementById('statsHead'); content=document.getElementById('statsContent');
+  }
+  document.getElementById('stChipAll').classList.toggle('on',!statsDate);
+  document.getElementById('stChipToday').classList.toggle('on',statsDate===today);
+  {const di=document.getElementById('stDateInp');if(di.value!==(statsDate||''))di.value=statsDate||'';}
+  document.getElementById('stTabTime').classList.toggle('on',statsTab==='time');
+  document.getElementById('stTabConsult').classList.toggle('on',statsTab==='consult');
+  document.getElementById('stRangeLbl').textContent=statsDate?statsDate:'전체 기간';
+  let html='';
+  if(statsTab==='consult'){content.innerHTML=consultLogHtml();return;}
   html+=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
       <span class="hint" style="margin-left:auto">완료 내원 <b>${vis.length}</b>건 · 평균 원내 <b style="color:var(--orange)">${fmtClock(visAvg)}</b></span></div>
     <div class="hint" style="margin:-2px 0 10px">방 종결 ${totalVisits}건 · 환자 ${uniq}명 · 총 <span style="color:var(--t-amber)">대기 ${fmtClock(totalW)}</span>${anyPrep?` · 총 <span style="color:var(--t-sky)">준비 ${fmtClock(totalP)}</span>`:''} · 총 <span style="color:var(--red)">진행 ${fmtClock(totalA)}</span></div>`;
   if(!rooms.length){html+=`<div class="route-empty">${STATS.length?'해당 날짜에 집계된 기록이 없습니다.':"아직 집계된 기록이 없습니다. 환자를 방에서 '종결' 처리하면 대기·진행 시간이 기록됩니다."}</div>`;body.innerHTML=html;return;}
   html+=`<div class="hint" style="margin-bottom:4px">방 이름을 누르면 평균 계산에 쓰인 세부 기록이 펼쳐집니다.</div>`;
   html+=`<table class="stat-tb"><thead><tr><th>방</th><th>방문</th><th>평균 대기</th>${anyPrep?'<th>평균 준비</th>':''}<th>평균 진행</th><th>총 체류</th></tr></thead><tbody>`;
-  rooms.forEach(r=>{const sel=statsOpenRoom===r;html+=`<tr class="click${sel?' sel':''}" onclick="toggleStatRoom('${esc(r)}')"><td>${sel?'▾ ':'▸ '}${esc(r)}</td><td>${g[r].c}</td><td style="color:var(--t-amber)">${fmtClock(g[r].w/g[r].c)}</td>${anyPrep?`<td style="color:var(--t-sky)">${fmtClock(g[r].p/g[r].c)}</td>`:''}<td style="color:var(--red)">${fmtClock(g[r].a/g[r].c)}</td><td>${fmtClock(g[r].t)}</td></tr>`;
-    if(sel){   // 누른 방 바로 아래에 세부 기록 펼침(평균 산출에 쓰인 개별 기록)
-      const dr=recs.filter(x=>x.room===r);
-      html+=`<tr class="st-detail"><td colspan="${anyPrep?6:5}">
-        <div class="hint" style="font-weight:700;margin:2px 0 6px">💠 ${esc(r)} 세부 기록 · ${dr.length}건 (최근순)</div>
-        <div class="st-detail-list">${dr.slice().reverse().map(statRecRow).join("")||'<div class="hint">기록이 없습니다.</div>'}</div>
-      </td></tr>`;
-    }});
+  rooms.forEach(r=>{const sel=statsOpenRoom===r;html+=`<tr class="click${sel?' sel':''}" data-room="${esc(r)}" onclick="toggleStatRoom('${esc(r)}')"><td><span class="st-caret">${sel?'▾':'▸'}</span> ${esc(r)}</td><td>${g[r].c}</td><td style="color:var(--t-amber)">${fmtClock(g[r].w/g[r].c)}</td>${anyPrep?`<td style="color:var(--t-sky)">${fmtClock(g[r].p/g[r].c)}</td>`:''}<td style="color:var(--red)">${fmtClock(g[r].a/g[r].c)}</td><td>${fmtClock(g[r].t)}</td></tr>`;
+    if(sel)html+=statRoomDetailHtml(r,recs,anyPrep);   // 누른 방 바로 아래에 세부 기록 펼침
+  });
   html+=`</tbody></table>`;
   html+=`<div class="sect-t" style="margin-top:16px;margin-bottom:6px">최근 종결 기록</div>`;
   html+=recs.slice(-15).reverse().map(statRecRow).join("");
-  body.innerHTML=html;
+  content.innerHTML=html;
 }
 /* CSV(엑셀) 다운로드 */
 function downloadCSV(filename,rows){
