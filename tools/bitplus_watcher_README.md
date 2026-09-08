@@ -1,8 +1,10 @@
 # 비트플러스 접수 연동 — 설치 안내
 
 접수 PC에서 `bitplus_watcher.ps1`이 비트플러스 **접수 창의 인적정보 패널**을 2초마다 읽어
-동선관리(Firebase `bitIntake`)에 올립니다. 동선관리 보드 위에 **비트 접수 대기** 줄이 나타나고,
-직원이 **[접수]**를 눌러야 환자 카드가 만들어집니다. 자동으로 만들지 않습니다.
+동선관리(Firebase `bitIntake`)에 올립니다.
+- 비트에서 **실제로 접수된 환자**(인적정보의 '전진료일' = 오늘)는 확인 없이 **3층 대기실 카드로 자동 생성**됩니다.
+- 조회만 된 환자(전진료일이 과거)는 보드 위 **비트 접수 대기** 줄에 남고, 직원이 **[접수]**를 누르면 정보가 채워진 접수 창이 열립니다.
+- 명단과 이름이 다르거나 병록번호가 충돌하면 자동 생성하지 않고 대기 줄에 남깁니다(노란 표시).
 
 - 비트플러스에는 아무것도 입력·클릭하지 않습니다 (읽기만).
 - 읽는 항목: 차트번호, 이름, 생년월일+성별(주민번호 앞 7자리만), 전진료실/담당의, 전진료일, 다음예약일,
@@ -63,8 +65,52 @@ schtasks /Create /TN "BitPlusWatcher" /SC ONLOGON /TR "powershell.exe -WindowSty
 | 환자가 대기 줄에 안 뜸 | 이미 보드에 있는 환자는 안 뜸 / 30분 지난 조회는 자동 제거 / 로그의 `전송:` 줄 확인 |
 | 비트 업데이트 후 안 읽힘 | 인적정보 라벨 이름이 바뀐 경우 — `bitplus_probe.ps1` 로 다시 확인 후 스크립트의 `$LABELS` 수정 |
 
+## 8. 보안 설정 (꼭 해두기)
+
+### 8-1. 비밀번호 파일 접근 제한 (각 접수 PC, 한 번)
+`.secret` 파일을 현재 Windows 사용자만 읽을 수 있게 합니다. PowerShell에서:
+```
+icacls "C:\bitplus\bitplus_watcher.secret" /inheritance:r /grant:r "%USERNAME%:R"
+```
+(경로는 실제 위치로. 관리자·SYSTEM 외 다른 계정은 읽지 못함)
+
+### 8-2. Firestore 규칙 — bitbot만 접수 문서를 쓰고, 직원은 처리 표시만
+Firebase 콘솔 → Firestore Database → 규칙 → 아래로 교체 → 게시.
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 비트 접수 대기: 쓰기는 bitbot 계정만, 직원은 status/handledBy/handledAt/patientId 만 변경·삭제 가능
+    match /bitIntake/{doc} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','handledBy','handledAt','patientId']);
+      allow delete: if request.auth != null;
+    }
+    // 접수 PC 하트비트: bitbot만 쓰기
+    match /bitStatus/{pc} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
+    }
+    // 그 외(환자·설정 등): 로그인한 직원만 (기존과 동일)
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+### 8-3. 자동 정리
+동선관리가 로그인 시 7일 지난 `bitIntake` 문서를 자동 삭제합니다(하루 1회). 로그 파일에는 차트번호만 남고 이름·메모는 기록되지 않습니다.
+
+### 8-4. 남는 위험 (알고 있어야 할 것)
+- 동선관리 계정(snu01~30)이 공통 비밀번호인 동안은 누구든 그 비밀번호로 환자 정보를 볼 수 있습니다. 개인별 비밀번호로 바꾸는 것을 권장합니다.
+- 접수 PC 자체가 악성코드에 감염되면 `.secret`도 노출될 수 있습니다. bitbot은 '직원' 권한이므로 설정 변경·삭제는 못 하지만 환자 정보 읽기는 가능합니다. 의심되면 동선관리에서 bitbot 비밀번호를 바꾸면 즉시 차단됩니다.
+- 비트플러스 업데이트로 화면 구성이 바뀌면 읽기가 멈춥니다(잘못 읽지는 않음). pill 이 회색/노랑이 아닌데 환자가 안 뜨면 `bitplus_probe.ps1` 로 라벨을 다시 확인하세요.
+
 ## 동선관리 쪽 동작 요약
 
 - `bitIntake/{날짜_차트번호}` 문서 하나 = 그날 그 환자. 같은 환자를 여러 번 조회해도 문서는 하나(갱신만).
-- [접수] → 정보가 채워진 접수 창 → 동선 선택 후 저장 → 문서 `status: 접수`. [무시] → `status: 무시`.
+- 자동 생성 → 문서 `status: 자동접수` (여러 화면이 열려 있어도 트랜잭션으로 하나만 만듦). [접수] → 정보가 채워진 접수 창 → 동선 선택 후 저장 → `status: 접수`. [무시] → `status: 무시`.
 - 가족관계(가입자성명·관계, 본인 제외)와 최초내원일·전진료일·다음예약일·당일메모는 저장 시 환자 기록(`p.bit`)에 함께 보관.

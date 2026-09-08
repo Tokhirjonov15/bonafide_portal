@@ -1728,11 +1728,25 @@ function subscribeBitIntake(){
   try{if(cloud.unsubIntake)cloud.unsubIntake();}catch(e){}
   BIT_SUB_DATE=today;
   cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
-    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();try{bitBackfillMemo();}catch(e){}
+    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();try{bitBackfillMemo();}catch(e){}try{bitAutoProcess();}catch(e){console.warn(e);}
   },err=>console.warn('bitIntake',err));
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
+    setTimeout(bitCleanupOld,15000);   // 로그인 직후 한 번: 오래된 접수 대기 문서 정리
   }
+}
+/* 7일 지난 비트 접수 문서 삭제 — 환자 정보가 필요 이상 남지 않게 (하루 한 번, 최대 300건) */
+const BIT_KEEP_DAYS=7;
+async function bitCleanupOld(){
+  try{
+    if(!cloud.intakeCol||!currentUser)return;
+    const k='bitCleanup_'+localYMD(new Date());if(localStorage.getItem(k))return;localStorage.setItem(k,'1');
+    const lim=new Date();lim.setDate(lim.getDate()-BIT_KEEP_DAYS);const limYmd=localYMD(lim);
+    const snap=await cloud.intakeCol.where('date','<',limYmd).limit(300).get();
+    if(snap.empty)return;
+    const b=cloud.db.batch();snap.docs.forEach(d=>b.delete(d.ref));await b.commit();
+    console.log('비트 접수 문서 정리',snap.size);
+  }catch(e){console.warn('bitCleanupOld',e);}
 }
 function bitVisible(){
   const now=Date.now();
@@ -1752,7 +1766,8 @@ function renderBitBar(){
     const reg=regFind(r.mrn);const nameOk=!reg||!reg.name||reg.name===r.name;
     const t=new Date(r.seenAt);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     const sub=[r.doctor?('전 '+esc(r.doctor)):'',r.ins?esc(r.ins):'',r.chojae?esc(r.chojae):''].filter(Boolean).join(' · ');
-    return `<span class="bit-chip${nameOk?'':' warn'}" title="${esc(r.pc||'')} ${hm}${nameOk?'':' · 명단의 이름('+esc(reg.name)+')과 다름 — 확인 필요'}">
+    const why=!nameOk?'명단의 이름('+esc(reg.name)+')과 다름 — 확인 필요':(bitIsRegisteredToday(r)?'':'비트에서 조회만 됨(오늘 접수 기록 없음) — 접수라면 [접수]');
+    return `<span class="bit-chip${nameOk?'':' warn'}" title="${esc(r.pc||'')} ${hm}${why?' · '+why:''}">
       <b>${esc(dispName(r.name||''))}</b><span class="hint">${esc(r.mrn||'')}${sub?' · '+sub:''} · ${hm}</span>
       <button type="button" class="mini ok" onclick="bitAccept('${esc(r.docId)}')">접수</button>
       <button type="button" class="mini" onclick="bitIgnore('${esc(r.docId)}')" title="오늘은 접수하지 않음">무시</button>
@@ -1768,7 +1783,7 @@ function renderBitPill(){
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -1808,6 +1823,61 @@ function bitBackfillMemo(){
     if(setRegMemo(mrn,p.name,cur?cur+'\n'+rx:bitMemoCombined(r)))console.log('비트 특이사항 보충',mrn);
     if(r.memoToday&&!p.memoToday){p.memoToday=r.memoToday;save(p);}
   });
+}
+/* ── 자동 접수: 비트에서 실제로 접수된 환자(전진료일 = 오늘)는 확인 없이 3층 대기실 카드로 만든다.
+   · 판단 근거: 비트 인적정보의 '전진료일'이 오늘이면 오늘 접수(진료 기록 생성)된 환자. 단순 조회는 전진료일이 과거.
+   · 여러 PC의 동선관리가 동시에 열려 있어도 하나만 만들도록 Firestore 트랜잭션으로 문서를 먼저 선점(status='자동접수').
+   · 명단 이름과 다르거나 병록번호 충돌이면 자동으로 만들지 않고 '비트 접수 대기' 줄에 남겨 직원이 판단. */
+const BIT_AUTO=true;
+const BIT_CLAIMING={};
+function bitIsRegisteredToday(r){return !!(r&&r.prevVisit&&r.prevVisit.slice(0,10)===localYMD(new Date()));}
+function bitAutoProcess(){
+  if(!BIT_AUTO||!currentUser||!cloud.ready.pts||!cloud.intakeCol)return;
+  bitVisible().forEach(r=>{
+    if(!bitIsRegisteredToday(r)||BIT_CLAIMING[r.docId])return;
+    const mrn=String(r.mrn||'').trim();if(!mrn)return;
+    const reg=regFind(mrn);if(reg&&reg.name&&r.name&&reg.name!==r.name)return;   // 명단과 이름 불일치 → 수동
+    const name=r.name||(reg&&reg.name)||'';if(!name)return;
+    if(mrnConflict(mrn,name))return;
+    bitClaimAndCreate(r,name,reg);
+  });
+}
+async function bitClaimAndCreate(r,name,reg){
+  BIT_CLAIMING[r.docId]=1;
+  try{
+    const ref=cloud.intakeCol.doc(r.docId);
+    const won=await cloud.db.runTransaction(async t=>{const d=await t.get(ref);const v=d.exists?(d.data()||{}):null;if(!v||v.status)return false;
+      t.update(ref,{status:'자동접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()});return true;});
+    if(!won)return;
+    const p=bitCreatePatient(r,name,reg);
+    if(p){try{await ref.set({patientId:p.id},{merge:true});}catch(e){}}
+    else{try{await ref.set({status:''},{merge:true});}catch(e){}}   // 만들지 못했으면 선점 해제 → 대기 줄로
+  }catch(e){console.warn('bitClaimAndCreate',e);}
+  finally{delete BIT_CLAIMING[r.docId];}
+}
+function bitCreatePatient(r,name,reg){
+  const mrn=String(r.mrn||'').trim();const today=localYMD(new Date());
+  if(data.some(p=>!p.discharged&&(p.mrn||'').trim()===mrn))return null;
+  let birth='',sex='';const rp=r.rrn7?parseRRN(r.rrn7):null;
+  if(rp){birth=rp.birth;sex=rp.sex;}else if(reg){birth=reg.birth||'';sex=reg.sex||'';}
+  const t=new Date(r.seenAt);const receiveAt=isNaN(t)?nowHM():String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  let reserveAt='';if(r.nextResv&&r.nextResv.slice(0,10)===today){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)reserveAt=m[1];}
+  const doctor=(r.doctor||'').trim();if(doctor&&!DOCTORS.includes(doctor)){DOCTORS.push(doctor);saveDoctorsCfg();}
+  let ins='';{const si=document.getElementById('f_ins');if(si&&r.ins&&[...si.options].some(o=>o.value===r.ins))ins=r.ins;}
+  const first=ROOMS.includes('3층 대기실')?'3층 대기실':(ROOMS[0]||'3층 대기실');
+  const _now=new Date().toISOString();
+  const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:'',smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
+  p.memoToday=r.memoToday||'';
+  p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true};
+  regUpsert(mrn,name,birth,sex);
+  try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,name,combo);}catch(e){}
+  try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(mrn))setRegFamily(mrn,name,r.guardian+'('+r.relation+')');}catch(e){}
+  autoAssignRoomStaff(p);
+  audit('환자추가(비트 자동)',name+' ('+mrn+') '+(r.pc||''));
+  data.push(p);save(p);cloudSaveConfig();render();
+  try{enteredRoom(p,curRoom(p));}catch(e){}
+  try{toast('비트 접수 → '+dispName(name)+' 님 '+first+' 도착');}catch(e){}
+  return p;
 }
 /* 접수 저장 후 호출 — 가족관계 저장, 비트 부가정보 보관, 대기 문서 처리 표시 */
 function bitAfterSave(p){
@@ -2624,7 +2694,7 @@ async function startHosted(){
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
         data=s.docs.map(d=>d.data());normalizeData();localStorage.setItem(STORE,JSON.stringify(data));
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
-        try{renderBitBar();}catch(e){}
+        try{renderBitBar();bitAutoProcess();}catch(e){}
       },err=>cloudErr(err));
       if(cloud.unsubPm)cloud.unsubPm();
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
@@ -5152,6 +5222,7 @@ function openAdd(){
    cols[0].appendChild(document.getElementById('familyBox'));}   // 추가 모드: 가족관계를 환자 정보 아래로
   fillPmemo('');
   {const h=document.getElementById('bitPrefillHint');if(h){h.textContent='';h.style.display='none';}}BIT_PREFILL=null;
+  {const ps=document.getElementById('pinfoSummary');if(ps)ps.textContent='';const pf=document.getElementById('pinfoFold');if(pf)pf.classList.remove('open');}   // 이전 환자 요약 잔상 제거
   {const cb=document.getElementById('callsBox');if(cb)cb.classList.remove('open');}
   fillCalls(''); {const ct=document.getElementById('callText');if(ct)ct.value='';}
   {const mb=document.getElementById('modal');if(mb)mb.classList.remove('rail-on');const rl=document.getElementById('modalRail');if(rl)rl.innerHTML='';}
@@ -5997,6 +6068,30 @@ document.getElementById('board').addEventListener('wheel',e=>{
   e.preventDefault();
   board.scrollLeft+=e.deltaY;
 },{passive:false});
+/* ── 드래그 중 보드 가로 자동 스크롤(자체 구현) ──
+   브라우저 기본 자동 스크롤은 창 가장자리에서만 동작해, 듀얼 모니터의 안쪽 가장자리(옆 모니터와 맞닿은 쪽)에서는
+   커서가 옆 모니터로 넘어가 버려 스크롤되지 않는다. 보드 좌우 90px 안에 들어오면 그쪽으로 밀고,
+   커서가 창 밖으로 나가도 마지막 방향으로 계속 밀며, 놓거나 드래그가 끝나면 멈춘다. */
+(function(){
+  const ZONE=90, MAXSPEED=22; let dir=0, speed=0, raf=null;
+  const boardEl=()=>document.getElementById('board');
+  const dragging=()=>!!(draggedPid||draggedColRoom);
+  function tick(){ const b=boardEl(); if(!dir||!b||!dragging()){raf=null;dir=0;return;} b.scrollLeft+=dir*speed; raf=requestAnimationFrame(tick); }
+  function setDir(d,sp){ dir=d; speed=sp; if(dir&&!raf)raf=requestAnimationFrame(tick); }
+  document.addEventListener('dragover',e=>{
+    if(!dragging())return; const b=boardEl(); if(!b||b.classList.contains('disch-mode'))return;
+    const r=b.getBoundingClientRect(); const x=e.clientX;
+    if(x<r.left+ZONE){ const k=Math.min(1,Math.max(0,(r.left+ZONE-x)/ZONE)); setDir(-1,6+(MAXSPEED-6)*k); }
+    else if(x>r.right-ZONE){ const k=Math.min(1,Math.max(0,(x-(r.right-ZONE))/ZONE)); setDir(1,6+(MAXSPEED-6)*k); }
+    else setDir(0,0);
+  });
+  document.addEventListener('dragleave',e=>{   // 창 밖으로 나감(옆 모니터로 넘어감) → 나간 쪽으로 계속
+    if(!dragging())return; if(e.relatedTarget)return;
+    const b=boardEl(); if(!b)return; const r=b.getBoundingClientRect(); const x=e.clientX;
+    if(x<=r.left+ZONE)setDir(-1,MAXSPEED); else if(x>=r.right-ZONE)setDir(1,MAXSPEED);
+  });
+  ['dragend','drop'].forEach(ev=>document.addEventListener(ev,()=>setDir(0,0)));
+})();
 
 boot();
 </script>
