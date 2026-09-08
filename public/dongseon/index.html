@@ -869,6 +869,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
+  <span id="bitPill" class="bit-pill" style="display:none" title="비트플러스 접수 PC 연동 상태 (초록=정상, 노랑=비트 창 닫힘, 회색=연결 끊김)"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
   <div class="top-actions" id="topActions">
     <button class="btn" id="mineBtn" onclick="toggleChatMine()"><i data-lucide="hand"></i> 담당알람<span id="mineBadge"></span></button>
@@ -891,6 +892,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 보드 + 알람 패널(밀어내기 도킹) -->
 <div class="main-row" id="mainRow">
   <div class="board-col">
+    <div id="bitIntakeBar" class="bit-bar" style="display:none">
+      <span class="bit-title"><i data-lucide="monitor-down"></i> 비트 접수 대기 <span class="hint" style="font-weight:400">— 비트에서 조회·접수된 환자. [접수]를 누르면 정보가 채워진 접수 창이 열립니다</span></span>
+      <div class="bit-chips" id="bitChips"></div>
+    </div>
     <div class="board" id="board"></div>
   </div>
   <div class="side-panel" id="chatMine">
@@ -1214,6 +1219,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="pmemo" id="pmemoBox">
         <div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
         <textarea id="f_pmemo" rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의… (칸을 벗어나면 즉시 저장)" oninput="cvGrow(this)" onchange="pmemoNow(this.value)"></textarea>
+        <p class="hint" id="bitPrefillHint" style="display:none;margin:6px 0 0;color:var(--blue)"></p>
       </div>
       <div class="pcalls" id="callsBox" style="display:none"><!-- 유선 문의: 사용 안 함(2026-09) -->
         <div class="pc-head" onclick="document.getElementById('callsBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="phone"></i> 유선 문의 <span class="pc-sum" id="callsSummary">0건</span><span class="pf-caret">▾</span></div>
@@ -1706,9 +1712,94 @@ async function doLogin(){
   }catch(e){loginMsg(authErrMsg(e));}
 }
 function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();}
+/* ───── 비트플러스 접수 연동 ─────
+   접수 PC의 감시 스크립트(tools/bitplus_watcher.ps1)가 비트 '접수' 창의 인적정보 패널을 읽어
+   bitIntake/{날짜_병록번호} 문서로 올린다. 여기서는 오늘 문서만 구독해 보드 위에 '비트 접수 대기' 줄로 보여주고,
+   직원이 [접수]를 누르면 정보가 채워진 접수 창을 연다. 자동으로 환자를 만들지는 않는다(직원 확인 필수). */
+let BIT_INTAKE=[], BIT_STATUS={}, BIT_PREFILL=null, BIT_SUB_DATE='';
+const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
+const BIT_STALE_SEC=90;        // 하트비트가 이보다 오래되면 '연결 끊김'
+function subscribeBitIntake(){
+  if(!cloud.intakeCol)return;
+  const today=localYMD(new Date());
+  if(cloud.unsubIntake&&BIT_SUB_DATE===today)return;
+  try{if(cloud.unsubIntake)cloud.unsubIntake();}catch(e){}
+  BIT_SUB_DATE=today;
+  cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
+    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();
+  },err=>console.warn('bitIntake',err));
+  if(!cloud.unsubBit){
+    cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
+  }
+}
+function bitVisible(){
+  const now=Date.now();
+  return BIT_INTAKE.filter(r=>{
+    if(r.status)return false;
+    const t=new Date(r.seenAt||0).getTime();if(!t||now-t>BIT_TTL_MIN*60000)return false;
+    if(data.some(p=>!p.discharged&&(p.mrn||'').trim()===String(r.mrn||'').trim()))return false;   // 이미 보드에 있음
+    return true;
+  }).sort((a,b)=>new Date(b.seenAt)-new Date(a.seenAt));
+}
+function renderBitBar(){
+  const bar=document.getElementById('bitIntakeBar'),box=document.getElementById('bitChips');if(!bar||!box)return;
+  const list=currentUser?bitVisible():[];
+  if(!list.length){bar.style.display='none';return;}
+  bar.style.display='';
+  box.innerHTML=list.map(r=>{
+    const reg=regFind(r.mrn);const nameOk=!reg||!reg.name||reg.name===r.name;
+    const t=new Date(r.seenAt);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+    const sub=[r.doctor?('전 '+esc(r.doctor)):'',r.ins?esc(r.ins):'',r.chojae?esc(r.chojae):''].filter(Boolean).join(' · ');
+    return `<span class="bit-chip${nameOk?'':' warn'}" title="${esc(r.pc||'')} ${hm}${nameOk?'':' · 명단의 이름('+esc(reg.name)+')과 다름 — 확인 필요'}">
+      <b>${esc(dispName(r.name||''))}</b><span class="hint">${esc(r.mrn||'')}${sub?' · '+sub:''} · ${hm}</span>
+      <button type="button" class="mini ok" onclick="bitAccept('${esc(r.docId)}')">접수</button>
+      <button type="button" class="mini" onclick="bitIgnore('${esc(r.docId)}')" title="오늘은 접수하지 않음">무시</button>
+    </span>`;}).join('');
+}
+function renderBitPill(){
+  const el=document.getElementById('bitPill');if(!el)return;
+  const pcs=Object.keys(BIT_STATUS).sort();
+  if(!pcs.length||!currentUser){el.style.display='none';return;}
+  el.style.display='';const now=Date.now();
+  el.innerHTML='비트 '+pcs.map(pc=>{const st=BIT_STATUS[pc]||{};const age=(now-new Date(st.lastSeen||0).getTime())/1000;
+    const cls=age>BIT_STALE_SEC?'':(st.bitOpen?'ok':'warn');
+    const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+    return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
+}
+setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}},30000);   // 만료·날짜 변경 반영
+window.bitAccept=function(docId){
+  const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
+  openAdd();
+  set('f_mrn',r.mrn||'');try{onMrnInput();}catch(e){}   // 명단에 있으면 이름·주민번호 자동
+  if(!get('f_name'))set('f_name',r.name||'');
+  if(!get('f_rrn')&&r.rrn7&&parseRRN(r.rrn7)){set('f_rrn',r.rrn7);onRRNInput();}
+  if(r.doctor)set('f_doctor',r.doctor);
+  {const si=document.getElementById('f_ins');if(si&&r.ins){si.value=r.ins;if(si.value!==r.ins)si.value='';}}
+  if(r.nextResv&&r.nextResv.slice(0,10)===localYMD(new Date())){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)set('f_reserve',m[1]);}
+  {const t=new Date(r.seenAt);if(!isNaN(t))set('f_receive',String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'));}
+  {const ta=document.getElementById('f_pmemo');if(ta&&!ta.value.trim()&&r.memoCont){ta.value=r.memoCont;try{updatePmemoPreview();cvGrow(ta);}catch(e){}}}
+  if(r.guardian&&r.relation&&r.relation!=='본인'){const ft=document.getElementById('familyText');if(ft&&(ft.textContent||'').trim()==='없음')ft.textContent=r.guardian+'('+r.relation+')';}
+  const h=document.getElementById('bitPrefillHint');
+  if(h){const parts=[r.firstVisit?'최초내원 '+r.firstVisit:'',r.prevVisit?'전진료 '+r.prevVisit:'',r.nextResv?'다음예약 '+r.nextResv:'',r.memoToday?'당일메모: '+r.memoToday:''].filter(Boolean);
+    h.textContent=parts.length?'비트 정보 — '+parts.join(' · '):'';h.style.display=parts.length?'':'none';}
+  BIT_PREFILL={docId,rec:r};
+};
+window.bitIgnore=function(docId){
+  const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
+  cloud.intakeCol.doc(docId).set({status:'무시',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()},{merge:true}).catch(e=>console.warn(e));
+  audit('비트접수 무시',(r.name||'')+' ('+(r.mrn||'')+')');
+};
+/* 접수 저장 후 호출 — 가족관계 저장, 비트 부가정보 보관, 대기 문서 처리 표시 */
+function bitAfterSave(p){
+  const pf=BIT_PREFILL;BIT_PREFILL=null;if(!pf||!p)return;
+  const r=pf.rec;if(String(r.mrn||'').trim()!==String(p.mrn||'').trim())return;
+  try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(p.mrn))setRegFamily(p.mrn,p.name,r.guardian+'('+r.relation+')');}catch(e){}
+  p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||''};
+  try{cloud.intakeCol.doc(pf.docId).set({status:'접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString(),patientId:p.id},{merge:true});}catch(e){}
+}
 function logout(){audit('로그아웃');sessionEstablished=false;currentUser=null;if(idleTimer){clearTimeout(idleTimer);idleTimer=null;}localStorage.removeItem(SESSION_KEY);closeAccount();
   /* 로그아웃 전에 실시간 구독을 먼저 끊는다 — 인증이 사라진 뒤 리스너가 권한 오류를 내며 '연결 권한 오류' 화면이 뜨는 것을 방지 */
-  ['unsub','unsubP','unsubPm','unsubAcl'].forEach(k=>{try{if(typeof cloud[k]==='function'){cloud[k]();}}catch(e){}cloud[k]=null;});
+  ['unsub','unsubP','unsubPm','unsubAcl','unsubIntake','unsubBit'].forEach(k=>{try{if(typeof cloud[k]==='function'){cloud[k]();}}catch(e){}cloud[k]=null;});
   cloud.active=false;
   try{if(window.firebase&&firebase.auth&&firebase.auth().currentUser)firebase.auth().signOut();}catch(e){}
   updateUserPill();showLogin();}
@@ -2492,6 +2583,8 @@ async function startHosted(){
     try{cloud.storage=firebase.storage();}catch(e){console.warn('storage init',e);}   // 환자 사진
     cloud.auditCol=cloud.ref.collection('audit');
     cloud.aclRef=cloud.db.collection('acl').doc('main');
+    cloud.intakeCol=cloud.db.collection('bitIntake');      // 비트플러스 접수 PC 감시 스크립트가 쓰는 문서 (id: YYYY-MM-DD_병록번호)
+    cloud.bitStatusCol=cloud.db.collection('bitStatus');   // 접수 PC별 하트비트
     firebase.auth().onAuthStateChanged(async(user)=>{
       if(!user){currentUser=null;sessionEstablished=false;cloud.email='';
         if(!document.getElementById('loginBody').querySelector('#lg_name'))showLogin();return;}
@@ -2510,6 +2603,7 @@ async function startHosted(){
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
         data=s.docs.map(d=>d.data());normalizeData();localStorage.setItem(STORE,JSON.stringify(data));
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
+        try{renderBitBar();}catch(e){}
       },err=>cloudErr(err));
       if(cloud.unsubPm)cloud.unsubPm();
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
@@ -2521,6 +2615,7 @@ async function startHosted(){
       },err=>console.error('pmemo snap',err));
       if(cloud.unsubAcl)cloud.unsubAcl();
       cloud.unsubAcl=cloud.aclRef.onSnapshot(s=>{applyAcl(s.exists?s.data():{});cloud.ready.acl=true;afterCloud();},err=>console.error('acl snap',err));
+      subscribeBitIntake();
     });
     setLoginReady(true);   // auth 준비됨 → 로그인 버튼 활성(자동 세션 복원은 onAuthStateChanged가 처리)
     // 익명 로그인 제거 → 이메일/비번 인증. 저장된 세션이 있으면 onAuthStateChanged가 자동 복원, 없으면 로그인 화면.
@@ -5032,6 +5127,7 @@ function openAdd(){
   document.getElementById('modal').classList.add('adding');   // 추가 모드: 2열(정보 | 특이사항+동선)
   {const cols=document.querySelectorAll('#modal .body>.pcol'); cols[1].appendChild(document.getElementById('routeSection'));}   // 동선을 2열로
   fillPmemo('');
+  {const h=document.getElementById('bitPrefillHint');if(h){h.textContent='';h.style.display='none';}}BIT_PREFILL=null;
   {const cb=document.getElementById('callsBox');if(cb)cb.classList.remove('open');}
   fillCalls(''); {const ct=document.getElementById('callText');if(ct)ct.value='';}
   {const mb=document.getElementById('modal');if(mb)mb.classList.remove('rail-on');const rl=document.getElementById('modalRail');if(rl)rl.innerHTML='';}
@@ -5328,7 +5424,7 @@ function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard
 applyCompact();
 try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의 명단을 EMR 확장에 1회 전달(로그인 전 캐시)
 function showModal(){document.getElementById("modal").classList.add("show")}
-function closeModal(){document.getElementById("modal").classList.remove("show")}
+function closeModal(){document.getElementById("modal").classList.remove("show");BIT_PREFILL=null;}
 // 저장 단축키 — 환자 정보 창이 열려 있을 때 ⌘S / Ctrl+S / ⌘Enter 로 저장
 document.addEventListener('keydown',function(e){
   if(!document.getElementById('modal').classList.contains('show'))return;
@@ -5392,6 +5488,7 @@ function savePatient(){
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     autoAssignRoomStaff(p);   // 첫 방에 전담 진료의/간호사가 1명이면 즉시 지정
+    try{bitAfterSave(p);}catch(e){console.warn('bitAfterSave',e);}
     audit('환자추가',name+(mrn?' ('+mrn+')':''));
     data.push(p);save(p);cloudSaveConfig();render();closeModal();enteredRoom(p,curRoom(p));return;
   }
@@ -5937,6 +6034,20 @@ boot();
   .offhour.on{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
   .offhour.editing{outline:2px solid var(--blue);outline-offset:1px}
   .offhour.today{text-decoration:underline}
+  /* 비트플러스 연동 */
+  .bit-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;color:var(--sub)}
+  .bit-pill .bp{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;background:var(--panel2)}
+  .bit-pill .bp i.dot{width:7px;height:7px;border-radius:50%;background:#9aa4b2;display:inline-block}
+  .bit-pill .bp.ok i.dot{background:var(--green)} .bit-pill .bp.warn i.dot{background:#f5b301}
+  .bit-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 12px;margin:0 0 8px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff}
+  .bit-title{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;color:#1d4ed8;white-space:nowrap}
+  .bit-title svg.lucide{width:15px;height:15px}
+  .bit-chips{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:0}
+  .bit-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #bfdbfe;background:#fff;border-radius:10px;padding:4px 6px 4px 10px;font-size:12.5px}
+  .bit-chip b{font-size:13px} .bit-chip .hint{font-size:11px}
+  .bit-chip .mini{padding:2px 8px;font-size:11.5px}
+  .bit-chip .mini.ok{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
+  .bit-chip.warn{border-color:#f5b301;background:#fffbeb}
   .offhour-edit{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;border:1px dashed var(--blue);border-radius:8px;background:var(--blue-bg);font-size:12px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
