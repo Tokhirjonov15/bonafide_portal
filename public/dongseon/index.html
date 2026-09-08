@@ -5148,7 +5148,8 @@ function openAdd(){
   set("f_doctor","");fillDoctorOpts();
   {const es=document.getElementById("editStatusRow");if(es){es.innerHTML='';es.style.display='none';}const mh=document.getElementById("mhPatient");if(mh)mh.innerHTML='';}
   document.getElementById('modal').classList.add('adding');   // 추가 모드: 2열(정보 | 특이사항+동선)
-  {const cols=document.querySelectorAll('#modal .body>.pcol'); cols[1].appendChild(document.getElementById('routeSection'));}   // 동선을 2열로
+  {const cols=document.querySelectorAll('#modal .body>.pcol'); cols[1].appendChild(document.getElementById('routeSection'));   // 동선을 2열로
+   cols[0].appendChild(document.getElementById('familyBox'));}   // 추가 모드: 가족관계를 환자 정보 아래로
   fillPmemo('');
   {const h=document.getElementById('bitPrefillHint');if(h){h.textContent='';h.style.display='none';}}BIT_PREFILL=null;
   {const cb=document.getElementById('callsBox');if(cb)cb.classList.remove('open');}
@@ -5177,7 +5178,8 @@ function openEdit(pid){
   set("f_tel",p.tel||"");{const o=document.getElementById("f_smsopt");if(o)o.checked=!!p.smsOptOut;}
   set("f_doctor",p.doctor||"");fillDoctorOpts();
   document.getElementById('modal').classList.remove('adding');
-  {const cols=document.querySelectorAll('#modal .body>.pcol'); cols[0].appendChild(document.getElementById('routeSection'));}   // 동선을 1열로 복귀
+  {const cols=document.querySelectorAll('#modal .body>.pcol'); cols[0].appendChild(document.getElementById('routeSection'));   // 동선을 1열로 복귀
+   document.querySelector('#modal .modal-head').appendChild(document.getElementById('familyBox'));}   // 수정 모드: 가족관계를 상단 버튼 아래로
   {const pf=document.getElementById('pinfoFold'); if(pf){pf.classList.remove('open');const bi=[p.birth?esc(p.birth):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');document.getElementById('pinfoSummary').innerHTML=`${esc(p.name||'')}${p.mrn?' · '+esc(p.mrn):''}${bi?' · '+bi:''} <span style="opacity:.7">— 마우스를 올리면 펼쳐집니다</span>`;}}
   fillPmemo(p.mrn);
   fillScribeNotes(p.mrn);
