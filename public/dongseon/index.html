@@ -800,6 +800,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .stat-tb tbody tr.click{cursor:pointer}
   .stat-tb tbody tr.click:hover{background:var(--panel)}
   .stat-tb tbody tr.sel{background:var(--teal-bg)}
+  .stat-tb tbody tr.st-detail td{background:var(--panel2);padding:10px 12px 12px;border-left:3px solid var(--teal)}
+  .st-detail-list{max-height:360px;overflow:auto;display:flex;flex-direction:column;gap:4px}
   .stat-date{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12.5px;color-scheme:dark}
   .stat-rec{display:flex;gap:8px;align-items:center;padding:5px 2px;border-bottom:1px solid var(--line2);font-size:13px}
   .stat-rec span:first-child{font-weight:600;flex:1}
@@ -4522,16 +4524,17 @@ function renderStats(){
   if(!rooms.length){html+=`<div class="route-empty">${STATS.length?'해당 날짜에 집계된 기록이 없습니다.':"아직 집계된 기록이 없습니다. 환자를 방에서 '종결' 처리하면 대기·진행 시간이 기록됩니다."}</div>`;body.innerHTML=html;return;}
   html+=`<div class="hint" style="margin-bottom:4px">방 이름을 누르면 평균 계산에 쓰인 세부 기록이 펼쳐집니다.</div>`;
   html+=`<table class="stat-tb"><thead><tr><th>방</th><th>방문</th><th>평균 대기</th>${anyPrep?'<th>평균 준비</th>':''}<th>평균 진행</th><th>총 체류</th></tr></thead><tbody>`;
-  rooms.forEach(r=>{const sel=statsOpenRoom===r;html+=`<tr class="click${sel?' sel':''}" onclick="toggleStatRoom('${esc(r)}')"><td>${sel?'▾ ':'▸ '}${esc(r)}</td><td>${g[r].c}</td><td style="color:var(--t-amber)">${fmtClock(g[r].w/g[r].c)}</td>${anyPrep?`<td style="color:var(--t-sky)">${fmtClock(g[r].p/g[r].c)}</td>`:''}<td style="color:var(--red)">${fmtClock(g[r].a/g[r].c)}</td><td>${fmtClock(g[r].t)}</td></tr>`;});
+  rooms.forEach(r=>{const sel=statsOpenRoom===r;html+=`<tr class="click${sel?' sel':''}" onclick="toggleStatRoom('${esc(r)}')"><td>${sel?'▾ ':'▸ '}${esc(r)}</td><td>${g[r].c}</td><td style="color:var(--t-amber)">${fmtClock(g[r].w/g[r].c)}</td>${anyPrep?`<td style="color:var(--t-sky)">${fmtClock(g[r].p/g[r].c)}</td>`:''}<td style="color:var(--red)">${fmtClock(g[r].a/g[r].c)}</td><td>${fmtClock(g[r].t)}</td></tr>`;
+    if(sel){   // 누른 방 바로 아래에 세부 기록 펼침(평균 산출에 쓰인 개별 기록)
+      const dr=recs.filter(x=>x.room===r);
+      html+=`<tr class="st-detail"><td colspan="${anyPrep?6:5}">
+        <div class="hint" style="font-weight:700;margin:2px 0 6px">💠 ${esc(r)} 세부 기록 · ${dr.length}건 (최근순)</div>
+        <div class="st-detail-list">${dr.slice().reverse().map(statRecRow).join("")||'<div class="hint">기록이 없습니다.</div>'}</div>
+      </td></tr>`;
+    }});
   html+=`</tbody></table>`;
-  if(statsOpenRoom){
-    const dr=recs.filter(r=>r.room===statsOpenRoom);
-    html+=`<div class="sect-t" style="margin-top:16px;margin-bottom:6px">💠 ${esc(statsOpenRoom)} 세부 기록 <span class="hint" style="font-weight:400">${dr.length}건 · 평균 산출 데이터</span></div>`;
-    html+=dr.slice().reverse().map(statRecRow).join("");
-  }else{
-    html+=`<div class="sect-t" style="margin-top:16px;margin-bottom:6px">최근 종결 기록</div>`;
-    html+=recs.slice(-15).reverse().map(statRecRow).join("");
-  }
+  html+=`<div class="sect-t" style="margin-top:16px;margin-bottom:6px">최근 종결 기록</div>`;
+  html+=recs.slice(-15).reverse().map(statRecRow).join("");
   body.innerHTML=html;
 }
 /* CSV(엑셀) 다운로드 */
