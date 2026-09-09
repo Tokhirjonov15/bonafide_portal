@@ -106,18 +106,19 @@ $LABELS = @{   # 화면 라벨(공백 제거) → 필드 키
 function ReadPanel($hwnd) {
   $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
   $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-  $labels = @(); $vals = @()
+  # 주의: PowerShell 변수명은 대소문자를 구분하지 않으므로 $labels 를 쓰면 위의 $LABELS(해시)가 가려져 ContainsKey 가 실패한다 → $found 로 명명
+  $found = @(); $vals = @()
   foreach ($el in $all) {
     $c = $el.Current; $rc = $c.BoundingRectangle
     if ($rc.IsEmpty -or [double]::IsInfinity($rc.X)) { continue }
     $cls = [string]$c.ClassName; $nm = [string]$c.Name
     $o = [pscustomobject]@{ x = [int]$rc.X; y = [int]$rc.Y; w = [int]$rc.Width; h = [int]$rc.Height; name = $nm; cls = $cls }
-    if ($cls -match '\.STATIC\.') { $key = ($nm -replace '\s', ''); if ($LABELS.ContainsKey($key)) { $labels += [pscustomobject]@{ key = $LABELS[$key]; el = $o } } }
+    if ($cls -match '\.STATIC\.') { $key = ($nm -replace '\s', ''); if ($LABELS.ContainsKey($key)) { $found += [pscustomobject]@{ key = $LABELS[$key]; el = $o } } }
     elseif ($cls -match '\.EDIT\.|\.COMBOBOX\.') { $vals += $o }
   }
-  if (-not $labels.Count) { return $null }
+  if (-not $found.Count) { return $null }
   $rec = @{}
-  foreach ($L in $labels) {
+  foreach ($L in $found) {
     $lx = $L.el.x + $L.el.w; $ly = $L.el.y
     $cand = $vals | Where-Object { [Math]::Abs($_.y - $ly) -le 8 -and $_.x -ge ($lx - 8) -and $_.x -le ($lx + 60) } | Sort-Object x | Select-Object -First 1
     $rec[$L.key] = if ($cand) { ($cand.name -replace "\s+$", '') } else { '' }
