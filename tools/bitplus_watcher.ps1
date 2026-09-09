@@ -197,6 +197,9 @@ function CastDrain($listener) {   # 대기 중인 접속을 모두 받아 메시
 # ── 캐시: 인적정보 조회 (이름/차트번호 → 상세) — 캐스트 메시지에 차트번호가 없으므로 이름으로 매칭 ──
 $script:LookupByName = @{}     # 이름 → @{ rec; at }
 $script:LookupByMrn = @{}
+$script:CastDocByName = @{}    # 이름 → 오늘 이 이름으로 보낸 캐스트 문서 id (접수 뒤에 인적정보·원외처방 특이사항이 바뀌면 그 문서를 보충)
+$script:SentHash = @{}         # 문서 id → 마지막으로 보낸 인적정보 해시
+$LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 function CacheLookup($rec) {
   if (-not $rec.mrn -or -not $rec.name) { return }
   $e = @{ rec = $rec; at = (Get-Date) }
@@ -222,7 +225,8 @@ function HandleCast($m) {
       $fields.registered = $true; $fields.registeredAt = (NowIso); $fields.cancelled = $false
       $fields.seenAt = (NowIso)
       $rec = MatchLookup $m.name
-      if ($rec) { foreach ($k in 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx') { if ($rec[$k]) { $fields[$k] = $rec[$k] } }; $fields.lookupPc = $Pc }
+      $script:CastDocByName[$m.name] = $docId
+      if ($rec) { foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $fields[$k] = $rec[$k] } }; $fields.lookupPc = $Pc; $script:SentHash[$docId] = (Hash $rec) }
       elseif (-not $local) { Log "cast $cname 접수번호 $($m.ocmNum): 다른 PC($($m.fromIp))의 접수 — 인적정보 캐시 없음(이름만 전송)" }
       else { Log "cast $cname 접수번호 $($m.ocmNum): 인적정보 캐시 없음(이름만 전송)" }
     }
@@ -248,7 +252,7 @@ $rxWarned = $false; $rxCache = @{}
 $sentDay = (Today)
 while ($true) {
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:LookupByMrn = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:LookupByMrn = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -283,7 +287,17 @@ while ($true) {
           if ($rec.mrn -and $rxCache.ContainsKey($rec.mrn)) { $rec.memoRx = $rxCache[$rec.mrn] }
           $h = Hash $rec
           if ($h -eq $stableHash) { $stableCount++ } else { $stableHash = $h; $stableCount = 1 }
-          if ($stableCount -eq 2 -and $rec.mrn -and $rec.name) { CacheLookup $rec }   # 2번 연속 같은 값(입력 중 아님)일 때 캐시
+          if ($stableCount -eq 2 -and $rec.mrn -and $rec.name) {   # 2번 연속 같은 값(입력 중 아님)일 때 캐시
+            CacheLookup $rec
+            # 이미 접수(캐스트)된 환자의 인적정보·원외처방 특이사항이 그 뒤에 읽히거나 바뀌면 → 보낸 문서를 보충(merge)
+            $d = $script:CastDocByName[$rec.name]
+            if ($d -and $script:SentHash[$d] -ne $h) {
+              $f = @{ lookupPc = $Pc; lastSeenAt = (NowIso) }
+              foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $f[$k] = $rec[$k] } }
+              FsPatch "bitIntake/$d" $f; $script:SentHash[$d] = $h
+              Log "보충: $d 인적정보 (차트번호 있음, 연속메모 $(if ($rec.memoCont) { '있음' } else { '없음' }), 원외처방 특이사항 $(if ($rec.memoRx) { '있음' } else { '없음' }))"
+            }
+          }
         }
       }
     }
