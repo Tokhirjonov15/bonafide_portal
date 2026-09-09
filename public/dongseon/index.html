@@ -379,6 +379,7 @@
   .pm-head{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:var(--note-fg);margin-bottom:7px}
   .pm-body{display:block;margin-top:0}
   .pmemo textarea{width:100%;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;line-height:1.5;resize:none;overflow:hidden;min-height:54px}
+  .pmemo textarea#f_memoToday{min-height:36px;max-height:300px;padding:6px 10px;field-sizing:content}   /* 접수메모(당일): 길어도 줄바꿈으로 전부 보이게 (내용만큼 자동 높이) */
   .photo-grid{display:flex;flex-wrap:wrap;gap:8px}
   .ph-item{position:relative;width:84px;height:84px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--panel2)}
   .ph-thumb{width:100%;height:100%;object-fit:cover;cursor:pointer;display:block}
@@ -1228,7 +1229,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <textarea id="f_pmemo" rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의… (칸을 벗어나면 즉시 저장)" oninput="cvGrow(this)" onchange="pmemoNow(this.value)"></textarea>
         <p class="hint" id="bitPrefillHint" style="display:none;margin:6px 0 0;color:var(--blue)"></p>
         <div class="fld" style="margin-top:8px"><label><i data-lucide="sticky-note"></i> 접수메모(당일) <span class="hint">(비트 접수메모(당일)에서 자동 — 오늘만 해당)</span></label>
-          <input id="f_memoToday" placeholder="예: 11:00 CRYO19(PT4) 수납"></div>
+          <textarea id="f_memoToday" rows="1" placeholder="예: 11:00 CRYO19(PT4) 수납" oninput="growMemoToday()"></textarea></div>
       </div>
       <div class="pcalls" id="callsBox" style="display:none"><!-- 유선 문의: 사용 안 함(2026-09) -->
         <div class="pc-head" onclick="document.getElementById('callsBox').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="phone"></i> 유선 문의 <span class="pc-sum" id="callsSummary">0건</span><span class="pf-caret">▾</span></div>
@@ -1819,7 +1820,7 @@ window.bitAccept=function(docId){
       if(!cur)ta.value=combo;
       else if(r.memoRx&&!cur.includes(r.memoRx.trim()))ta.value=cur+'\n'+r.memoRx.trim();   // 원외처방 특이사항이 새로 왔으면 덧붙임
       try{updatePmemoPreview();cvGrow(ta);}catch(e){}}}
-  set('f_memoToday',r.memoToday||'');
+  set('f_memoToday',r.memoToday||'');growMemoToday();
   if(r.guardian&&r.relation&&r.relation!=='본인'){const ft=document.getElementById('familyText');if(ft&&(ft.textContent||'').trim()==='없음')ft.textContent=r.guardian+'('+r.relation+')';}
   const h=document.getElementById('bitPrefillHint');
   if(h){const parts=[r.firstVisit?'최초내원 '+r.firstVisit:'',r.prevVisit?'전진료 '+r.prevVisit:'',r.nextResv?'다음예약 '+r.nextResv:''].filter(Boolean);
@@ -5041,6 +5042,9 @@ function smsHistoryHtml(list){
 }
 /* 차팅 칸 높이 자동 조절 */
 function cvGrow(ta){ ta.style.height='auto'; ta.style.height=Math.min(600,Math.max(54,ta.scrollHeight+2))+'px'; }
+function growMemoToday(n){ const t=document.getElementById('f_memoToday'); if(!t)return;   // 접수메모(당일) 칸: 내용만큼 높이
+  if(!t.offsetParent){ if((n||0)<10)setTimeout(()=>growMemoToday((n||0)+1),30); return; }   // 창이 아직 안 보이면(높이 계산 불가) 잠시 뒤 다시
+  t.style.height='auto'; t.style.height=Math.min(300,Math.max(36,t.scrollHeight+2))+'px'; }
 
 /* 환자 정보 창(3열째) 차팅: 오늘 차트 + 지난 차트 채우기 */
 /* 지난 기록 탭 전환(지난 차트 ↔ 지난 연구 차트 기록) — 길어져도 서로 밀지 않도록 하나만 표시 */
@@ -5416,7 +5420,7 @@ function openAdd(){
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=false;}set("f_silbiLimit","");onSilbi();
   {const si=document.getElementById("f_ins");if(si)si.value="";}
   set("f_reserve","");set("f_receive",nowHM());   // 접수시간 기본 현재시각, 예약은 비움
-  set("f_memoToday","");
+  set("f_memoToday","");growMemoToday();
   set("f_tel","");{const o=document.getElementById("f_smsopt");if(o)o.checked=false;}
   set("f_doctor","");fillDoctorOpts();
   {const es=document.getElementById("editStatusRow");if(es){es.innerHTML='';es.style.display='none';}const mh=document.getElementById("mhPatient");if(mh)mh.innerHTML='';}
@@ -5448,7 +5452,7 @@ function openEdit(pid){
   {const sb=document.getElementById("f_silbi");if(sb)sb.checked=!!p.silbi;}set("f_silbiLimit",p.silbiLimit||"");onSilbi();
   {const si=document.getElementById("f_ins");if(si){si.value=p.ins||"";if(si.value!==(p.ins||""))si.value="";}}
   set("f_reserve",p.reserveAt||"");set("f_receive",p.receiveAt||"");
-  set("f_memoToday",p.memoToday||"");
+  set("f_memoToday",p.memoToday||"");growMemoToday();
   set("f_tel",p.tel||"");{const o=document.getElementById("f_smsopt");if(o)o.checked=!!p.smsOptOut;}
   set("f_doctor",p.doctor||"");fillDoctorOpts();
   document.getElementById('modal').classList.remove('adding');
