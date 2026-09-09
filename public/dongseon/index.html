@@ -1767,6 +1767,7 @@ function bitVisible(){
   const now=Date.now();
   return BIT_INTAKE.filter(r=>{
     if((r.status&&!bitRevived(r))||r.cancelled)return false;
+    if(r.command===7||r.command===8)return false;   // 마지막 캐스트가 수납대기·수납완료 → 이미 진료 끝난 환자, 대기실 카드를 새로 만들지 않음
     const t=new Date(r.seenAt||0).getTime();if(!t||now-t>BIT_TTL_MIN*60000)return false;
     if(bitOnBoard(r))return false;   // 이미 보드에 있음
     return true;
