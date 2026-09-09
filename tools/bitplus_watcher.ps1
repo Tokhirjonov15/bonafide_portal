@@ -47,13 +47,21 @@ public delegate bool EnumProc(IntPtr h, IntPtr l);
 [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc cb, IntPtr l);
 [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
 [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int SendMessage(IntPtr h, uint m, IntPtr w, StringBuilder s);
-[DllImport("user32.dll")] public static extern int SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+// WM_GETTEXT 를 SendMessageTimeout 으로 보낸다: 비트 창의 UI 스레드가 멈춰 있어도(모달 대화상자 등) 감시 스크립트가 함께 멈추지 않도록 500ms 안에 응답 없으면 포기(SMTO_ABORTIFHUNG)
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, StringBuilder s, uint flags, uint timeout, out IntPtr res);
+[DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr res);
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
 public static List<IntPtr> Tops() { var l = new List<IntPtr>(); EnumWindows((h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
 public static List<IntPtr> Children(IntPtr p) { var l = new List<IntPtr>(); EnumChildWindows(p, (h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
-public static string Text(IntPtr h) { int n = SendMessage(h, 0x000E, IntPtr.Zero, IntPtr.Zero); if (n <= 0) return ""; var sb = new StringBuilder(n + 2); SendMessage(h, 0x000D, (IntPtr)(n + 1), sb); return sb.ToString(); }
+public static string Text(IntPtr h) {
+  IntPtr res;
+  if (SendMessageTimeout(h, 0x000E, IntPtr.Zero, IntPtr.Zero, 0x0002, 500, out res) == IntPtr.Zero) return "";  // WM_GETTEXTLENGTH
+  int n = (int)res; if (n <= 0) return "";
+  var sb = new StringBuilder(n + 2);
+  if (SendMessageTimeout(h, 0x000D, (IntPtr)(n + 1), sb, 0x0002, 500, out res) == IntPtr.Zero) return "";  // WM_GETTEXT
+  return sb.ToString();
+}
 public static string Cls(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
 public static int Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h, out p); return (int)p; }
 '@
