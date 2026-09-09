@@ -1737,7 +1737,7 @@ function subscribeBitIntake(){
   cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
     BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();
     try{bitBackfillMemo();}catch(e){}try{bitBackfillMrn();}catch(e){console.warn(e);}
-    try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}
+    try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}
   },err=>console.warn('bitIntake',err));
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
@@ -1801,7 +1801,7 @@ function renderBitPill(){
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -1926,6 +1926,32 @@ function bitApplyReceiveEnd(){
         try{toast('비트 수납완료 → '+dispName(q.name)+' 님 내보내기');}catch(e){}
       })
       .catch(e=>console.warn('bit receiveEnd',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
+  });
+}
+/* 비트 수납취소(10)·수납대기(7)가 수납완료 뒤에 오면(잘못 계산 → 다시 수납대기) → 내보낸 카드를 완료 목록에서 다시 보드로(3층 수납 대기).
+   문서 status 를 '수납완료' → '자동접수' 로 트랜잭션 선점해 한 번만 복귀. 다시 수납완료가 오면 다시 내보낸다. */
+function bitApplyRestore(){
+  if(!currentUser||!cloud.intakeCol||!cloud.ready.pts)return;
+  BIT_INTAKE.forEach(r=>{
+    if(r.status!=='수납완료'||!(r.command===10||r.command===7)||BIT_CLAIMING[r.docId])return;
+    const ocm=String(r.ocmNum||'').trim();if(!ocm)return;
+    if(bitOnBoard(r))return;   // 이미 보드에 있으면 할 일 없음
+    const today=localYMD(new Date());
+    const v=VISITS.slice().reverse().find(x=>x.bit&&String(x.bit.ocmNum||'')===ocm&&localYMD(new Date(x.dischargedAt||0))===today);
+    if(!v)return;
+    BIT_CLAIMING[r.docId]=1;
+    const ref=cloud.intakeCol.doc(r.docId);
+    cloud.db.runTransaction(async t=>{const d=await t.get(ref);const x=d.exists?(d.data()||{}):null;if(!x||x.status!=='수납완료')return false;
+        t.update(ref,{status:'자동접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()});return true;})
+      .then(won=>{
+        if(!won)return;
+        if(!VISITS.some(x=>x.id===v.id))return;   // 그 사이 다른 화면이 되돌림
+        const p=restoreVisitCore(v);
+        try{ref.set({patientId:p.id},{merge:true});}catch(e){}
+        audit('환자복귀(비트 수납취소)',p.name+(p.mrn?' ('+p.mrn+')':''));
+        try{toast('비트 '+(r.commandName||'수납취소')+' → '+dispName(p.name)+' 님 '+curRoom(p)+' 복귀');}catch(e){}
+      })
+      .catch(e=>console.warn('bit restore',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
   });
 }
 /* 캐스트로 먼저 만들어진 카드(차트번호 없음)에 인적정보가 뒤늦게 merge 되면 차트번호·생년월일·보험을 채운다 */
@@ -3568,20 +3594,27 @@ function renderDischargedBoard(board,q){
 /* 완료 환자를 다시 보드로 되돌리기(마지막 방으로 복귀) */
 function restoreVisit(vid){
   const v=VISITS.find(x=>x.id===vid);if(!v)return;
+  const dest=restoreDest(v);
+  if(!confirm(`'${v.name}'님을 다시 보드로 되돌릴까요?\n'${dest}' 방의 대기로 돌아가고, 완료 목록에서 제거됩니다.`))return;
+  restoreVisitCore(v);
+}
+function restoreDest(v){let route=(Array.isArray(v.routeFull)?v.routeFull:[]).filter(r=>ROOMS.includes(r));if(!route.length)route=[ROOMS[0]];return route[route.length-1];}
+/* 확인 없이 되돌리기(수동 버튼과 비트 수납취소 자동 복귀가 공유). 진료의·접수 시각·비트 접수번호는 그대로 가져온다 */
+function restoreVisitCore(v){
   let route=(Array.isArray(v.routeFull)?v.routeFull:[]).filter(r=>ROOMS.includes(r));
   if(!route.length)route=[ROOMS[0]];
-  const dest=route[route.length-1];
-  if(!confirm(`'${v.name}'님을 다시 보드로 되돌릴까요?\n'${dest}' 방의 대기로 돌아가고, 완료 목록에서 제거됩니다.`))return;
   const _now=new Date().toISOString();
-  const p={id:id(),seq:v.seq||nextSeq(),ord:nextOrd(),mrn:v.mrn||"",name:v.name,birth:v.birth||"",sex:v.sex||"",
-    route:[...route],step:route.length-1,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,
+  const p={id:id(),seq:v.seq||nextSeq(),ord:nextOrd(),mrn:v.mrn||"",name:v.name,birth:v.birth||"",sex:v.sex||"",doctor:v.doctor||"",receiveAt:v.receiveAt||"",ins:v.ins||"",
+    route:[...route],step:route.length-1,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:v.arrivedAt||_now,
     waitMs:0,prepMs:0,activeMs:0,outMs:0,visits:[],
     notes:v.notes?JSON.parse(JSON.stringify(v.notes)):{},consults:v.consults?JSON.parse(JSON.stringify(v.consults)):{}};
+  if(v.bit&&typeof v.bit==='object')p.bit=JSON.parse(JSON.stringify(v.bit));
   data.push(p);
-  VISITS=VISITS.filter(x=>x.id!==vid);
-  if(cloud.active&&cloud.visitsCol&&vid)cloud.visitsCol.doc(vid).delete().catch(e=>console.error(e));
+  VISITS=VISITS.filter(x=>x.id!==v.id);
+  if(cloud.active&&cloud.visitsCol&&v.id)cloud.visitsCol.doc(v.id).delete().catch(e=>console.error(e));
   regUpsert(p.mrn,p.name,p.birth,p.sex);
   save(p);render();enteredRoom(p,curRoom(p));
+  return p;
 }
 /* ── JS PACS 연동: 같은 병록번호의 촬영 리스트 열기(#pid 필터) ── */
 const PACS_APP_URL='https://js-pacs.pinetreecho.workers.dev';
@@ -4210,7 +4243,8 @@ function archiveVisit(p){
     researchChart:p.researchChart||"",
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
     silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,ins:p.ins||"",
-    smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[]
+    smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[],
+    bit:(p.bit&&typeof p.bit==='object')?{ocmNum:String(p.bit.ocmNum||''),auto:!!p.bit.auto,pc:p.bit.pc||''}:null   // 비트 접수번호 — 수납취소 자동 복귀에 사용
   };
   VISITS.push(rec);if(VISITS.length>3000)VISITS=VISITS.slice(-3000);
   cloudAddVisit(rec);
