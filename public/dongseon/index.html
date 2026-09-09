@@ -1833,13 +1833,14 @@ window.bitIgnore=function(docId){
 function bitMemoCombined(r){const a=(r.memoCont||'').trim(),b=(r.memoRx||'').trim();if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
 function bitBackfillMemo(){
-  BIT_INTAKE.forEach(r=>{if((r.status!=='접수'&&r.status!=='자동접수')||!(r.memoRx||'').trim())return;
+  BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수')return;
+    const parts=[(r.memoCont||'').trim(),(r.memoRx||'').trim()].filter(Boolean);   // 비트 접수메모(연속) + 원외처방 특이사항
     const mrn=String(r.mrn||'').trim();if(!mrn)return;
     const p=data.find(x=>!x.discharged&&(x.mrn||'').trim()===mrn);if(!p)return;   // 오늘 보드에 있는 환자만
-    const cur=regMemo(mrn),rx=r.memoRx.trim();
-    if(cur.includes(rx))return;
-    if(setRegMemo(mrn,p.name,cur?cur+'\n'+rx:bitMemoCombined(r)))console.log('비트 특이사항 보충',mrn);
-    if(r.memoToday&&!p.memoToday){p.memoToday=r.memoToday;save(p);}
+    let cur=regMemo(mrn),changed=false;
+    parts.forEach(t=>{if(cur.includes(t))return;cur=cur?cur+'\n'+t:t;changed=true;});
+    if(changed&&setRegMemo(mrn,p.name,cur))console.log('비트 특이사항 보충',mrn);
+    if((r.memoToday||r.castMemo)&&!p.memoToday){p.memoToday=r.memoToday||r.castMemo;save(p);}
   });
 }
 /* ── 자동 접수: 비트에서 실제로 접수된 환자(전진료일 = 오늘)는 확인 없이 3층 대기실 카드로 만든다.
