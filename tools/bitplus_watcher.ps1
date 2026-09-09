@@ -213,7 +213,8 @@ function HandleCast($m) {
                name = $m.name; room = $m.room; doctor = $m.doctor; castMemo = $m.memo; hourMin = [int]$m.hourMin; beforeRoom = $m.beforeRoom }
   switch ($m.command) {
     { $_ -in 2, 1, 0 } {   # 접수(일반/응급/예약) → 등록
-      $fields.registered = $true; $fields.registeredAt = (NowIso); $fields.cancelled = $false; $fields.status = ''
+      # status 는 건드리지 않는다: 여러 PC가 같은 문서에 쓰므로, 동선관리가 먼저 '자동접수'로 바꾼 뒤 늦게 도착한 쓰기가 되돌리면 안 됨
+      $fields.registered = $true; $fields.registeredAt = (NowIso); $fields.cancelled = $false
       $fields.seenAt = (NowIso)
       $rec = MatchLookup $m.name
       if ($rec) { foreach ($k in 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx') { if ($rec[$k]) { $fields[$k] = $rec[$k] } }; $fields.lookupPc = $Pc }
