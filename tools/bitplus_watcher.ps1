@@ -39,6 +39,24 @@ function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write
 function TrimLog() { try { if ((Get-Item $LogFile -ErrorAction SilentlyContinue).Length -gt 2MB) { Get-Content $LogFile -Tail 2000 | Set-Content $LogFile -Encoding UTF8 } } catch {} }
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+# Win32 창 열거/텍스트 읽기 (원외처방 창용). 비트는 원외처방 창을 닫아도 화면 밖(-32000,-32000)에 세워 두는데, 그 상태에서는 UIAutomation 이
+# 자식 요소를 주지 않으므로 EnumChildWindows + WM_GETTEXT 로 읽는다 (읽기 전용 — 아무것도 보내거나 바꾸지 않음)
+Add-Type -Namespace BitW -Name U32 -UsingNamespace System.Collections.Generic, System.Text -MemberDefinition @'
+public delegate bool EnumProc(IntPtr h, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc cb, IntPtr l);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int SendMessage(IntPtr h, uint m, IntPtr w, StringBuilder s);
+[DllImport("user32.dll")] public static extern int SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+public static List<IntPtr> Tops() { var l = new List<IntPtr>(); EnumWindows((h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
+public static List<IntPtr> Children(IntPtr p) { var l = new List<IntPtr>(); EnumChildWindows(p, (h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
+public static string Text(IntPtr h) { int n = SendMessage(h, 0x000E, IntPtr.Zero, IntPtr.Zero); if (n <= 0) return ""; var sb = new StringBuilder(n + 2); SendMessage(h, 0x000D, (IntPtr)(n + 1), sb); return sb.ToString(); }
+public static string Cls(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
+public static int Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h, out p); return (int)p; }
+'@
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $Cp949 = [System.Text.Encoding]::GetEncoding(949)
 
@@ -102,24 +120,22 @@ function FindBitWindow() {   # '접수' 제목의 최상위 창 핸들 (원외�
   if ($proc.MainWindowHandle -ne 0) { return @{ proc = $proc; el = [System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle) } }
   return $null
 }
-function FindRxWindow($procId) {   # 원외처방 창(같은 프로세스의 별도 창) — 열려 있을 때만
-  $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ProcessIdProperty), $procId
-  $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond)
-  foreach ($w in $wins) { $n = ([string]$w.Current.Name) -replace '\s', ''; if ($n -like '원외처방*') { return $w } }
+function FindRxWindow($procId) {   # 원외처방 창 HWND — 한 번 열리면 닫아도 화면 밖에 남아 있으므로(마지막에 연 환자) 계속 읽힌다
+  foreach ($h in [BitW.U32]::Tops()) { if ([BitW.U32]::Pid($h) -ne $procId) { continue }
+    $t = ([BitW.U32]::Text($h)) -replace '\s', ''; if ($t -like '원외처방*') { return $h } }
   return $null
 }
-function ReadRx($win) {
-  $all = $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+function ReadRx($hwnd) {   # 차트번호 칸(라벨 오른쪽) + 특이사항 칸(라벨 아래 RichEdit) — Win32 좌표/텍스트
   $els = @()
-  foreach ($el in $all) {
-    $c = $el.Current; $rc = $c.BoundingRectangle
-    if ($rc.IsEmpty -or [double]::IsInfinity($rc.X)) { continue }
-    $els += [pscustomobject]@{ x = [int]$rc.X; y = [int]$rc.Y; w = [int]$rc.Width; h = [int]$rc.Height; name = [string]$c.Name; cls = [string]$c.ClassName }
+  foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch 'STATIC|EDIT|RichEdit|RICHEDIT') { continue }
+    $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
+    $els += [pscustomobject]@{ x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
   }
-  $lblMrn = $els | Where-Object { (($_.name -replace '\s', '') -eq '차트번호') } | Select-Object -First 1
-  $lblMemo = $els | Where-Object { (($_.name -replace '\s', '') -eq '특이사항') } | Select-Object -First 1
+  $lblMrn = $els | Where-Object { $_.cls -match 'STATIC' -and (($_.name -replace '\s', '') -eq '차트번호') } | Select-Object -First 1
+  $lblMemo = $els | Where-Object { $_.cls -match 'STATIC' -and (($_.name -replace '\s', '') -eq '특이사항') } | Select-Object -First 1
   if (-not $lblMrn -or -not $lblMemo) { return $null }
-  $edits = $els | Where-Object { $_.cls -match '\.EDIT\.|RichEdit|RICHEDIT' }
+  $edits = $els | Where-Object { $_.cls -match 'EDIT|RichEdit|RICHEDIT' }
   $mrnEl = $edits | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 80) } | Sort-Object x | Select-Object -First 1
   $memoEl = $edits | Where-Object { $_.y -ge ($lblMemo.y + $lblMemo.h - 6) -and $_.y -le ($lblMemo.y + $lblMemo.h + 60) -and $_.x -le ($lblMemo.x + 40) -and ($_.x + $_.w) -ge $lblMemo.x } | Sort-Object y | Select-Object -First 1
   $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
