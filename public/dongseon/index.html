@@ -1760,10 +1760,13 @@ function bitOnBoard(r){
   const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();
   return data.some(p=>!p.discharged&&((mrn&&(p.mrn||'').trim()===mrn)||(ocm&&p.bit&&String(p.bit.ocmNum||'')===ocm)));
 }
+/* 취소 처리(status='취소')된 문서가 다시 접수됨 — 비트는 접수 수정·보류 등을 '접수취소 → 접수' 쌍(같은 접수번호)으로 보내므로,
+   마지막 캐스트가 접수(cancelled=false, registeredAt > cancelledAt)이면 살아난 것으로 보고 다시 자동 생성 대상으로 삼는다 */
+function bitRevived(r){return !!(r&&r.status==='취소'&&r.registered===true&&r.cancelled===false&&new Date(r.registeredAt||0)>new Date(r.cancelledAt||0));}
 function bitVisible(){
   const now=Date.now();
   return BIT_INTAKE.filter(r=>{
-    if(r.status||r.cancelled)return false;
+    if((r.status&&!bitRevived(r))||r.cancelled)return false;
     const t=new Date(r.seenAt||0).getTime();if(!t||now-t>BIT_TTL_MIN*60000)return false;
     if(bitOnBoard(r))return false;   // 이미 보드에 있음
     return true;
@@ -1862,11 +1865,19 @@ function bitAutoProcess(){
     bitClaimAndCreate(r,name,reg);
   });
 }
-/* 비트에서 접수취소(캐스트 Command 3) → 아직 첫 방에서 대기 중이고 손대지 않은 카드는 자동 제거, 그 외엔 알림만 */
+/* 비트에서 접수취소(캐스트 Command 3) → 아직 첫 방에서 대기 중이고 손대지 않은 카드는 자동 제거, 그 외엔 알림만
+   · 비트는 접수 수정·보류 때 '접수취소 → 접수'를 1초 안에 연달아 보낸다 → 취소를 처음 본 뒤 6초(이 화면 시계 기준) 기다렸다가,
+     그때도 여전히 cancelled 이면 진짜 취소로 본다 (PC 간 시계 차이에 영향 없도록 문서의 시각은 쓰지 않음) */
+const BIT_CANCEL_GRACE=6000;
+const BIT_CANCEL_SEEN={};   // docId → 취소를 처음 본 시각(로컬)
+let _bitCancelT=null;
 function bitApplyCancels(){
   if(!currentUser||!cloud.intakeCol)return;
   BIT_INTAKE.forEach(r=>{
-    if(!r.cancelled||r.status==='취소'||BIT_CLAIMING[r.docId])return;
+    if(!r.cancelled){delete BIT_CANCEL_SEEN[r.docId];return;}
+    if(r.status==='취소'||BIT_CLAIMING[r.docId])return;
+    const seen=BIT_CANCEL_SEEN[r.docId]||(BIT_CANCEL_SEEN[r.docId]=Date.now());
+    if(Date.now()-seen<BIT_CANCEL_GRACE){clearTimeout(_bitCancelT);_bitCancelT=setTimeout(bitApplyCancels,BIT_CANCEL_GRACE+500);return;}
     const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
     const p=data.find(x=>!x.discharged&&((x.id&&x.id===r.patientId)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)||(mrn&&(x.mrn||'').trim()===mrn&&x.bit)));
     BIT_CLAIMING[r.docId]=1;
@@ -1900,7 +1911,7 @@ async function bitClaimAndCreate(r,name,reg){
   BIT_CLAIMING[r.docId]=1;
   try{
     const ref=cloud.intakeCol.doc(r.docId);
-    const won=await cloud.db.runTransaction(async t=>{const d=await t.get(ref);const v=d.exists?(d.data()||{}):null;if(!v||v.status)return false;
+    const won=await cloud.db.runTransaction(async t=>{const d=await t.get(ref);const v=d.exists?(d.data()||{}):null;if(!v||(v.status&&!bitRevived(v)))return false;   // 취소 뒤 재접수 문서는 다시 선점 가능
       t.update(ref,{status:'자동접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()});return true;});
     if(!won)return;
     const p=bitCreatePatient(r,name,reg);
