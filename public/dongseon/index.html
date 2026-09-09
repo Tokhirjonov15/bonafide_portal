@@ -1833,7 +1833,8 @@ window.bitIgnore=function(docId){
   audit('비트접수 무시',(r.name||'')+' ('+(r.mrn||'')+')');
 };
 /* 비트 특이사항 = 접수메모(연속) + 원외처방 창의 특이사항 (둘 다 있으면 줄바꿈으로 합침, 같으면 하나만) */
-function bitMemoCombined(r){const a=(r.memoCont||'').trim(),b=(r.memoRx||'').trim();if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
+function bitMemoClean(t){t=(t||'').trim();return /^[\s\-_.·ㆍ,~*]*$/.test(t)?'':t;}   // 비트의 빈 칸 표시('-', '.') 는 메모가 아님
+function bitMemoCombined(r){const a=bitMemoClean(r.memoCont),b=bitMemoClean(r.memoRx);if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
 function bitBackfillMemo(){
   BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수'&&r.status!=='수납완료')return;   // 수납완료 뒤에 오는 원외처방 특이사항도 명단에는 반영
@@ -1850,10 +1851,11 @@ function bitBackfillMemo(){
     /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
        카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
     if(!mrn)return;
-    const parts=[(r.memoCont||'').trim(),(r.memoRx||'').trim()].filter(Boolean);
+    const parts=[bitMemoClean(r.memoCont),bitMemoClean(r.memoRx)].filter(Boolean);
     if(!parts.length)return;
     const name=p?p.name:(r.name||'');if(!name)return;
     let cm=regMemo(mrn),changed=false;
+    if(/^[\s\-_.·ㆍ,~*]*$/.test(cm)){cm='';changed=!!regMemo(mrn);}   // 예전에 '-' 만 들어간 특이사항은 비운 뒤 채움
     parts.forEach(t=>{if(cm.includes(t))return;cm=cm?cm+'\n'+t:t;changed=true;});
     if(changed&&setRegMemo(mrn,name,cm))console.log('비트 특이사항 보충',mrn,p?'':'(카드 없음)');
   });
