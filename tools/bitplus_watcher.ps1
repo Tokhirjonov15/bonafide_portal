@@ -81,6 +81,16 @@ function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는
 }
 function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
 function Today { return (Get-Date).ToString('yyyy-MM-dd') }
+function FsFindDocByMrn($mrn) {   # 오늘 접수 문서 중 차트번호가 같은 것의 id (다른 PC에서 접수돼 이 PC가 문서 id 를 모를 때)
+  $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'bitIntake' }); limit = 5
+          where = @{ compositeFilter = @{ op = 'AND'; filters = @(
+            @{ fieldFilter = @{ field = @{ fieldPath = 'date' }; op = 'EQUAL'; value = @{ stringValue = (Today) } } },
+            @{ fieldFilter = @{ field = @{ fieldPath = 'mrn' }; op = 'EQUAL'; value = @{ stringValue = [string]$mrn } } }) } } } } | ConvertTo-Json -Depth 12 -Compress
+  $r = Invoke-RestMethod -Method Post -Uri "$DocBase`:runQuery" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+  $ids = @($r | Where-Object { $_.document } | ForEach-Object { ($_.document.name -split '/')[-1] })
+  if ($ids.Count) { return ($ids | Sort-Object | Select-Object -Last 1) }   # 같은 환자가 오늘 두 번 접수됐으면 접수번호가 큰 쪽
+  return $null
+}
 
 # ── ① 비트플러스 접수 창 인적정보 읽기 (UIAutomation) ──
 function FindBitWindow() {   # '접수' 제목의 최상위 창 핸들 (원외처방 등 다른 창이 앞에 와도 접수 창을 고른다)
@@ -199,6 +209,8 @@ $script:LookupByName = @{}     # 이름 → @( @{ rec; at } … ) 차트번호�
 $script:CastDocByName = @{}    # 이름 → 오늘 이 이름으로 보낸 캐스트 문서 id (접수 뒤에 인적정보·원외처방 특이사항이 바뀌면 그 문서를 보충)
 $script:SentHash = @{}         # 문서 id → 마지막으로 보낸 인적정보 해시
 $script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보낸 차트번호는 다른 환자 조회로 바뀌지 않는다)
+$script:DocByMrn = @{}         # 차트번호 → 오늘 문서 id (원외처방 특이사항을 패널과 무관하게 바로 보충할 때)
+$script:RxSent = @{}; $script:RxNoDoc = @{}; $script:RxLast = ''; $script:RxCount = 0   # 원외처방 특이사항 전송 상태
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 $LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
 $DUP_MIN = 15                  # 같은 이름·다른 차트번호가 이 시간 안에 함께 조회됐으면 동명이인으로 보고 차트번호를 붙이지 않는다
@@ -240,7 +252,7 @@ function HandleCast($m) {
       $ls = LookupState $m.name
       $script:CastDocByName[$m.name] = $docId
       if ($ls.dup) { $fields.nameDup = $true; Log "cast $cname 접수번호 $($m.ocmNum): 동명이인 주의 — 같은 이름 차트번호 $($ls.count)개가 $DUP_MIN 분 안에 조회됨 → 차트번호 없이 전송(직원 확인)" }
-      elseif ($ls.rec) { foreach ($k in $LOOKUP_KEYS) { if ($ls.rec[$k]) { $fields[$k] = $ls.rec[$k] } }; $fields.lookupPc = $Pc; $script:SentHash[$docId] = (Hash $ls.rec); $script:SentMrn[$docId] = $ls.rec.mrn }
+      elseif ($ls.rec) { foreach ($k in $LOOKUP_KEYS) { if ($ls.rec[$k]) { $fields[$k] = $ls.rec[$k] } }; $fields.lookupPc = $Pc; $script:SentHash[$docId] = (Hash $ls.rec); $script:SentMrn[$docId] = $ls.rec.mrn; $script:DocByMrn[$ls.rec.mrn] = $docId }
       elseif (-not $local) { Log "cast $cname 접수번호 $($m.ocmNum): 다른 PC($($m.fromIp))의 접수 — 인적정보 캐시 없음(이름만 전송)" }
       else { Log "cast $cname 접수번호 $($m.ocmNum): 인적정보 캐시 없음(이름만 전송)" }
     }
@@ -270,7 +282,7 @@ $rxWarned = $false; $rxCache = @{}
 $sentDay = (Today)
 while ($true) {
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -297,7 +309,21 @@ while ($true) {
           $rw = FindRxWindow $bw.proc.Id
           if ($rw) { $rx = ReadRx $rw
             if ($rx -and -not $rx.found -and -not $rxWarned) { Log "원외처방 창은 찾았지만 특이사항 칸을 못 찾음"; $rxWarned = $true }
-            if ($rx -and $rx.mrn -and $rx.memoRx) { $rxCache[$rx.mrn] = $rx.memoRx } }
+            if ($rx -and $rx.mrn -and $rx.memoRx) {
+              $rxCache[$rx.mrn] = $rx.memoRx
+              # 원외처방 특이사항은 진료가 끝난 뒤(수납 무렵) 입력·열람되므로 패널에 그 환자가 떠 있지 않아도 차트번호로 오늘 문서를 찾아 바로 보충.
+              # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용일 때만.
+              $rk = "$($rx.mrn)|$($rx.memoRx)"
+              if ($rk -eq $script:RxLast) { $script:RxCount++ } else { $script:RxLast = $rk; $script:RxCount = 1 }
+              if ($script:RxCount -eq 2 -and $script:RxSent[$rx.mrn] -ne $rx.memoRx) {
+                $d = $script:DocByMrn[$rx.mrn]
+                if (-not $d -and -not ($script:RxNoDoc[$rx.mrn] -and ((Get-Date) - $script:RxNoDoc[$rx.mrn]).TotalMinutes -lt 5)) {
+                  $d = FsFindDocByMrn $rx.mrn
+                  if ($d) { $script:DocByMrn[$rx.mrn] = $d } else { $script:RxNoDoc[$rx.mrn] = Get-Date; Log "원외처방 특이사항: 차트번호 $($rx.mrn) 의 오늘 접수 문서 없음(5분 뒤 재확인)" }
+                }
+                if ($d) { FsPatch "bitIntake/$d" @{ memoRx = $rx.memoRx; rxPc = $Pc; lastSeenAt = (NowIso) }; $script:RxSent[$rx.mrn] = $rx.memoRx; Log "보충: $d 원외처방 특이사항 (차트번호 $($rx.mrn))" }
+              }
+            } }
         } catch { Log "원외처방 읽기 오류: $($_.Exception.Message)" }
         $raw = ReadPanel $bw.el
         if ($raw) {
@@ -316,7 +342,7 @@ while ($true) {
               else {
                 $f = @{ lookupPc = $Pc; lastSeenAt = (NowIso); nameDup = $false }
                 foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $f[$k] = $rec[$k] } }
-                FsPatch "bitIntake/$d" $f; $script:SentHash[$d] = $h; $script:SentMrn[$d] = $rec.mrn
+                FsPatch "bitIntake/$d" $f; $script:SentHash[$d] = $h; $script:SentMrn[$d] = $rec.mrn; $script:DocByMrn[$rec.mrn] = $d
                 Log "보충: $d 인적정보 (차트번호 있음, 연속메모 $(if ($rec.memoCont) { '있음' } else { '없음' }), 원외처방 특이사항 $(if ($rec.memoRx) { '있음' } else { '없음' }))"
               }
             }

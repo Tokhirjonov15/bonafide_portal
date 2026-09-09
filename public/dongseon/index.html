@@ -1836,20 +1836,26 @@ window.bitIgnore=function(docId){
 function bitMemoCombined(r){const a=(r.memoCont||'').trim(),b=(r.memoRx||'').trim();if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
 function bitBackfillMemo(){
-  BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수')return;
+  BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수'&&r.status!=='수납완료')return;   // 수납완료 뒤에 오는 원외처방 특이사항도 명단에는 반영
     const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();
-    const p=data.find(x=>!x.discharged&&((mrn&&(x.mrn||'').trim()===mrn)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)));if(!p)return;   // 오늘 보드에 있는 환자만
-    /* 접수메모(당일): 캐스트 메시지는 8자로 잘려 오므로(비트 전광판 한계), 인적정보의 전체 문장이 오면 잘린 것을 통째로 바꾼다 */
-    const full=(r.memoToday||'').trim(), cut=(r.castMemo||'').trim(), cur=(p.memoToday||'').trim();
-    const nt=full||cut;
-    /* 카드 메모가 비트에서 자동으로 넣은 것(p.bit.memoSrc)이거나 잘린 캐스트 메모(8자 이하)면 비트 전체 문장으로 바꾼다. 직원이 손으로 바꾼 메모는 유지 */
-    const autoMemo=!cur||cur===cut||nt.startsWith(cur)||(p.bit&&(cur===(p.bit.memoSrc||'')||(p.bit.auto&&cur.length<=8)));
-    if(nt&&nt!==cur&&autoMemo){p.memoToday=nt;if(p.bit)p.bit.memoSrc=nt;save(p);}
+    const p=data.find(x=>!x.discharged&&((mrn&&(x.mrn||'').trim()===mrn)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)));
+    if(p){
+      /* 접수메모(당일): 캐스트 메시지는 8자로 잘려 오므로(비트 전광판 한계), 인적정보의 전체 문장이 오면 잘린 것을 통째로 바꾼다 */
+      const full=(r.memoToday||'').trim(), cut=(r.castMemo||'').trim(), cur=(p.memoToday||'').trim();
+      const nt=full||cut;
+      /* 카드 메모가 비트에서 자동으로 넣은 것(p.bit.memoSrc)이거나 잘린 캐스트 메모(8자 이하)면 비트 전체 문장으로 바꾼다. 직원이 손으로 바꾼 메모는 유지 */
+      const autoMemo=!cur||cur===cut||nt.startsWith(cur)||(p.bit&&(cur===(p.bit.memoSrc||'')||(p.bit.auto&&cur.length<=8)));
+      if(nt&&nt!==cur&&autoMemo){p.memoToday=nt;if(p.bit)p.bit.memoSrc=nt;save(p);}
+    }
+    /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
+       카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
     if(!mrn)return;
-    const parts=[(r.memoCont||'').trim(),(r.memoRx||'').trim()].filter(Boolean);   // 비트 접수메모(연속) + 원외처방 특이사항 → 특이사항
+    const parts=[(r.memoCont||'').trim(),(r.memoRx||'').trim()].filter(Boolean);
+    if(!parts.length)return;
+    const name=p?p.name:(r.name||'');if(!name)return;
     let cm=regMemo(mrn),changed=false;
     parts.forEach(t=>{if(cm.includes(t))return;cm=cm?cm+'\n'+t:t;changed=true;});
-    if(changed&&setRegMemo(mrn,p.name,cm))console.log('비트 특이사항 보충',mrn);
+    if(changed&&setRegMemo(mrn,name,cm))console.log('비트 특이사항 보충',mrn,p?'':'(카드 없음)');
   });
 }
 /* ── 자동 접수: 비트에서 실제로 접수된 환자(전진료일 = 오늘)는 확인 없이 3층 대기실 카드로 만든다.
