@@ -1733,7 +1733,9 @@ function subscribeBitIntake(){
   try{if(cloud.unsubIntake)cloud.unsubIntake();}catch(e){}
   BIT_SUB_DATE=today;
   cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
-    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();try{bitBackfillMemo();}catch(e){}try{bitAutoProcess();}catch(e){console.warn(e);}
+    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();
+    try{bitBackfillMemo();}catch(e){}try{bitBackfillMrn();}catch(e){console.warn(e);}
+    try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}
   },err=>console.warn('bitIntake',err));
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
@@ -1753,12 +1755,17 @@ async function bitCleanupOld(){
     console.log('비트 접수 문서 정리',snap.size);
   }catch(e){console.warn('bitCleanupOld',e);}
 }
+/* 보드에 이미 있는 환자인가 — 차트번호 또는 (캐스트 이벤트라면) 접수번호로 판정 */
+function bitOnBoard(r){
+  const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();
+  return data.some(p=>!p.discharged&&((mrn&&(p.mrn||'').trim()===mrn)||(ocm&&p.bit&&String(p.bit.ocmNum||'')===ocm)));
+}
 function bitVisible(){
   const now=Date.now();
   return BIT_INTAKE.filter(r=>{
-    if(r.status)return false;
+    if(r.status||r.cancelled)return false;
     const t=new Date(r.seenAt||0).getTime();if(!t||now-t>BIT_TTL_MIN*60000)return false;
-    if(data.some(p=>!p.discharged&&(p.mrn||'').trim()===String(r.mrn||'').trim()))return false;   // 이미 보드에 있음
+    if(bitOnBoard(r))return false;   // 이미 보드에 있음
     return true;
   }).sort((a,b)=>new Date(b.seenAt)-new Date(a.seenAt));
 }
@@ -1788,7 +1795,7 @@ function renderBitPill(){
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -1820,7 +1827,7 @@ window.bitIgnore=function(docId){
 function bitMemoCombined(r){const a=(r.memoCont||'').trim(),b=(r.memoRx||'').trim();if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
 function bitBackfillMemo(){
-  BIT_INTAKE.forEach(r=>{if(r.status!=='접수'||!(r.memoRx||'').trim())return;
+  BIT_INTAKE.forEach(r=>{if((r.status!=='접수'&&r.status!=='자동접수')||!(r.memoRx||'').trim())return;
     const mrn=String(r.mrn||'').trim();if(!mrn)return;
     const p=data.find(x=>!x.discharged&&(x.mrn||'').trim()===mrn);if(!p)return;   // 오늘 보드에 있는 환자만
     const cur=regMemo(mrn),rx=r.memoRx.trim();
@@ -1835,16 +1842,58 @@ function bitBackfillMemo(){
    · 명단 이름과 다르거나 병록번호 충돌이면 자동으로 만들지 않고 '비트 접수 대기' 줄에 남겨 직원이 판단. */
 const BIT_AUTO=true;
 const BIT_CLAIMING={};
-function bitIsRegisteredToday(r){return !!(r&&r.prevVisit&&r.prevVisit.slice(0,10)===localYMD(new Date()));}
+/* 접수 확정 판정: ① 캐스트(환자접수 버튼) 이벤트 registered=true  ② (구방식) 인적정보의 전진료일이 오늘 */
+function bitIsRegisteredToday(r){return !!(r&&(r.registered===true||(r.prevVisit&&r.prevVisit.slice(0,10)===localYMD(new Date()))));}
+let _bitRetryT=null;
 function bitAutoProcess(){
   if(!BIT_AUTO||!currentUser||!cloud.ready.pts||!cloud.intakeCol)return;
   bitVisible().forEach(r=>{
     if(!bitIsRegisteredToday(r)||BIT_CLAIMING[r.docId])return;
-    const mrn=String(r.mrn||'').trim();if(!mrn)return;
-    const reg=regFind(mrn);if(reg&&reg.name&&r.name&&reg.name!==r.name)return;   // 명단과 이름 불일치 → 수동
+    const mrn=String(r.mrn||'').trim();
+    if(!mrn){
+      if(!r.registered)return;   // 구방식 문서는 차트번호 필수
+      /* 캐스트 이벤트에 차트번호가 아직 없음(인적정보 캐시가 곧 merge 될 수 있음) → 4초만 기다렸다가 이름만으로 생성 */
+      const age=Date.now()-new Date(r.registeredAt||r.seenAt||0).getTime();
+      if(age<4000){clearTimeout(_bitRetryT);_bitRetryT=setTimeout(bitAutoProcess,4500);return;}
+    }
+    const reg=mrn?regFind(mrn):null;if(reg&&reg.name&&r.name&&reg.name!==r.name)return;   // 명단과 이름 불일치 → 수동
     const name=r.name||(reg&&reg.name)||'';if(!name)return;
-    if(mrnConflict(mrn,name))return;
+    if(mrn&&mrnConflict(mrn,name))return;
     bitClaimAndCreate(r,name,reg);
+  });
+}
+/* 비트에서 접수취소(캐스트 Command 3) → 아직 첫 방에서 대기 중이고 손대지 않은 카드는 자동 제거, 그 외엔 알림만 */
+function bitApplyCancels(){
+  if(!currentUser||!cloud.intakeCol)return;
+  BIT_INTAKE.forEach(r=>{
+    if(!r.cancelled||r.status==='취소'||BIT_CLAIMING[r.docId])return;
+    const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
+    const p=data.find(x=>!x.discharged&&((x.id&&x.id===r.patientId)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)||(mrn&&(x.mrn||'').trim()===mrn&&x.bit)));
+    BIT_CLAIMING[r.docId]=1;
+    cloud.intakeCol.doc(r.docId).set({status:'취소',handledBy:currentUser.name||'',handledAt:new Date().toISOString()},{merge:true})
+      .catch(e=>console.warn('bit cancel',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
+    if(!p)return;
+    const untouched=p.step===0&&(p.status||'대기')==='대기'&&!p.out&&!(p.visits&&p.visits.length)&&!Object.keys(p.notes||{}).length;
+    if(untouched){
+      audit('환자삭제(비트 접수취소)',p.name+(p.mrn?' ('+p.mrn+')':''));
+      cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
+      try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
+    } else {
+      try{notify('⚠️','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되었습니다. 카드를 확인하세요.');}catch(e){}
+    }
+  });
+}
+/* 캐스트로 먼저 만들어진 카드(차트번호 없음)에 인적정보가 뒤늦게 merge 되면 차트번호·생년월일·보험을 채운다 */
+function bitBackfillMrn(){
+  BIT_INTAKE.forEach(r=>{
+    const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();if(!mrn||!ocm)return;
+    const p=data.find(x=>!x.discharged&&!(x.mrn||'').trim()&&x.bit&&String(x.bit.ocmNum||'')===ocm);if(!p)return;
+    if(mrnConflict(mrn,p.name))return;
+    p.mrn=mrn;const rp=r.rrn7?parseRRN(r.rrn7):null;if(rp){p.birth=rp.birth;p.sex=rp.sex;}
+    {const si=document.getElementById('f_ins');if(!p.ins&&si&&r.ins&&[...si.options].some(o=>o.value===r.ins))p.ins=r.ins;}
+    regUpsert(mrn,p.name,p.birth,p.sex);
+    try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,p.name,combo);}catch(e){}
+    save(p);render();console.log('비트 차트번호 보충',ocm);
   });
 }
 async function bitClaimAndCreate(r,name,reg){
@@ -1862,26 +1911,32 @@ async function bitClaimAndCreate(r,name,reg){
 }
 function bitCreatePatient(r,name,reg){
   const mrn=String(r.mrn||'').trim();const today=localYMD(new Date());
-  if(data.some(p=>!p.discharged&&(p.mrn||'').trim()===mrn))return null;
+  if(bitOnBoard(r))return null;
   let birth='',sex='';const rp=r.rrn7?parseRRN(r.rrn7):null;
   if(rp){birth=rp.birth;sex=rp.sex;}else if(reg){birth=reg.birth||'';sex=reg.sex||'';}
-  const t=new Date(r.seenAt);const receiveAt=isNaN(t)?nowHM():String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  /* 접수 시각: 캐스트의 분(0시 기준) > 문서 seenAt > 지금 */
+  let receiveAt='';
+  if(typeof r.hourMin==='number'&&r.hourMin>=0&&r.hourMin<1440)receiveAt=String(Math.floor(r.hourMin/60)).padStart(2,'0')+':'+String(r.hourMin%60).padStart(2,'0');
+  else{const t=new Date(r.seenAt);receiveAt=isNaN(t)?nowHM():String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');}
   let reserveAt='';if(r.nextResv&&r.nextResv.slice(0,10)===today){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)reserveAt=m[1];}
   const doctor=(r.doctor||'').trim();if(doctor&&!DOCTORS.includes(doctor)){DOCTORS.push(doctor);saveDoctorsCfg();}
   let ins='';{const si=document.getElementById('f_ins');if(si&&r.ins&&[...si.options].some(o=>o.value===r.ins))ins=r.ins;}
   const first=ROOMS.includes('3층 대기실')?'3층 대기실':(ROOMS[0]||'3층 대기실');
   const _now=new Date().toISOString();
   const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:'',smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
-  p.memoToday=r.memoToday||'';
-  p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true};
-  regUpsert(mrn,name,birth,sex);
-  try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,name,combo);}catch(e){}
-  try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(mrn))setRegFamily(mrn,name,r.guardian+'('+r.relation+')');}catch(e){}
+  p.memoToday=r.memoToday||r.castMemo||'';
+  p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true,
+         ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn};
+  if(mrn){
+    regUpsert(mrn,name,birth,sex);
+    try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,name,combo);}catch(e){}
+    try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(mrn))setRegFamily(mrn,name,r.guardian+'('+r.relation+')');}catch(e){}
+  }
   autoAssignRoomStaff(p);
-  audit('환자추가(비트 자동)',name+' ('+mrn+') '+(r.pc||''));
+  audit('환자추가(비트 자동)',name+' ('+(mrn||'차트번호 없음')+') '+(r.pc||'')+(r.room?' '+r.room:''));
   data.push(p);save(p);cloudSaveConfig();render();
   try{enteredRoom(p,curRoom(p));}catch(e){}
-  try{toast('비트 접수 → '+dispName(name)+' 님 '+first+' 도착');}catch(e){}
+  try{toast('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':' (차트번호는 잠시 후 자동 보충)'));}catch(e){}
   return p;
 }
 /* 접수 저장 후 호출 — 가족관계 저장, 비트 부가정보 보관, 대기 문서 처리 표시 */
