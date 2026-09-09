@@ -1994,7 +1994,9 @@ function bitCreatePatient(r,name,reg){
   let reserveAt='';if(r.nextResv&&r.nextResv.slice(0,10)===today){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)reserveAt=m[1];}
   const doctor=(r.doctor||'').trim();if(doctor&&!DOCTORS.includes(doctor)){DOCTORS.push(doctor);saveDoctorsCfg();}
   let ins='';{const si=document.getElementById('f_ins');if(si&&r.ins&&[...si.options].some(o=>o.value===r.ins))ins=r.ins;}
-  const first=ROOMS.includes('3층 대기실')?'3층 대기실':(ROOMS[0]||'3층 대기실');
+  /* 첫 방: 보통 3층 대기실. 마지막 캐스트가 수납대기(7)면 환자가 이미 수납 창구에 있으므로 3층 수납에서 시작 (뒤늦게 살아난 문서·화면이 꺼져 있던 경우) */
+  let first=ROOMS.includes('3층 대기실')?'3층 대기실':(ROOMS[0]||'3층 대기실');
+  if(r.command===7&&ROOMS.includes('3층 수납'))first='3층 수납';
   const _now=new Date().toISOString();
   const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:'',smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
   p.memoToday=r.memoToday||r.castMemo||'';
