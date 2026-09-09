@@ -2020,7 +2020,9 @@ function bitCreatePatient(r,name,reg){
   audit('환자추가(비트 자동)',name+' ('+(mrn||'차트번호 없음')+') '+(r.pc||'')+(r.room?' '+r.room:''));
   data.push(p);save(p);cloudSaveConfig();render();
   try{enteredRoom(p,curRoom(p));}catch(e){}
-  try{toast('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':' (차트번호는 잠시 후 자동 보충)'));}catch(e){}
+  if(r.nameDup)p.bit.nameDup=true;
+  try{toast('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':(r.nameDup?' (동명이인 — 차트번호를 직접 확인해 주세요)':' (차트번호는 잠시 후 자동 보충)')));}catch(e){}
+  if(r.nameDup){try{notify('⚠️','동명이인 확인',esc(dispName(name))+' 님 — 비트에 같은 이름의 환자가 여럿 조회되어 차트번호를 붙이지 않았습니다. [수정]에서 차트번호를 확인해 주세요.');}catch(e){}}
   return p;
 }
 /* 접수 저장 후 호출 — 가족관계 저장, 비트 부가정보 보관, 대기 문서 처리 표시 */

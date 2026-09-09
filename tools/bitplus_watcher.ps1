@@ -195,21 +195,27 @@ function CastDrain($listener) {   # 대기 중인 접속을 모두 받아 메시
 }
 
 # ── 캐시: 인적정보 조회 (이름/차트번호 → 상세) — 캐스트 메시지에 차트번호가 없으므로 이름으로 매칭 ──
-$script:LookupByName = @{}     # 이름 → @{ rec; at }
-$script:LookupByMrn = @{}
+$script:LookupByName = @{}     # 이름 → @( @{ rec; at } … ) 차트번호별 최근 조회 (동명이인 구분용)
 $script:CastDocByName = @{}    # 이름 → 오늘 이 이름으로 보낸 캐스트 문서 id (접수 뒤에 인적정보·원외처방 특이사항이 바뀌면 그 문서를 보충)
 $script:SentHash = @{}         # 문서 id → 마지막으로 보낸 인적정보 해시
+$script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보낸 차트번호는 다른 환자 조회로 바뀌지 않는다)
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
+$LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
+$DUP_MIN = 15                  # 같은 이름·다른 차트번호가 이 시간 안에 함께 조회됐으면 동명이인으로 보고 차트번호를 붙이지 않는다
 function CacheLookup($rec) {
   if (-not $rec.mrn -or -not $rec.name) { return }
-  $e = @{ rec = $rec; at = (Get-Date) }
-  $script:LookupByName[$rec.name] = $e; $script:LookupByMrn[$rec.mrn] = $e
+  $list = @($script:LookupByName[$rec.name] | Where-Object { $_ -and $_.rec.mrn -ne $rec.mrn })
+  $list += @{ rec = $rec; at = (Get-Date) }
+  $script:LookupByName[$rec.name] = $list
 }
-function MatchLookup($name) {   # 최근 6시간 안에 이 PC에서 조회된 같은 이름의 환자
-  $e = $script:LookupByName[$name]
-  if ($e -and ((Get-Date) - $e.at).TotalHours -lt 6) { return $e.rec }
-  return $null
+function LookupState($name) {   # 최근 6시간 안에 이 PC에서 조회된 같은 이름의 환자 → @{ rec; dup }. 동명이인이 15분 안에 함께 조회됐으면 rec=$null, dup=$true
+  $now = Get-Date
+  $c = @($script:LookupByName[$name] | Where-Object { $_ -and ($now - $_.at).TotalHours -lt $LOOKUP_HOURS } | Sort-Object { $_.at } -Descending)
+  if (-not $c.Count) { return @{ rec = $null; dup = $false } }
+  if ($c.Count -ge 2 -and ($now - $c[1].at).TotalMinutes -lt $DUP_MIN) { return @{ rec = $null; dup = $true; count = $c.Count } }
+  return @{ rec = $c[0].rec; dup = $false }
 }
+function MatchLookup($name) { return (LookupState $name).rec }
 $script:MyIps = @()
 try { $script:MyIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }) } catch {}
 
@@ -221,12 +227,20 @@ function HandleCast($m) {
                name = $m.name; room = $m.room; doctor = $m.doctor; castMemo = $m.memo; hourMin = [int]$m.hourMin; beforeRoom = $m.beforeRoom }
   switch ($m.command) {
     { $_ -in 2, 1, 0 } {   # 접수(일반/응급/예약) → 등록
+      # 예약(0/1)인데 시각이 지금보다 30분 넘게 뒤면 아직 오지 않은 예약 등록으로 보고 등록하지 않는다 (관찰상 예약 등록은 캐스트가 없지만 안전장치)
+      $nowMin = (Get-Date).Hour * 60 + (Get-Date).Minute
+      if ($m.command -ne 2 -and ($m.hourMin - $nowMin) -gt 30) {
+        $fields.event = "$cname(미도착)"; $fields.eventAt = (NowIso)
+        Log "cast $cname 접수번호 $($m.ocmNum): 예약 시각 $([int]($m.hourMin / 60)):$('{0:00}' -f ($m.hourMin % 60)) 이 미래 → 등록하지 않음(기록만)"
+        break
+      }
       # status 는 건드리지 않는다: 여러 PC가 같은 문서에 쓰므로, 동선관리가 먼저 '자동접수'로 바꾼 뒤 늦게 도착한 쓰기가 되돌리면 안 됨
       $fields.registered = $true; $fields.registeredAt = (NowIso); $fields.cancelled = $false
       $fields.seenAt = (NowIso)
-      $rec = MatchLookup $m.name
+      $ls = LookupState $m.name
       $script:CastDocByName[$m.name] = $docId
-      if ($rec) { foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $fields[$k] = $rec[$k] } }; $fields.lookupPc = $Pc; $script:SentHash[$docId] = (Hash $rec) }
+      if ($ls.dup) { $fields.nameDup = $true; Log "cast $cname 접수번호 $($m.ocmNum): 동명이인 주의 — 같은 이름 차트번호 $($ls.count)개가 $DUP_MIN 분 안에 조회됨 → 차트번호 없이 전송(직원 확인)" }
+      elseif ($ls.rec) { foreach ($k in $LOOKUP_KEYS) { if ($ls.rec[$k]) { $fields[$k] = $ls.rec[$k] } }; $fields.lookupPc = $Pc; $script:SentHash[$docId] = (Hash $ls.rec); $script:SentMrn[$docId] = $ls.rec.mrn }
       elseif (-not $local) { Log "cast $cname 접수번호 $($m.ocmNum): 다른 PC($($m.fromIp))의 접수 — 인적정보 캐시 없음(이름만 전송)" }
       else { Log "cast $cname 접수번호 $($m.ocmNum): 인적정보 캐시 없음(이름만 전송)" }
     }
@@ -256,7 +270,7 @@ $rxWarned = $false; $rxCache = @{}
 $sentDay = (Today)
 while ($true) {
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:LookupByMrn = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -296,10 +310,15 @@ while ($true) {
             # 이미 접수(캐스트)된 환자의 인적정보·원외처방 특이사항이 그 뒤에 읽히거나 바뀌면 → 보낸 문서를 보충(merge)
             $d = $script:CastDocByName[$rec.name]
             if ($d -and $script:SentHash[$d] -ne $h) {
-              $f = @{ lookupPc = $Pc; lastSeenAt = (NowIso) }
-              foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $f[$k] = $rec[$k] } }
-              FsPatch "bitIntake/$d" $f; $script:SentHash[$d] = $h
-              Log "보충: $d 인적정보 (차트번호 있음, 연속메모 $(if ($rec.memoCont) { '있음' } else { '없음' }), 원외처방 특이사항 $(if ($rec.memoRx) { '있음' } else { '없음' }))"
+              $sent = $script:SentMrn[$d]
+              if ($sent -and $sent -ne $rec.mrn) { Log "보충 건너뜀: $d 는 이미 다른 차트번호로 전송됨(동명이인 조회)"; $script:SentHash[$d] = $h }
+              elseif (-not $sent -and (LookupState $rec.name).dup) { Log "보충 보류: $d 동명이인 후보가 여럿(직원 확인)"; $script:SentHash[$d] = $h }
+              else {
+                $f = @{ lookupPc = $Pc; lastSeenAt = (NowIso); nameDup = $false }
+                foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $f[$k] = $rec[$k] } }
+                FsPatch "bitIntake/$d" $f; $script:SentHash[$d] = $h; $script:SentMrn[$d] = $rec.mrn
+                Log "보충: $d 인적정보 (차트번호 있음, 연속메모 $(if ($rec.memoCont) { '있음' } else { '없음' }), 원외처방 특이사항 $(if ($rec.memoRx) { '있음' } else { '없음' }))"
+              }
             }
           }
         }
