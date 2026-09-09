@@ -418,6 +418,8 @@
   .seqno{background:var(--blue);color:#fff;font-size:11px;font-weight:800;border-radius:6px;padding:1px 7px;align-self:center}
   .total{padding:0 12px 8px;font-size:12px;color:var(--orange);border-bottom:1px solid var(--line2);margin-bottom:2px}
   .total b{font-variant-numeric:tabular-nums}
+  .total .recv{margin-left:6px;color:var(--muted)}
+  .total .recv b{color:var(--text)}
   .extrafee{display:flex;align-items:center;gap:8px;padding:2px 12px 8px;font-size:12.5px;font-weight:800;color:var(--orange)}
   .extrafee.paid{color:var(--t-green)}
   .pay-btn{margin-left:auto;border:1px solid var(--orange);background:rgba(245,158,11,.12);color:var(--orange);border-radius:7px;padding:3px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap}
@@ -1735,7 +1737,7 @@ function subscribeBitIntake(){
   cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
     BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));renderBitBar();
     try{bitBackfillMemo();}catch(e){}try{bitBackfillMrn();}catch(e){console.warn(e);}
-    try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}
+    try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}
   },err=>console.warn('bitIntake',err));
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
@@ -1767,7 +1769,7 @@ function bitVisible(){
   const now=Date.now();
   return BIT_INTAKE.filter(r=>{
     if((r.status&&!bitRevived(r))||r.cancelled)return false;
-    if(r.command===7||r.command===8)return false;   // 마지막 캐스트가 수납대기·수납완료 → 이미 진료 끝난 환자, 대기실 카드를 새로 만들지 않음
+    if(r.command===8)return false;   // 마지막 캐스트가 수납완료 → 이미 나간 환자, 대기실 카드를 새로 만들지 않음 (수납대기는 아직 원내 → 그대로 만든다)
     const t=new Date(r.seenAt||0).getTime();if(!t||now-t>BIT_TTL_MIN*60000)return false;
     if(bitOnBoard(r))return false;   // 이미 보드에 있음
     return true;
@@ -1799,7 +1801,7 @@ function renderBitPill(){
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -1893,6 +1895,37 @@ function bitApplyCancels(){
     } else {
       try{notify('⚠️','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되었습니다. 카드를 확인하세요.');}catch(e){}
     }
+  });
+}
+/* 비트 수납완료(캐스트 Command 8) → 환자가 계산하고 나갔으므로 카드를 3층 수납 경유로 자동 내보내기(내원 기록 보관).
+   · 수납대기(7)는 아직 원내(추가 치료가 생길 수 있음) → 카드를 그대로 둔다.
+   · 여러 화면이 열려 있어도 한 번만 처리하도록 문서 status 를 '수납완료'로 트랜잭션 선점.
+   · 동선관리 쪽 추가 비용이 미수납이면 자동으로 내보내지 않고 알림만. */
+function bitApplyReceiveEnd(){
+  if(!currentUser||!cloud.intakeCol||!cloud.ready.pts)return;
+  BIT_INTAKE.forEach(r=>{
+    if(r.command!==8||r.status==='수납완료'||r.status==='취소'||BIT_CLAIMING[r.docId])return;
+    const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
+    const p=data.find(x=>!x.discharged&&((x.id&&x.id===r.patientId)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)||(mrn&&(x.mrn||'').trim()===mrn&&x.bit)));
+    if(!p)return;
+    if((p.extraFee||0)>0&&!p.paid){
+      if(!BIT_CANCEL_SEEN['fee:'+r.docId]){BIT_CANCEL_SEEN['fee:'+r.docId]=1;try{notify('💳','비트 수납완료',esc(dispName(p.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(p.extraFee)+'원이 미수납입니다.');}catch(e){}}
+      return;
+    }
+    BIT_CLAIMING[r.docId]=1;
+    const ref=cloud.intakeCol.doc(r.docId);
+    cloud.db.runTransaction(async t=>{const d=await t.get(ref);const v=d.exists?(d.data()||{}):null;if(!v||v.status==='수납완료')return false;
+        t.update(ref,{status:'수납완료',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()});return true;})
+      .then(won=>{
+        if(!won)return;
+        const q=data.find(x=>x.id===p.id);if(!q||q.discharged)return;
+        const pay=ROOMS.includes('3층 수납')?'3층 수납':(ROOMS.find(isPayRoom)||'');
+        if(pay&&!isPayRoom(curRoom(q))){completeVisit(q,'이동');const i=q.route.indexOf(pay);if(i>=0)q.step=i;else{q.route.push(pay);q.step=q.route.length-1;}enterCurrentRoom(q);}
+        audit('환자종결(비트 수납완료)',q.name+(q.mrn?' ('+q.mrn+')':''));
+        completeVisit(q,'종결');archiveVisit(q);cloudDelPatient(q.id);data=data.filter(x=>x.id!==q.id);save();render();
+        try{toast('비트 수납완료 → '+dispName(q.name)+' 님 내보내기');}catch(e){}
+      })
+      .catch(e=>console.warn('bit receiveEnd',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
   });
 }
 /* 캐스트로 먼저 만들어진 카드(차트번호 없음)에 인적정보가 뒤늦게 merge 되면 차트번호·생년월일·보험을 채운다 */
@@ -4025,7 +4058,9 @@ function activeMsNow(p){return (p.activeMs||0)+((p.status==='진행'&&!p.out)?Ma
 function dwellMs(p){return waitMsNow(p)+prepMsNow(p)+activeMsNow(p);}
 function outMsNow(p){return (p.outMs||0)+((p.out&&p.outAt)?Math.max(0,Date.now()-new Date(p.outAt).getTime()):0);}  // 외출 누적시간
 function totalMsNow(p){return Math.max(0,(Date.now()-new Date(p.arrivedAt||p.enteredAt).getTime())-outMsNow(p));}  // 원내시간(외출 제외)
-function totalLabel(p){return `<i data-lucide="hospital"></i> 원내 <b>${fmtClock(totalMsNow(p))}</b>`;}
+/* 원내 경과시간 + 접수 시각(비트 접수 시각 우선, 없으면 동선관리에 등록된 시각) */
+function recvHM(p){return (p.receiveAt&&/^\d{1,2}:\d{2}$/.test(p.receiveAt))?p.receiveAt:clockHM(p.arrivedAt||p.enteredAt);}
+function totalLabel(p){const r=recvHM(p);return `<i data-lucide="hospital"></i> 원내 <b>${fmtClock(totalMsNow(p))}</b>${r?`<span class="recv" title="접수 시각">· 접수 <b>${esc(r)}</b></span>`:''}`;}
 function nextSeq(){const t=localYMD(new Date());
   if(seqDate!==t){seqNext=1;seqDate=t;localStorage.setItem("patientBoard_seqdate",t);}  // 날짜 바뀌면 자동 리셋
   // 동시 등록 중복 방지: 다른 기기가 먼저 쓴 오늘 번호(onSnapshot로 동기화됨)보다 항상 크게 매김
