@@ -37,9 +37,12 @@
 ```
 powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 접수1
 ```
-설치 스크립트가 순서대로: `C:\bitplus` 복사 → bitbot 비밀번호 입력(.secret, 현재 사용자만 읽기) → 방화벽 TCP 9000 허용 →
-로그온 자동 시작 작업(`BitPlusWatcher`) 등록 → 지금 시작 → **이 PC의 IP를 출력**합니다.
+설치 스크립트가 순서대로: `C:\bitplus` 복사 → bitbot 비밀번호 입력(.secret, 현재 사용자만 읽기) → 방화벽 TCP 9000 허용(관리자일 때) →
+로그온 자동 시작 작업(`BitPlusWatcher`, 실행 시간 제한 없음·죽으면 1분 뒤 재시작) 등록 → 지금 시작 → **이 PC의 IP를 출력**합니다.
 PC 이름(`-Pc`)은 PC마다 다르게: `접수1`, `접수2`, `접수3`.
+- 관리자가 아니어도 작업 등록·시작은 됩니다(방화벽만 건너뜀). 처음 실행 때 Windows 방화벽 창이 뜨면 **허용**.
+- 작업 등록이 막힌 PC에서는 시작 프로그램 폴더의 `BitPlusWatcher.vbs` 로 대체 등록됩니다.
+- 접수 PC는 부팅 후 **로그온**이 되어야 시작됩니다(비트도 마찬가지). 자동 로그온이 아니면 아침에 로그온만 하면 됩니다.
 
 ## 3. 비트 전광판IP 등록 (0번 항목) — 세 PC의 IP를 모두 목록에 추가
 
@@ -51,7 +54,7 @@ PC 이름(`-Pc`)은 PC마다 다르게: `접수1`, `접수2`, `접수3`.
 - 로그: `%LOCALAPPDATA%\bitplus_watcher\watcher.log` 에 `Firebase 로그인 성공`, `BITCast 수신 대기: TCP 9000`
 - 비트에서 [환자접수] → 로그에 `전송: 2026-09-09_ocm193429 접수 (… 차트번호 있음)` → 동선관리 3층 대기실에 카드(2~3초)
 - 동선관리 상단 pill: `비트 접수1 ●` 초록
-- 중지: `schtasks /End /TN BitPlusWatcher` · 삭제: `schtasks /Delete /TN BitPlusWatcher /F`
+- 중지: `Stop-ScheduledTask BitPlusWatcher` · 다시 시작: `Start-ScheduledTask BitPlusWatcher` · 삭제: `Unregister-ScheduledTask BitPlusWatcher -Confirm:$false`
 
 ## 6. 로그 / 상태
 
@@ -65,7 +68,7 @@ PC 이름(`-Pc`)은 PC마다 다르게: `접수1`, `접수2`, `접수3`.
 | `비밀번호 파일이 없습니다` | 3단계 파일 이름·위치 확인 (`.secret.txt` 아님) |
 | `Firebase 로그인 실패 … INVALID_LOGIN_CREDENTIALS` | bitbot 비밀번호 틀림 또는 계정 미생성 |
 | pill 이 노랑 | 비트플러스 접수 창이 닫혀 있음 — 접수 메뉴를 다시 열면 됨 |
-| pill 이 회색 | 스크립트가 꺼짐 — `schtasks /Run /TN BitPlusWatcher` 또는 PC 재로그온 |
+| pill 이 회색 | 스크립트가 꺼짐 — `Start-ScheduledTask BitPlusWatcher` 또는 PC 재로그온 |
 | 환자가 대기 줄에 안 뜸 | 이미 보드에 있는 환자는 안 뜸 / 30분 지난 조회는 자동 제거 / 로그의 `전송:` 줄 확인 |
 | 비트 업데이트 후 안 읽힘 | 인적정보 라벨 이름이 바뀐 경우 — `bitplus_probe.ps1` 로 다시 확인 후 스크립트의 `$LABELS` 수정 |
 

@@ -32,10 +32,24 @@ if ($isAdmin) {
   Write-Host "③ 방화벽: TCP 9000 인바운드(같은 네트워크) 허용"
 } else { Write-Host "③ (관리자 아님) 방화벽 규칙은 건너뜀 — 다른 PC의 캐스트가 안 오면 관리자 PowerShell에서 다시 실행" -ForegroundColor Yellow }
 
-$tr = "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bitplus_watcher.ps1`" -Pc $Pc"
-schtasks /Create /TN 'BitPlusWatcher' /SC ONLOGON /RL LIMITED /TR $tr /F | Out-Null
-Write-Host "④ 로그온 시 자동 시작 작업 등록: BitPlusWatcher (-Pc $Pc)"
-schtasks /Run /TN 'BitPlusWatcher' | Out-Null
+# 로그온 시 자동 시작 (관리자 아니어도 현재 사용자 작업으로 등록됨). 실행 시간 제한 없음(schtasks 기본 72시간 제한 회피), 죽으면 1분 뒤 재시작
+$args_ = "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bitplus_watcher.ps1`" -Pc $Pc"
+try {
+  Get-Process powershell -ErrorAction SilentlyContinue | Where-Object { try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine -like '*bitplus_watcher.ps1*' } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue   # 이전 수동 실행분 정리
+  $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $args_
+  $trg = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+  $set = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName 'BitPlusWatcher' -Action $act -Trigger $trg -Settings $set -RunLevel Limited -Force -ErrorAction Stop | Out-Null
+  Write-Host "④ 로그온 시 자동 시작 작업 등록: BitPlusWatcher (-Pc $Pc)"
+  Start-ScheduledTask -TaskName 'BitPlusWatcher'
+} catch {
+  # 작업 스케줄러가 막혀 있으면 시작 프로그램 폴더의 .vbs 로 대체(창 없이 실행)
+  $vbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'BitPlusWatcher.vbs'
+  $line = 'CreateObject("WScript.Shell").Run "powershell.exe ' + ($args_ -replace '"', '""') + '", 0, False'
+  [IO.File]::WriteAllText($vbs, $line, [Text.Encoding]::Unicode)
+  Write-Host "④ 작업 등록 실패($($_.Exception.Message)) → 시작 프로그램에 등록: $vbs" -ForegroundColor Yellow
+  Start-Process wscript.exe -ArgumentList "`"$vbs`""
+}
 Start-Sleep 6
 $log = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log'
 Write-Host "⑤ 시작됨 — 최근 로그:"; if (Test-Path $log) { Get-Content $log -Tail 4 | ForEach-Object { "   $_" } }
@@ -44,4 +58,4 @@ $ips = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like 
 Write-Host ""
 Write-Host "▶ 비트 환경설정 › 기타사항 › 전광판IP 세팅에 등록할 이 PC IP: $($ips -join ', ')  (구분: 접수BitCast)" -ForegroundColor Cyan
 Write-Host "  ※ 이 IP가 바뀌지 않도록 고정 IP(또는 공유기 예약)로 설정하세요."
-Write-Host "  중지: schtasks /End /TN BitPlusWatcher   삭제: schtasks /Delete /TN BitPlusWatcher /F   로그: $log"
+Write-Host "  중지: Stop-ScheduledTask BitPlusWatcher   삭제: Unregister-ScheduledTask BitPlusWatcher -Confirm:`$false   로그: $log"
