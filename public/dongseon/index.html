@@ -1841,7 +1841,9 @@ function bitBackfillMemo(){
     /* 접수메모(당일): 캐스트 메시지는 8자로 잘려 오므로(비트 전광판 한계), 인적정보의 전체 문장이 오면 잘린 것을 통째로 바꾼다 */
     const full=(r.memoToday||'').trim(), cut=(r.castMemo||'').trim(), cur=(p.memoToday||'').trim();
     const nt=full||cut;
-    if(nt&&nt!==cur&&(!cur||cur===cut||nt.startsWith(cur))){p.memoToday=nt;save(p);}
+    /* 카드 메모가 비트에서 자동으로 넣은 것(p.bit.memoSrc)이거나 잘린 캐스트 메모(8자 이하)면 비트 전체 문장으로 바꾼다. 직원이 손으로 바꾼 메모는 유지 */
+    const autoMemo=!cur||cur===cut||nt.startsWith(cur)||(p.bit&&(cur===(p.bit.memoSrc||'')||(p.bit.auto&&cur.length<=8)));
+    if(nt&&nt!==cur&&autoMemo){p.memoToday=nt;if(p.bit)p.bit.memoSrc=nt;save(p);}
     if(!mrn)return;
     const parts=[(r.memoCont||'').trim(),(r.memoRx||'').trim()].filter(Boolean);   // 비트 접수메모(연속) + 원외처방 특이사항 → 특이사항
     let cm=regMemo(mrn),changed=false;
@@ -2006,7 +2008,7 @@ function bitCreatePatient(r,name,reg){
   const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:'',smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
   p.memoToday=r.memoToday||r.castMemo||'';
   p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true,
-         ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn};
+         ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn,memoSrc:p.memoToday||''};
   if(mrn){
     regUpsert(mrn,name,birth,sex);
     try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,name,combo);}catch(e){}
