@@ -1762,9 +1762,10 @@ function bitOnBoard(r){
   const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();
   return data.some(p=>!p.discharged&&((mrn&&(p.mrn||'').trim()===mrn)||(ocm&&p.bit&&String(p.bit.ocmNum||'')===ocm)));
 }
-/* 취소 처리(status='취소')된 문서가 다시 접수됨 — 비트는 접수 수정·보류 등을 '접수취소 → 접수' 쌍(같은 접수번호)으로 보내므로,
-   마지막 캐스트가 접수(cancelled=false, registeredAt > cancelledAt)이면 살아난 것으로 보고 다시 자동 생성 대상으로 삼는다 */
-function bitRevived(r){return !!(r&&r.status==='취소'&&r.registered===true&&r.cancelled===false&&new Date(r.registeredAt||0)>new Date(r.cancelledAt||0));}
+/* 취소 처리(status='취소')된 문서가 다시 살아남 — 비트는 접수 수정·보류를 '접수취소 → 접수' 쌍으로, 예약 환자를 '예약접수 → 접수취소 → 사전예약'으로 보낸다.
+   감시 스크립트는 취소 뒤에 환자가 살아 있음을 뜻하는 캐스트(접수·사전예약·호출·수납대기 등)가 오면 cancelled=false 로 되돌리므로,
+   cancelled=false 인 등록 문서는 살아난 것으로 보고 다시 자동 생성 대상으로 삼는다 */
+function bitRevived(r){return !!(r&&r.status==='취소'&&r.registered===true&&r.cancelled===false);}
 function bitVisible(){
   const now=Date.now();
   return BIT_INTAKE.filter(r=>{
@@ -2005,6 +2006,8 @@ function bitCreatePatient(r,name,reg){
     try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(mrn))setRegFamily(mrn,name,r.guardian+'('+r.relation+')');}catch(e){}
   }
   autoAssignRoomStaff(p);
+  /* 비트의 담당의가 우선: 방(3층 대기실)에 전담 진료의가 1명 지정돼 있어도 비트 접수의 담당의로 덮어쓴다 (아니면 모든 카드가 그 방 진료의로 보임) */
+  if(doctor){p.roomDocs=p.roomDocs||{};p.roomDocs[first]=doctor;}
   audit('환자추가(비트 자동)',name+' ('+(mrn||'차트번호 없음')+') '+(r.pc||'')+(r.room?' '+r.room:''));
   data.push(p);save(p);cloudSaveConfig();render();
   try{enteredRoom(p,curRoom(p));}catch(e){}

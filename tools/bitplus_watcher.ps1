@@ -233,7 +233,11 @@ function HandleCast($m) {
     3 {  # 접수취소
       $fields.cancelled = $true; $fields.cancelledAt = (NowIso)
     }
-    default { $fields.event = $cname; $fields.eventAt = (NowIso) }   # 호출·보류 등: 기록만 (동선관리에서 추후 활용)
+    default {   # 호출·보류·사전예약·수납대기 등: 기록. 접수취소 뒤에 이런 캐스트가 오면 환자가 살아 있다는 뜻 → 취소 해제
+      # (예약 환자: 예약접수(0/1) → 3초 뒤 접수취소(3) → 사전예약(18)/진료중변경(21) 순으로 온다. 이 취소는 진짜 취소가 아님)
+      $fields.event = $cname; $fields.eventAt = (NowIso)
+      if ($m.command -notin 8, 10) { $fields.cancelled = $false }
+    }
   }
   FsPatch "bitIntake/$docId" $fields
   Log "전송: $docId $cname (이름 $($m.name.Length)자, 진료실 $($m.room), 차트번호 $(if ($fields.mrn) { '있음' } else { '없음' }), from $($m.fromIp))"
