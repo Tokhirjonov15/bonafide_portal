@@ -1,7 +1,7 @@
 ﻿# ─────────────────────────────────────────────────────────────
-#  비트플러스 접수 감시 스크립트 v2 (반듯한정형외과 동선관리 연동)
+#  비트플러스 접수 감시 스크립트 v3 (반듯한정형외과 동선관리 연동)
 #
-#  두 채널을 합친다:
+#  세 채널을 합친다 (①②는 접수 PC, ③은 진료실 PC — 같은 스크립트가 열린 창을 보고 스스로 판단한다):
 #   ① BITCast (TCP 9000) — 비트 환경설정 › 기타사항 › 전광판IP 세팅에 이 PC IP를 등록하면
 #      모든 접수 PC의 비트가 접수/취소/호출 이벤트를 이 PC로 보낸다.
 #      메시지: "Command|이름|진료실|분(0시 기준)|메모|담당의|이전방|접수번호|"
@@ -10,9 +10,13 @@
 #      ※ 차트번호는 메시지에 없다 → ②의 인적정보 캐시로 채운다.
 #   ② 접수 창 인적정보 패널(UIAutomation, 2초) — 조회된 환자의 차트번호·주민번호7·보험·메모 등을 캐시.
 #      비트에는 아무것도 입력·클릭하지 않는다. 주민번호 뒷자리·전화·주소는 읽지 않는다.
+#   ③ 외래진료실 창(BITDoctorOrder, Win32, 2초) — 진료실 PC에서 의사가 '증상' 칸 맨 아래에 적는 약·주사 목록을 읽는다.
+#      맨 아래에서 위로 올라가며 처음 만나는 기준 문구($RX_MARKERS, 기본 'neuropathic pain') 줄부터 끝까지가 처방 목록.
+#      전체 진료 기록은 보내지 않는다(그 줄들만). 2번 연속 같은 값일 때만 전송, 바뀌면 다시 전송.
 #
 #  Firestore:  bitIntake/{날짜}_ocm{접수번호}  ← 접수 이벤트(등록/취소).  같은 문서에 여러 PC가 merge 로 쓴다.
-#              bitStatus/{PC}                 ← 하트비트
+#              bitNote/{날짜}_{차트번호}       ← 진료실 처방 목록(슬립용). 동선관리 '슬립 화면'이 차트번호로 카드와 연결한다.
+#              bitStatus/{PC}                 ← 하트비트 (bitOpen=접수 창, doctorOpen=외래진료실 창)
 #  동선관리는 registered=true 문서를 확인 없이 3층 대기실 카드로 만든다.
 #
 #  설치: 1) C:\bitplus\bitplus_watcher.ps1 로 복사  2) 같은 폴더 bitplus_watcher.secret 첫 줄에 bitbot 비밀번호
@@ -150,6 +154,48 @@ function ReadRx($hwnd) {   # 차트번호 칸(라벨 오른쪽) + 특이사항 �
   $memo = if ($memoEl) { $memoEl.name.Trim() } else { '' }
   return @{ mrn = $mrn; memoRx = $memo; found = ($null -ne $memoEl) }
 }
+# ── ③ 외래진료실 창(진료실 PC) — 증상 칸 맨 아래의 약·주사 목록 ──
+$RX_MARKERS = @('neuropathic pain')   # 처방 목록의 시작을 알리는 문구(대소문자 무시). 맨 아래에서 위로 올라가며 처음 만나는 줄부터가 목록
+$RX_MAX_LINES = 12                    # 안전 상한(보통 2~10줄)
+function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 (BITDoctorOrder.exe). 없으면 $null (접수 PC에서는 보통 없음)
+  $proc = Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $proc) { return $null }
+  foreach ($h in [BitW.U32]::Tops()) { if ([BitW.U32]::Pid($h) -ne $proc.Id) { continue }
+    if ((([BitW.U32]::Text($h)) -replace '\s', '') -like '외래진료실*') { return $h } }
+  return $null
+}
+function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) — 읽기 전용
+  $els = @()
+  foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch 'Window|STATIC|EDIT|RichEdit|RICHEDIT') { continue }
+    $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
+    if (($r.R - $r.L) -le 0) { continue }
+    $els += [pscustomobject]@{ x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
+  }
+  $lblMrn = $els | Where-Object { (($_.name -replace '\s', '') -eq '차트번호') -and $_.w -lt 120 } | Select-Object -First 1
+  $lblName = $els | Where-Object { (($_.name -replace '\s', '') -eq '수진자명') -and $_.w -lt 120 } | Select-Object -First 1
+  if (-not $lblMrn) { return $null }
+  $mrnEl = $els | Where-Object { $_.cls -match 'EDIT' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 60) } | Sort-Object x | Select-Object -First 1
+  $nameEl = $null
+  if ($lblName) { $nameEl = $els | Where-Object { $_ -ne $lblName -and [Math]::Abs($_.y - $lblName.y) -le 10 -and $_.x -ge ($lblName.x + $lblName.w - 8) -and $_.x -le ($lblName.x + $lblName.w + 60) -and $_.name.Trim() } | Sort-Object x | Select-Object -First 1 }
+  # 증상 칸: RichEdit 중 화면에서 가장 위(y 최소)이면서 폭 200 이상인 것 (주호소/현병력 소형 칸·특이사항·과거내역 칸 제외)
+  $noteEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_.w -ge 200 -and $_.h -ge 60 } | Sort-Object y, @{ Expression = { -($_.w * $_.h) } } | Select-Object -First 1
+  $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
+  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); found = ($null -ne $noteEl) }
+}
+function ExtractRx($text) {   # 증상 전체 → 맨 아래 처방 목록 줄들. 맨 아래에서 위로 올라가며 처음 만나는 기준 문구 줄부터 끝까지. 없으면 마지막 문단(빈 줄 뒤)을 marker=false 로
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
+  if ($end -lt 0) { return @{ lines = @(); marker = $false } }
+  $start = -1
+  for ($i = $end; $i -ge 0; $i--) { $l = $lines[$i].ToLowerInvariant(); foreach ($m in $RX_MARKERS) { if ($l.Contains($m.ToLowerInvariant())) { $start = $i; break } }; if ($start -ge 0) { break } }
+  $marker = ($start -ge 0)
+  if (-not $marker) { $start = $end; while ($start -gt 0 -and $lines[$start - 1].Trim()) { $start-- } }   # 기준 문구 없음 → 마지막 문단
+  $out = @(); for ($i = $start; $i -le $end; $i++) { if ($lines[$i].Trim()) { $out += ($lines[$i].Trim() -replace '\s{2,}', ' ') } }
+  if ($out.Count -gt $RX_MAX_LINES) { $out = @($out[($out.Count - $RX_MAX_LINES)..($out.Count - 1)]) }
+  return @{ lines = $out; marker = $marker }
+}
+
 $LABELS = @{   # 화면 라벨(공백 제거) → 필드 키
   '차트번호(F1)(엔터)' = 'mrn'; '수진자명(F1)' = 'name'; '주민번호' = 'rrn'; '전진료실' = 'prevRoomDoc'; '전진료일' = 'prevVisit'
   '다음예약일' = 'nextResv'; '가입자성명' = 'guardian'; '최초내원일' = 'firstVisit'; '관계' = 'relation'; '보험유형' = 'ins'
@@ -235,6 +281,7 @@ $script:SentHash = @{}         # 문서 id → 마지막으로 보낸 인적정�
 $script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보낸 차트번호는 다른 환자 조회로 바뀌지 않는다)
 $script:DocByMrn = @{}         # 차트번호 → 오늘 문서 id (원외처방 특이사항을 패널과 무관하게 바로 보충할 때)
 $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:RxLast = ''; $script:RxCount = 0   # 원외처방 특이사항 전송 상태
+$script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0                     # ③ 진료실 처방 목록 전송 상태 (차트번호 → 보낸 목록)
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 $LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
 $DUP_MIN = 15                  # 같은 이름·다른 차트번호가 이 시간 안에 함께 조회됐으면 동명이인으로 보고 차트번호를 붙이지 않는다
@@ -294,19 +341,19 @@ function HandleCast($m) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v2: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 기준 문구=$($RX_MARKERS -join '|')  내 IP=$($script:MyIps -join ',')"
 try { FbLogin } catch { Log "Firebase 로그인 실패: $_ (30초 후 재시도)"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
 catch { Log "TCP $CastPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 캐스트 없이 패널만 감시"; $listener = $null }
 $stableHash = ''; $stableCount = 0
-$lastPanel = [DateTime]::MinValue; $lastBeat = [DateTime]::MinValue; $lastOpen = $null
+$lastPanel = [DateTime]::MinValue; $lastBeat = [DateTime]::MinValue; $lastOpen = $null; $lastDocOpen = $null
 $recent = @{}          # 중복 캐스트 억제: key → 시각 (전광판IP + 캐스트IP 가 같으면 같은 메시지가 2번 온다)
-$rxWarned = $false; $rxCache = @{}
+$rxWarned = $false; $rxCache = @{}; $noteWarned = $false
 $sentDay = (Today)
 while ($true) {
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -325,8 +372,30 @@ while ($true) {
       $lastPanel = Get-Date
       $bw = FindBitWindow
       $open = ($null -ne $bw)
-      if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSec -or $open -ne $lastOpen) {
-        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; cast = ($null -ne $listener); ip = ($script:MyIps -join ',') }; $lastBeat = Get-Date; $lastOpen = $open } catch { Log "하트비트 실패: $_" }
+      $dw = $null; try { $dw = FindDoctorWindow } catch { Log "외래진료실 창 찾기 오류: $($_.Exception.Message)" }
+      $docOpen = ($null -ne $dw)
+      if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
+        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',') }; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen } catch { Log "하트비트 실패: $_" }
+      }
+      # ── ③ 외래진료실 증상 칸 맨 아래 처방 목록 (진료실 PC) ──
+      if ($docOpen) {
+        try {
+          $dr = ReadDoctor $dw
+          if ($dr -and -not $dr.found -and -not $noteWarned) { Log "외래진료실 창은 찾았지만 증상 칸을 못 찾음"; $noteWarned = $true }
+          if ($dr -and $dr.mrn -and $dr.note.Trim()) {
+            $ex = ExtractRx $dr.note
+            $rxText = ($ex.lines -join "`n")
+            if ($rxText) {
+              $nk = "$($dr.mrn)|$rxText"
+              if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
+              if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne $rxText) {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
+                FsPatch "bitNote/$(Today)_$($dr.mrn)" @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; updatedAt = (NowIso) }
+                $script:NoteSent[$dr.mrn] = $rxText
+                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, 기준 문구 $(if ($ex.marker) { '있음' } else { '없음 → 마지막 문단' }))"
+              }
+            }
+          }
+        } catch { Log "외래진료실 읽기 오류: $($_.Exception.Message)" }
       }
       if ($open) {
         try {

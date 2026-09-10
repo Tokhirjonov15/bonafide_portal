@@ -515,6 +515,28 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .nudge-grp{display:inline-flex;gap:3px;flex:0 0 auto;margin-bottom:6px}
   .icon-btn.nudge{width:26px;height:22px;padding:0;font-size:10px;line-height:1;border-radius:6px}
   .icon-btn.nudge:disabled{opacity:.3;cursor:default;background:var(--panel);color:var(--sub)}
+  /* 슬립 화면 (진료실 처방 목록 — 태블릿/별창) + 카드의 처방 요약 */
+  .slip-screen{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;background:var(--bg);color:var(--text)}
+  .slip-screen.show{display:flex}
+  .slip-top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-size:15px}
+  .slip-top .hint{font-size:12px;color:var(--muted)}
+  .slip-body{flex:1;display:flex;min-height:0}
+  .slip-list{width:270px;flex:0 0 270px;overflow:auto;border-right:1px solid var(--line);background:var(--panel2)}
+  .slip-item{padding:10px 12px;border-bottom:1px solid var(--line2);cursor:pointer;border-left:4px solid transparent}
+  .slip-item.sel{background:rgba(59,130,246,.14);border-left-color:#3b82f6}
+  .slip-item.ack{opacity:.55}
+  .si-top{display:flex;justify-content:space-between;align-items:baseline;font-size:16px}.si-t{font-size:12px;color:var(--muted)}
+  .si-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .slip-detail{flex:1;overflow:auto;padding:18px 22px}
+  .sd-name{font-size:30px;font-weight:800;line-height:1.2}.sd-sa{font-size:16px;font-weight:700;margin-left:10px;color:var(--sub)}
+  .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
+  .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
+  .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
+  .sd-btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.sd-btns .btn{font-size:16px;padding:10px 18px}
+  .slip-empty{padding:24px;color:var(--muted);font-size:15px}
+  .slip-sum{margin:7px 0 0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:#047857;line-height:1.4;cursor:pointer}
+  .slip-sum .warn{color:var(--orange)}
+  @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
   .next-btn.done{border-color:var(--green);background:var(--green-bg);color:var(--green)}
@@ -890,6 +912,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
+    <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
@@ -1056,6 +1079,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 </div>
 
 <!-- 대기화면 전체화면 오버레이 -->
+<!-- 슬립 화면: 왼쪽 오늘 처방 목록 환자, 오른쪽 환자 정보(위) + 약·주사 목록(아래). ?slip 으로 열면 이 화면만(태블릿) -->
+<div id="slipScreen" class="slip-screen">
+  <div class="slip-top">
+    <b><i data-lucide="pill"></i> 슬립 화면</b><span class="hint" id="slipRoomLbl">전체</span>
+    <div class="spacer"></div>
+    <a class="btn sm" href="?slip" target="_blank" rel="noopener" title="태블릿·별도 창용 주소 (뒤에 &room=물리치료 를 붙이면 그 방 동선의 환자만)"><i data-lucide="external-link"></i> 새 창</a>
+    <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()"><i data-lucide="x"></i> 닫기</button>
+  </div>
+  <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-detail" id="slipDetail"></div></div>
+</div>
 <div id="waitScreen" class="wait-screen">
   <div class="wait-bg" id="waitBg"></div>
   <div class="wait-controls" id="waitControls">
@@ -1727,12 +1760,14 @@ async function doLogin(){
     // 이후는 onAuthStateChanged → establishSession 이 처리
   }catch(e){loginMsg(authErrMsg(e));}
 }
-function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();}
+function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();}
 /* ───── 비트플러스 접수 연동 ─────
    접수 PC의 감시 스크립트(tools/bitplus_watcher.ps1)가 비트 '접수' 창의 인적정보 패널을 읽어
    bitIntake/{날짜_병록번호} 문서로 올린다. 여기서는 오늘 문서만 구독해 보드 위에 '비트 접수 대기' 줄로 보여주고,
    직원이 [접수]를 누르면 정보가 채워진 접수 창을 연다. 자동으로 환자를 만들지는 않는다(직원 확인 필수). */
 let BIT_INTAKE=[], BIT_STATUS={}, BIT_PREFILL=null, BIT_SUB_DATE='';
+let BIT_NOTES=[];                                        // 오늘 진료실 처방 목록(bitNote) — 슬립 화면·카드 요약
+let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
 const BIT_STALE_SEC=90;        // 하트비트가 이보다 오래되면 '연결 끊김'
 function subscribeBitIntake(){
@@ -1746,6 +1781,12 @@ function subscribeBitIntake(){
     try{bitBackfillMrn();}catch(e){console.warn(e);}try{bitBackfillMemo();}catch(e){console.warn(e);}   // 차트번호를 먼저 채운 뒤 메모 보충
     try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}
   },err=>console.warn('bitIntake',err));
+  if(cloud.noteCol){   // 진료실 처방 목록(오늘) — 날짜가 바뀌면 위와 함께 다시 구독
+    try{if(cloud.unsubNote)cloud.unsubNote();}catch(e){}
+    cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
+      BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));onBitNotes();
+    },err=>console.warn('bitNote',err));
+  }
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
     setTimeout(bitCleanupOld,15000);   // 로그인 직후 한 번: 오래된 접수 대기 문서 정리
@@ -1759,9 +1800,9 @@ async function bitCleanupOld(){
     const k='bitCleanup_'+localYMD(new Date());if(localStorage.getItem(k))return;localStorage.setItem(k,'1');
     const lim=new Date();lim.setDate(lim.getDate()-BIT_KEEP_DAYS);const limYmd=localYMD(lim);
     const snap=await cloud.intakeCol.where('date','<',limYmd).limit(300).get();
-    if(snap.empty)return;
-    const b=cloud.db.batch();snap.docs.forEach(d=>b.delete(d.ref));await b.commit();
-    console.log('비트 접수 문서 정리',snap.size);
+    if(!snap.empty){const b=cloud.db.batch();snap.docs.forEach(d=>b.delete(d.ref));await b.commit();console.log('비트 접수 문서 정리',snap.size);}
+    if(cloud.noteCol){const ns=await cloud.noteCol.where('date','<',limYmd).limit(300).get();   // 처방 목록도 같은 보관 기간
+      if(!ns.empty){const b2=cloud.db.batch();ns.docs.forEach(d=>b2.delete(d.ref));await b2.commit();console.log('비트 처방 문서 정리',ns.size);}}
   }catch(e){console.warn('bitCleanupOld',e);}
 }
 /* 보드에 이미 있는 환자인가 — 차트번호 또는 (캐스트 이벤트라면) 접수번호로 판정 */
@@ -1806,11 +1847,84 @@ function renderBitPill(){
   if(!pcs.length||!currentUser){el.style.display='none';return;}
   el.style.display='';const now=Date.now();
   el.innerHTML='비트 '+pcs.map(pc=>{const st=BIT_STATUS[pc]||{};const age=(now-new Date(st.lastSeen||0).getTime())/1000;
-    const cls=age>BIT_STALE_SEC?'':(st.bitOpen?'ok':'warn');
+    const cls=age>BIT_STALE_SEC?'':((st.bitOpen||st.doctorOpen)?'ok':'warn');   // 접수 창(접수 PC) 또는 외래진료실 창(진료실 PC)이 열려 있으면 정상
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+/* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
+   문서 하나 = 오늘 그 환자(차트번호). 카드와는 차트번호로 연결(카드가 없어도 목록은 보임). ?slip 주소로 열면 로그인 뒤 이 화면만 뜬다(태블릿용), &room=물리치료 로 그 방 동선의 환자만. */
+function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(!m)return null;return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;}
+function slipItems(){
+  const room=SLIP_ROOM;
+  return BIT_NOTES.map(n=>{const mrn=String(n.mrn||'').trim();const p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
+      const lines=String(n.rx||'').split('\n').map(s=>s.trim()).filter(Boolean);
+      return {id:n.docId,mrn,note:n,p,lines,name:(p&&p.name)||n.name||'',t:new Date(n.updatedAt||0).getTime()||0};})
+    .filter(it=>it.mrn&&it.lines.length&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
+    .sort((a,b)=>b.t-a.t);
+}
+function slipHeaderInfo(it){const p=it.p,n=it.note;
+  const sexAge=[p&&p.sex?p.sex:'',p&&p.birth&&age(p.birth)?age(p.birth):''].filter(Boolean).join(' / ');
+  const doc=p?(docFor(p,curRoom(p))||p.doctor||''):'';
+  const cur=p?curRoom(p):'';const nxt=(p&&Array.isArray(p.route)&&p.step<p.route.length-1)?p.route[p.step+1]:'';
+  const t=new Date(n.updatedAt||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+  return {sexAge,doc,cur,nxt,hm,birth:(p&&p.birth)||'',pc:n.pc||''};
+}
+function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=document.getElementById('slipScreen');if(el)el.classList.add('show');
+  const cb=document.getElementById('slipCloseBtn');if(cb)cb.style.display=SLIP_MODE?'none':'';renderSlipScreen();}
+function closeSlipScreen(){slipOpen=false;const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');}
+function renderSlipScreen(){
+  if(!slipOpen)return;const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
+  const items=slipItems();
+  const newest=items[0];if(newest&&newest.t>slipLastSeen){if(slipLastSeen)slipSel=newest.mrn;slipLastSeen=newest.t;}   // 새 처방이 오면 자동 선택(첫 로드 제외)
+  if(!items.some(it=>it.mrn===slipSel))slipSel=newest?newest.mrn:'';
+  const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
+  box.innerHTML=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
+      <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
+      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.note.ack?' · ✔ 확인':''}</div></div>`;}).join('')
+    :'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>';
+  const it=items.find(x=>x.mrn===slipSel);
+  if(!it){det.innerHTML='<div class="slip-empty">왼쪽에서 환자를 선택하세요</div>';return;}
+  const h=slipHeaderInfo(it);
+  det.innerHTML=`<div class="sd-head">
+      <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
+      <div class="sd-meta">차트 <b>${esc(it.mrn)}</b>${h.birth?' · '+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.pc?' · '+esc(h.pc):''} · ${h.hm}</div>
+      ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호로 카드를 찾지 못함)</div>'}
+      ${it.note.rxMarker===false?'<div class="sd-meta warn">기준 문구(neuropathic pain)가 없어 마지막 문단을 표시 — 확인 필요</div>':''}
+    </div>
+    <ol class="sd-lines">${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
+    <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> 슬립 인쇄</button>
+      <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button></div>`;
+}
+function ackSlip(docId,on){   // 처치실에서 봤음 표시 — 모든 화면에 공유
+  try{if(cloud.noteCol&&cloud.active)cloud.noteCol.doc(docId).set({ack:!!on,ackBy:(currentUser&&currentUser.name)||'',ackAt:Date.now()},{merge:true});}catch(e){console.warn('ackSlip',e);}
+  const n=BIT_NOTES.find(x=>x.docId===docId);if(n){n.ack=!!on;renderSlipScreen();}}
+function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    /* 슬립 용지: 폭 104mm, 길이는 처방 줄 수만큼(롤/연속지) */
+    @page{size:104mm auto;margin:3mm 4mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#000;background:#fff;width:96mm;padding-bottom:6mm}
+    .nm{font-size:17pt;font-weight:800;line-height:1.2}.nm .sa{font-size:11pt;font-weight:700;margin-left:2mm}
+    .mt{font-size:10.5pt;font-weight:700;margin-top:1mm;line-height:1.35}
+    .rule{border-top:0.4mm solid #000;margin:2mm 0 1.5mm}
+    ol{list-style:none}li{font-size:13pt;font-weight:700;line-height:1.45;padding:0.6mm 0;border-bottom:0.2mm dashed #999}
+    .ft{font-size:8.5pt;color:#333;margin-top:2.5mm}
+  </style></head><body>
+    <div class="nm">${esc(it.name)}<span class="sa">${esc(h.sexAge)}</span></div>
+    <div class="mt">차트 ${esc(it.mrn)}${h.birth?' · '+esc(h.birth):''}</div>
+    ${(h.doc||h.pc||h.hm)?`<div class="mt">${h.doc?'담당의 '+esc(h.doc):''}${h.pc?(h.doc?' · ':'')+esc(h.pc):''}${h.hm?' · '+h.hm:''}</div>`:''}
+    ${h.cur?`<div class="mt">${esc(h.cur)}${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
+    <div class="rule"></div>
+    <ol>${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
+    <div class="ft">${localYMD(now)} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} 출력 · 동선관리</div>
+    <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
+  </body></html>`;}
+function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it)return;   // 숨김 iframe 인쇄(라벨과 같은 방식) — 태블릿에서는 브라우저 인쇄 대화상자
+  try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(ifr);const cw=ifr.contentWindow;cw.onafterprint=function(){setTimeout(()=>{if(ifr.parentNode)ifr.remove();},300);};
+    const d=cw.document;d.open();d.write(slipHTML(it));d.close();setTimeout(()=>{if(ifr.parentNode)ifr.remove();},20000);}catch(e){console.error('slip',e);}}
+function onBitNotes(){try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}}   // 카드 요약(처방 N줄)도 갱신
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -2546,6 +2660,19 @@ async function runSelfTest(){
      meta('T대기실').resOrder=true;
      ok('nudge: 예약배치 방에서는 ▲▼ 숨김', !cardEl(data[0]).querySelector('.nudge-grp'));
      window.save=_sv; data=_d3;}
+    // ── 슬립 화면(진료실 처방 목록) ──
+    {const _d4=data,_n4=BIT_NOTES,_r4=SLIP_ROOM;ROOMS=['3층 대기실','물리치료'];ROOM_META={};SLIP_ROOM='';
+     data=[{id:'s1',name:'슬립환자',mrn:'297',birth:'1990-01-01',sex:'남',doctor:'김현우',route:['3층 대기실','물리치료'],step:0,status:'대기',ord:1,enteredAt:new Date().toISOString(),notes:{}}];
+     normalizeData();
+     BIT_NOTES=[{docId:'2026-01-01_297',mrn:'297',name:'슬립환자',pc:'진료실1',rx:'neuropathic pain\nc-mbb rt 345 / lt 35',rxMarker:true,rxLines:2,updatedAt:new Date().toISOString()},
+                {docId:'2026-01-01_999',mrn:'999',name:'카드없음',pc:'진료실1',rx:'perineural injection x2',rxMarker:false,rxLines:1,updatedAt:new Date(Date.now()-60000).toISOString()}];
+     const items=slipItems();
+     eq('slipItems: 차트번호로 카드 연결, 최신순', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,2],['999',false,1]]);
+     SLIP_ROOM='물리치료'; eq('slipItems: 방 필터 — 동선에 그 방이 있는 카드만', slipItems().map(it=>it.mrn), ['297']); SLIP_ROOM='';
+     const html=slipHTML(items[0]);
+     ok('slipHTML: 104mm 용지 + 환자 정보(위) + 처방 줄(아래)', /size:104mm auto/.test(html)&&html.includes('슬립환자')&&html.includes('297')&&html.includes('김현우')&&html.includes('c-mbb rt 345 / lt 35')&&html.includes('3층 대기실')&&html.indexOf('슬립환자')<html.indexOf('c-mbb'));
+     ok('카드: 처방 목록 요약(처방 2줄) 표시, 처방 없는 카드는 없음', /처방 <b>2줄<\/b>/.test(cardEl(data[0]).innerHTML) && (()=>{const _b=BIT_NOTES;BIT_NOTES=[];const r=!cardEl(data[0]).querySelector('.slip-sum');BIT_NOTES=_b;return r;})());
+     data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;}
     // ── 내원 기록 보관 필드 ──
     {const _cav=cloudAddVisit; cloudAddVisit=()=>{};
      try{
@@ -2601,6 +2728,7 @@ function showSelfTestReport(R,pass,fail){
   document.body.appendChild(ov);
 }
 function boot(){
+  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();}catch(e){}   // ?slip[&room=…] → 로그인 뒤 슬립 화면만(태블릿)
   if(location.hash.indexOf('labelstation')>=0){   // 라벨 전용 창(무음 인쇄) 표지 — EMR 등 다른 용도 사용 방지
     const b=document.createElement('div');
     b.textContent='🖨 라벨 전용 창 — 모든 인쇄가 인쇄창 없이 라벨 프린터로 나갑니다. EMR·업무는 일반 크롬에서 여세요.';
@@ -2860,6 +2988,7 @@ async function startHosted(){
     cloud.aclRef=cloud.db.collection('acl').doc('main');
     cloud.intakeCol=cloud.db.collection('bitIntake');      // 비트플러스 접수 PC 감시 스크립트가 쓰는 문서 (id: YYYY-MM-DD_병록번호)
     cloud.bitStatusCol=cloud.db.collection('bitStatus');   // 접수 PC별 하트비트
+    cloud.noteCol=cloud.db.collection('bitNote');          // 진료실 PC 감시 스크립트가 쓰는 처방 목록(슬립용, id: YYYY-MM-DD_병록번호)
     firebase.auth().onAuthStateChanged(async(user)=>{
       if(!user){currentUser=null;sessionEstablished=false;cloud.email='';
         if(!document.getElementById('loginBody').querySelector('#lg_name'))showLogin();return;}
@@ -2878,7 +3007,7 @@ async function startHosted(){
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
         data=s.docs.map(d=>d.data());normalizeData();localStorage.setItem(STORE,JSON.stringify(data));
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
-        try{renderBitBar();bitAutoProcess();}catch(e){}
+        try{renderBitBar();bitAutoProcess();renderSlipScreen();}catch(e){}
       },err=>cloudErr(err));
       if(cloud.unsubPm)cloud.unsubPm();
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
@@ -2903,6 +3032,7 @@ function afterCloud(){
   rebuildStaff();
   checkClockSkew();
   render();
+  if(SLIP_MODE&&!slipOpen)openSlipScreen();
 }
 
 function loadRooms(){try{const r=JSON.parse(localStorage.getItem(ROOMS_STORE));if(Array.isArray(r)&&r.length)return r;}catch(e){}return [...DEFAULT_ROOMS];}
@@ -4110,6 +4240,8 @@ function cardEl(p){
       <button class="st-btn ${last?'exit':'fin'}" title="${last?'종결 후 보드에서 내보내기':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?'내보내기':'종결'}</button>
     </div>
     ${rxHtml}
+    ${(function(){const n=bitNoteFor(p);if(!n)return '';const ls=String(n.rx||'').split('\n').map(s=>s.trim()).filter(Boolean);if(!ls.length)return '';
+      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||'')}')" title="진료실 처방 목록 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b> · ${esc(ls[0])}${ls.length>1?' …':''}${n.rxMarker===false?' <span class="warn">기준 문구 없음</span>':''}</div>`;})()}
     ${procHtml}
     ${consultHtml}
     ${notesHtml}

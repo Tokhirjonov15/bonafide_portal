@@ -1,6 +1,16 @@
 # 비트플러스 접수 연동 — 설치 안내
 
-`bitplus_watcher.ps1`(v2)은 두 채널을 합쳐 동선관리(Firebase `bitIntake`)에 올립니다.
+`bitplus_watcher.ps1`(v3)은 세 채널을 합쳐 동선관리(Firebase `bitIntake`·`bitNote`)에 올립니다. 같은 스크립트를 접수 PC와 진료실 PC에 설치하며,
+열려 있는 비트 창(접수 / 외래진료실)을 보고 스스로 무엇을 읽을지 정합니다.
+3. **외래진료실 창 — 처방 목록(진료실 PC, Win32, 2초)** — 의사가 '증상' 칸 **맨 아래**에 적는 약·주사 목록을 읽어 `bitNote/{날짜}_{차트번호}` 에 올립니다.
+   - 규칙: 맨 아래에서 위로 올라가며 **처음 만나는 `neuropathic pain` 줄부터 끝까지**가 목록(보통 2~10줄, 상한 12줄). 그 위의 진료 기록(C.C·검사·X-ray 소견)은 보내지 않습니다.
+     기준 문구가 없으면 마지막 문단을 `rxMarker=false` 로 보내고 동선관리가 "확인 필요"로 표시합니다. 기준 문구 추가는 스크립트 상단 `$RX_MARKERS`.
+   - 2번 연속 같은 값(입력 중 아님)일 때 전송, 의사가 고치면 다시 전송(문서 갱신). 창의 **차트번호 칸**으로 환자를 구분하므로 다른 환자로 바꾸면 그 환자 문서로 갑니다.
+   - 동선관리: 카드에 `처방 N줄` 요약이 붙고, 메뉴 **[슬립 화면]** 또는 주소 `…/dongseon/?slip` (태블릿·별도 창, `&room=물리치료` 로 그 방 동선 환자만)에서
+     위에 환자 정보, 아래에 목록을 크게 보여 줍니다. **[슬립 인쇄]** 는 폭 104mm·길이 자동 용지로 인쇄(숨김 iframe, 라벨과 같은 방식). [확인]은 모든 화면에 공유.
+   - 처방내역·슬립 표(C1TrueDBGrid)는 읽을 수 없으므로 물리치료 코드는 슬립에 나오지 않습니다.
+   - 진료실 PC 설치는 접수 PC와 같습니다(`bitplus_install.ps1 -Pc 진료실1`). 전광판IP 등록은 필요 없고(캐스트는 접수 PC용), 방화벽 9000도 없어도 됩니다.
+     pill 은 접수 창 **또는** 외래진료실 창이 열려 있으면 초록(`doctorOpen`).
 1. **BITCast (TCP 9000)** — 비트의 대기표시기(전광판) 연동 채널. 비트 환경설정에 이 PC IP를 등록하면
    **모든 접수 PC**의 비트가 [환자접수]·[접수취소]·[호출] 이벤트를 이 PC로 보냅니다 (`2|이름|진료실|분|메모|담당의|이전방|접수번호|`).
    → 동선관리는 접수 이벤트를 **확인 없이 3층 대기실 카드로 자동 생성**하고, 접수취소면 아직 손대지 않은 카드를 자동 제거합니다.
@@ -110,6 +120,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
     }
+    // 진료실 처방 목록(슬립): 쓰기는 bitbot, 직원은 확인 표시(ack/ackBy/ackAt)만 변경·삭제 가능
+    match /bitNote/{doc} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack','ackBy','ackAt']);
+      allow delete: if request.auth != null;
+    }
     // 그 외(환자·설정 등): 로그인한 직원만 (기존과 동일)
     match /{document=**} {
       allow read, write: if request.auth != null;
@@ -119,7 +137,7 @@ service cloud.firestore {
 ```
 
 ### 8-3. 자동 정리
-동선관리가 로그인 시 7일 지난 `bitIntake` 문서를 자동 삭제합니다(하루 1회). 로그 파일에는 차트번호만 남고 이름·메모는 기록되지 않습니다.
+동선관리가 로그인 시 7일 지난 `bitIntake`·`bitNote` 문서를 자동 삭제합니다(하루 1회). 로그 파일에는 차트번호만 남고 이름·메모·처방 내용은 기록되지 않습니다.
 
 ### 8-4. 남는 위험 (알고 있어야 할 것)
 - 동선관리 계정(snu01~30)이 공통 비밀번호인 동안은 누구든 그 비밀번호로 환자 정보를 볼 수 있습니다. 개인별 비밀번호로 바꾸는 것을 권장합니다.
