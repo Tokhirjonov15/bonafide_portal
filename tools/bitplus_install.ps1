@@ -57,15 +57,19 @@ try {
 }
 Start-Sleep 6
 $log = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log'
-Write-Host "⑤ 시작됨 — 최근 로그:"; if (Test-Path $log) { Get-Content $log -Tail 4 | ForEach-Object { "   $_" } }
+$tail = @(); if (Test-Path $log) { $tail = @(Get-Content $log -Tail 4) }
+Write-Host "⑤ 시작됨 — 최근 로그:"; $tail | ForEach-Object { "   $_" }
+if ($tail -match '로그인 실패') {
+  Write-Host ""
+  Write-Host "✖ Firebase 로그인 실패 — bitbot 비밀번호가 틀렸을 가능성이 큽니다." -ForegroundColor Red
+  Write-Host "  고치기: Remove-Item '$secret' 한 뒤 이 설치 스크립트를 다시 실행해 비밀번호를 다시 입력하세요. (감시 스크립트는 60초마다 재시도)" -ForegroundColor Red
+}
 
 $ips = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like '192.168.*' -or $_.IPAddress -like '10.*' } | ForEach-Object { $_.IPAddress }
 Write-Host ""
-if (Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue) {
-  Write-Host "▶ 외래진료실 창이 열려 있음 → 진료실 PC로 동작합니다. 전광판IP 등록은 필요 없습니다." -ForegroundColor Cyan
-  Write-Host "  확인: 환자를 조회한 상태에서 로그에 '처방 전송: 차트번호 …' 가 찍히고, 동선관리 상단 pill 에 '$Pc' 가 초록으로 뜨면 정상."
-} else {
-  Write-Host "▶ 비트 환경설정 › 기타사항 › 전광판IP 세팅에 등록할 이 PC IP: $($ips -join ', ')  (구분: 접수BitCast)" -ForegroundColor Cyan
-  Write-Host "  ※ 이 IP가 바뀌지 않도록 고정 IP(또는 공유기 예약)로 설정하세요. (진료실 PC라면 비트 외래진료실을 연 뒤 다시 실행하지 않아도 됨 — 감시 스크립트가 창을 보면 스스로 읽기 시작)"
-}
+Write-Host "▶ 이 PC IP: $($ips -join ', ')" -ForegroundColor Cyan
+Write-Host "  · 접수 PC(환자접수를 하는 PC)라면 → 비트 환경설정 › 기타사항 › 전광판IP 세팅에 이 IP 등록 (구분: 접수BitCast). IP는 고정(또는 공유기 예약)으로."
+Write-Host "  · 진료실 PC(외래진료실에서 처방만 적는 PC)라면 → 등록 불필요. 감시 스크립트는 열린 창(접수/외래진료실)을 보고 스스로 읽습니다."
+if (Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue) { Write-Host "  (지금 외래진료실 창이 열려 있음 → 처방 목록도 읽습니다)" }
+Write-Host "  확인: 동선관리 상단 pill 에 '$Pc' 가 초록으로 뜨면 정상. 접수 PC는 환자 조회 시 로그에 '조회 기록', 접수 시 '전송: … 차트번호 있음'."
 Write-Host "  중지: Stop-ScheduledTask BitPlusWatcher   삭제: Unregister-ScheduledTask BitPlusWatcher -Confirm:`$false   로그: $log"

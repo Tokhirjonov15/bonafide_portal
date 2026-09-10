@@ -80,9 +80,25 @@ $Cp949 = [System.Text.Encoding]::GetEncoding(949)
 
 # ── Firebase 로그인 / Firestore REST ──
 $script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null
+$script:LoginFailAt = [DateTime]::MinValue
 function FbLogin() {
+  # 비밀번호가 틀리면 2초마다 재시도하지 않는다(Firebase 가 계정·IP를 잠시 차단함) → 실패 후 60초 동안은 바로 예외
+  if (((Get-Date) - $script:LoginFailAt).TotalSeconds -lt 60) { throw "Firebase 로그인 대기 중(최근 실패)" }
   $body = @{ email = $BotEmail; password = $BotPassword; returnSecureToken = $true } | ConvertTo-Json -Compress
-  $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  try {
+    $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  } catch {
+    $script:LoginFailAt = Get-Date
+    $code = ''; try { $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $code = ((($sr.ReadToEnd() | ConvertFrom-Json).error.message) -split ' ')[0] } catch {}
+    $hint = switch -Wildcard ($code) {
+      'INVALID_LOGIN_CREDENTIALS' { "bitbot 비밀번호가 틀림 → C:\bitplus\bitplus_watcher.secret 삭제 후 설치 스크립트 재실행" }
+      'INVALID_PASSWORD'          { "bitbot 비밀번호가 틀림 → C:\bitplus\bitplus_watcher.secret 삭제 후 설치 스크립트 재실행" }
+      'TOO_MANY_ATTEMPTS*'        { "실패가 잦아 Firebase 가 잠시 차단함 → 비밀번호 파일을 고친 뒤 10분쯤 후 다시 시작" }
+      'EMAIL_NOT_FOUND'           { "bitbot 계정이 없음 → 동선관리 계정 관리에서 bitbot 생성" }
+      default                     { "" }
+    }
+    throw "Firebase 로그인 실패 [$code] $hint"
+  }
   $script:Tok = $r.idToken; $script:Refresh = $r.refreshToken; $script:TokExp = (Get-Date).AddSeconds([int]$r.expiresIn - 300)
   Log "Firebase 로그인 성공"
 }
@@ -358,7 +374,7 @@ function HandleCast($m) {
 
 # ── 메인 루프 ──
 Log "시작 v3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 기준 문구=$($RX_MARKERS -join '|')  내 IP=$($script:MyIps -join ',')"
-try { FbLogin } catch { Log "Firebase 로그인 실패: $_ (30초 후 재시도)"; Start-Sleep 30 }
+try { FbLogin } catch { Log "$_ (60초 후 재시도)"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
 catch { Log "TCP $CastPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 캐스트 없이 패널만 감시"; $listener = $null }
@@ -396,7 +412,8 @@ while ($true) {
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
                  ver = 'v3'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
-        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 } catch { Log "하트비트 실패: $_" }
+        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
+        catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
       }
       # ── ③ 외래진료실 증상 칸 맨 아래 처방 목록 (진료실 PC) ──
       if ($docOpen) {
