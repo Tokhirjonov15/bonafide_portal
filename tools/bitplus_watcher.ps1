@@ -10,9 +10,10 @@
 #      ※ 차트번호는 메시지에 없다 → ②의 인적정보 캐시로 채운다.
 #   ② 접수 창 인적정보 패널(UIAutomation, 2초) — 조회된 환자의 차트번호·주민번호7·보험·메모 등을 캐시.
 #      비트에는 아무것도 입력·클릭하지 않는다. 주민번호 뒷자리·전화·주소는 읽지 않는다.
-#   ③ 외래진료실 창(BITDoctorOrder, Win32, 2초) — 진료실 PC에서 의사가 '증상' 칸 맨 아래에 적는 약·주사 목록을 읽는다.
+#   ③ 외래진료실 창(BITDoctorOrder, Win32, 2초) — 진료실 PC에서 의사가 '증상' 칸 맨 아래에 적는 약·주사 목록과 '특이사항' 칸을 읽는다.
 #      맨 아래에서 위로 올라가며 처음 만나는 기준 문구($RX_MARKERS, 기본 'neuropathic pain') 줄부터 끝까지가 처방 목록.
-#      전체 진료 기록은 보내지 않는다(그 줄들만). 2번 연속 같은 값일 때만 전송, 바뀌면 다시 전송.
+#      전체 진료 기록은 보내지 않는다(그 줄들만). 특이사항은 동선관리가 환자 명단의 특이사항(영구)에 덧붙인다 — 진료 뒤에 적혀도 다음 내원 때 보임.
+#      2번 연속 같은 값일 때만 전송, 바뀌면 다시 전송.
 #
 #  Firestore:  bitIntake/{날짜}_ocm{접수번호}  ← 접수 이벤트(등록/취소).  같은 문서에 여러 PC가 merge 로 쓴다.
 #              bitNote/{날짜}_{차트번호}       ← 진료실 처방 목록(슬립용). 동선관리 '슬립 화면'이 차트번호로 카드와 연결한다.
@@ -183,8 +184,15 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   if ($lblName) { $nameEl = $els | Where-Object { $_ -ne $lblName -and [Math]::Abs($_.y - $lblName.y) -le 10 -and $_.x -ge ($lblName.x + $lblName.w - 8) -and $_.x -le ($lblName.x + $lblName.w + 60) -and $_.name.Trim() } | Sort-Object x | Select-Object -First 1 }
   # 증상 칸: 차트번호 줄보다 아래에 있는 RichEdit 중 화면에서 가장 위(y 최소)이면서 폭 200 이상인 것 (주호소/현병력 소형 칸·특이사항·과거내역 칸 제외)
   $noteEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_.w -ge 200 -and $_.h -ge 60 -and $_.y -gt $lblMrn.y } | Sort-Object y, @{ Expression = { -($_.w * $_.h) } } | Select-Object -First 1
+  # 특이사항 칸: 증상 칸 오른쪽(증상 오른 끝 근처부터 시작)에서 증상 칸 세로 범위 안에 있는 RichEdit (환자에게 따라다니는 메모 — 진료 뒤에 적힘)
+  $memoEl = $null
+  if ($noteEl) { $memoEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_ -ne $noteEl -and $_.w -ge 150 -and $_.h -ge 60 -and $_.x -ge ($noteEl.x + $noteEl.w - 20) -and $_.y -ge $noteEl.y -and $_.y -le ($noteEl.y + $noteEl.h + 120) } | Sort-Object x, y | Select-Object -First 1 }
   $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
-  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); found = ($null -ne $noteEl) }
+  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); found = ($null -ne $noteEl) }
+}
+function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+', '-', '.')과 빈 줄을 빼고 나머지 줄만 (없으면 '')
+  $out = @(); foreach ($l in (($text -replace "`r`n", "`n") -split "[`r`n]")) { $t = $l.Trim(); if ($t -and $t -notmatch '^[\s+\-_.·ㆍ,~*]*$') { $out += ($t -replace '\s{2,}', ' ') } }
+  return ($out -join "`n")
 }
 function ExtractRx($text) {   # 증상 전체 → 맨 아래 처방 목록 줄들. 맨 아래에서 위로 올라가며 처음 만나는 기준 문구 줄부터 끝까지. 없으면 마지막 문단(빈 줄 뒤)을 marker=false 로
   $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
@@ -385,20 +393,21 @@ while ($true) {
         try {
           $dr = ReadDoctor $dw
           if ($dr -and -not $dr.found -and -not $noteWarned) { Log "외래진료실 창은 찾았지만 증상 칸을 못 찾음"; $noteWarned = $true }
-          if ($dr -and $dr.mrn -and $dr.note.Trim()) {
-            $ex = ExtractRx $dr.note
+          if ($dr -and $dr.mrn) {
+            $ex = if ($dr.note.Trim()) { ExtractRx $dr.note } else { @{ lines = @(); marker = $false } }
             $rxText = ($ex.lines -join "`n")
-            if ($rxText) {
-              $nk = "$($dr.mrn)|$rxText"
+            $memo = CleanMemo $dr.memo
+            if ($rxText -or $memo) {
+              $nk = "$($dr.mrn)|$rxText|$memo"
               if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
-              if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne $rxText) {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
-                # rev = 오늘 이 PC에서 이 환자 목록을 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
+              if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo") {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
+                # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
                 $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
-                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; rev = $rev; updatedAt = (NowIso) }
+                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; rev = $rev; updatedAt = (NowIso) }
                 if ($rev -eq 1) { $nf.firstAt = (NowIso) }
                 FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
-                $script:NoteSent[$dr.mrn] = $rxText
-                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, 기준 문구 $(if ($ex.marker) { '있음' } else { '없음 → 마지막 문단' }), ${rev}회차)"
+                $script:NoteSent[$dr.mrn] = "$rxText|$memo"
+                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, 기준 문구 $(if ($ex.marker) { '있음' } elseif ($rxText) { '없음 → 마지막 문단' } else { '목록 없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
               }
             }
           }
