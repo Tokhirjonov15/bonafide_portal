@@ -80,21 +80,23 @@ $Cp949 = [System.Text.Encoding]::GetEncoding(949)
 
 # ── Firebase 로그인 / Firestore REST ──
 $script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null
-$script:LoginFailAt = [DateTime]::MinValue
+$script:LoginFailAt = [DateTime]::MinValue; $script:LoginBackoff = 60
 function FbLogin() {
-  # 비밀번호가 틀리면 2초마다 재시도하지 않는다(Firebase 가 계정·IP를 잠시 차단함) → 실패 후 60초 동안은 바로 예외
-  if (((Get-Date) - $script:LoginFailAt).TotalSeconds -lt 60) { throw "Firebase 로그인 대기 중(최근 실패)" }
+  # 실패 뒤에는 바로 재시도하지 않는다 — Firebase 는 실패가 잦으면 그 공인 IP(병원 전체)의 로그인을 잠시 차단하고, 차단 중 시도는 차단을 연장한다.
+  # 차단(TOO_MANY_ATTEMPTS) → 10분, 비밀번호 오류 → 5분(사람이 고쳐야 함), 그 외(네트워크 등) → 60초
+  if (((Get-Date) - $script:LoginFailAt).TotalSeconds -lt $script:LoginBackoff) { throw "Firebase 로그인 대기 중(최근 실패, $([int]($script:LoginBackoff - ((Get-Date) - $script:LoginFailAt).TotalSeconds))초 후 재시도)" }
   $body = @{ email = $BotEmail; password = $BotPassword; returnSecureToken = $true } | ConvertTo-Json -Compress
   try {
     $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
   } catch {
     $script:LoginFailAt = Get-Date
     $code = ''; try { $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $code = ((($sr.ReadToEnd() | ConvertFrom-Json).error.message) -split ' ')[0] } catch {}
+    $script:LoginBackoff = 60
     $hint = switch -Wildcard ($code) {
-      'INVALID_LOGIN_CREDENTIALS' { "bitbot 비밀번호가 틀림 → C:\bitplus\bitplus_watcher.secret 삭제 후 설치 스크립트 재실행" }
-      'INVALID_PASSWORD'          { "bitbot 비밀번호가 틀림 → C:\bitplus\bitplus_watcher.secret 삭제 후 설치 스크립트 재실행" }
-      'TOO_MANY_ATTEMPTS*'        { "실패가 잦아 Firebase 가 잠시 차단함 → 비밀번호 파일을 고친 뒤 10분쯤 후 다시 시작" }
-      'EMAIL_NOT_FOUND'           { "bitbot 계정이 없음 → 동선관리 계정 관리에서 bitbot 생성" }
+      'INVALID_LOGIN_CREDENTIALS' { $script:LoginBackoff = 300; "bitbot 비밀번호가 틀림 → 설치 스크립트를 -ResetPw 로 다시 실행해 비밀번호 재입력 (5분마다 재시도)" }
+      'INVALID_PASSWORD'          { $script:LoginBackoff = 300; "bitbot 비밀번호가 틀림 → 설치 스크립트를 -ResetPw 로 다시 실행해 비밀번호 재입력 (5분마다 재시도)" }
+      'TOO_MANY_ATTEMPTS*'        { $script:LoginBackoff = 600; "실패가 잦아 Firebase 가 이 병원 IP를 잠시 차단함(비밀번호 문제 아닐 수 있음) → 10분 뒤 자동 재시도, 아무것도 안 해도 됨" }
+      'EMAIL_NOT_FOUND'           { $script:LoginBackoff = 600; "bitbot 계정이 없음 → 동선관리 계정 관리에서 bitbot 생성" }
       default                     { "" }
     }
     throw "Firebase 로그인 실패 [$code] $hint"
@@ -374,7 +376,7 @@ function HandleCast($m) {
 
 # ── 메인 루프 ──
 Log "시작 v3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 기준 문구=$($RX_MARKERS -join '|')  내 IP=$($script:MyIps -join ',')"
-try { FbLogin } catch { Log "$_ (60초 후 재시도)"; Start-Sleep 30 }
+try { FbLogin } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
 catch { Log "TCP $CastPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 캐스트 없이 패널만 감시"; $listener = $null }

@@ -9,7 +9,8 @@
 #  마지막에 이 PC의 IP를 출력한다 → 접수 PC라면 비트 환경설정 › 기타사항 › 전광판IP 세팅에 그 IP를 등록할 것. 진료실 PC는 등록 불필요.
 #  ※ 작업은 지금 로그온한 사용자로 등록된다. 비트를 다른 Windows 계정으로 쓰면 그 계정으로 로그온해서 실행해야 창을 읽을 수 있다.
 # ─────────────────────────────────────────────────────────────
-param([Parameter(Mandatory = $true)][string]$Pc, [string]$Dest = 'C:\bitplus')
+param([Parameter(Mandatory = $true)][string]$Pc, [string]$Dest = 'C:\bitplus',
+      [switch]$ResetPw)   # -ResetPw: 저장된 bitbot 비밀번호를 지우고 다시 입력받는다 (틀리게 넣었을 때)
 $ErrorActionPreference = 'Stop'
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $src = Join-Path $PSScriptRoot 'bitplus_watcher.ps1'
@@ -19,13 +20,19 @@ Copy-Item $src (Join-Path $Dest 'bitplus_watcher.ps1') -Force
 Write-Host "① 스크립트 복사: $Dest\bitplus_watcher.ps1"
 
 $secret = Join-Path $Dest 'bitplus_watcher.secret'
+if ($ResetPw -and (Test-Path $secret)) {   # 읽기 전용으로 잠가 둔 파일 → 현재 사용자에게 권한을 돌려준 뒤 삭제
+  icacls $secret /grant "$($env:USERNAME):F" | Out-Null; Remove-Item $secret -Force
+  Write-Host "② 기존 비밀번호 파일 삭제(-ResetPw)"
+}
 if (-not (Test-Path $secret)) {
+  Write-Host "   ※ 한/영 상태를 확인하고 입력하세요. 입력 중 글자는 보이지 않습니다." -ForegroundColor DarkGray
   $pw = Read-Host -AsSecureString "동선관리 bitbot 계정 비밀번호"
   $plain = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($pw))
+  if (-not $plain.Trim()) { throw "비밀번호가 비어 있습니다." }
   [IO.File]::WriteAllText($secret, $plain, (New-Object Text.UTF8Encoding $false))
-  icacls $secret /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
-  Write-Host "② 비밀번호 파일 저장(현재 사용자만 읽기): $secret"
-} else { Write-Host "② 비밀번호 파일 이미 있음: $secret" }
+  icacls $secret /inheritance:r /grant:r "$($env:USERNAME):M" | Out-Null   # 현재 사용자만 읽기·수정·삭제 (R 만 주면 본인도 못 지움)
+  Write-Host "② 비밀번호 파일 저장(현재 사용자만 접근): $secret  ($($plain.Length)자)"
+} else { Write-Host "② 비밀번호 파일 이미 있음: $secret  (다시 입력하려면 -ResetPw 를 붙여 실행)" }
 
 if ($isAdmin) {
   if (-not (Get-NetFirewallRule -DisplayName 'BitPlus Watcher (TCP 9000)' -ErrorAction SilentlyContinue)) {
@@ -59,10 +66,14 @@ Start-Sleep 6
 $log = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log'
 $tail = @(); if (Test-Path $log) { $tail = @(Get-Content $log -Tail 4) }
 Write-Host "⑤ 시작됨 — 최근 로그:"; $tail | ForEach-Object { "   $_" }
-if ($tail -match '로그인 실패') {
+if ($tail -match 'TOO_MANY_ATTEMPTS') {
+  Write-Host ""
+  Write-Host "⚠ Firebase 가 이 병원 IP의 로그인을 잠시 차단 중입니다(다른 PC의 잦은 실패 때문). 비밀번호 문제가 아닐 수 있습니다." -ForegroundColor Yellow
+  Write-Host "  아무것도 안 해도 됩니다 — 감시 스크립트가 10분마다 다시 시도해 차단이 풀리면 스스로 연결됩니다. 비밀번호가 틀린 PC 가 있다면 그쪽을 -ResetPw 로 고치세요." -ForegroundColor Yellow
+} elseif ($tail -match '로그인 실패') {
   Write-Host ""
   Write-Host "✖ Firebase 로그인 실패 — bitbot 비밀번호가 틀렸을 가능성이 큽니다." -ForegroundColor Red
-  Write-Host "  고치기: Remove-Item '$secret' 한 뒤 이 설치 스크립트를 다시 실행해 비밀번호를 다시 입력하세요. (감시 스크립트는 60초마다 재시도)" -ForegroundColor Red
+  Write-Host "  고치기: 이 설치 스크립트를 -ResetPw 를 붙여 다시 실행하고 비밀번호를 다시 입력하세요:  bitplus_install.ps1 -Pc $Pc -ResetPw" -ForegroundColor Red
 }
 
 $ips = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like '192.168.*' -or $_.IPAddress -like '10.*' } | ForEach-Object { $_.IPAddress }
