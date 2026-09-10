@@ -1,11 +1,13 @@
 ﻿# ─────────────────────────────────────────────────────────────
-#  비트플러스 감시 스크립트 설치 (접수 PC마다 1회) — 관리자 PowerShell에서 실행
+#  비트플러스 감시 스크립트 설치 (접수 PC·진료실 PC마다 1회) — 비트를 쓰는 그 Windows 계정으로 로그온한 상태에서 실행 (관리자 PowerShell 권장)
 #
-#    powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 접수1
+#    접수 PC:   powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 접수1
+#    진료실 PC: powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 진료실1     (외래진료실 창의 처방 목록 → 슬립)
 #
 #  하는 일: C:\bitplus 에 스크립트 복사 → bitbot 비밀번호 입력받아 .secret 저장(현재 사용자만 읽기) →
-#           TCP 9000 방화벽 허용(다른 접수 PC의 캐스트 수신) → 로그온 시 자동 시작 작업 등록 → 지금 시작
-#  마지막에 이 PC의 IP를 출력한다 → 비트 환경설정 › 기타사항 › 전광판IP 세팅에 그 IP를 등록할 것.
+#           TCP 9000 방화벽 허용(다른 접수 PC의 캐스트 수신; 진료실 PC에는 필요 없지만 무해) → 로그온 시 자동 시작 작업 등록 → 지금 시작
+#  마지막에 이 PC의 IP를 출력한다 → 접수 PC라면 비트 환경설정 › 기타사항 › 전광판IP 세팅에 그 IP를 등록할 것. 진료실 PC는 등록 불필요.
+#  ※ 작업은 지금 로그온한 사용자로 등록된다. 비트를 다른 Windows 계정으로 쓰면 그 계정으로 로그온해서 실행해야 창을 읽을 수 있다.
 # ─────────────────────────────────────────────────────────────
 param([Parameter(Mandatory = $true)][string]$Pc, [string]$Dest = 'C:\bitplus')
 $ErrorActionPreference = 'Stop'
@@ -56,6 +58,11 @@ Write-Host "⑤ 시작됨 — 최근 로그:"; if (Test-Path $log) { Get-Content
 
 $ips = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like '192.168.*' -or $_.IPAddress -like '10.*' } | ForEach-Object { $_.IPAddress }
 Write-Host ""
-Write-Host "▶ 비트 환경설정 › 기타사항 › 전광판IP 세팅에 등록할 이 PC IP: $($ips -join ', ')  (구분: 접수BitCast)" -ForegroundColor Cyan
-Write-Host "  ※ 이 IP가 바뀌지 않도록 고정 IP(또는 공유기 예약)로 설정하세요."
+if (Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue) {
+  Write-Host "▶ 외래진료실 창이 열려 있음 → 진료실 PC로 동작합니다. 전광판IP 등록은 필요 없습니다." -ForegroundColor Cyan
+  Write-Host "  확인: 환자를 조회한 상태에서 로그에 '처방 전송: 차트번호 …' 가 찍히고, 동선관리 상단 pill 에 '$Pc' 가 초록으로 뜨면 정상."
+} else {
+  Write-Host "▶ 비트 환경설정 › 기타사항 › 전광판IP 세팅에 등록할 이 PC IP: $($ips -join ', ')  (구분: 접수BitCast)" -ForegroundColor Cyan
+  Write-Host "  ※ 이 IP가 바뀌지 않도록 고정 IP(또는 공유기 예약)로 설정하세요. (진료실 PC라면 비트 외래진료실을 연 뒤 다시 실행하지 않아도 됨 — 감시 스크립트가 창을 보면 스스로 읽기 시작)"
+}
 Write-Host "  중지: Stop-ScheduledTask BitPlusWatcher   삭제: Unregister-ScheduledTask BitPlusWatcher -Confirm:`$false   로그: $log"

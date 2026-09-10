@@ -56,6 +56,7 @@ public delegate bool EnumProc(IntPtr h, IntPtr l);
 [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr res);
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
 public static List<IntPtr> Tops() { var l = new List<IntPtr>(); EnumWindows((h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
 public static List<IntPtr> Children(IntPtr p) { var l = new List<IntPtr>(); EnumChildWindows(p, (h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
 public static string Text(IntPtr h) {
@@ -167,7 +168,9 @@ function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 
 function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) — 읽기 전용
   $els = @()
   foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
-    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch 'Window|STATIC|EDIT|RichEdit|RICHEDIT') { continue }
+    # WinForms 클래스명은 'WindowsForms10.<종류>.app…' 꼴 → 종류만 본다 (라벨=Window/STATIC, 차트번호=EDIT, 증상=RichEdit20W). 숨은 탭·패널의 컨트롤은 제외
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch '\.(Window|STATIC|EDIT|RichEdit\w*|RICHEDIT\w*)\.') { continue }
+    if (-not [BitW.U32]::IsWindowVisible($h)) { continue }
     $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
     if (($r.R - $r.L) -le 0) { continue }
     $els += [pscustomobject]@{ x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
@@ -178,8 +181,8 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   $mrnEl = $els | Where-Object { $_.cls -match 'EDIT' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 60) } | Sort-Object x | Select-Object -First 1
   $nameEl = $null
   if ($lblName) { $nameEl = $els | Where-Object { $_ -ne $lblName -and [Math]::Abs($_.y - $lblName.y) -le 10 -and $_.x -ge ($lblName.x + $lblName.w - 8) -and $_.x -le ($lblName.x + $lblName.w + 60) -and $_.name.Trim() } | Sort-Object x | Select-Object -First 1 }
-  # 증상 칸: RichEdit 중 화면에서 가장 위(y 최소)이면서 폭 200 이상인 것 (주호소/현병력 소형 칸·특이사항·과거내역 칸 제외)
-  $noteEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_.w -ge 200 -and $_.h -ge 60 } | Sort-Object y, @{ Expression = { -($_.w * $_.h) } } | Select-Object -First 1
+  # 증상 칸: 차트번호 줄보다 아래에 있는 RichEdit 중 화면에서 가장 위(y 최소)이면서 폭 200 이상인 것 (주호소/현병력 소형 칸·특이사항·과거내역 칸 제외)
+  $noteEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_.w -ge 200 -and $_.h -ge 60 -and $_.y -gt $lblMrn.y } | Sort-Object y, @{ Expression = { -($_.w * $_.h) } } | Select-Object -First 1
   $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
   return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); found = ($null -ne $noteEl) }
 }
@@ -281,7 +284,7 @@ $script:SentHash = @{}         # 문서 id → 마지막으로 보낸 인적정�
 $script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보낸 차트번호는 다른 환자 조회로 바뀌지 않는다)
 $script:DocByMrn = @{}         # 차트번호 → 오늘 문서 id (원외처방 특이사항을 패널과 무관하게 바로 보충할 때)
 $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:RxLast = ''; $script:RxCount = 0   # 원외처방 특이사항 전송 상태
-$script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0                     # ③ 진료실 처방 목록 전송 상태 (차트번호 → 보낸 목록)
+$script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteRev = @{}   # ③ 진료실 처방 목록 전송 상태 (차트번호 → 보낸 목록 / 갱신 횟수)
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 $LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
 $DUP_MIN = 15                  # 같은 이름·다른 차트번호가 이 시간 안에 함께 조회됐으면 동명이인으로 보고 차트번호를 붙이지 않는다
@@ -353,7 +356,7 @@ $rxWarned = $false; $rxCache = @{}; $noteWarned = $false
 $sentDay = (Today)
 while ($true) {
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -389,9 +392,13 @@ while ($true) {
               $nk = "$($dr.mrn)|$rxText"
               if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
               if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne $rxText) {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
-                FsPatch "bitNote/$(Today)_$($dr.mrn)" @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; updatedAt = (NowIso) }
+                # rev = 오늘 이 PC에서 이 환자 목록을 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
+                $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
+                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; rev = $rev; updatedAt = (NowIso) }
+                if ($rev -eq 1) { $nf.firstAt = (NowIso) }
+                FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
                 $script:NoteSent[$dr.mrn] = $rxText
-                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, 기준 문구 $(if ($ex.marker) { '있음' } else { '없음 → 마지막 문단' }))"
+                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, 기준 문구 $(if ($ex.marker) { '있음' } else { '없음 → 마지막 문단' }), ${rev}회차)"
               }
             }
           }

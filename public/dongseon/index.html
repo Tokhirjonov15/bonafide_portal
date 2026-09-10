@@ -905,7 +905,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
-  <span id="bitPill" class="bit-pill" style="display:none" title="비트플러스 접수 PC 연동 상태 (초록=정상, 노랑=비트 창 닫힘, 회색=연결 끊김)"></span>
+  <span id="bitPill" class="bit-pill" style="display:none" title="비트플러스 연동 상태 — PC별 (초록=접수 창 또는 외래진료실 창 열림, 노랑=비트 창 닫힘, 회색=90초 이상 신호 없음)"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
   <div class="top-actions" id="topActions">
     <button class="btn" id="mineBtn" onclick="toggleChatMine()"><i data-lucide="hand"></i> 담당알람<span id="mineBadge"></span></button>
@@ -1723,7 +1723,7 @@ async function establishSession(){
 /* 공용 PC 보안: 일정 시간 무동작 시 자동 로그아웃 — 시간은 콘솔 설정(acl.idleTimeoutMin, 분). 0=사용 안 함 */
 let IDLE_MIN=0, idleTimer=null;   // 기본 꺼짐(사용자 요청 2026-08-29) — 콘솔에서 board 전용값을 주면 그때만 켜짐
 function resetIdle(){if(idleTimer){clearTimeout(idleTimer);idleTimer=null;}
-  if(!hostedMode||!currentUser||!(IDLE_MIN>0))return;
+  if(!hostedMode||!currentUser||!(IDLE_MIN>0)||SLIP_MODE)return;   // 슬립 전용 창(태블릿)은 표시용이므로 유휴 로그아웃 제외
   if(typeof PRINT_ROOMS!=='undefined'&&PRINT_ROOMS.length)return; // 도착 라벨 자동 인쇄 담당 기기 = 무인 운영 → 자동 로그아웃 제외
   idleTimer=setTimeout(()=>{if(currentUser){try{audit('자동로그아웃');}catch(e){}alert('보안을 위해 '+IDLE_MIN+'분간 사용이 없어 자동 로그아웃되었습니다.\n다시 로그인해 주세요.');logout();}},IDLE_MIN*60*1000);}
 ['mousedown','keydown','touchstart','wheel'].forEach(ev=>window.addEventListener(ev,resetIdle,{passive:true,capture:true}));
@@ -1888,7 +1888,7 @@ function renderSlipScreen(){
   const h=slipHeaderInfo(it);
   det.innerHTML=`<div class="sd-head">
       <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
-      <div class="sd-meta">차트 <b>${esc(it.mrn)}</b>${h.birth?' · '+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.pc?' · '+esc(h.pc):''} · ${h.hm}</div>
+      <div class="sd-meta">차트 <b>${esc(it.mrn)}</b>${h.birth?' · '+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.pc?' · '+esc(h.pc):''} · ${h.hm}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호로 카드를 찾지 못함)</div>'}
       ${it.note.rxMarker===false?'<div class="sd-meta warn">기준 문구(neuropathic pain)가 없어 마지막 문단을 표시 — 확인 필요</div>':''}
     </div>
