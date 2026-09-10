@@ -41,7 +41,10 @@ if (-not (Test-Path $SecretFile)) { Write-Host "비밀번호 파일이 없습니
 $BotPassword = (Get-Content $SecretFile -Encoding UTF8 -TotalCount 1).Trim()
 $LogDir = Join-Path $env:LOCALAPPDATA 'bitplus_watcher'; New-Item -ItemType Directory -Force $LogDir | Out-Null
 $LogFile = Join-Path $LogDir 'watcher.log'
-function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write-Host $line; try { Add-Content $LogFile $line -Encoding UTF8 } catch {} }
+$script:StartedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'); $script:LastErr = ''; $script:LastErrAt = ''; $script:CycMax = 0   # 하트비트에 실어 보내는 자가 진단 (원격에서 로그 없이 상태 파악)
+function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write-Host $line; try { Add-Content $LogFile $line -Encoding UTF8 } catch {}
+  if ($m -match '오류|실패|못 찾음') { $script:LastErr = $m; $script:LastErrAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') } }
+function LogTail($n = 5) { try { return ((Get-Content $LogFile -Tail $n -Encoding UTF8 -ErrorAction Stop) -join "`n") } catch { return '' } }
 function TrimLog() { try { if ((Get-Item $LogFile -ErrorAction SilentlyContinue).Length -gt 2MB) { Get-Content $LogFile -Tail 2000 | Set-Content $LogFile -Encoding UTF8 } } catch {} }
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -389,7 +392,11 @@ while ($true) {
       $dw = $null; try { $dw = FindDoctorWindow } catch { Log "외래진료실 창 찾기 오류: $($_.Exception.Message)" }
       $docOpen = ($null -ne $dw)
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
-        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',') }; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen } catch { Log "하트비트 실패: $_" }
+        # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
+        $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
+                 ver = 'v3'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
+        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 } catch { Log "하트비트 실패: $_" }
       }
       # ── ③ 외래진료실 증상 칸 맨 아래 처방 목록 (진료실 PC) ──
       if ($docOpen) {
@@ -474,6 +481,7 @@ while ($true) {
     }
   } catch { Log "오류: $($_.Exception.Message)"; Start-Sleep 5 }
   # 한 주기가 오래 걸리면(창 읽기·네트워크 지연) 하트비트가 늦어져 pill 이 회색이 된다 → 원인 추적용 기록
-  $cycMs = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
+  $cycMs = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($cycMs -gt $script:CycMax) { $script:CycMax = $cycMs }
+  if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
   Start-Sleep -Milliseconds 500
 }

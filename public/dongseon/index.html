@@ -1859,7 +1859,12 @@ function renderBitPill(){
   el.innerHTML='비트 '+pcs.map(pc=>{const st=BIT_STATUS[pc]||{};const age=(now-new Date(st.lastSeen||0).getTime())/1000;
     const cls=age>BIT_STALE_SEC?'':((st.bitOpen||st.doctorOpen)?'ok':'warn');   // 접수 창(접수 PC) 또는 외래진료실 창(진료실 PC)이 열려 있으면 정상
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
-    return `<span class="bp ${cls}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
+    /* 툴팁 = 감시 스크립트의 자가 진단: 상태·마지막 신호·가동 시간·열린 창·마지막 오류·로그 끝부분 (그 PC에 가지 않고도 확인) */
+    const up=st.uptimeSec?(st.uptimeSec>=3600?Math.floor(st.uptimeSec/3600)+'시간 '+Math.floor(st.uptimeSec%3600/60)+'분':Math.floor(st.uptimeSec/60)+'분'):'';
+    const tip=[`${pc} — ${cls==='ok'?'정상':cls==='warn'?'비트 창 닫힘':'신호 없음 '+Math.round(age/60)+'분'}`,`마지막 신호 ${hm}${st.ver?' · '+st.ver:''}${up?' · 가동 '+up:''}`,
+      `접수 창 ${st.bitOpen?'열림':'닫힘'} · 외래진료실 ${st.doctorOpen?'열림':'닫힘'}${st.ip?' · '+String(st.ip).split(',').filter(x=>/^192\.|^10\./.test(x)).join(',')  :''}`,
+      st.lastErr?`마지막 오류: ${st.lastErr}`:'',st.cycMaxMs>3000?`최장 주기 ${Math.round(st.cycMaxMs/1000)}초`:'',st.logTail?'--- 로그 ---\n'+st.logTail:''].filter(Boolean).join('\n');
+    return `<span class="bp ${cls}" title="${esc(tip)}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
 setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 /* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
