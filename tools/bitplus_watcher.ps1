@@ -79,7 +79,7 @@ $Cp949 = [System.Text.Encoding]::GetEncoding(949)
 $script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null
 function FbLogin() {
   $body = @{ email = $BotEmail; password = $BotPassword; returnSecureToken = $true } | ConvertTo-Json -Compress
-  $r = Invoke-RestMethod -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
   $script:Tok = $r.idToken; $script:Refresh = $r.refreshToken; $script:TokExp = (Get-Date).AddSeconds([int]$r.expiresIn - 300)
   Log "Firebase 로그인 성공"
 }
@@ -87,7 +87,7 @@ function FbToken() {
   if ($script:Tok -and (Get-Date) -lt $script:TokExp) { return $script:Tok }
   if ($script:Refresh) {
     try {
-      $r = Invoke-RestMethod -Method Post -Uri "https://securetoken.googleapis.com/v1/token?key=$ApiKey" -ContentType 'application/x-www-form-urlencoded' -Body "grant_type=refresh_token&refresh_token=$($script:Refresh)"
+      $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://securetoken.googleapis.com/v1/token?key=$ApiKey" -ContentType 'application/x-www-form-urlencoded' -Body "grant_type=refresh_token&refresh_token=$($script:Refresh)"
       $script:Tok = $r.id_token; $script:Refresh = $r.refresh_token; $script:TokExp = (Get-Date).AddSeconds([int]$r.expires_in - 300)
       return $script:Tok
     } catch { Log "토큰 갱신 실패 → 재로그인: $_" }
@@ -104,13 +104,13 @@ function FsFields($h) {   # 해시테이블 → Firestore 필드 표현 (문자�
   return $f
 }
 function FsExists($path) {
-  try { $null = Invoke-RestMethod -Method Get -Uri "$DocBase/$path" -Headers @{ Authorization = "Bearer $(FbToken)" }; return $true }
+  try { $null = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "$DocBase/$path" -Headers @{ Authorization = "Bearer $(FbToken)" }; return $true }
   catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $false }; throw }
 }
 function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는 문서는 생성
   $mask = ($fields.Keys | ForEach-Object { 'updateMask.fieldPaths=' + [Uri]::EscapeDataString($_) }) -join '&'
   $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 6 -Compress
-  $null = Invoke-RestMethod -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 }
 function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
 function Today { return (Get-Date).ToString('yyyy-MM-dd') }
@@ -119,7 +119,7 @@ function FsFindDocByMrn($mrn) {   # 오늘 접수 문서 중 차트번호가 같
           where = @{ compositeFilter = @{ op = 'AND'; filters = @(
             @{ fieldFilter = @{ field = @{ fieldPath = 'date' }; op = 'EQUAL'; value = @{ stringValue = (Today) } } },
             @{ fieldFilter = @{ field = @{ fieldPath = 'mrn' }; op = 'EQUAL'; value = @{ stringValue = [string]$mrn } } }) } } } } | ConvertTo-Json -Depth 12 -Compress
-  $r = Invoke-RestMethod -Method Post -Uri "$DocBase`:runQuery" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+  $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "$DocBase`:runQuery" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
   $ids = @($r | Where-Object { $_.document } | ForEach-Object { ($_.document.name -split '/')[-1] })
   if ($ids.Count) { return ($ids | Sort-Object | Select-Object -Last 1) }   # 같은 환자가 오늘 두 번 접수됐으면 접수번호가 큰 쪽
   return $null
@@ -365,6 +365,7 @@ $recent = @{}          # 중복 캐스트 억제: key → 시각 (전광판IP + 
 $rxWarned = $false; $rxCache = @{}; $noteWarned = $false
 $sentDay = (Today)
 while ($true) {
+  $cycStart = Get-Date
   try {
     if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $script:LookupSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
@@ -472,5 +473,7 @@ while ($true) {
       }
     }
   } catch { Log "오류: $($_.Exception.Message)"; Start-Sleep 5 }
+  # 한 주기가 오래 걸리면(창 읽기·네트워크 지연) 하트비트가 늦어져 pill 이 회색이 된다 → 원인 추적용 기록
+  $cycMs = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
   Start-Sleep -Milliseconds 500
 }

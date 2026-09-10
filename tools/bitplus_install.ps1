@@ -37,12 +37,15 @@ if ($isAdmin) {
 # 로그온 시 자동 시작 (관리자 아니어도 현재 사용자 작업으로 등록됨). 실행 시간 제한 없음(schtasks 기본 72시간 제한 회피), 죽으면 1분 뒤 재시작
 $args_ = "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bitplus_watcher.ps1`" -Pc $Pc"
 try {
-  Get-Process powershell -ErrorAction SilentlyContinue | Where-Object { try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine -like '*bitplus_watcher.ps1*' } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue   # 이전 수동 실행분 정리
+  # 이전 수동 실행분 정리 — 감시 스크립트를 '-File …bitplus_watcher.ps1' 로 실행한 PowerShell 만 (파일명이 우연히 들어간 다른 창·편집기·이 설치 창은 건드리지 않음)
+  Get-Process powershell -ErrorAction SilentlyContinue | Where-Object { if ($_.Id -eq $PID) { return $false }; try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine -match '-File\s+"?[^"\s]*bitplus_watcher\.ps1' } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue
   $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $args_
   $trg = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+  # 5분마다 '살아 있나' 확인 트리거: 스크립트가 죽어 있으면(백신이 끊음·오류 등) 다시 띄우고, 돌고 있으면 IgnoreNew 로 무시된다
+  $trg2 = New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
   $set = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -MultipleInstances IgnoreNew
-  Register-ScheduledTask -TaskName 'BitPlusWatcher' -Action $act -Trigger $trg -Settings $set -RunLevel Limited -Force -ErrorAction Stop | Out-Null
-  Write-Host "④ 로그온 시 자동 시작 작업 등록: BitPlusWatcher (-Pc $Pc)"
+  Register-ScheduledTask -TaskName 'BitPlusWatcher' -Action $act -Trigger @($trg, $trg2) -Settings $set -RunLevel Limited -Force -ErrorAction Stop | Out-Null
+  Write-Host "④ 자동 시작 작업 등록: BitPlusWatcher (-Pc $Pc) — 로그온 시 + 5분마다 생존 확인(죽어 있으면 재시작)"
   Start-ScheduledTask -TaskName 'BitPlusWatcher'
 } catch {
   # 작업 스케줄러가 막혀 있으면 시작 프로그램 폴더의 .vbs 로 대체(창 없이 실행)
