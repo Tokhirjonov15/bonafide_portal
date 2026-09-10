@@ -17,6 +17,7 @@
 #
 #  Firestore:  bitIntake/{날짜}_ocm{접수번호}  ← 접수 이벤트(등록/취소).  같은 문서에 여러 PC가 merge 로 쓴다.
 #              bitNote/{날짜}_{차트번호}       ← 진료실 처방 목록(슬립용). 동선관리 '슬립 화면'이 차트번호로 카드와 연결한다.
+#              bitLookup/{날짜}_{차트번호}     ← 접수 창에서 조회된 인적정보(어느 PC든). 동선관리가 차트번호 없는 캐스트 카드를 이름으로 뒤늦게 채운다.
 #              bitStatus/{PC}                 ← 하트비트 (bitOpen=접수 창, doctorOpen=외래진료실 창)
 #  동선관리는 registered=true 문서를 확인 없이 3층 대기실 카드로 만든다.
 #
@@ -293,6 +294,7 @@ $script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보�
 $script:DocByMrn = @{}         # 차트번호 → 오늘 문서 id (원외처방 특이사항을 패널과 무관하게 바로 보충할 때)
 $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:RxLast = ''; $script:RxCount = 0   # 원외처방 특이사항 전송 상태
 $script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteRev = @{}   # ③ 진료실 처방 목록 전송 상태 (차트번호 → 보낸 목록 / 갱신 횟수)
+$script:LookupSent = @{}       # 차트번호 → bitLookup 으로 보낸 인적정보 해시 (조회 내용이 바뀔 때만 다시 씀)
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 $LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
 $DUP_MIN = 15                  # 같은 이름·다른 차트번호가 이 시간 안에 함께 조회됐으면 동명이인으로 보고 차트번호를 붙이지 않는다
@@ -364,7 +366,7 @@ $rxWarned = $false; $rxCache = @{}; $noteWarned = $false
 $sentDay = (Today)
 while ($true) {
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $script:LookupSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -442,6 +444,16 @@ while ($true) {
           if ($h -eq $stableHash) { $stableCount++ } else { $stableHash = $h; $stableCount = 1 }
           if ($stableCount -eq 2 -and $rec.mrn -and $rec.name) {   # 2번 연속 같은 값(입력 중 아님)일 때 캐시
             CacheLookup $rec
+            # 조회된 인적정보를 bitLookup/{날짜}_{차트번호} 에도 남긴다 — 아래의 이름→캐스트 문서 매칭은 이 스크립트 메모리에만 있어서
+            # 스크립트가 재시작되거나 접수가 다른 PC에서 됐으면 놓친다. 동선관리가 이 문서로 차트번호 없는 캐스트 카드를 이름으로 뒤늦게 채운다(오늘 그 이름이 하나일 때만)
+            try {
+              if ($script:LookupSent[$rec.mrn] -ne $h) {
+                $lf = @{ date = (Today); pc = $Pc; at = (NowIso); name = $rec.name; doctor = $rec.doctor }
+                foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $lf[$k] = $rec[$k] } }
+                FsPatch "bitLookup/$(Today)_$($rec.mrn)" $lf; $script:LookupSent[$rec.mrn] = $h
+                Log "조회 기록: 차트번호 $($rec.mrn) (이름 $($rec.name.Length)자) → bitLookup"
+              }
+            } catch { Log "조회 기록 실패: $($_.Exception.Message)" }
             # 이미 접수(캐스트)된 환자의 인적정보·원외처방 특이사항이 그 뒤에 읽히거나 바뀌면 → 보낸 문서를 보충(merge)
             $d = $script:CastDocByName[$rec.name]
             if ($d -and $script:SentHash[$d] -ne $h) {

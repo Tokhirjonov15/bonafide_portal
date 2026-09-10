@@ -24,6 +24,8 @@
    - 카드의 `원내` 시간 옆에 **접수 시각**(비트 접수 시각, 없으면 동선관리 등록 시각)을 표시합니다.
 2. **접수 창 인적정보 패널**(UIAutomation, 2초) — 조회된 환자의 차트번호·주민번호7·보험·메모를 캐시해 1의 이벤트에 붙입니다
    (캐스트 메시지에는 차트번호가 없음). 캐시가 없으면 이름만으로 카드가 먼저 생기고, 차트번호는 뒤에 자동 보충됩니다.
+   조회된 인적정보는 `bitLookup/{날짜}_{차트번호}` 에도 기록되므로, 접수가 **다른 PC**에서 됐거나 스크립트가 **재시작**된 뒤라도
+   어느 PC에서든 그 환자를 조회하면 동선관리가 이름으로(오늘 그 이름이 하나일 때만) 카드에 차트번호·생년월일을 채웁니다.
    접수 **뒤에** 인적정보가 조회되거나 [원외처방] 창의 특이사항이 열리면 그 내용도 같은 문서에 보충됩니다(카드 특이사항에 자동 추가).
    원외처방 특이사항은 진료 뒤(수납 무렵)에 입력되므로, 창이 열리면 패널에 그 환자가 떠 있지 않아도 차트번호로 오늘 문서를 찾아 바로 보충하고,
    카드가 이미 내보내진 뒤라도 환자 명단의 특이사항에는 남습니다(다음 내원 때 보임).
@@ -121,6 +123,12 @@ service cloud.firestore {
     match /bitStatus/{pc} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
+    }
+    // 접수 창 조회 기록(차트번호 없는 캐스트 카드를 이름으로 보완): bitbot만 쓰기, 직원은 읽기·삭제(7일 정리)
+    match /bitLookup/{doc} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
+      allow delete: if request.auth != null;
     }
     // 진료실 처방 목록(슬립): 쓰기는 bitbot, 직원은 확인 표시(ack/ackBy/ackAt)만 변경·삭제 가능
     match /bitNote/{doc} {
