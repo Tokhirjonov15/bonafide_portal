@@ -62,6 +62,7 @@ public delegate bool EnumProc(IntPtr h, IntPtr l);
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
 [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
 public static List<IntPtr> Tops() { var l = new List<IntPtr>(); EnumWindows((h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
 public static List<IntPtr> Children(IntPtr p) { var l = new List<IntPtr>(); EnumChildWindows(p, (h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
 public static string Text(IntPtr h) {
@@ -188,7 +189,14 @@ function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 
     if ((([BitW.U32]::Text($h)) -replace '\s', '') -like '외래진료실*') { return $h } }
   return $null
 }
-function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) — 읽기 전용
+$script:DocCache = $null   # 외래진료실 컨트롤 핸들 캐시: @{ hwnd; mrn; name; note; memo } — 한 번 찾은 뒤에는 4개 칸만 읽는다 (수백 개 컨트롤을 매번 읽으면 비트가 바쁠 때 주기가 10초 넘게 늘어남)
+function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) · 특이사항(증상 오른쪽 RichEdit) — 읽기 전용
+  $c = $script:DocCache
+  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and [BitW.U32]::IsWindow($c.note) -and (-not $c.memo -or [BitW.U32]::IsWindow($c.memo)) -and (-not $c.name -or [BitW.U32]::IsWindow($c.name))) {
+    return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); name = $(if ($c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
+              note = [BitW.U32]::Text($c.note); memo = $(if ($c.memo) { [BitW.U32]::Text($c.memo) } else { '' }); found = $true }
+  }
+  $script:DocCache = $null
   $els = @()
   foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
     # WinForms 클래스명은 'WindowsForms10.<종류>.app…' 꼴 → 종류만 본다 (라벨=Window/STATIC, 차트번호=EDIT, 증상=RichEdit20W). 숨은 탭·패널의 컨트롤은 제외
@@ -196,7 +204,7 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
     if (-not [BitW.U32]::IsWindowVisible($h)) { continue }
     $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
     if (($r.R - $r.L) -le 0) { continue }
-    $els += [pscustomobject]@{ x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
+    $els += [pscustomobject]@{ hw = $h; x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
   }
   $lblMrn = $els | Where-Object { (($_.name -replace '\s', '') -eq '차트번호') -and $_.w -lt 120 } | Select-Object -First 1
   $lblName = $els | Where-Object { (($_.name -replace '\s', '') -eq '수진자명') -and $_.w -lt 120 } | Select-Object -First 1
@@ -210,6 +218,9 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   $memoEl = $null
   if ($noteEl) { $memoEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_ -ne $noteEl -and $_.w -ge 150 -and $_.h -ge 60 -and $_.x -ge ($noteEl.x + $noteEl.w - 20) -and $_.y -ge $noteEl.y -and $_.y -le ($noteEl.y + $noteEl.h + 120) } | Sort-Object x, y | Select-Object -First 1 }
   $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
+  if ($mrnEl -and $noteEl) {   # 다음 주기부터는 이 핸들들만 읽는다 (비트가 화면을 다시 만들면 IsWindow 가 false → 다시 탐색)
+    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; note = $noteEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { [IntPtr]::Zero }); memo = $(if ($memoEl) { $memoEl.hw } else { [IntPtr]::Zero }) }
+  }
   return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); found = ($null -ne $noteEl) }
 }
 function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+', '-', '.')과 빈 줄을 빼고 나머지 줄만 (없으면 '')
