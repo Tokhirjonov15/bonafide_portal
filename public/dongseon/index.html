@@ -509,6 +509,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .card-foot .icon-btn{width:auto;min-width:0;height:28px;padding:0 8px;font-size:11.5px;font-weight:700;flex:1 1 auto;white-space:nowrap}
   .icon-btn.del{color:var(--red)}
   .icon-btn.del:hover{background:var(--red);border-color:var(--red);color:#fff}
+  /* 대기실 ▲▼ 순서 이동: '원내·접수' 줄 오른쪽 빈 공간에 배치(하단 버튼 줄이 두 줄로 늘어나지 않게). 첫/끝 카드에서는 해당 방향 비활성 */
+  .total-row{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line2);margin-bottom:2px;padding-right:10px}
+  .total-row .total{flex:1 1 auto;min-width:0;border-bottom:0;margin-bottom:0}
+  .nudge-grp{display:inline-flex;gap:3px;flex:0 0 auto;margin-bottom:6px}
+  .icon-btn.nudge{width:26px;height:22px;padding:0;font-size:10px;line-height:1;border-radius:6px}
+  .icon-btn.nudge:disabled{opacity:.3;cursor:default;background:var(--panel);color:var(--sub)}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
   .next-btn.done{border-color:var(--green);background:var(--green-bg);color:var(--green)}
@@ -2517,6 +2523,29 @@ async function runSelfTest(){
       meta('T검사실').smsAuto=false;
       ok('순번·예상 배지: 자동 대기문자 켜진 방에서만 표시', !off && !!on && /2번째/.test(on.textContent));
       data=_d2;}}
+    // ── 대기실 ▲▼ 순서 이동 ──
+    {ROOMS=['T대기실','T검사실'];ROOM_META={};
+     const _d3=data, _sv=window.save; window.save=()=>{};
+     const mk=(id,room,ord,out)=>({id,name:id,route:[room],step:0,status:'대기',ord,out:!!out,enteredAt:new Date().toISOString(),notes:{}});
+     data=[mk('n1','T대기실',1),mk('n2','T대기실',2),mk('n3','T대기실',3),mk('n4','T대기실',4,true),mk('k1','T검사실',5)];
+     normalizeData();
+     ok('nudge: 대기실 카드에만 ▲▼ 표시(검사실·외출자는 없음)',
+        !!cardEl(data[0]).querySelector('.nudge-grp') && !cardEl(data[4]).querySelector('.nudge-grp') && !cardEl(data[3]).querySelector('.nudge-grp'));
+     ok('nudge: 첫 카드 ▲ 비활성, 끝 카드 ▼ 비활성',
+        cardEl(data[0]).querySelectorAll('.nudge')[0].disabled && !cardEl(data[0]).querySelectorAll('.nudge')[1].disabled
+        && cardEl(data[2]).querySelectorAll('.nudge')[1].disabled);
+     nudgeCard('n2',-1);
+     eq('nudge: n2 ▲ → n2,n1,n3 (외출자 n4는 맨 아래 유지)', nudgeList('T대기실').map(p=>p.id).concat(roomQueue('T대기실').length), ['n2','n1','n3',3]);
+     nudgeCard('n2',-1);
+     eq('nudge: 맨 위에서 ▲ → 변화 없음', nudgeList('T대기실').map(p=>p.id), ['n2','n1','n3']);
+     nudgeCard('n1',1);
+     eq('nudge: n1 ▼ → n2,n3,n1', nudgeList('T대기실').map(p=>p.id), ['n2','n3','n1']);
+     data[0].ord=7;data[1].ord=7;   // 같은 ord(옛 데이터) → 한쪽을 밀어 확정
+     nudgeCard(nudgeList('T대기실')[1].id,-1);
+     ok('nudge: 같은 ord여도 위로 이동됨', nudgeList('T대기실')[0].ord<nudgeList('T대기실')[1].ord);
+     meta('T대기실').resOrder=true;
+     ok('nudge: 예약배치 방에서는 ▲▼ 숨김', !cardEl(data[0]).querySelector('.nudge-grp'));
+     window.save=_sv; data=_d3;}
     // ── 내원 기록 보관 필드 ──
     {const _cav=cloudAddVisit; cloudAddVisit=()=>{};
      try{
@@ -4063,7 +4092,8 @@ function cardEl(p){
     ${p.out?`<div class="out-banner"><i data-lucide="footprints"></i> 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
     ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" onclick="event.stopPropagation();toggleParking('${p.id}')">지급 완료</button></div>`:''}
     ${p.parking?`<div class="park-done" title="클릭: 지급 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
-    <div class="total" data-pid="${p.id}">${totalLabel(p)}</div>
+    <div class="total-row"><div class="total" data-pid="${p.id}">${totalLabel(p)}</div>${(function(){const np=nudgePos(p);if(!np||np.n<2)return '';
+        return `<span class="nudge-grp" title="대기실 순서 바꾸기 (위/아래 한 칸)"><button class="icon-btn nudge" ${np.i===0?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',-1)">▲</button><button class="icon-btn nudge" ${np.i===np.n-1?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',1)">▼</button></span>`;})()}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     ${p.ins?`<div class="ins-tag" title="공공보험"><i data-lucide="landmark"></i> ${esc(p.ins)}</div>`:''}
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
@@ -4206,6 +4236,24 @@ function reorderInData(draggedId,targetId,before){
   else{lo=target.ord||0;hi=ti<list.length-1?(list[ti+1].ord||0):lo+2;}
   dragged.ord=(lo+hi)/2;
   save(dragged);render();
+}
+/* ── 대기실 카드 위/아래 한 칸 이동(▲▼) ──
+   비트 캐스트 순서와 실제 도착 순서가 어긋날 때 직원이 바로잡기 위한 것. 지금은 '대기실'로 끝나는 방에서만,
+   예약배치(resOrder)가 꺼진 방에서만 보인다(예약배치 방은 순서가 자동이라 ord 교환이 화면에 반영되지 않음).
+   외출 중인 카드는 항상 맨 아래라 제외. 거울 카드(실제 위치가 짝 방)는 curRoom이 대기실이 아니므로 자연히 제외. */
+function isWaitRoom(room){return /대기실$/.test(room||'');}
+function nudgeList(room){return data.filter(x=>!x.discharged&&!x.out&&x.route.length&&curRoom(x)===room).sort((a,b)=>roomSort(a,b,room));}
+function nudgePos(p){const room=curRoom(p);if(!isWaitRoom(room)||meta(room).resOrder||p.out)return null;
+  const list=nudgeList(room);const i=list.findIndex(x=>x.id===p.id);if(i<0)return null;return {i,n:list.length};}
+function nudgeCard(pid,dir){
+  const p=data.find(x=>x.id===pid);if(!p)return;
+  const pos=nudgePos(p);if(!pos)return;
+  const j=pos.i+dir;if(j<0||j>=pos.n)return;
+  const q=nudgeList(curRoom(p))[j];if(!q)return;
+  const a=p.ord||0,b=q.ord||0;
+  if(a===b){p.ord=b+dir*0.5;}          // 같은 ord(옛 데이터) → 한쪽만 살짝 밀어 순서를 확정
+  else{p.ord=b;q.ord=a;}
+  save(p);if(a!==b)save(q);render();
 }
 
 /* ───── 동선 이동 + 알람 ───── */
