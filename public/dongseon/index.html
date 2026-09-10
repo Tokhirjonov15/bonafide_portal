@@ -1899,25 +1899,30 @@ function renderSlipScreen(){
 function ackSlip(docId,on){   // 처치실에서 봤음 표시 — 모든 화면에 공유
   try{if(cloud.noteCol&&cloud.active)cloud.noteCol.doc(docId).set({ack:!!on,ackBy:(currentUser&&currentUser.name)||'',ackAt:Date.now()},{merge:true});}catch(e){console.warn('ackSlip',e);}
   const n=BIT_NOTES.find(x=>x.docId===docId);if(n){n.ack=!!on;renderSlipScreen();}}
-function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();
+/* 생년월일 → 슬립 표기: 앞 6자리(YYMMDD)만 보이고 뒷자리는 ******* (개인정보 가림). 1990-01-01 → 900101-******* */
+function slipBirthMasked(birth){const d=String(birth||'').replace(/\D/g,'');if(d.length<8)return '';return d.slice(2,8)+'-*******';}
+/* 슬립 인쇄 양식(원내 슬립지 기준): 위 = 차트번호 · 수진자명 · 생년월일(가림), 가운데 = 처방 목록(neuropathic pain 부터), 맨 아래 = 발행일자(오늘) */
+function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=slipBirthMasked(h.birth);
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     /* 슬립 용지: 폭 104mm, 길이는 처방 줄 수만큼(롤/연속지) */
     @page{size:104mm auto;margin:3mm 4mm}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#000;background:#fff;width:96mm;padding-bottom:6mm}
-    .nm{font-size:17pt;font-weight:800;line-height:1.2}.nm .sa{font-size:11pt;font-weight:700;margin-left:2mm}
-    .mt{font-size:10.5pt;font-weight:700;margin-top:1mm;line-height:1.35}
+    table.hd{border-collapse:collapse;width:100%}
+    table.hd th{font-size:10.5pt;font-weight:700;text-align:left;white-space:nowrap;width:22mm;padding:0.7mm 0;color:#222}
+    table.hd td{font-size:13pt;font-weight:800;padding:0.7mm 0}
     .rule{border-top:0.4mm solid #000;margin:2mm 0 1.5mm}
     ol{list-style:none}li{font-size:13pt;font-weight:700;line-height:1.45;padding:0.6mm 0;border-bottom:0.2mm dashed #999}
-    .ft{font-size:8.5pt;color:#333;margin-top:2.5mm}
+    .ft{font-size:10pt;font-weight:700;color:#000;margin-top:3mm;text-align:right}
   </style></head><body>
-    <div class="nm">${esc(it.name)}<span class="sa">${esc(h.sexAge)}</span></div>
-    <div class="mt">차트 ${esc(it.mrn)}${h.birth?' · '+esc(h.birth):''}</div>
-    ${(h.doc||h.pc||h.hm)?`<div class="mt">${h.doc?'담당의 '+esc(h.doc):''}${h.pc?(h.doc?' · ':'')+esc(h.pc):''}${h.hm?' · '+h.hm:''}</div>`:''}
-    ${h.cur?`<div class="mt">${esc(h.cur)}${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
+    <table class="hd">
+      <tr><th>차트번호</th><td>${esc(it.mrn)}</td></tr>
+      <tr><th>수진자명</th><td>${esc(it.name)}</td></tr>
+      <tr><th>생년월일</th><td>${esc(bm||'-')}</td></tr>
+    </table>
     <div class="rule"></div>
     <ol>${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
-    <div class="ft">${localYMD(now)} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} 출력 · 동선관리</div>
+    <div class="ft">발행일자: ${localYMD(now)}</div>
     <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
   </body></html>`;}
 function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it)return;   // 숨김 iframe 인쇄(라벨과 같은 방식) — 태블릿에서는 브라우저 인쇄 대화상자
@@ -2670,7 +2675,10 @@ async function runSelfTest(){
      eq('slipItems: 차트번호로 카드 연결, 최신순', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,2],['999',false,1]]);
      SLIP_ROOM='물리치료'; eq('slipItems: 방 필터 — 동선에 그 방이 있는 카드만', slipItems().map(it=>it.mrn), ['297']); SLIP_ROOM='';
      const html=slipHTML(items[0]);
-     ok('slipHTML: 104mm 용지 + 환자 정보(위) + 처방 줄(아래)', /size:104mm auto/.test(html)&&html.includes('슬립환자')&&html.includes('297')&&html.includes('김현우')&&html.includes('c-mbb rt 345 / lt 35')&&html.includes('3층 대기실')&&html.indexOf('슬립환자')<html.indexOf('c-mbb'));
+     eq('slipBirthMasked: 앞 6자리만, 뒷자리 *******', [slipBirthMasked('1990-01-01'),slipBirthMasked('19900101'),slipBirthMasked(''),slipBirthMasked('1990')], ['900101-*******','900101-*******','','']);
+     ok('slipHTML: 104mm 용지 · 차트번호/수진자명/생년월일(가림) 위 · 처방 줄 · 발행일자 맨 아래 · 생년월일 원문 없음',
+        /size:104mm auto/.test(html)&&html.includes('차트번호')&&html.includes('297')&&html.includes('수진자명')&&html.includes('슬립환자')&&html.includes('900101-*******')&&!html.includes('1990-01-01')
+        &&html.includes('c-mbb rt 345 / lt 35')&&/발행일자: \d{4}-\d{2}-\d{2}/.test(html)&&html.indexOf('슬립환자')<html.indexOf('c-mbb')&&html.indexOf('c-mbb')<html.indexOf('발행일자'));
      ok('카드: 처방 목록 요약(처방 2줄) 표시, 처방 없는 카드는 없음', /처방 <b>2줄<\/b>/.test(cardEl(data[0]).innerHTML) && (()=>{const _b=BIT_NOTES;BIT_NOTES=[];const r=!cardEl(data[0]).querySelector('.slip-sum');BIT_NOTES=_b;return r;})());
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;}
     // ── 내원 기록 보관 필드 ──
