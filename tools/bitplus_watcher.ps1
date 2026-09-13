@@ -29,7 +29,7 @@ param(
   [string]$Pc = $env:COMPUTERNAME,   # 동선관리에 표시될 이 PC 이름 (예: 접수1)
   [int]$CastPort = 9000,             # BITCast PORT_NUM (BITCast.dll 고정값)
   [int]$PollSec = 2,                 # 인적정보 화면 읽기 주기(초)
-  [int]$HeartbeatSec = 30            # 하트비트 주기(초)
+  [int]$HeartbeatSec = 60            # 하트비트 주기(초) — 30→60: PC 5대 기준 하루 쓰기 14,400→7,200회 (Firestore 무료 한도 20,000/일 보호)
 )
 $ErrorActionPreference = 'Continue'
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──

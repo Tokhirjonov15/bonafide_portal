@@ -923,7 +923,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
-  <span id="bitPill" class="bit-pill" style="display:none" title="비트플러스 연동 상태 — PC별 (초록=접수 창 또는 외래진료실 창 열림, 노랑=비트 창 닫힘, 회색=90초 이상 신호 없음)"></span>
+  <span id="bitPill" class="bit-pill" style="display:none" title="비트플러스 연동 상태 — PC별 (초록=접수 창 또는 외래진료실 창 열림, 노랑=비트 창 닫힘, 회색=150초 이상 신호 없음)"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
   <div class="top-actions" id="topActions">
     <button class="btn" id="mineBtn" onclick="toggleChatMine()"><i data-lucide="hand"></i> 담당알람<span id="mineBadge"></span></button>
@@ -1798,7 +1798,7 @@ let BIT_NOTES=[];                                        // 오늘 진료실 처
 let BIT_LOOKUP=[];                                       // 오늘 접수 창 조회 기록(bitLookup) — 차트번호 없는 캐스트 문서를 이름으로 보완
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
-const BIT_STALE_SEC=90;        // 하트비트가 이보다 오래되면 '연결 끊김'
+const BIT_STALE_SEC=150;       // 하트비트(60초 주기)가 이보다 오래되면 '연결 끊김'
 function subscribeBitIntake(){
   if(!cloud.intakeCol)return;
   const today=localYMD(new Date());
