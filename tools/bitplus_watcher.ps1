@@ -11,8 +11,8 @@
 #   ② 접수 창 인적정보 패널(UIAutomation, 2초) — 조회된 환자의 차트번호·주민번호7·보험·메모 등을 캐시.
 #      비트에는 아무것도 입력·클릭하지 않는다. 주민번호 뒷자리·전화·주소는 읽지 않는다.
 #   ③ 외래진료실 창(BITDoctorOrder, Win32, 2초) — 진료실 PC에서 의사가 '증상' 칸 맨 아래에 적는 약·주사 목록과 '특이사항' 칸을 읽는다.
-#      맨 아래에서 위로 올라가며 처음 만나는 기준 문구($RX_MARKERS, 기본 'neuropathic pain') 줄부터 끝까지가 처방 목록.
-#      전체 진료 기록은 보내지 않는다(그 줄들만). 특이사항은 동선관리가 환자 명단의 특이사항(영구)에 덧붙인다 — 진료 뒤에 적혀도 다음 내원 때 보임.
+#      맨 아래에서 위로 올라가며 처음 만나는 'med' 로 시작하는 줄($RX_HEAD)부터 끝까지를 원문 그대로 보낸다. 해석(아래에 neuropathic pain 이 있어야 처방,
+#      med 줄의 g/gp/@/(prone) 표시)은 동선관리가 한다 → 원내 표기 규칙이 바뀌어도 PC 재설치 없이 웹만 고치면 된다. 전체 진료 기록은 보내지 않는다. 특이사항은 동선관리가 환자 명단의 특이사항(영구)에 덧붙인다 — 진료 뒤에 적혀도 다음 내원 때 보임.
 #      2번 연속 같은 값일 때만 전송, 바뀌면 다시 전송.
 #
 #  Firestore:  bitIntake/{날짜}_ocm{접수번호}  ← 접수 이벤트(등록/취소).  같은 문서에 여러 PC가 merge 로 쓴다.
@@ -81,6 +81,11 @@ $Cp949 = [System.Text.Encoding]::GetEncoding(949)
 
 # ── Firebase 로그인 / Firestore REST ──
 $script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null
+# 세션 유지: 로그인에 성공하면 refresh 토큰을 옆 파일에 저장해 두고, 재시작 때는 비밀번호 로그인 대신 토큰 갱신으로 이어간다.
+# (비밀번호 로그인은 실패가 잦으면 병원 IP 전체가 차단되지만, 토큰 갱신은 그 차단과 무관) → 재시작·재설치가 차단 상태에서도 바로 살아난다
+$TokenFile = Join-Path $PSScriptRoot 'bitplus_watcher.token'
+function SaveRefresh($rt) { try { if ($rt) { [IO.File]::WriteAllText($TokenFile, $rt, (New-Object Text.UTF8Encoding $false)); icacls $TokenFile /inheritance:r /grant:r "$($env:USERNAME):M" | Out-Null } } catch {} }
+if (Test-Path $TokenFile) { try { $script:Refresh = (Get-Content $TokenFile -TotalCount 1 -ErrorAction Stop).Trim() } catch { $script:Refresh = $null } }
 $script:LoginFailAt = [DateTime]::MinValue; $script:LoginBackoff = 60
 function FbLogin() {
   # 실패 뒤에는 바로 재시도하지 않는다 — Firebase 는 실패가 잦으면 그 공인 IP(병원 전체)의 로그인을 잠시 차단하고, 차단 중 시도는 차단을 연장한다.
@@ -103,6 +108,7 @@ function FbLogin() {
     throw "Firebase 로그인 실패 [$code] $hint"
   }
   $script:Tok = $r.idToken; $script:Refresh = $r.refreshToken; $script:TokExp = (Get-Date).AddSeconds([int]$r.expiresIn - 300)
+  SaveRefresh $script:Refresh
   Log "Firebase 로그인 성공"
 }
 function FbToken() {
@@ -111,8 +117,9 @@ function FbToken() {
     try {
       $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://securetoken.googleapis.com/v1/token?key=$ApiKey" -ContentType 'application/x-www-form-urlencoded' -Body "grant_type=refresh_token&refresh_token=$($script:Refresh)"
       $script:Tok = $r.id_token; $script:Refresh = $r.refresh_token; $script:TokExp = (Get-Date).AddSeconds([int]$r.expires_in - 300)
+      SaveRefresh $script:Refresh
       return $script:Tok
-    } catch { Log "토큰 갱신 실패 → 재로그인: $_" }
+    } catch { Log "토큰 갱신 실패 → 비밀번호로 재로그인: $($_.Exception.Message)"; $script:Refresh = $null; try { Remove-Item $TokenFile -Force -ErrorAction SilentlyContinue } catch {} }
   }
   FbLogin; return $script:Tok
 }
@@ -180,8 +187,8 @@ function ReadRx($hwnd) {   # 차트번호 칸(라벨 오른쪽) + 특이사항 �
   return @{ mrn = $mrn; memoRx = $memo; found = ($null -ne $memoEl) }
 }
 # ── ③ 외래진료실 창(진료실 PC) — 증상 칸 맨 아래의 약·주사 목록 ──
-$RX_MARKERS = @('neuropathic pain')   # 처방 목록의 시작을 알리는 문구(대소문자 무시). 맨 아래에서 위로 올라가며 처음 만나는 줄부터가 목록
-$RX_MAX_LINES = 12                    # 안전 상한(보통 2~10줄)
+$RX_HEAD = '^\s*med\b'   # 처방 블록 머리글(줄 시작, 대소문자 무시). 이 줄부터 끝까지 원문을 보내고 해석은 동선관리가 한다
+$RX_MAX_LINES = 20         # 안전 상한(머리글부터 세어 앞쪽 유지)
 function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 (BITDoctorOrder.exe). 없으면 $null (접수 PC에서는 보통 없음)
   $proc = Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $proc) { return $null }
@@ -189,12 +196,16 @@ function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 
     if ((([BitW.U32]::Text($h)) -replace '\s', '') -like '외래진료실*') { return $h } }
   return $null
 }
+function Rrn7($t) { $m = [regex]::Match([string]$t, '^\s*(\d{6})-?(\d)'); if ($m.Success) { return $m.Groups[1].Value + '-' + $m.Groups[2].Value } else { return '' } }
+function SexOf($t) { if ([string]$t -match '^\s*\(M/') { return '남' } elseif ([string]$t -match '^\s*\(F/') { return '여' } else { return '' } }
 $script:DocCache = $null   # 외래진료실 컨트롤 핸들 캐시: @{ hwnd; mrn; name; note; memo } — 한 번 찾은 뒤에는 4개 칸만 읽는다 (수백 개 컨트롤을 매번 읽으면 비트가 바쁠 때 주기가 10초 넘게 늘어남)
 function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) · 특이사항(증상 오른쪽 RichEdit) — 읽기 전용
   $c = $script:DocCache
-  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and [BitW.U32]::IsWindow($c.note) -and (-not $c.memo -or [BitW.U32]::IsWindow($c.memo)) -and (-not $c.name -or [BitW.U32]::IsWindow($c.name))) {
-    return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); name = $(if ($c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
-              note = [BitW.U32]::Text($c.note); memo = $(if ($c.memo) { [BitW.U32]::Text($c.memo) } else { '' }); found = $true }
+  $okH = { param($h) ($null -eq $h) -or [BitW.U32]::IsWindow($h) }   # 없는 칸($null)은 통과, 있던 칸은 아직 살아 있어야
+  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and [BitW.U32]::IsWindow($c.note) -and (& $okH $c.memo) -and (& $okH $c.name) -and (& $okH $c.rrn) -and (& $okH $c.sex)) {
+    return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); name = $(if ($null -ne $c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
+              note = [BitW.U32]::Text($c.note); memo = $(if ($null -ne $c.memo) { [BitW.U32]::Text($c.memo) } else { '' })
+              rrn7 = (Rrn7 $(if ($null -ne $c.rrn) { [BitW.U32]::Text($c.rrn) } else { '' })); sex = (SexOf $(if ($null -ne $c.sex) { [BitW.U32]::Text($c.sex) } else { '' })); found = $true }
   }
   $script:DocCache = $null
   $els = @()
@@ -211,7 +222,9 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   if (-not $lblMrn) { return $null }
   $mrnEl = $els | Where-Object { $_.cls -match 'EDIT' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 60) } | Sort-Object x | Select-Object -First 1
   $nameEl = $null
-  if ($lblName) { $nameEl = $els | Where-Object { $_ -ne $lblName -and [Math]::Abs($_.y - $lblName.y) -le 10 -and $_.x -ge ($lblName.x + $lblName.w - 8) -and $_.x -le ($lblName.x + $lblName.w + 60) -and $_.name.Trim() } | Sort-Object x | Select-Object -First 1 }
+$1  # 주민번호 앞 7자리(YYMMDD-S)와 성별: 차트번호 줄의 '######-#' 꼴 라벨과 '(M/…' '(F/…' 라벨 — 뒷자리는 쓰지 않는다(카드가 없어도 슬립에 생년월일을 찍기 위함)
+  $rrnEl = $els | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.name -match '^\s*\d{6}-\d' } | Select-Object -First 1
+  $sexEl = $els | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.name -match '^\s*\((M|F)/' } | Select-Object -First 1
   # 증상 칸: 차트번호 줄보다 아래에 있는 RichEdit 중 화면에서 가장 위(y 최소)이면서 폭 200 이상인 것 (주호소/현병력 소형 칸·특이사항·과거내역 칸 제외)
   $noteEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_.w -ge 200 -and $_.h -ge 60 -and $_.y -gt $lblMrn.y } | Sort-Object y, @{ Expression = { -($_.w * $_.h) } } | Select-Object -First 1
   # 특이사항 칸: 증상 칸 오른쪽(증상 오른 끝 근처부터 시작)에서 증상 칸 세로 범위 안에 있는 RichEdit (환자에게 따라다니는 메모 — 진료 뒤에 적힘)
@@ -219,25 +232,23 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   if ($noteEl) { $memoEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_ -ne $noteEl -and $_.w -ge 150 -and $_.h -ge 60 -and $_.x -ge ($noteEl.x + $noteEl.w - 20) -and $_.y -ge $noteEl.y -and $_.y -le ($noteEl.y + $noteEl.h + 120) } | Sort-Object x, y | Select-Object -First 1 }
   $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
   if ($mrnEl -and $noteEl) {   # 다음 주기부터는 이 핸들들만 읽는다 (비트가 화면을 다시 만들면 IsWindow 가 false → 다시 탐색)
-    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; note = $noteEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { [IntPtr]::Zero }); memo = $(if ($memoEl) { $memoEl.hw } else { [IntPtr]::Zero }) }
+    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; note = $noteEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { $null }); memo = $(if ($memoEl) { $memoEl.hw } else { $null }); rrn = $(if ($rrnEl) { $rrnEl.hw } else { $null }); sex = $(if ($sexEl) { $sexEl.hw } else { $null }) }
   }
-  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); found = ($null -ne $noteEl) }
+  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); rrn7 = (Rrn7 $(if ($rrnEl) { $rrnEl.name } else { '' })); sex = (SexOf $(if ($sexEl) { $sexEl.name } else { '' })); found = ($null -ne $noteEl) }
 }
 function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+', '-', '.')과 빈 줄을 빼고 나머지 줄만 (없으면 '')
   $out = @(); foreach ($l in (($text -replace "`r`n", "`n") -split "[`r`n]")) { $t = $l.Trim(); if ($t -and $t -notmatch '^[\s+\-_.·ㆍ,~*]*$') { $out += ($t -replace '\s{2,}', ' ') } }
   return ($out -join "`n")
 }
-function ExtractRx($text) {   # 증상 전체 → 맨 아래 처방 목록 줄들. 맨 아래에서 위로 올라가며 처음 만나는 기준 문구 줄부터 끝까지. 없으면 마지막 문단(빈 줄 뒤)을 marker=false 로
+function ExtractRx($text) {   # 증상 전체 → 맨 아래 처방 블록(마지막 'med' 줄부터 끝까지, 빈 줄 제외, 원문 그대로). 'med' 줄이 없으면 처방 없음
   $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
   $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
   if ($end -lt 0) { return @{ lines = @(); marker = $false } }
-  $start = -1
-  for ($i = $end; $i -ge 0; $i--) { $l = $lines[$i].ToLowerInvariant(); foreach ($m in $RX_MARKERS) { if ($l.Contains($m.ToLowerInvariant())) { $start = $i; break } }; if ($start -ge 0) { break } }
-  $marker = ($start -ge 0)
-  if (-not $marker) { $start = $end; while ($start -gt 0 -and $lines[$start - 1].Trim()) { $start-- } }   # 기준 문구 없음 → 마지막 문단
+  $start = -1; for ($i = $end; $i -ge 0; $i--) { if ($lines[$i] -match $RX_HEAD) { $start = $i; break } }
+  if ($start -lt 0) { return @{ lines = @(); marker = $false } }
   $out = @(); for ($i = $start; $i -le $end; $i++) { if ($lines[$i].Trim()) { $out += ($lines[$i].Trim() -replace '\s{2,}', ' ') } }
-  if ($out.Count -gt $RX_MAX_LINES) { $out = @($out[($out.Count - $RX_MAX_LINES)..($out.Count - 1)]) }
-  return @{ lines = $out; marker = $marker }
+  if ($out.Count -gt $RX_MAX_LINES) { $out = @($out[0..($RX_MAX_LINES - 1)]) }
+  return @{ lines = $out; marker = $true }
 }
 
 $LABELS = @{   # 화면 라벨(공백 제거) → 필드 키
@@ -386,8 +397,8 @@ function HandleCast($m) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 기준 문구=$($RX_MARKERS -join '|')  내 IP=$($script:MyIps -join ',')"
-try { FbLogin } catch { Log "$_"; Start-Sleep 30 }
+Log "시작 v3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
 catch { Log "TCP $CastPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 캐스트 없이 패널만 감시"; $listener = $null }
@@ -443,11 +454,11 @@ while ($true) {
               if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo") {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
                 # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
                 $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
-                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; rev = $rev; updatedAt = (NowIso) }
+                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso) }
                 if ($rev -eq 1) { $nf.firstAt = (NowIso) }
                 FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
                 $script:NoteSent[$dr.mrn] = "$rxText|$memo"
-                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, 기준 문구 $(if ($ex.marker) { '있음' } elseif ($rxText) { '없음 → 마지막 문단' } else { '목록 없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
+                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
               }
             }
           }

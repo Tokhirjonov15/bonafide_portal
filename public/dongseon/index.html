@@ -536,6 +536,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-empty{padding:24px;color:var(--muted);font-size:15px}
   .slip-sum{margin:7px 0 0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:#047857;line-height:1.4;cursor:pointer}
   .slip-sum .warn{color:var(--orange)}
+  .sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+  .sd-badge{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:700}
   @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
@@ -1879,21 +1881,44 @@ function renderBitPill(){
 setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 /* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
    문서 하나 = 오늘 그 환자(차트번호). 카드와는 차트번호로 연결(카드가 없어도 목록은 보임). ?slip 주소로 열면 로그인 뒤 이 화면만 뜬다(태블릿용), &room=물리치료 로 그 방 동선의 환자만. */
-function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(!m)return null;return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;}
+/* 진료실 처방 블록 해석 — 감시 스크립트는 'med' 줄부터 원문만 보낸다. 원내 표기 규칙(2026-09-13 공지):
+   · 'med' 줄 아래에 'neuropathic pain' 줄이 있어야 처방(약·주사 목록). 없으면 특이사항 성격의 메모 → 슬립에 표시하지 않음
+   · med 줄의 표시: @=진료원장님 주사, (prone)/(supine)=준비 포지션, g=그린(진료 없이 주사만), gp=그린+(주사하면서 진료), 약처방o / 약 x 예정=약처방 있음/없음
+   목록은 med 다음 줄부터 끝까지(neuropathic pain 줄 포함). 규칙이 바뀌면 여기만 고치면 된다(PC 재설치 불필요) */
+function rxParse(rx){
+  const lines=String(rx||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  const mi=lines.findIndex(l=>/^med\b/i.test(l));
+  if(mi<0){   // 구버전 감시 스크립트(neuropathic pain 줄부터 보냄) 호환: 블록이 neuropathic pain 으로 시작하면 처방으로 인정(표시 배지는 없음) — 재설치 전까지 슬립이 비지 않도록
+    if(lines.length&&/neuropathic\s*pain/i.test(lines[0]))return {valid:true,lines,badges:[],head:''};
+    return {valid:false,lines:[],badges:[],head:''};}
+  const ni=lines.findIndex((l,i)=>i>mi&&/neuropathic\s*pain/i.test(l));if(ni<0)return {valid:false,lines:[],badges:[],head:lines[mi]};
+  const head=lines[mi],h=head.replace(/^med\b/i,'').trim();const b=[];
+  if(/@/.test(h))b.push('진료원장님 주사');
+  if(/\bprone\b/i.test(h))b.push('준비: prone');if(/\bsupine\b/i.test(h))b.push('준비: supine');
+  if(/\bgp\b/i.test(h))b.push('그린+');else if(/\bg\b/i.test(h))b.push('그린');
+  if(/약\s*처방\s*[oO0]/.test(h))b.push('약처방 있음');else if(/약\s*(처방)?\s*[xX×]/.test(h)||/약처방\s*없음/.test(h))b.push('약처방 없음');
+  return {valid:true,lines:lines.slice(mi+1),badges:b,head};
+}
+/* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
+function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
+  const nm=String((p&&p.name)||'').trim();if(!nm)return null;const c=BIT_NOTES.filter(n=>String(n.name||'').trim()===nm);return c.length===1?c[0]:null;}
 function slipItems(){
   const room=SLIP_ROOM;
-  return BIT_NOTES.map(n=>{const mrn=String(n.mrn||'').trim();const p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
-      const lines=String(n.rx||'').split('\n').map(s=>s.trim()).filter(Boolean);
-      return {id:n.docId,mrn,note:n,p,lines,name:(p&&p.name)||n.name||'',t:new Date(n.updatedAt||0).getTime()||0};})
-    .filter(it=>it.mrn&&it.lines.length&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
+  return BIT_NOTES.map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
+      let p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
+      if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
+      return {id:n.docId,mrn,note:n,p,lines:rp.lines,badges:rp.badges,valid:rp.valid,name:(p&&p.name)||n.name||'',t:new Date(n.updatedAt||0).getTime()||0};})
+    .filter(it=>it.mrn&&it.valid&&it.lines.length&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
 }
 function slipHeaderInfo(it){const p=it.p,n=it.note;
-  const sexAge=[p&&p.sex?p.sex:'',p&&p.birth&&age(p.birth)?age(p.birth):''].filter(Boolean).join(' / ');
+  const rr=(!p||!p.birth)&&n.rrn7?parseRRN(n.rrn7):null;   // 카드가 없거나 생년월일이 비면 진료실 창의 주민번호 앞 7자리로
+  const birth=(p&&p.birth)||(rr&&rr.birth)||'';const sex=(p&&p.sex)||(rr&&rr.sex)||n.sex||'';
+  const sexAge=[sex,birth&&age(birth)?age(birth):''].filter(Boolean).join(' / ');
   const doc=p?(docFor(p,curRoom(p))||p.doctor||''):'';
   const cur=p?curRoom(p):'';const nxt=(p&&Array.isArray(p.route)&&p.step<p.route.length-1)?p.route[p.step+1]:'';
   const t=new Date(n.updatedAt||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
-  return {sexAge,doc,cur,nxt,hm,birth:(p&&p.birth)||'',pc:n.pc||''};
+  return {sexAge,doc,cur,nxt,hm,birth,pc:n.pc||''};
 }
 function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=document.getElementById('slipScreen');if(el)el.classList.add('show');
   const cb=document.getElementById('slipCloseBtn');if(cb)cb.style.display=SLIP_MODE?'none':'';renderSlipScreen();}
@@ -1913,9 +1938,9 @@ function renderSlipScreen(){
   const h=slipHeaderInfo(it);
   det.innerHTML=`<div class="sd-head">
       <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
+      ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
       <div class="sd-meta">차트 <b>${esc(it.mrn)}</b>${h.birth?' · '+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.pc?' · '+esc(h.pc):''} · ${h.hm}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
-      ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호로 카드를 찾지 못함)</div>'}
-      ${it.note.rxMarker===false?'<div class="sd-meta warn">기준 문구(neuropathic pain)가 없어 마지막 문단을 표시 — 확인 필요</div>':''}
+      ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
     <ol class="sd-lines">${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> 슬립 인쇄</button>
@@ -1939,12 +1964,14 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     .rule{border-top:0.4mm solid #000;margin:2mm 0 1.5mm}
     ol{list-style:none}li{font-size:13pt;font-weight:700;line-height:1.45;padding:0.6mm 0;border-bottom:0.2mm dashed #999}
     .ft{font-size:10pt;font-weight:700;color:#000;margin-top:3mm;text-align:right}
+    .bd{font-size:12pt;font-weight:800;margin-top:1.5mm}
   </style></head><body>
     <table class="hd">
       <tr><th>차트번호</th><td>${esc(it.mrn)}</td></tr>
       <tr><th>수진자명</th><td>${esc(it.name)}</td></tr>
       <tr><th>생년월일</th><td>${esc(bm||'-')}</td></tr>
     </table>
+    ${it.badges.length?`<div class="bd">${esc(it.badges.join(' · '))}</div>`:''}
     <div class="rule"></div>
     <ol>${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
     <div class="ft">발행일자: ${localYMD(now)}</div>
@@ -1954,7 +1981,7 @@ function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it
   try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
     document.body.appendChild(ifr);const cw=ifr.contentWindow;cw.onafterprint=function(){setTimeout(()=>{if(ifr.parentNode)ifr.remove();},300);};
     const d=cw.document;d.open();d.write(slipHTML(it));d.close();setTimeout(()=>{if(ifr.parentNode)ifr.remove();},20000);}catch(e){console.error('slip',e);}}
-function onBitNotes(){try{if(currentUser)bitBackfillMemo();}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}}   // 특이사항 보충 + 카드 요약(처방 N줄) 갱신
+function onBitNotes(){try{if(currentUser){if(bitApplyLookups())bitBackfillMrn();bitBackfillMemo();}}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}}   // 특이사항 보충 + 카드 요약(처방 N줄) 갱신
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -2136,11 +2163,13 @@ function bitApplyRestore(){
    오늘 같은 이름의 조회가 차트번호 둘 이상이면(동명이인) 붙이지 않고 lookupDup 표시. BIT_INTAKE 가 스냅샷마다 새로 만들어지므로 매번 다시 적용. 바뀐 문서가 있으면 true */
 const BIT_LOOKUP_KEYS=['mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'];
 function bitApplyLookups(){
-  if(!BIT_LOOKUP.length)return false;let changed=false;
+  /* 진료실 창에서 읽은 처방 문서(bitNote: 이름·차트번호·주민앞자리)도 조회 기록처럼 쓴다 — 접수 PC에 감시 스크립트가 없어 차트번호 없이 생긴 카드를 진료 시점에 채움 */
+  const L=BIT_LOOKUP.concat(BIT_NOTES.filter(n=>String(n.mrn||'').trim()&&String(n.name||'').trim()).map(n=>({name:n.name,mrn:n.mrn,rrn7:n.rrn7||'',pc:n.pc||'',at:n.updatedAt||''})));
+  if(!L.length)return false;let changed=false;
   BIT_INTAKE.forEach(r=>{
     if(String(r.mrn||'').trim()||r.nameDup)return;
     const name=String(r.name||'').trim();if(!name)return;
-    const cands=BIT_LOOKUP.filter(l=>String(l.name||'').trim()===name&&String(l.mrn||'').trim());
+    const cands=L.filter(l=>String(l.name||'').trim()===name&&String(l.mrn||'').trim());
     const mrns=[...new Set(cands.map(l=>String(l.mrn).trim()))];
     if(!mrns.length)return;
     if(mrns.length>1){r.lookupDup=true;return;}
@@ -2722,10 +2751,22 @@ async function runSelfTest(){
     {const _d4=data,_n4=BIT_NOTES,_r4=SLIP_ROOM;ROOMS=['3층 대기실','물리치료'];ROOM_META={};SLIP_ROOM='';
      data=[{id:'s1',name:'슬립환자',mrn:'297',birth:'1990-01-01',sex:'남',doctor:'김현우',route:['3층 대기실','물리치료'],step:0,status:'대기',ord:1,enteredAt:new Date().toISOString(),notes:{}}];
      normalizeData();
-     BIT_NOTES=[{docId:'2026-01-01_297',mrn:'297',name:'슬립환자',pc:'진료실1',rx:'neuropathic pain\nc-mbb rt 345 / lt 35',rxMarker:true,rxLines:2,updatedAt:new Date().toISOString()},
-                {docId:'2026-01-01_999',mrn:'999',name:'카드없음',pc:'진료실1',rx:'perineural injection x2',rxMarker:false,rxLines:1,updatedAt:new Date(Date.now()-60000).toISOString()}];
+     BIT_NOTES=[{docId:'2026-01-01_297',mrn:'297',name:'슬립환자',pc:'진료실1',rx:'med g\nneuropathic pain\nc-mbb rt 345 / lt 35',rxMarker:true,rxLines:3,updatedAt:new Date().toISOString()},
+                {docId:'2026-01-01_999',mrn:'999',name:'메모환자',pc:'진료실1',rx:'med\nPT는 우측 어깨로\nSLS SHORT+coban1 (5th toe)',rxMarker:true,rxLines:3,updatedAt:new Date(Date.now()-30000).toISOString()},
+                {docId:'2026-01-01_777',mrn:'777',name:'카드없음',pc:'진료실1',rrn7:'900101-1',rx:'med\nneuropathic pain IA(ulnar side)',rxMarker:true,rxLines:2,updatedAt:new Date(Date.now()-60000).toISOString()}];
      const items=slipItems();
-     eq('slipItems: 차트번호로 카드 연결, 최신순', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,2],['999',false,1]]);
+     eq('slipItems: 차트번호로 카드 연결, 최신순 — med 아래 neuropathic pain 없는 문서(999)는 제외', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,2],['777',false,1]]);
+     eq('slipItems: med 줄의 g → 그린 배지', items[0].badges, ['그린']);
+     ok('슬립: 카드가 없어도 진료실 창의 주민번호 앞자리로 생년월일 표시', slipHTML(items.find(x=>x.mrn==='777')).includes('900101-*******'));
+     const rp1=rxParse('med gp @ (prone)\nneuropathic pain IA(ulnar side) pdrn기\napnb Lt. hand 5th mcp\ngreen');
+     eq('rxParse: med 표시(gp,@,prone) → 배지, 목록은 med 다음 줄부터', [rp1.valid,rp1.badges,rp1.lines.length], [true,['진료원장님 주사','준비: prone','그린+'],3]);
+     ok('rxParse: med 아래 neuropathic pain 없으면 처방 아님(특이사항성 메모)', rxParse('med\nPT는 우측 어깨로\nSLS SHORT+coban1').valid===false);
+     eq('rxParse: g → 그린, 약 x 예정 → 약처방 없음', rxParse('med g 약 x 예정\nneuropathic pain c-mbb').badges, ['그린','약처방 없음']);
+     ok('rxParse: med 없이 중간 줄에 neuropathic pain → 처방 아님', rxParse('PT는 우측 어깨로\nneuropathic pain c-mbb').valid===false);
+     eq('rxParse: 구버전 감시 스크립트 호환 — neuropathic pain 으로 시작하는 블록은 배지 없이 처방', (r=>[r.valid,r.lines.length,r.badges.length])(rxParse('neuropathic pain c-mbb\nGreen')), [true,2,0]);
+     {const _n=BIT_NOTES;BIT_NOTES=[{docId:'x',mrn:'555',name:'이름연결',rx:'med\nneuropathic pain z',updatedAt:new Date().toISOString()}];
+      const pc={id:'c9',name:'이름연결',mrn:'',route:['3층 대기실'],step:0,status:'대기',notes:{}};data.push(pc);
+      ok('bitNoteFor: 차트번호 없는 카드도 오늘 그 이름이 하나뿐이면 처방 문서 연결', bitNoteFor(pc)&&bitNoteFor(pc).mrn==='555');data.pop();BIT_NOTES=_n;}
      SLIP_ROOM='물리치료'; eq('slipItems: 방 필터 — 동선에 그 방이 있는 카드만', slipItems().map(it=>it.mrn), ['297']); SLIP_ROOM='';
      const html=slipHTML(items[0]);
      eq('slipBirthMasked: 앞 6자리만, 뒷자리 *******', [slipBirthMasked('1990-01-01'),slipBirthMasked('19900101'),slipBirthMasked(''),slipBirthMasked('1990')], ['900101-*******','900101-*******','','']);
@@ -4345,8 +4386,8 @@ function cardEl(p){
       <button class="st-btn ${last?'exit':'fin'}" title="${last?'종결 후 보드에서 내보내기':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?'내보내기':'종결'}</button>
     </div>
     ${rxHtml}
-    ${(function(){const n=bitNoteFor(p);if(!n)return '';const ls=String(n.rx||'').split('\n').map(s=>s.trim()).filter(Boolean);if(!ls.length)return '';
-      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||'')}')" title="진료실 처방 목록 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b> · ${esc(ls[0])}${ls.length>1?' …':''}${n.rxMarker===false?' <span class="warn">기준 문구 없음</span>':''}</div>`;})()}
+    ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
+      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||String(n.mrn||''))}')" title="진료실 처방 목록 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b>${rp.badges.length?' · <b>'+esc(rp.badges.join(' · '))+'</b>':''} · ${esc(ls[0])}${ls.length>1?' …':''}</div>`;})()}
     ${procHtml}
     ${consultHtml}
     ${notesHtml}
