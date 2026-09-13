@@ -1432,6 +1432,15 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <p class="hint">카드의 [지급 완료]를 누르면 표시가 사라지고 지급자·시각이 기록됩니다. 운영해 보며 시간을 조정하세요.</p>
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
+        <label><i data-lucide="moon"></i> 자동 마감 시각</label>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input id="closeHmInp" type="time" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setCloseHm(this.value)">
+          <button class="btn sm" type="button" onclick="setCloseHm('')">사용 안 함</button>
+          <span class="hint">이 시각이 지나면 그날 접수된 카드가 모두 자동으로 내보내집니다(내원 기록에 '자동' 표시). 마감 뒤에 접수된 환자는 남겨 두고 다음 날 정리합니다.</span>
+        </div>
+        <p class="hint">전날 남은 카드는 시각과 무관하게 정리되어 다음 날 등록번호가 #1부터 시작합니다.</p>
+      </div>
+      <div class="fld acc-sect" style="padding-top:12px">
         <label><i data-lucide="stethoscope"></i> 진료의 목록 <span class="hint" style="font-weight:400">(카드에서 빠르게 고를 진료의)</span></label>
         <p class="hint">환자 카드의 진료의 선택·수정에 나타납니다. 쉼표로 구분해 입력하세요. (EMR 연동/직접 입력 시 자동으로 추가됩니다)</p>
         <input id="docListInput" placeholder="예: 홍길동, 임꺽정" onchange="setDocList(this.value)" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:var(--panel2);color:var(--text);outline:0;margin-top:6px">
@@ -1569,6 +1578,7 @@ let seqDate = localStorage.getItem("patientBoard_seqdate")||"";  // 등록번호
 let PAY_ROOM = localStorage.getItem("patientBoard_payroom")||"";  // 추가 수납 시 자동 추가할 방
 let PUNCT_EARLY = (function(){const v=parseInt(localStorage.getItem("patientBoard_punctearly"));return isNaN(v)?30:v;})();  // 예약 N분 전부터 정시 인정
 let PUNCT_LATE  = (function(){const v=parseInt(localStorage.getItem("patientBoard_punctlate"));return isNaN(v)?10:v;})();   // 예약 N분 후까지 정시 인정
+let CLOSE_HM = (function(){const v=localStorage.getItem("patientBoard_closehm");return v===null?"20:00":v;})();   // 자동 마감 시각(HH:MM) — 이 시각 뒤 그날 접수 카드를 자동 내보내기(''=사용 안 함). 전날 남은 카드는 시각과 무관하게 정리
 let PARKING_MIN = (function(){const v=parseInt(localStorage.getItem("patientBoard_parkingmin"));return isNaN(v)?10:v;})(); // 접수 N분 경과 + 수납 도착 시 '주차권 안내' 표시 (0=끔, 관리자 조정)
 function won(n){return Number(n||0).toLocaleString("ko-KR");}
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
@@ -1866,7 +1876,7 @@ function renderBitPill(){
       st.lastErr?`마지막 오류: ${st.lastErr}`:'',st.cycMaxMs>3000?`최장 주기 ${Math.round(st.cycMaxMs/1000)}초`:'',st.logTail?'--- 로그 ---\n'+st.logTail:''].filter(Boolean).join('\n');
     return `<span class="bp ${cls}" title="${esc(tip)}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 /* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
    문서 하나 = 오늘 그 환자(차트번호). 카드와는 차트번호로 연결(카드가 없어도 목록은 보임). ?slip 주소로 열면 로그인 뒤 이 화면만 뜬다(태블릿용), &room=물리치료 로 그 방 동선의 환자만. */
 function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(!m)return null;return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;}
@@ -2754,6 +2764,17 @@ async function runSelfTest(){
      bitBackfillMrn();
      ok('bitBackfillMrn: 조회로 보완된 문서 → 카드에 차트번호·생년월일·성별 채움', data[0].mrn==='601' && data[0].birth==='1990-01-01' && data[0].sex==='남');
      BIT_INTAKE=_i6;BIT_LOOKUP=_l6;data=_d6;PMEMO=_pm6;window.pmemoSave=_ps6;window.audit=_au6;window.save=_sv6;window.render=_rd6;}
+    // ── 등록번호 일일 리셋 · 자동 마감 ──
+    {const _d7=data,_c7=CLOSE_HM;const now=new Date();const y=new Date(now.getTime()-86400000);
+     const iso=(d,h,m)=>{const x=new Date(d);x.setHours(h,m,0,0);return x.toISOString();};
+     data=[{id:'y1',seq:118,arrivedAt:iso(y,10,0),route:['R'],step:0},{id:'t1',seq:2,arrivedAt:iso(now,9,0),route:['R'],step:0},{id:'t2',seq:3,arrivedAt:iso(now,23,58),route:['R'],step:0}];
+     ok('maxSeqToday: 전날 남은 카드(#118)는 무시하고 오늘 최대(#3)만', maxSeqToday()===3);
+     CLOSE_HM='';
+     eq('autoClosePick: 마감 시각 없음 → 전날 카드만 정리', autoClosePick(new Date(iso(now,12,0))).map(p=>p.id), ['y1']);
+     CLOSE_HM='20:00';
+     eq('autoClosePick: 마감 전(12:00) → 전날 카드만', autoClosePick(new Date(iso(now,12,0))).map(p=>p.id), ['y1']);
+     eq('autoClosePick: 마감 후(23:59) → 전날 + 마감 전 도착 카드, 마감 뒤 도착(23:58)은 남김', autoClosePick(new Date(iso(now,23,59))).map(p=>p.id).sort(), ['t1','y1']);
+     data=_d7;CLOSE_HM=_c7;}
     // ── 내원 기록 보관 필드 ──
     {const _cav=cloudAddVisit; cloudAddVisit=()=>{};
      try{
@@ -2848,7 +2869,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHm:CLOSE_HM, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -2883,7 +2904,8 @@ function applyCfg(d){
   if(typeof d.punctEarly==='number'){PUNCT_EARLY=d.punctEarly;localStorage.setItem("patientBoard_punctearly",String(PUNCT_EARLY));}
   if(typeof d.punctLate==='number'){PUNCT_LATE=d.punctLate;localStorage.setItem("patientBoard_punctlate",String(PUNCT_LATE));}
   if(typeof d.parkingMin==='number'){PARKING_MIN=(d.parkingMin===120?10:d.parkingMin);localStorage.setItem("patientBoard_parkingmin",String(PARKING_MIN));}   // 120=옛 기본값 → 확정값 10분으로 1회 교체
-  const maxSeq=data.reduce((m,p)=>Math.max(m,p.seq||0),0);
+  if(typeof d.closeHm==='string'){CLOSE_HM=d.closeHm;localStorage.setItem("patientBoard_closehm",CLOSE_HM);}
+  const maxSeq=maxSeqToday();   // 오늘 도착 카드만 — 전날 내보내지 않은 카드(#118 등)가 남아 있어도 오늘은 #1부터
   const _today=localYMD(new Date());
   if(d.seqDate&&d.seqDate!==_today){seqNext=1;seqDate=_today;}  // 클라우드 기록이 어제면 새 날 → #1부터
   else{seqDate=d.seqDate||seqDate||_today;seqNext=Math.max(d.seqNext||1,maxSeq+1,seqNext);}
@@ -3114,6 +3136,7 @@ function afterCloud(){
   rebuildStaff();
   checkClockSkew();
   render();
+  try{autoCloseDay();}catch(e){console.warn(e);}
   if(SLIP_MODE&&!slipOpen)openSlipScreen();
 }
 
@@ -3777,7 +3800,7 @@ function procsOfLive(p){const set=[];(p.visits||[]).forEach(r=>{(r.proc||"").spl
 function consultsSummary(cs){if(!cs)return"";const out=[];Object.keys(cs).forEach(room=>{const c=cs[room];if(c&&(c.result||c.reason))out.push(esc(room)+": "+esc(c.result||c.reason));});return out.join(" / ");}
 function visitToRow(v){return {done:true,vid:v.id,seq:v.seq||0,name:v.name||"",mrn:v.mrn||"",birth:v.birth||"",sex:v.sex||"",doctor:v.doctor||"",
   roomsArr:(v.routeFull||[]),route:(v.routeFull||[]).join(" › "),procs:procsOfVisit(v),consults:consultsSummary(v.consults),totalMs:v.totalMs||0,
-  recv:v.receiveAt||clockHM(v.arrivedAt),doneTs:new Date(v.dischargedAt).getTime()||0,doneLabel:clockHM(v.dischargedAt)};}
+  recv:v.receiveAt||clockHM(v.arrivedAt),doneTs:new Date(v.dischargedAt).getTime()||0,doneLabel:clockHM(v.dischargedAt)+(v.autoClosed?' 자동':'')};}
 function liveToRow(p){const now=Date.now();return {done:false,vid:null,seq:p.seq||0,name:p.name||"",mrn:p.mrn||"",birth:p.birth||"",sex:p.sex||"",doctor:p.doctor||"",
   roomsArr:(p.route||[]),route:(p.route||[]).join(" › "),procs:procsOfLive(p),consults:consultsSummary(p.consults),totalMs:totalMsNow(p),
   recv:p.receiveAt||clockHM(p.arrivedAt),doneTs:now+1e12,doneLabel:"",status:p.out?'외출':(p.status||'대기')};}
@@ -4362,10 +4385,12 @@ function totalMsNow(p){return Math.max(0,(Date.now()-new Date(p.arrivedAt||p.ent
 /* 원내 경과시간 + 접수 시각(비트 접수 시각 우선, 없으면 동선관리에 등록된 시각) */
 function recvHM(p){return (p.receiveAt&&/^\d{1,2}:\d{2}$/.test(p.receiveAt))?p.receiveAt:clockHM(p.arrivedAt||p.enteredAt);}
 function totalLabel(p){const r=recvHM(p);return `<i data-lucide="hospital"></i> 원내 <b>${fmtClock(totalMsNow(p))}</b>${r?`<span class="recv" title="접수 시각">· 접수 <b>${esc(r)}</b></span>`:''}`;}
+/* 오늘 도착한 카드 중 가장 큰 등록번호 — 전날 카드가 보드에 남아 있어도 오늘 번호에 영향 없음 (2026-09-13: 남은 카드 때문에 #119로 시작한 문제) */
+function maxSeqToday(){const t=localYMD(new Date());return data.reduce((m,p)=>{const src=p.arrivedAt||p.enteredAt;const pt=src?localYMD(new Date(src)):t;return (pt===t&&typeof p.seq==='number'&&p.seq>m)?p.seq:m;},0);}
 function nextSeq(){const t=localYMD(new Date());
   if(seqDate!==t){seqNext=1;seqDate=t;localStorage.setItem("patientBoard_seqdate",t);}  // 날짜 바뀌면 자동 리셋
   // 동시 등록 중복 방지: 다른 기기가 먼저 쓴 오늘 번호(onSnapshot로 동기화됨)보다 항상 크게 매김
-  const maxToday=data.reduce((m,p)=>{const pt=p.arrivedAt?localYMD(new Date(p.arrivedAt)):t;return (pt===t&&typeof p.seq==='number'&&p.seq>m)?p.seq:m;},0);
+  const maxToday=maxSeqToday();
   const n=Math.max(seqNext,maxToday+1);seqNext=n+1;localStorage.setItem("patientBoard_seq",String(seqNext));return n;}
 function resetSeq(){if(!isAdmin())return;
   if(!confirm("등록 번호를 #1부터 다시 시작할까요?\n(이미 보드에 있는 환자 번호는 그대로 유지됩니다)"))return;
@@ -4510,13 +4535,37 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   }
   if(!confirm(`'${p.name}'님을 종결하고 보드에서 내보낼까요?\n(내원 기록으로 보관됩니다)`))return;
   completeVisit(p,'종결');archiveVisit(p);cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();}
+/* ── 자동 마감: 내보내기를 잊은 카드 정리 ──
+   · 전날(또는 그 이전) 도착한 카드 → 언제든 즉시 내보내기 (다음 날 등록번호가 #1부터 시작하도록)
+   · CLOSE_HM 이 지난 뒤 → 그날 CLOSE_HM 이전에 도착한 카드 내보내기 (마감 뒤 접수된 야간 환자는 남겨 두고 다음 날 정리)
+   여러 화면이 함께 열려 있어도 한 번만 처리되도록, 환자 문서 삭제를 트랜잭션으로 선점한 화면만 내원 기록을 남긴다 */
+function autoClosePick(now){
+  now=now||new Date();const t=localYMD(now),nowM=now.getHours()*60+now.getMinutes(),closeM=hmMin(CLOSE_HM);
+  return data.filter(p=>{if(p.discharged)return false;const src=p.arrivedAt||p.enteredAt;if(!src)return false;const d=new Date(src);if(isNaN(d))return false;
+    const pd=localYMD(d);if(pd<t)return true;if(pd>t)return false;
+    return closeM!=null&&nowM>=closeM&&(d.getHours()*60+d.getMinutes())<closeM;});
+}
+const AUTO_CLOSING={};
+function autoCloseDay(){
+  if(!currentUser||(hostedMode&&!cloud.ready.pts))return;
+  autoClosePick().forEach(p=>{
+    if(AUTO_CLOSING[p.id])return;AUTO_CLOSING[p.id]=1;
+    const done=()=>{const q=data.find(x=>x.id===p.id);if(!q)return;q.autoClosed=true;completeVisit(q,'종결');archiveVisit(q);data=data.filter(x=>x.id!==q.id);saveLocal();render();
+      try{audit('자동 마감',q.name+(q.mrn?' ('+q.mrn+')':''));}catch(e){}console.log('자동 마감 #'+q.seq,q.name);};
+    if(!(cloud.active&&cloud.patientsCol)){done();delete AUTO_CLOSING[p.id];return;}
+    const ref=cloud.patientsCol.doc(p.id);
+    cloud.db.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists)return false;tx.delete(ref);return true;})
+      .then(won=>{if(won)done();else data=data.filter(x=>x.id!==p.id);})
+      .catch(e=>console.warn('autoClose',e)).finally(()=>{delete AUTO_CLOSING[p.id];});
+  });
+}
 function archiveVisit(p){
   const dischargedAt=new Date().toISOString();
   const rec={
     id:id(),seq:p.seq||null,mrn:p.mrn||"",name:p.name,birth:p.birth||"",sex:p.sex||"",
     doctor:p.doctor||"",
     routeFull:[...p.route],receiveAt:p.receiveAt||"",reserveAt:p.reserveAt||"",
-    arrivedAt:p.arrivedAt||p.enteredAt,dischargedAt,
+    arrivedAt:p.arrivedAt||p.enteredAt,dischargedAt,autoClosed:!!p.autoClosed,
     totalMs:p.arrivedAt?Math.max(0,new Date(dischargedAt)-new Date(p.arrivedAt)):0,
     rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",doctor:docFor(p,v.room),nurse:nurseFor(p,v.room),rad:radFor(p,v.room),enteredAt:v.enteredAt,leftAt:v.leftAt})),
     roomDocs:JSON.parse(JSON.stringify(p.roomDocs||{})),
@@ -6191,6 +6240,7 @@ function renderRoomsList(){
   if(ps)ps.innerHTML=`<option value="">(없음 — 자동 추가 안 함)</option>`+ROOMS.map(r=>`<option ${r===PAY_ROOM?'selected':''}>${esc(r)}</option>`).join("");
   const pe=document.getElementById("punctEarly");if(pe)pe.value=PUNCT_EARLY;
   const pk=document.getElementById("parkingMinInp");if(pk)pk.value=PARKING_MIN;
+  const ch=document.getElementById("closeHmInp");if(ch)ch.value=CLOSE_HM;
   const pl=document.getElementById("punctLate");if(pl)pl.value=PUNCT_LATE;
   const dli=document.getElementById("docListInput");if(dli)dli.value=DOCTORS.join(', ');
   const psi=document.getElementById("procSetInput");if(psi)psi.value=PROC_SET.join(', ');
@@ -6198,6 +6248,9 @@ function renderRoomsList(){
   renderProcMatList();
 }
 function setPayRoom(v){if(!isAdmin())return;PAY_ROOM=v;localStorage.setItem("patientBoard_payroom",v);cloudSaveConfig();render();}
+function setCloseHm(v){if(!isAdmin())return;v=String(v||'').trim();if(v&&!/^\d{2}:\d{2}$/.test(v)){alert('시각은 HH:MM 형식으로 입력하세요');return;}
+  CLOSE_HM=v;localStorage.setItem("patientBoard_closehm",v);cloudSaveConfig();const inp=document.getElementById("closeHmInp");if(inp)inp.value=v;
+  try{audit('자동마감시각변경',v||'사용 안 함');}catch(e){}try{autoCloseDay();}catch(e){}}
 function setParkingMin(v){if(!isAdmin())return;
   let n=parseInt(v);if(isNaN(n)||n<0)n=0;if(n>720)n=720;
   PARKING_MIN=n;localStorage.setItem("patientBoard_parkingmin",String(n));
