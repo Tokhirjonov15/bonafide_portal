@@ -205,7 +205,7 @@
   @keyframes waitPulse{0%,100%{opacity:1}50%{opacity:.6}}
   .wait-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#9aa8bf;font-size:clamp(16px,1.4vw,22px);font-weight:600;padding:34px}
   .wait-hint{color:#7387a0;font-size:20px;text-align:center;padding:40px;width:100%}
-  .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:left;padding:15px 0;font-size:clamp(14px,1.5vw,24px);letter-spacing:-.2px;overflow:hidden;white-space:nowrap}
+  .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:left;padding:16px 0;font-size:clamp(18px,2vw,34px);letter-spacing:-.2px;overflow:hidden;white-space:nowrap}   /* 멀리서 읽히도록 크게 */
   /* 하단 안내 문구 전광판: 오른쪽→왼쪽으로 계속 흐르고, 한 문장의 끝이 화면 가운데에 오면 다음 문장이 오른쪽 끝에서 들어온다
      (각 문장 뒤 여백 = 화면 폭의 절반 → 주기 P = 문장 폭 + 50vw). 같은 문장 3개를 이어 붙이고 트랙을 P 만큼 옮기면 이음새 없이 반복.
      시작 위치(margin-left = 화면 폭 − P)와 속도는 JS(waitTickerFit)가 폭에 맞춰 계산 */
@@ -2871,8 +2871,9 @@ async function runSelfTest(){
       eq('검사실 보기: 칩 켜면 그 방들만 선택(x-ray실 해제)', waitRooms.slice().sort(), ['C-Arm','Sono','근전도검사','처치실']);
       const cols=[...document.querySelectorAll('#waitCols .wait-col')];
       eq('검사실 보기: 세 칸, 제목은 환자용 한글 표기(방 설정과 무관)', cols.map(c=>c.querySelector('.wait-ct span').textContent), ['실시간 영상유도하 주사','정밀초음파주사','근전도검사, 처치']);
-      ok('검사실 보기: 단독 방 칸에는 방 표시 없음, 합산 칸(근전도+처치)에는 2명 + 방 이름', cols[0].querySelectorAll('.wait-room').length===0&&cols[2].querySelectorAll('.wait-p').length===2&&cols[2].querySelectorAll('.wait-room').length===2&&cols[2].textContent.includes('처치실'));
-      ok('검사실 보기: 합산 칸은 준비 중(처치실)이 대기(근전도)보다 위', cols[2].querySelector('.wait-p').textContent.includes('처치실'));
+      ok('검사실 보기: 합산 칸(근전도+처치)에 2명, 방 이름 꼬리표는 없음', cols[2].querySelectorAll('.wait-p').length===2&&document.querySelectorAll('#waitCols .wait-room').length===0);
+      eq('대기 인원 배지: 진행 중은 대기에서 빼고 따로 표시', cols.map(c=>c.querySelector('.wait-cnt-badge').textContent), ['대기 1명','진행중 1명 · 대기 0명','대기 2명']);
+      ok('검사실 보기: 합산 칸은 준비 중(처치실)이 대기(근전도)보다 위', cols[2].querySelector('.wait-p').classList.contains('prep'));
       const chips=[...document.querySelectorAll('#waitRoomSel .chipf')].map(b=>b.textContent.trim());
       ok('검사실 보기: 칩은 하나(C-Arm, Sono, 근전도, 처치), 개별 칩 없음', chips.filter(t=>t==='C-Arm, Sono, 근전도, 처치').length===1&&!chips.includes('Sono')&&!chips.includes('처치실'));
       waitRotSec=10;renderWaitScreen();
@@ -4150,7 +4151,7 @@ function applyWaitFont(){const z=waitFontPct/100;const c=document.getElementById
 function restartWaitRot(){if(waitRotTimer){clearInterval(waitRotTimer);waitRotTimer=null;}
   if(waitOpen&&waitRotSec>0)waitRotTimer=setInterval(function(){waitRotIdx++;renderWaitScreen();},waitRotSec*1000);}
 /* 하단 전광판 속도: 트랙의 절반(문장 1개 + 그 뒤 여백)이 한 바퀴. 화면 폭과 무관하게 초당 WT_SPEED px 로 흐르게 지속 시간을 맞춘다 */
-const WT_SPEED=110;   // px/초
+const WT_SPEED=70;    // px/초 — 멀리서도 읽을 수 있게 천천히
 /* 머리글 한 줄 맞춤: 병원 이름은 양쪽 시계 자리를 뺀 폭에, 부제는 머리글 안쪽 폭에 들어가도록 넘치면 글자 크기만 줄인다(줄바꿈·겹침 없음) */
 function fitOneLine(el,avail){if(!el)return;el.style.fontSize='';if(!(avail>0))return;const w=el.scrollWidth;
   if(w>avail+1){const cur=parseFloat(getComputedStyle(el).fontSize);el.style.fontSize=Math.max(14,Math.floor(cur*avail/w*100)/100)+'px';}}
@@ -4237,10 +4238,10 @@ function renderWaitScreen(){
     list.sort((a,b)=>{const w=s=>s==='진행'?0:(s==='준비'?1:2);return w(a.status||'대기')-w(b.status||'대기');}); // 진행→준비→대기 순 (안정 정렬로 같은 상태끼리는 기존 순서 유지)
     const rows=list.length
       ? list.map((p,i)=>{const st=p.status||'대기';const prep=st==='준비',prog=st==='진행';
-          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${grp?`<span class="wait-room">${esc(curRoom(p))}</span>`:''}${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
+          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
       : '<div class="wait-empty">현재 대기 환자 없음</div>';
     return `<div class="wait-col">
-      <span class="wait-cnt-badge">대기 ${list.length}명</span>
+      ${(function(){const prog=list.filter(p=>(p.status||'대기')==='진행').length,wait=list.length-prog;return `<span class="wait-cnt-badge">${prog?'진행중 '+prog+'명 · ':''}대기 ${wait}명</span>`;})()}
       <div class="wait-ct"><span>${esc(waitColTitle(room))}</span></div>
       <div class="wait-list">${rows}</div>
     </div>`;
