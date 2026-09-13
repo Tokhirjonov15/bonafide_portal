@@ -205,7 +205,13 @@
   @keyframes waitPulse{0%,100%{opacity:1}50%{opacity:.6}}
   .wait-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#9aa8bf;font-size:clamp(16px,1.4vw,22px);font-weight:600;padding:34px}
   .wait-hint{color:#7387a0;font-size:20px;text-align:center;padding:40px;width:100%}
-  .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:center;padding:15px 22px;font-size:clamp(14px,1.5vw,24px);letter-spacing:-.2px}
+  .wait-foot{position:relative;z-index:2;flex-shrink:0;background:#16325c;color:#fff;font-weight:800;text-align:left;padding:15px 0;font-size:clamp(14px,1.5vw,24px);letter-spacing:-.2px;overflow:hidden;white-space:nowrap}
+  /* 하단 안내 문구 전광판: 오른쪽→왼쪽으로 계속 흐르고, 한 문장의 끝이 화면 가운데에 오면 다음 문장이 오른쪽 끝에서 들어온다
+     (각 문장 뒤 여백 = 화면 폭의 절반 → 주기 P = 문장 폭 + 50vw). 같은 문장 3개를 이어 붙이고 트랙을 P 만큼 옮기면 이음새 없이 반복.
+     시작 위치(margin-left = 화면 폭 − P)와 속도는 JS(waitTickerFit)가 폭에 맞춰 계산 */
+  .wt-track{display:inline-flex;will-change:transform;animation:wt-scroll var(--wt-dur,20s) linear infinite}
+  .wt-item{display:inline-block;padding-right:50vw}
+  @keyframes wt-scroll{from{transform:translateX(0)}to{transform:translateX(calc(-1 * var(--wt-half,1000px)))}}
   /* ── 충격파·신장분사 치료 시트 (대기화면 안 카드) ── */
   .wait-sheetcol{flex:1 1 100%;max-width:min(1240px,100%)}
   .wait-sheetcol .wait-list{overflow:auto;padding:12px 16px 16px}
@@ -573,12 +579,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .hist-pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 0}
   .hist-pager .btn[disabled]{opacity:.4;cursor:default}
   /* 대기화면 머리글: 병원 이름·부제를 화면 가운데에 더 크게, 시계는 오른쪽 위에 따로 (사용자 요청 2026-09-13) */
-  .wait-header{position:relative;justify-content:center;text-align:center;padding:34px 230px 18px}
+  .wait-header{position:relative;justify-content:center;text-align:center;padding:34px 60px 18px}   /* 시계는 절대 위치라 좌우 여백을 넓게 잡을 필요 없음 → 부제가 한 줄로 */
   .wait-brand{align-items:center}
   .wait-underline{margin:14px auto 0;width:96px}
   .wait-clock{position:absolute;right:46px;top:30px}
   .wait-title{font-size:calc(clamp(38px,5.6vw,88px) * var(--wheadscale,1))}
-  .wait-sub{font-size:calc(clamp(14px,1.5vw,24px) * var(--wheadscale,1))}
+  .wait-sub{font-size:calc(clamp(16px,1.9vw,36px) * var(--wheadscale,1));margin-top:12px;letter-spacing:-.3px}
   @media(max-width:1100px){.wait-header{padding:30px 46px 18px;justify-content:flex-start;text-align:left}.wait-brand{align-items:flex-start}.wait-underline{margin:12px 0 0}.wait-clock{position:static}}
   .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
@@ -1141,7 +1147,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="wait-clock"><div class="wc-time" id="waitClock">--:--</div><div class="wc-date" id="waitDate"></div></div>
     </div>
     <div class="wait-cols" id="waitCols"></div>
-    <div class="wait-foot">위 내용은 치료 대기자 명단입니다 &nbsp;·&nbsp; 상황에 따라 실제 치료 순서가 표시 순서와 다를 수 있습니다</div>
+    <div class="wait-foot"><div class="wt-track" id="waitTicker"><span class="wt-item">위 내용은 치료 대기자 명단입니다 &nbsp;·&nbsp; 상황에 따라 실제 치료 순서가 표시 순서와 다를 수 있습니다</span><span class="wt-item" aria-hidden="true">위 내용은 치료 대기자 명단입니다 &nbsp;·&nbsp; 상황에 따라 실제 치료 순서가 표시 순서와 다를 수 있습니다</span><span class="wt-item" aria-hidden="true">위 내용은 치료 대기자 명단입니다 &nbsp;·&nbsp; 상황에 따라 실제 치료 순서가 표시 순서와 다를 수 있습니다</span></div></div>
   </div>
   <!-- 시트 메모 입력 (셀 코멘트) -->
   <div id="sheetNoteOvl" class="sheet-note-ovl" style="display:none" onclick="if(event.target.id==='sheetNoteOvl')closeSheetNote()">
@@ -2880,6 +2886,13 @@ async function runSelfTest(){
       toggleWaitRoom('x-ray실');eq('검사실 보기: 다른 방을 고르면 보기가 닫히고 그 방만', waitRooms, ['x-ray실']);
       toggleWaitView('__EXAM__');toggleWaitView('__EXAM__');eq('검사실 보기: 칩 다시 누르면 해제', waitRooms, []);
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';}}
+    // ── 대기화면 하단 전광판(흐르는 안내 문구) ──
+    {const t=document.getElementById('waitTicker');const ws=document.getElementById('waitScreen');const wasShown=ws.classList.contains('show');ws.classList.add('show');
+     try{waitTickerFit();const items=t?t.querySelectorAll('.wt-item'):[];
+      ok('전광판: 같은 문장 3개, 각 문장 뒤 여백 = 화면 폭 절반', items.length===3&&items[0].textContent===items[2].textContent&&Math.abs(parseFloat(getComputedStyle(items[0]).paddingRight)-window.innerWidth/2)<2);
+      const half=parseFloat(t.style.getPropertyValue('--wt-half')),dur=parseFloat(t.style.getPropertyValue('--wt-dur'));
+      ok('전광판: 주기 = 문장 폭 + 절반 여백, 속도 110px/초, 두 번째 문장은 오른쪽 끝에서 시작', half>window.innerWidth/2&&Math.abs(dur-Math.max(6,half/WT_SPEED))<0.01&&getComputedStyle(t).animationName==='wt-scroll'&&Math.abs(parseFloat(t.style.marginLeft)-(window.innerWidth-half))<1);
+     }finally{if(!wasShown)ws.classList.remove('show');}}
     // ── 환자 관리 목록 페이지(50명씩) ──
     {const _V8=VISITS,_d8=data,_hk=histKey,_hp=histPage,_hq=histQ;const hs=document.getElementById('histSearch'),hl=document.getElementById('histList');
      if(hs&&hl){const _sv=hs.value;
@@ -4122,7 +4135,15 @@ function applyWaitFont(){const z=waitFontPct/100;const c=document.getElementById
   const ws=document.getElementById("waitScreen");if(ws)ws.style.setProperty("--wheadscale",String(waitHeadPct/100));}
 function restartWaitRot(){if(waitRotTimer){clearInterval(waitRotTimer);waitRotTimer=null;}
   if(waitOpen&&waitRotSec>0)waitRotTimer=setInterval(function(){waitRotIdx++;renderWaitScreen();},waitRotSec*1000);}
-function openWaitScreen(){waitOpen=true;applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");
+/* 하단 전광판 속도: 트랙의 절반(문장 1개 + 그 뒤 여백)이 한 바퀴. 화면 폭과 무관하게 초당 WT_SPEED px 로 흐르게 지속 시간을 맞춘다 */
+const WT_SPEED=110;   // px/초
+function waitTickerFit(){const t=document.getElementById('waitTicker');if(!t)return;const items=t.querySelectorAll('.wt-item');if(items.length<3)return;
+  const P=items[0].getBoundingClientRect().width;   // 주기 = 문장 폭 + 50vw 여백 (항목이 모두 같음)
+  t.style.setProperty('--wt-half',P+'px');t.style.setProperty('--wt-dur',Math.max(6,P/WT_SPEED)+'s');
+  /* 두 번째 문장이 화면 오른쪽 끝에서 시작하도록 트랙을 놓는다(첫 문장은 그보다 P 앞 = 이미 지나가는 중인 꼬리). 한 주기 뒤 상태가 시작 상태와 같아 이음새가 없다 */
+  t.style.marginLeft=(window.innerWidth-P)+'px';}
+window.addEventListener('resize',()=>{if(waitOpen)waitTickerFit();});
+function openWaitScreen(){waitOpen=true;applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(waitTickerFit);
   if(waitClockTimer)clearInterval(waitClockTimer);waitClockTimer=setInterval(updateWaitClock,1000);restartWaitRot();}
 function closeWaitScreen(){waitOpen=false;document.getElementById("waitScreen").classList.remove("show");
   if(waitClockTimer){clearInterval(waitClockTimer);waitClockTimer=null;}
