@@ -584,7 +584,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .wait-underline{margin:14px auto 0;width:96px}
   .wait-clock{position:absolute;right:46px;top:30px}
   .wait-title{font-size:calc(clamp(38px,5.6vw,88px) * var(--wheadscale,1))}
-  .wait-sub{font-size:calc(clamp(16px,1.9vw,36px) * var(--wheadscale,1));margin-top:12px;letter-spacing:-.3px}
+  .wait-sub{font-size:calc(clamp(16px,1.9vw,36px) * var(--wheadscale,1));margin-top:12px;letter-spacing:-.3px;white-space:nowrap}   /* 한 줄 고정 — 넘치면 waitSubFit 이 글자 크기를 줄임 */
   @media(max-width:1100px){.wait-header{padding:30px 46px 18px;justify-content:flex-start;text-align:left}.wait-brand{align-items:flex-start}.wait-underline{margin:12px 0 0}.wait-clock{position:static}}
   .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
@@ -2865,13 +2865,12 @@ async function runSelfTest(){
     // ── 대기화면 검사실 보기: 칩 하나 → [C-Arm] [Sono] [근전도검사+처치실] 세 칸, 표시명은 한글, 단독 선택 ──
     {const _wr=waitRooms,_ws=waitRotSec,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sp=window.saveWaitPresets;window.saveWaitPresets=()=>{};
      try{ROOMS=['C-Arm','Sono','근전도검사','처치실','x-ray실'];ROOM_META={};waitRotSec=0;const now=new Date().toISOString();
-      meta('C-Arm').waitName='실시간 영상유도하 주사';meta('Sono').waitName='정밀초음파주사';meta('근전도검사').waitName='근전도검사, 처치';
       const mk=(id,room,st,ord)=>({id,name:'환자'+id,route:[room],step:0,status:st,ord,enteredAt:now,notes:{}});
       data=[mk('a','C-Arm','대기',1),mk('b','Sono','진행',2),mk('c','근전도검사','대기',3),mk('d','처치실','준비',4),mk('e','x-ray실','대기',5)];
       waitRooms=['x-ray실'];toggleWaitView('__EXAM__');
       eq('검사실 보기: 칩 켜면 그 방들만 선택(x-ray실 해제)', waitRooms.slice().sort(), ['C-Arm','Sono','근전도검사','처치실']);
       const cols=[...document.querySelectorAll('#waitCols .wait-col')];
-      eq('검사실 보기: 세 칸, 제목은 대기화면 표시명', cols.map(c=>c.querySelector('.wait-ct span').textContent), ['실시간 영상유도하 주사','정밀초음파주사','근전도검사, 처치']);
+      eq('검사실 보기: 세 칸, 제목은 환자용 한글 표기(방 설정과 무관)', cols.map(c=>c.querySelector('.wait-ct span').textContent), ['실시간 영상유도하 주사','정밀초음파주사','근전도검사, 처치']);
       ok('검사실 보기: 단독 방 칸에는 방 표시 없음, 합산 칸(근전도+처치)에는 2명 + 방 이름', cols[0].querySelectorAll('.wait-room').length===0&&cols[2].querySelectorAll('.wait-p').length===2&&cols[2].querySelectorAll('.wait-room').length===2&&cols[2].textContent.includes('처치실'));
       ok('검사실 보기: 합산 칸은 준비 중(처치실)이 대기(근전도)보다 위', cols[2].querySelector('.wait-p').textContent.includes('처치실'));
       const chips=[...document.querySelectorAll('#waitRoomSel .chipf')].map(b=>b.textContent.trim());
@@ -2886,6 +2885,21 @@ async function runSelfTest(){
       toggleWaitRoom('x-ray실');eq('검사실 보기: 다른 방을 고르면 보기가 닫히고 그 방만', waitRooms, ['x-ray실']);
       toggleWaitView('__EXAM__');toggleWaitView('__EXAM__');eq('검사실 보기: 칩 다시 누르면 해제', waitRooms, []);
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';}}
+    // ── 대기화면 부제: 좁은 폭에서도 한 줄(글자 크기 자동 축소) ──
+    {const ws=document.getElementById('waitScreen'),el=ws.querySelector('.wait-sub');const wasShown=ws.classList.contains('show');ws.classList.add('show');
+     const hdr=el.parentElement.parentElement;const _pad=hdr.style.padding;
+     const title=ws.querySelector('.wait-title'),clock=ws.querySelector('.wait-clock');
+     try{hdr.style.padding='0 30%';waitSubFit();   // 머리글 안쪽을 화면의 40%로 좁혀 강제로 넘치게
+      const innerW=hdr.clientWidth-2*parseFloat(getComputedStyle(hdr).paddingLeft);
+      const fitted=parseFloat(el.style.fontSize);
+      ok('부제: 폭이 모자라면 글자를 줄여 한 줄 유지(줄바꿈 없음, 최소 14px)', el.style.fontSize!==''&&el.getBoundingClientRect().height<fitted*1.8&&(el.scrollWidth<=innerW+2||fitted<=14));
+      hdr.style.padding=_pad;waitSubFit();
+      const base=(()=>{const f=el.style.fontSize;el.style.fontSize='';const b=parseFloat(getComputedStyle(el).fontSize);el.style.fontSize=f;return b;})();
+      const inner2=hdr.clientWidth-2*parseFloat(getComputedStyle(hdr).paddingLeft), f2=parseFloat(getComputedStyle(el).fontSize);
+      ok('부제: 폭이 돌아오면 다시 커지고(원래 크기 또는 폭에 맞는 최대), 한 줄', f2>fitted&&(el.style.fontSize===''||el.scrollWidth<=inner2+2||f2<=14)&&f2<=base+0.01&&el.getBoundingClientRect().height<f2*1.8);
+      if(title&&clock&&getComputedStyle(clock).position==='absolute'){const tb=title.getBoundingClientRect(),cb=clock.getBoundingClientRect();
+        ok('제목: 오른쪽 시계와 겹치지 않음(시계 자리만큼 양쪽을 비우고 필요하면 축소)', tb.right<=cb.left-8);}
+     }finally{hdr.style.padding=_pad;if(!wasShown)ws.classList.remove('show');}}
     // ── 대기화면 하단 전광판(흐르는 안내 문구) ──
     {const t=document.getElementById('waitTicker');const ws=document.getElementById('waitScreen');const wasShown=ws.classList.contains('show');ws.classList.add('show');
      try{waitTickerFit();const items=t?t.querySelectorAll('.wt-item'):[];
@@ -4132,18 +4146,26 @@ function setWaitFontPct(v){let n=parseInt(v);if(isNaN(n))n=100;n=Math.max(50,Mat
   const i=document.getElementById("waitFontInp");if(i)i.value=n;applyWaitFont();}
 function applyWaitFont(){const z=waitFontPct/100;const c=document.getElementById("waitCols");
   if(c){c.style.zoom=z;c.style.setProperty("--wzoom",String(z));}   // --wzoom: 확대해도 폭이 화면을 넘지 않게 CSS에서 역보정
-  const ws=document.getElementById("waitScreen");if(ws)ws.style.setProperty("--wheadscale",String(waitHeadPct/100));}
+  const ws=document.getElementById("waitScreen");if(ws)ws.style.setProperty("--wheadscale",String(waitHeadPct/100));if(waitOpen)requestAnimationFrame(waitSubFit);}
 function restartWaitRot(){if(waitRotTimer){clearInterval(waitRotTimer);waitRotTimer=null;}
   if(waitOpen&&waitRotSec>0)waitRotTimer=setInterval(function(){waitRotIdx++;renderWaitScreen();},waitRotSec*1000);}
 /* 하단 전광판 속도: 트랙의 절반(문장 1개 + 그 뒤 여백)이 한 바퀴. 화면 폭과 무관하게 초당 WT_SPEED px 로 흐르게 지속 시간을 맞춘다 */
 const WT_SPEED=110;   // px/초
+/* 머리글 한 줄 맞춤: 병원 이름은 양쪽 시계 자리를 뺀 폭에, 부제는 머리글 안쪽 폭에 들어가도록 넘치면 글자 크기만 줄인다(줄바꿈·겹침 없음) */
+function fitOneLine(el,avail){if(!el)return;el.style.fontSize='';if(!(avail>0))return;const w=el.scrollWidth;
+  if(w>avail+1){const cur=parseFloat(getComputedStyle(el).fontSize);el.style.fontSize=Math.max(14,Math.floor(cur*avail/w*100)/100)+'px';}}
+function waitSubFit(){const ws=document.getElementById('waitScreen');if(!ws)return;const hdr=ws.querySelector('.wait-header'),title=ws.querySelector('.wait-title'),sub=ws.querySelector('.wait-sub'),clock=ws.querySelector('.wait-clock');if(!hdr)return;
+  const cs=getComputedStyle(hdr);const inner=hdr.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+  const clockW=(clock&&getComputedStyle(clock).position==='absolute')?clock.offsetWidth+40:0;   // 시계가 오른쪽에 떠 있을 때만 그만큼 양쪽을 비운다(가운데 정렬 유지)
+  fitOneLine(title,hdr.clientWidth-2*(clockW+parseFloat(cs.paddingLeft)));
+  fitOneLine(sub,inner);}
 function waitTickerFit(){const t=document.getElementById('waitTicker');if(!t)return;const items=t.querySelectorAll('.wt-item');if(items.length<3)return;
   const P=items[0].getBoundingClientRect().width;   // 주기 = 문장 폭 + 50vw 여백 (항목이 모두 같음)
   t.style.setProperty('--wt-half',P+'px');t.style.setProperty('--wt-dur',Math.max(6,P/WT_SPEED)+'s');
   /* 두 번째 문장이 화면 오른쪽 끝에서 시작하도록 트랙을 놓는다(첫 문장은 그보다 P 앞 = 이미 지나가는 중인 꼬리). 한 주기 뒤 상태가 시작 상태와 같아 이음새가 없다 */
   t.style.marginLeft=(window.innerWidth-P)+'px';}
-window.addEventListener('resize',()=>{if(waitOpen)waitTickerFit();});
-function openWaitScreen(){waitOpen=true;applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(waitTickerFit);
+window.addEventListener('resize',()=>{if(waitOpen){waitTickerFit();waitSubFit();}});
+function openWaitScreen(){waitOpen=true;applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(()=>{waitTickerFit();waitSubFit();});
   if(waitClockTimer)clearInterval(waitClockTimer);waitClockTimer=setInterval(updateWaitClock,1000);restartWaitRot();}
 function closeWaitScreen(){waitOpen=false;document.getElementById("waitScreen").classList.remove("show");
   if(waitClockTimer){clearInterval(waitClockTimer);waitClockTimer=null;}
@@ -4180,7 +4202,7 @@ function renderWaitScreen(){
   let rs=waitRooms.filter(r=>ROOMS.includes(r));
   /* 검사실 보기의 방이 선택돼 있으면 그 방 대신 보기의 칸(키 '__EXAM__:0' …)을 순서대로 넣는다 */
   rs=rs.reduce((acc,r)=>{const v=waitViewOf(r);if(!v){acc.push(r);return acc;}
-    v.cols.forEach((c,i)=>{const k=v.key+':'+i;if(c.some(x=>ROOMS.includes(x))&&!acc.includes(k))acc.push(k);});return acc;},[]);
+    v.cols.forEach((c,i)=>{const k=v.key+':'+i;if(c.rooms.some(x=>ROOMS.includes(x))&&!acc.includes(k))acc.push(k);});return acc;},[]);
   /* 충격파·신장분사가 선택되면 개별 대기열 대신 치료 시트 한 판으로 표시 */
   const hasSheet=rs.some(r=>SHEET_ROOMS.includes(r));
   rs=rs.filter(r=>!SHEET_ROOMS.includes(r));
@@ -4230,12 +4252,15 @@ const SHEET_ROOMS=["충격파","신장분사"];
 /* 대기화면 '검사실 보기': 칩 하나(C-Arm, Sono, 근전도, 처치)로 세 칸을 함께 띄운다 — [C-Arm] [Sono] [근전도검사+처치실 합산].
    칸 제목·환자 옆 방 이름은 방의 대기화면 표시명(waitName, 예: 실시간 영상유도하 주사)을 쓴다. 보드의 방 이름은 그대로.
    이 보기는 단독 표시: 칩을 켜면 다른 방 선택이 해제되고, 다른 방을 고르면 이 보기가 닫힌다 */
-const WAIT_VIEWS=[{key:'__EXAM__',chip:'C-Arm, Sono, 근전도, 처치',cols:[['C-Arm'],['Sono'],['근전도검사','처치실']]}];
-function waitViewOf(room){return WAIT_VIEWS.find(v=>v.cols.some(c=>c.includes(room)))||null;}
-function waitViewRooms(v){return v.cols.flat().filter(r=>ROOMS.includes(r));}
+const WAIT_VIEWS=[{key:'__EXAM__',chip:'C-Arm, Sono, 근전도, 처치',cols:[
+  {rooms:['C-Arm'],title:'실시간 영상유도하 주사'},          // 환자용 표기 — 보드의 방 이름(C-Arm)은 그대로
+  {rooms:['Sono'],title:'정밀초음파주사'},
+  {rooms:['근전도검사','처치실'],title:'근전도검사, 처치'}]}];
+function waitViewOf(room){return WAIT_VIEWS.find(v=>v.cols.some(c=>c.rooms.includes(room)))||null;}
+function waitViewRooms(v){return v.cols.flatMap(c=>c.rooms).filter(r=>ROOMS.includes(r));}
 function waitViewOn(v){return waitViewRooms(v).some(r=>waitRooms.includes(r));}
-function waitViewCol(key){const m=/^(__[A-Z]+__):(\d+)$/.exec(key||'');if(!m)return null;const v=WAIT_VIEWS.find(x=>x.key===m[1]);if(!v||!v.cols[+m[2]])return null;return {view:v,rooms:v.cols[+m[2]].filter(r=>ROOMS.includes(r))};}
-function waitColTitle(key){if(key==='__SHEET__')return '충격파·신장분사';const c=waitViewCol(key);if(c)return c.rooms.length?waitRoomLabel(c.rooms[0]):key;return waitRoomLabel(key);}
+function waitViewCol(key){const m=/^(__[A-Z]+__):(\d+)$/.exec(key||'');if(!m)return null;const v=WAIT_VIEWS.find(x=>x.key===m[1]);const c=v&&v.cols[+m[2]];if(!c)return null;return {view:v,rooms:c.rooms.filter(r=>ROOMS.includes(r)),title:c.title};}
+function waitColTitle(key){if(key==='__SHEET__')return '충격파·신장분사';const c=waitViewCol(key);if(c)return c.title||(c.rooms.length?waitRoomLabel(c.rooms[0]):key);return waitRoomLabel(key);}
 function toggleWaitView(key){const v=WAIT_VIEWS.find(x=>x.key===key);if(!v)return;
   waitRooms=waitViewOn(v)?[]:waitViewRooms(v).slice();   // 켜면 이 보기만, 끄면 비움
   waitPresets[waitCur].rooms=waitRooms.slice();saveWaitPresets();renderWaitScreen();}
