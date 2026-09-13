@@ -572,6 +572,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #staffModal .body{min-height:min(360px,55vh)}
   .hist-pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 0}
   .hist-pager .btn[disabled]{opacity:.4;cursor:default}
+  .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
   #roomsModal .modal,#viewModal .modal{overflow:hidden;display:flex;flex-direction:column}
   #roomsModal .body,#viewModal .body{overflow:auto;min-height:0;flex:1 1 auto}
@@ -2847,6 +2848,22 @@ async function runSelfTest(){
      ok('통계 초기화: 확인 + "초기화" 입력 → 체류·내원 기록 비움', r===true&&STATS.length===0&&VISITS.length===0);
      STATS=_S;VISITS=_V;currentUser=_cu;window.confirm=_cf;window.prompt=_pr;window.alert=_al;window.audit=_au;window.renderStats=_rs;window.render=_rd;
      if(_lsV!==null)localStorage.setItem(VISIT_STORE,_lsV);else localStorage.removeItem(VISIT_STORE);if(_lsS!==null)localStorage.setItem(STATS_STORE,_lsS);else localStorage.removeItem(STATS_STORE);}
+    // ── 대기화면: C-Arm·Sono·근전도검사 한 칸으로 ──
+    {const _wr=waitRooms,_ws=waitRotSec,_ro=ROOMS,_dd=data,_sp=window.saveWaitPresets;window.saveWaitPresets=()=>{};
+     try{ROOMS=['C-Arm','Sono','근전도검사','x-ray실'];ROOM_META={};waitRotSec=0;const now=new Date().toISOString();
+      const mk=(id,room,st,ord)=>({id,name:'환자'+id,route:[room],step:0,status:st,ord,enteredAt:now,notes:{}});
+      data=[mk('a','C-Arm','대기',1),mk('b','Sono','진행',2),mk('c','근전도검사','대기',3),mk('d','x-ray실','대기',4)];
+      waitRooms=['C-Arm','Sono','근전도검사','x-ray실'];renderWaitScreen();
+      const cols=[...document.querySelectorAll('#waitCols .wait-col')];
+      ok('대기화면 묶음: 4개 방 선택 → 칸은 2개(검사실 묶음 + x-ray실)', cols.length===2);
+      const g=cols.find(c=>c.textContent.includes('C-Arm · Sono · 근전도검사'));
+      ok('대기화면 묶음: 검사실 칸에 세 방 환자 3명, 방 이름 표시', !!g&&g.querySelectorAll('.wait-p').length===3&&g.querySelectorAll('.wait-room').length===3&&g.textContent.includes('대기 3명'));
+      ok('대기화면 묶음: 진행 중 환자가 맨 위', !!g&&g.querySelector('.wait-p').textContent.includes('Sono'));
+      const chips=[...document.querySelectorAll('#waitRoomSel .chipf')].map(b=>b.textContent.trim());
+      ok('대기화면 묶음: 방 선택 칩도 하나로', chips.filter(t=>t==='C-Arm · Sono · 근전도검사').length===1&&!chips.includes('Sono'));
+      toggleWaitGroup('__EXAM__');ok('대기화면 묶음: 칩 한 번 → 세 방 모두 해제', !waitRooms.some(r=>['C-Arm','Sono','근전도검사'].includes(r))&&waitRooms.includes('x-ray실'));
+      toggleWaitGroup('__EXAM__');ok('대기화면 묶음: 칩 다시 → 세 방 모두 선택', ['C-Arm','Sono','근전도검사'].every(r=>waitRooms.includes(r)));
+     }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;data=_dd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';}}
     // ── 환자 관리 목록 페이지(50명씩) ──
     {const _V8=VISITS,_d8=data,_hk=histKey,_hp=histPage,_hq=histQ;const hs=document.getElementById('histSearch'),hl=document.getElementById('histList');
      if(hs&&hl){const _sv=hs.value;
@@ -4118,9 +4135,13 @@ function renderWaitScreen(){
   updateWaitClock();
   const inp=document.getElementById("waitMsgInput");if(inp&&document.activeElement!==inp)inp.value=waitMsg;
   const sel=document.getElementById("waitRoomSel");
-  if(sel)sel.innerHTML=ROOMS.map(r=>`<button class="chipf ${waitRooms.includes(r)?'on':''}" onclick="toggleWaitRoom('${esc(r)}')">${esc(r)}</button>`).join("");
+  if(sel){const seen=new Set();sel.innerHTML=ROOMS.map(r=>{const g=waitMergeOf(r);
+    if(g){if(seen.has(g.key))return '';seen.add(g.key);const rooms=waitGroupRooms(g);return `<button class="chipf ${rooms.some(x=>waitRooms.includes(x))?'on':''}" onclick="toggleWaitGroup('${g.key}')" title="${esc(rooms.join(', '))} 를 한 칸으로">${esc(g.title)}</button>`;}
+    return `<button class="chipf ${waitRooms.includes(r)?'on':''}" onclick="toggleWaitRoom('${esc(r)}')">${esc(r)}</button>`;}).join("");}
   const cols=document.getElementById("waitCols");if(!cols)return;
   let rs=waitRooms.filter(r=>ROOMS.includes(r));
+  /* 묶음 방(검사실 3곳)은 첫 방 자리에 그룹 키 하나로 */
+  rs=rs.reduce((acc,r)=>{const g=waitMergeOf(r);if(!g)acc.push(r);else if(!acc.includes(g.key))acc.push(g.key);return acc;},[]);
   /* 충격파·신장분사가 선택되면 개별 대기열 대신 치료 시트 한 판으로 표시 */
   const hasSheet=rs.some(r=>SHEET_ROOMS.includes(r));
   rs=rs.filter(r=>!SHEET_ROOMS.includes(r));
@@ -4130,7 +4151,7 @@ function renderWaitScreen(){
   cols.classList.toggle("rot",rot);
   let showRs=rs;
   if(rot){waitRotIdx=((waitRotIdx%rs.length)+rs.length)%rs.length;showRs=[rs[waitRotIdx]];}
-  const dotsHtml=rot?`<div class="wait-rot-dots">${rs.map((r,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(r==='__SHEET__'?'충격파·신장분사':waitRoomLabel(r))}"></span>`).join("")}</div>`:'';
+  const dotsHtml=rot?`<div class="wait-rot-dots">${rs.map((r,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(r==='__SHEET__'?'충격파·신장분사':((WAIT_MERGE.find(g=>g.key===r)||{}).title||waitRoomLabel(r)))}"></span>`).join("")}</div>`:'';
   document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.includes("__SHEET__"));
   cols.innerHTML=showRs.map(room=>{
     if(room==='__SHEET__'){
@@ -4147,15 +4168,17 @@ function renderWaitScreen(){
         <div class="wait-list">${treatSheetTableHtml(true,sheetDate)}</div>
       </div>`;
     }
-    const list=data.filter(p=>!p.discharged&&!p.out&&p.route.length&&curRoom(p)===room).sort((a,b)=>roomSort(a,b,room)); // 대기·준비·진행 모두 표시
+    const grp=WAIT_MERGE.find(g=>g.key===room);const rooms=grp?waitGroupRooms(grp):[room];
+    let list=data.filter(p=>!p.discharged&&!p.out&&p.route.length&&rooms.includes(curRoom(p))); // 대기·준비·진행 모두 표시 (묶음이면 세 방 합산)
+    list.sort((a,b)=>{const ra=curRoom(a),rb=curRoom(b);if(ra!==rb&&grp)return rooms.indexOf(ra)-rooms.indexOf(rb);return roomSort(a,b,ra);});
     list.sort((a,b)=>{const w=s=>s==='진행'?0:(s==='준비'?1:2);return w(a.status||'대기')-w(b.status||'대기');}); // 진행→준비→대기 순 (안정 정렬로 같은 상태끼리는 기존 순서 유지)
     const rows=list.length
       ? list.map((p,i)=>{const st=p.status||'대기';const prep=st==='준비',prog=st==='진행';
-          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
+          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${grp?`<span class="wait-room">${esc(curRoom(p))}</span>`:''}${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
       : '<div class="wait-empty">현재 대기 환자 없음</div>';
     return `<div class="wait-col">
       <span class="wait-cnt-badge">대기 ${list.length}명</span>
-      <div class="wait-ct"><span>${esc(waitRoomLabel(room))}</span></div>
+      <div class="wait-ct"><span>${esc(grp?grp.title:waitRoomLabel(room))}</span></div>
       <div class="wait-list">${rows}</div>
     </div>`;
   }).join("")+dotsHtml;
@@ -4163,6 +4186,12 @@ function renderWaitScreen(){
 
 /* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
 const SHEET_ROOMS=["충격파","신장분사"];
+/* 대기화면에서 한 칸으로 묶어 보여 주는 방들(검사실 3곳) — 방 자체는 보드에서 따로 운영하고, 대기화면·방 선택 칩에서만 하나로 합친다 */
+const WAIT_MERGE=[{key:'__EXAM__',title:'C-Arm · Sono · 근전도검사',rooms:['C-Arm','Sono','근전도검사']}];
+function waitMergeOf(room){return WAIT_MERGE.find(g=>g.rooms.includes(room))||null;}
+function waitGroupRooms(g){return g.rooms.filter(r=>ROOMS.includes(r));}
+function toggleWaitGroup(key){const g=WAIT_MERGE.find(x=>x.key===key);if(!g)return;const rooms=waitGroupRooms(g);const on=rooms.some(r=>waitRooms.includes(r));
+  waitRooms=waitRooms.filter(r=>!rooms.includes(r));if(!on)waitRooms.push(...rooms);waitPresets[waitCur].rooms=waitRooms.slice();saveWaitPresets();renderWaitScreen();}
 const SHEET_COLORS=["#d9ead3","#fce5cd","#fff2cc","#d9d2e9","#cfe2f3","#f4cccc","#ead1dc","#d0e0e3"];
 /* 시트 담당자 재직 이력: {이름:{periods:[{from,to?}]}} — 추가된 날부터 표시, 뺀 날부터 숨김(과거 기록은 유지) */
 let SHEET_STAFF_HIST={};
