@@ -564,6 +564,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #statsModal .body{height:min(640px,78vh);overflow:auto}
   #statsModal .modal{overflow:hidden;display:flex;flex-direction:column}
   #statsModal .modal h3{flex:0 0 auto}#statsModal .foot{flex:0 0 auto}
+  /* 목록·검색이 있는 다른 창도 같은 규칙: 환자 관리·휴무 관리·루틴 동선·접근 기록 — 검색 결과가 비어도 창 크기 고정 */
+  #historyModal .body,#offModal .body,#routineModal .body,#auditModal .body{height:min(640px,78vh);overflow:auto}
+  #historyModal .modal,#offModal .modal,#routineModal .modal,#auditModal .modal{overflow:hidden;display:flex;flex-direction:column}
+  #historyModal .modal h3,#offModal .modal h3,#routineModal .modal h3,#auditModal .modal h3,#historyModal .foot,#offModal .foot,#routineModal .foot,#auditModal .foot{flex:0 0 auto}
+  #auditModal #auditBody{max-height:none;flex:1 1 auto;min-height:0}
+  #staffModal .body{min-height:min(360px,55vh)}
 /* 환자 추가/수정(#modal) — 넓은 3단 레이아웃(환자정보 | 동선·상담 | 차팅) */
 /* 닥터팔레트식 배치: 좌=현재 방 레일, 우=환자 정보 패널(드로어) */
 #modal.modal-bg{align-items:stretch;justify-content:flex-end;padding:12px;gap:12px}
