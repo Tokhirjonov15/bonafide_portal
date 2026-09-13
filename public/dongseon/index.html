@@ -2858,7 +2858,7 @@ async function runSelfTest(){
       eq('검사실 보기: 칩 켜면 그 방들만 선택(x-ray실 해제)', waitRooms.slice().sort(), ['C-Arm','Sono','근전도검사','처치실']);
       const cols=[...document.querySelectorAll('#waitCols .wait-col')];
       eq('검사실 보기: 세 칸, 제목은 대기화면 표시명', cols.map(c=>c.querySelector('.wait-ct span').textContent), ['실시간 영상유도하 주사','정밀초음파주사','근전도검사, 처치']);
-      ok('검사실 보기: 단독 방 칸에는 방 표시 없음, 합산 칸(근전도+처치)에는 2명 + 방 표시명', cols[0].querySelectorAll('.wait-room').length===0&&cols[2].querySelectorAll('.wait-p').length===2&&cols[2].querySelectorAll('.wait-room').length===2&&cols[2].textContent.includes('처치실'));
+      ok('검사실 보기: 단독 방 칸에는 방 표시 없음, 합산 칸(근전도+처치)에는 2명 + 방 이름', cols[0].querySelectorAll('.wait-room').length===0&&cols[2].querySelectorAll('.wait-p').length===2&&cols[2].querySelectorAll('.wait-room').length===2&&cols[2].textContent.includes('처치실'));
       ok('검사실 보기: 합산 칸은 준비 중(처치실)이 대기(근전도)보다 위', cols[2].querySelector('.wait-p').textContent.includes('처치실'));
       const chips=[...document.querySelectorAll('#waitRoomSel .chipf')].map(b=>b.textContent.trim());
       ok('검사실 보기: 칩은 하나(C-Arm, Sono, 근전도, 처치), 개별 칩 없음', chips.filter(t=>t==='C-Arm, Sono, 근전도, 처치').length===1&&!chips.includes('Sono')&&!chips.includes('처치실'));
@@ -4177,7 +4177,7 @@ function renderWaitScreen(){
     list.sort((a,b)=>{const w=s=>s==='진행'?0:(s==='준비'?1:2);return w(a.status||'대기')-w(b.status||'대기');}); // 진행→준비→대기 순 (안정 정렬로 같은 상태끼리는 기존 순서 유지)
     const rows=list.length
       ? list.map((p,i)=>{const st=p.status||'대기';const prep=st==='준비',prog=st==='진행';
-          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${grp?`<span class="wait-room">${esc(waitRoomLabel(curRoom(p)))}</span>`:''}${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
+          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${grp?`<span class="wait-room">${esc(curRoom(p))}</span>`:''}${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
       : '<div class="wait-empty">현재 대기 환자 없음</div>';
     return `<div class="wait-col">
       <span class="wait-cnt-badge">대기 ${list.length}명</span>
