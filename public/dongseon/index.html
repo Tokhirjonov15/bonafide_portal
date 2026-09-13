@@ -243,6 +243,8 @@
   .sp-room{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;font-size:10.5px;font-weight:800;color:#fff;flex:0 0 auto}
   .sp-room.sk{background:#f59e0b}
   .sp-room.sj{background:#8b5cf6}
+  .sp-room.ss{background:#0ea5e9}   /* SASO */
+  .sp-room.sd{background:#10b981}   /* 자동차도수 */
   .sp-mrn{font-size:11px;font-weight:700;color:#8a97ab}
   /* 시트 메모(셀 코멘트) — 우상단 빨간 삼각형, 호버 시 title 툴팁 */
   .sheet-p{position:relative}
@@ -1467,9 +1469,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="fld acc-sect" style="padding-top:12px">
         <label><i data-lucide="moon"></i> 자동 마감 시각</label>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input id="closeHmInp" type="time" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setCloseHm(this.value)">
-          <button class="btn sm" type="button" onclick="setCloseHm('')">사용 안 함</button>
-          <span class="hint">이 시각이 지나면 그날 접수된 카드가 모두 자동으로 내보내집니다(내원 기록에 '자동' 표시). 마감 뒤에 접수된 환자는 남겨 두고 다음 날 정리합니다.</span>
+          <span class="hint">평일(월~금)</span>
+          <input id="closeHmWdInp" type="time" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setCloseHm('wd',this.value)">
+          <span class="hint" style="margin-left:10px">토·일·공휴일</span>
+          <input id="closeHmWeInp" type="time" style="padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setCloseHm('we',this.value)">
+          <button class="btn sm" type="button" onclick="setCloseHm('wd','');setCloseHm('we','')">사용 안 함</button>
+        </div>
+        <p class="hint">진료 마감 시각(평일 21:00 · 토일공휴일 18:00)이 되면 그날 접수된 카드를 모두 자동으로 내보냅니다(내원 기록에 '자동' 표시). 마감 뒤에 접수된 환자는 남겨 두고 다음 날 정리합니다.</p>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="hint">공휴일</span>
+          <input id="holidaysInp" placeholder="예: 2026-10-03, 2026-10-09" style="flex:1;min-width:220px;padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setHolidays(this.value)">
+          <span class="hint">쉼표로 구분 — 이 날짜는 토·일 시각을 씁니다</span>
         </div>
         <p class="hint">전날 남은 카드는 시각과 무관하게 정리되어 다음 날 등록번호가 #1부터 시작합니다.</p>
       </div>
@@ -1611,7 +1621,14 @@ let seqDate = localStorage.getItem("patientBoard_seqdate")||"";  // 등록번호
 let PAY_ROOM = localStorage.getItem("patientBoard_payroom")||"";  // 추가 수납 시 자동 추가할 방
 let PUNCT_EARLY = (function(){const v=parseInt(localStorage.getItem("patientBoard_punctearly"));return isNaN(v)?30:v;})();  // 예약 N분 전부터 정시 인정
 let PUNCT_LATE  = (function(){const v=parseInt(localStorage.getItem("patientBoard_punctlate"));return isNaN(v)?10:v;})();   // 예약 N분 후까지 정시 인정
-let CLOSE_HM = (function(){const v=localStorage.getItem("patientBoard_closehm");return v===null?"20:00":v;})();   // 자동 마감 시각(HH:MM) — 이 시각 뒤 그날 접수 카드를 자동 내보내기(''=사용 안 함). 전날 남은 카드는 시각과 무관하게 정리
+/* 자동 마감 시각 — 병원 운영시간: 월~금 21:00(마지막 예약 20:30), 토·일·공휴일 18:00(마지막 예약 17:30) (2026-09-13 확인). 평일/주말·공휴일 각각, ''=사용 안 함.
+   예전 단일값 '20:00'(첫 배포 기본값)은 평일 진료 중에 카드를 지우므로 새 기본값으로 대체한다 */
+let CLOSE_HM_WD = (function(){const v=localStorage.getItem("patientBoard_closehm_wd");return v===null?"21:00":v;})();
+let CLOSE_HM_WE = (function(){const v=localStorage.getItem("patientBoard_closehm_we");return v===null?"18:00":v;})();
+let HOLIDAYS = (function(){try{const a=JSON.parse(localStorage.getItem("patientBoard_holidays"));return Array.isArray(a)?a:[];}catch(e){return [];}})();   // 공휴일 YYYY-MM-DD 목록 → 주말 시각 적용
+function isWeekendOrHoliday(d){d=d||new Date();const w=d.getDay();return w===0||w===6||HOLIDAYS.includes(localYMD(d));}
+function closeHmFor(d){return isWeekendOrHoliday(d)?CLOSE_HM_WE:CLOSE_HM_WD;}
+let CLOSE_HM = closeHmFor(new Date());   // 호환용(오늘 기준 값) — 판단은 항상 closeHmFor(날짜)로   // 자동 마감 시각(HH:MM) — 이 시각 뒤 그날 접수 카드를 자동 내보내기(''=사용 안 함). 전날 남은 카드는 시각과 무관하게 정리
 let PARKING_MIN = (function(){const v=parseInt(localStorage.getItem("patientBoard_parkingmin"));return isNaN(v)?10:v;})(); // 접수 N분 경과 + 수납 도착 시 '주차권 안내' 표시 (0=끔, 관리자 조정)
 function won(n){return Number(n||0).toLocaleString("ko-KR");}
 function nowHM(){const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
@@ -2837,16 +2854,23 @@ async function runSelfTest(){
      ok('bitBackfillMrn: 조회로 보완된 문서 → 카드에 차트번호·생년월일·성별 채움', data[0].mrn==='601' && data[0].birth==='1990-01-01' && data[0].sex==='남');
      BIT_INTAKE=_i6;BIT_LOOKUP=_l6;data=_d6;PMEMO=_pm6;window.pmemoSave=_ps6;window.audit=_au6;window.save=_sv6;window.render=_rd6;}
     // ── 등록번호 일일 리셋 · 자동 마감 ──
-    {const _d7=data,_c7=CLOSE_HM;const now=new Date();const y=new Date(now.getTime()-86400000);
+    {const _d7=data,_wd=CLOSE_HM_WD,_we=CLOSE_HM_WE,_ho=HOLIDAYS;const now=new Date();const y=new Date(now.getTime()-86400000);
      const iso=(d,h,m)=>{const x=new Date(d);x.setHours(h,m,0,0);return x.toISOString();};
      data=[{id:'y1',seq:118,arrivedAt:iso(y,10,0),route:['R'],step:0},{id:'t1',seq:2,arrivedAt:iso(now,9,0),route:['R'],step:0},{id:'t2',seq:3,arrivedAt:iso(now,23,58),route:['R'],step:0}];
      ok('maxSeqToday: 전날 남은 카드(#118)는 무시하고 오늘 최대(#3)만', maxSeqToday()===3);
-     CLOSE_HM='';
+     CLOSE_HM_WD='';CLOSE_HM_WE='';HOLIDAYS=[];
      eq('autoClosePick: 마감 시각 없음 → 전날 카드만 정리', autoClosePick(new Date(iso(now,12,0))).map(p=>p.id), ['y1']);
-     CLOSE_HM='20:00';
+     CLOSE_HM_WD='20:00';CLOSE_HM_WE='20:00';
      eq('autoClosePick: 마감 전(12:00) → 전날 카드만', autoClosePick(new Date(iso(now,12,0))).map(p=>p.id), ['y1']);
      eq('autoClosePick: 마감 후(23:59) → 전날 + 마감 전 도착 카드, 마감 뒤 도착(23:58)은 남김', autoClosePick(new Date(iso(now,23,59))).map(p=>p.id).sort(), ['t1','y1']);
-     data=_d7;CLOSE_HM=_c7;}
+     /* 평일/주말·공휴일 구분: 평일 21:00 · 주말 18:00 → 어느 요일이든 20:00 에는 평일이면 아직 마감 전, 주말·공휴일이면 마감 후 */
+     CLOSE_HM_WD='21:00';CLOSE_HM_WE='18:00';HOLIDAYS=[];
+     const wknd=isWeekendOrHoliday(now);
+     eq('autoClosePick: 20:00 — 오늘이 '+(wknd?'주말이라 18:00 지나 마감':'평일이라 21:00 전이라 유지'), autoClosePick(new Date(iso(now,20,0))).map(p=>p.id).sort(), wknd?['t1','y1']:['y1']);
+     HOLIDAYS=[localYMD(now)];
+     eq('autoClosePick: 오늘을 공휴일로 지정 → 주말 시각(18:00) 적용', autoClosePick(new Date(iso(now,20,0))).map(p=>p.id).sort(), ['t1','y1']);
+     ok('closeHmFor: 평일/주말 시각 선택', (()=>{HOLIDAYS=[];const mon=new Date(2026,8,14),sun=new Date(2026,8,13);return closeHmFor(mon)==='21:00'&&closeHmFor(sun)==='18:00';})());
+     data=_d7;CLOSE_HM_WD=_wd;CLOSE_HM_WE=_we;HOLIDAYS=_ho;CLOSE_HM=closeHmFor(new Date());}
     // ── 통계 초기화: 확인 창 두 단계 없이는 아무것도 지우지 않음 ──
     {const _S=STATS,_V=VISITS,_cf=window.confirm,_pr=window.prompt,_al=window.alert,_au=window.audit,_rs=window.renderStats,_rd=window.render;
      const _lsV=localStorage.getItem(VISIT_STORE),_lsS=localStorage.getItem(STATS_STORE);
@@ -2901,6 +2925,21 @@ async function runSelfTest(){
       if(title&&clock&&getComputedStyle(clock).position==='absolute'){const tb=title.getBoundingClientRect(),cb=clock.getBoundingClientRect();
         ok('제목: 오른쪽 시계와 겹치지 않음(시계 자리만큼 양쪽을 비우고 필요하면 축소)', tb.right<=cb.left-8);}
      }finally{hdr.style.padding=_pad;if(!wasShown)ws.classList.remove('show');}}
+    // ── 대기화면 치료 시트 묶음: SASO·자동차도수도 충격파·신장분사처럼 시트로 ──
+    {const _wr=waitRooms,_ws=waitRotSec,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sp=window.saveWaitPresets,_sd=sheetDate;window.saveWaitPresets=()=>{};
+     try{ROOMS=['충격파','신장분사','SASO','자동차도수','x-ray실'];ROOM_META={};waitRotSec=0;sheetDate=null;const now=new Date().toISOString();
+      meta('SASO').doctors=['김치료'];meta('충격파').doctors=['박치료'];
+      data=[{id:'s1',name:'환자S',mrn:'1',route:['SASO'],step:0,status:'진행',ord:1,enteredAt:now,doctor:'김치료',notes:{},visits:[]},
+            {id:'s2',name:'환자충',mrn:'2',route:['충격파'],step:0,status:'진행',ord:2,enteredAt:now,doctor:'박치료',notes:{},visits:[]}];
+      eq('치료 시트: 묶음별 기록 분리', [sheetRecords(null,['SASO','자동차도수']).length, sheetRecords(null,['충격파','신장분사']).length, sheetRecords().length], [1,1,2]);
+      waitRooms=['SASO'];renderWaitScreen();
+      let sc=[...document.querySelectorAll('#waitCols .wait-sheetcol')];
+      ok('치료 시트: SASO 선택 → SASO·자동차도수 시트 한 판, 담당자 열·환자 표시(S)', sc.length===1&&sc[0].textContent.includes('SASO · 자동차도수')&&sc[0].textContent.includes('김치료')&&!!sc[0].querySelector('.sp-room.ss')&&!sc[0].textContent.includes('박치료'));
+      waitRooms=['자동차도수','충격파'];renderWaitScreen();
+      sc=[...document.querySelectorAll('#waitCols .wait-sheetcol')];
+      eq('치료 시트: 두 묶음 모두 선택 → 시트 두 판, 각자 제목', sc.map(c=>c.querySelector('.wait-ct span').textContent), ['SASO · 자동차도수','충격파 · 신장분사']);
+      ok('치료 시트: 화면에 sheet-page 표시', document.getElementById('waitScreen').classList.contains('sheet-page'));
+     }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
     // ── 대기화면 하단 전광판(흐르는 안내 문구) ──
     {const t=document.getElementById('waitTicker');const ws=document.getElementById('waitScreen');const wasShown=ws.classList.contains('show');ws.classList.add('show');
      try{waitTickerFit();const items=t?t.querySelectorAll('.wt-item'):[];
@@ -3015,7 +3054,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHm:CLOSE_HM, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -3050,7 +3089,10 @@ function applyCfg(d){
   if(typeof d.punctEarly==='number'){PUNCT_EARLY=d.punctEarly;localStorage.setItem("patientBoard_punctearly",String(PUNCT_EARLY));}
   if(typeof d.punctLate==='number'){PUNCT_LATE=d.punctLate;localStorage.setItem("patientBoard_punctlate",String(PUNCT_LATE));}
   if(typeof d.parkingMin==='number'){PARKING_MIN=(d.parkingMin===120?10:d.parkingMin);localStorage.setItem("patientBoard_parkingmin",String(PARKING_MIN));}   // 120=옛 기본값 → 확정값 10분으로 1회 교체
-  if(typeof d.closeHm==='string'){CLOSE_HM=d.closeHm;localStorage.setItem("patientBoard_closehm",CLOSE_HM);}
+  if(typeof d.closeHmWd==='string'){CLOSE_HM_WD=d.closeHmWd;localStorage.setItem("patientBoard_closehm_wd",CLOSE_HM_WD);}
+  if(typeof d.closeHmWe==='string'){CLOSE_HM_WE=d.closeHmWe;localStorage.setItem("patientBoard_closehm_we",CLOSE_HM_WE);}
+  if(Array.isArray(d.holidays)){HOLIDAYS=d.holidays.filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));localStorage.setItem("patientBoard_holidays",JSON.stringify(HOLIDAYS));}
+  CLOSE_HM=closeHmFor(new Date());   // (옛 closeHm 단일값은 무시 — 평일 20:00 마감 사고 방지)
   const maxSeq=maxSeqToday();   // 오늘 도착 카드만 — 전날 내보내지 않은 카드(#118 등)가 남아 있어도 오늘은 #1부터
   const _today=localYMD(new Date());
   if(d.seqDate&&d.seqDate!==_today){seqNext=1;seqDate=_today;}  // 클라우드 기록이 어제면 새 날 → #1부터
@@ -4204,10 +4246,8 @@ function renderWaitScreen(){
   /* 검사실 보기의 방이 선택돼 있으면 그 방 대신 보기의 칸(키 '__EXAM__:0' …)을 순서대로 넣는다 */
   rs=rs.reduce((acc,r)=>{const v=waitViewOf(r);if(!v){acc.push(r);return acc;}
     v.cols.forEach((c,i)=>{const k=v.key+':'+i;if(c.rooms.some(x=>ROOMS.includes(x))&&!acc.includes(k))acc.push(k);});return acc;},[]);
-  /* 충격파·신장분사가 선택되면 개별 대기열 대신 치료 시트 한 판으로 표시 */
-  const hasSheet=rs.some(r=>SHEET_ROOMS.includes(r));
-  rs=rs.filter(r=>!SHEET_ROOMS.includes(r));
-  if(hasSheet)rs.push("__SHEET__");
+  /* 치료 시트 묶음(충격파·신장분사 / SASO·자동차도수): 묶음의 방이 선택돼 있으면 개별 대기열 대신 시트 한 판을 그 자리에 */
+  SHEET_GROUPS.forEach(g=>{const i=rs.findIndex(r=>g.rooms.includes(r));if(i<0)return;rs=rs.filter(r=>!g.rooms.includes(r));rs.splice(Math.min(i,rs.length),0,g.key);});
   if(!rs.length){cols.classList.remove("rot");cols.innerHTML=`<div class="wait-hint"><i data-lucide="settings"></i> 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
   /* 회전 단위: 검사실 보기의 세 칸은 한 단위(회전 중에도 항상 함께 한 화면), 그 외는 칸 하나가 한 단위 */
   const units=[];rs.forEach(k=>{const vc=waitViewCol(k);const last=units[units.length-1];if(vc&&last&&last.view===vc.view)last.keys.push(k);else units.push({view:vc?vc.view:null,keys:[k]});});
@@ -4216,20 +4256,21 @@ function renderWaitScreen(){
   if(rot){waitRotIdx=((waitRotIdx%units.length)+units.length)%units.length;showRs=units[waitRotIdx].keys;}
   cols.classList.toggle("rot",rot&&showRs.length===1);   // '한 방 크게' 배치는 단위가 칸 하나일 때만
   const dotsHtml=rot?`<div class="wait-rot-dots">${units.map((u,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(u.view?u.view.chip:waitColTitle(u.keys[0]))}"></span>`).join("")}</div>`:'';
-  document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.includes("__SHEET__"));
+  document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.some(k=>!!sheetGroupOf(k)));
   cols.innerHTML=showRs.map(room=>{
-    if(room==='__SHEET__'){
-      const cnt=sheetRecords(sheetDate).length;
+    const sg=sheetGroupOf(room);
+    if(sg){
+      const cnt=sheetRecords(sheetDate,sg.rooms).length;
       const today=localYMD(new Date());
       const maxD=(function(){const d=new Date();d.setMonth(d.getMonth()+3);return localYMD(d);})();   // 예약 대비 3개월 앞까지
       return `<div class="wait-col wait-sheetcol">
         <span class="wait-cnt-badge">${sheetDate?esc(sheetDate):'오늘'} ${cnt}건</span>
-        <div class="wait-ct"><span>충격파 · 신장분사${sheetDate?' — '+esc(sheetDate):''}</span>
+        <div class="wait-ct"><span>${esc(sg.title)}${sheetDate?' — '+esc(sheetDate):''}</span>
           <input type="date" class="sheet-date-inp" value="${esc(sheetDate||today)}" max="${maxD}" onchange="setSheetDate(this.value)" title="지난/예정 시트 보기 (3개월 앞까지)">
           ${sheetDate?'':'<button class="sheet-note-btn" onclick="openSheetNote()" title="시트 메모 쓰기">＋</button>'}
-          <button class="sheet-note-btn" onclick="printSheet()" title="시트 인쇄/저장"><i data-lucide="printer"></i></button>
+          <button class="sheet-note-btn" onclick="printSheet('${sg.key}')" title="시트 인쇄/저장"><i data-lucide="printer"></i></button>
         </div>
-        <div class="wait-list">${treatSheetTableHtml(true,sheetDate)}</div>
+        <div class="wait-list">${treatSheetTableHtml(true,sheetDate,sg.rooms)}</div>
       </div>`;
     }
     const vc=waitViewCol(room);const rooms=vc?vc.rooms:[room];const grp=!!(vc&&rooms.length>1);   // 보기의 칸: 방 1개면 그 방 그대로, 2개 이상이면 합산(환자 옆에 방 표시명)
@@ -4249,7 +4290,11 @@ function renderWaitScreen(){
 }
 
 /* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
-const SHEET_ROOMS=["충격파","신장분사"];
+/* 대기화면 치료 시트(엑셀식 표: 열=담당자, 행=30분 슬롯) — 묶음 단위로 한 판씩. 묶음의 방이 하나라도 선택되면 그 시트가 뜬다 */
+const SHEET_GROUPS=[{key:'__SHEET__',title:'충격파 · 신장분사',rooms:['충격파','신장분사']},{key:'__SHEET2__',title:'SASO · 자동차도수',rooms:['SASO','자동차도수']}];
+const SHEET_ROOMS=SHEET_GROUPS.flatMap(g=>g.rooms);   // 시트로 보는 방 전체(담당자 재직 이력·메모 대상)
+const SHEET_ABBR={"충격파":["충","sk"],"신장분사":["신","sj"],"SASO":["S","ss"],"자동차도수":["도","sd"]};   // 셀 안 방 표시(글자, 색 클래스)
+function sheetGroupOf(key){return SHEET_GROUPS.find(g=>g.key===key)||null;}
 /* 대기화면 '검사실 보기': 칩 하나(C-Arm, Sono, 근전도, 처치)로 세 칸을 함께 띄운다 — [C-Arm] [Sono] [근전도검사+처치실 합산].
    칸 제목·환자 옆 방 이름은 방의 대기화면 표시명(waitName, 예: 실시간 영상유도하 주사)을 쓴다. 보드의 방 이름은 그대로.
    이 보기는 단독 표시: 칩을 켜면 다른 방 선택이 해제되고, 다른 방을 고르면 이 보기가 닫힌다 */
@@ -4261,7 +4306,7 @@ function waitViewOf(room){return WAIT_VIEWS.find(v=>v.cols.some(c=>c.rooms.inclu
 function waitViewRooms(v){return v.cols.flatMap(c=>c.rooms).filter(r=>ROOMS.includes(r));}
 function waitViewOn(v){return waitViewRooms(v).some(r=>waitRooms.includes(r));}
 function waitViewCol(key){const m=/^(__[A-Z]+__):(\d+)$/.exec(key||'');if(!m)return null;const v=WAIT_VIEWS.find(x=>x.key===m[1]);const c=v&&v.cols[+m[2]];if(!c)return null;return {view:v,rooms:c.rooms.filter(r=>ROOMS.includes(r)),title:c.title};}
-function waitColTitle(key){if(key==='__SHEET__')return '충격파·신장분사';const c=waitViewCol(key);if(c)return c.title||(c.rooms.length?waitRoomLabel(c.rooms[0]):key);return waitRoomLabel(key);}
+function waitColTitle(key){const sg=sheetGroupOf(key);if(sg)return sg.title;const c=waitViewCol(key);if(c)return c.title||(c.rooms.length?waitRoomLabel(c.rooms[0]):key);return waitRoomLabel(key);}
 function toggleWaitView(key){const v=WAIT_VIEWS.find(x=>x.key===key);if(!v)return;
   waitRooms=waitViewOn(v)?[]:waitViewRooms(v).slice();   // 켜면 이 보기만, 끄면 비움
   waitPresets[waitCur].rooms=waitRooms.slice();saveWaitPresets();renderWaitScreen();}
@@ -4315,18 +4360,19 @@ window.saveSheetNote=function(){
   cloudSaveConfig();closeSheetNote();render();
 };
 /* 날짜별 시트 기록 — 내원 보관 기록(5년 보존)에서 그날 치를 재구성. 오늘이면 보드의 실시간 기록 포함 */
-function sheetRecords(dateYmd){
+function sheetRecords(dateYmd,rooms){
+  rooms=rooms||SHEET_ROOMS;
   const out=[],today=localYMD(new Date()),D=dateYmd||today;
   if(D===today){
     /* 보드의 오늘 기록: 지나간 방(visits 로그) + 현재 방 */
     data.forEach(p=>{if(p.discharged)return;
       (p.visits||[]).forEach(v=>{
-        if(!SHEET_ROOMS.includes(v.room)||!v.enteredAt)return;
+        if(!rooms.includes(v.room)||!v.enteredAt)return;
         if(localYMD(new Date(v.enteredAt))!==today)return;
         const doc=docFor(p,v.room);if(!doc)return;
         out.push({doc,room:v.room,at:v.enteredAt,name:p.name,mrn:p.mrn});});
       const cr=curRoom(p);
-      if(SHEET_ROOMS.includes(cr)&&p.enteredAt){
+      if(rooms.includes(cr)&&p.enteredAt){
         const doc=docFor(p,cr);
         if(doc)out.push({doc,room:cr,at:p.enteredAt,name:p.name,mrn:p.mrn,live:true});}
     });
@@ -4334,7 +4380,7 @@ function sheetRecords(dateYmd){
   /* 보관된 내원 기록에서 그날 방문 */
   (Array.isArray(VISITS)?VISITS:[]).forEach(v=>{
     (v.rooms||[]).forEach(r=>{
-      if(!SHEET_ROOMS.includes(r.room))return;
+      if(!rooms.includes(r.room))return;
       const at=r.enteredAt||v.dischargedAt;if(!at||localYMD(new Date(at))!==D)return;
       const doc=r.doctor||((v.roomDocs||{})[r.room])||"";if(!doc)return;
       out.push({doc,room:r.room,at,name:v.name,mrn:v.mrn});});
@@ -4357,34 +4403,36 @@ function loadSheetNotesHist(d){
     .catch(()=>{});}catch(e){}
 }
 /* 시트 인쇄(내부 보관용 — 전체 이름·병록번호 표시) */
-window.printSheet=function(){
+window.printSheet=function(key){
+  const sg=sheetGroupOf(key)||SHEET_GROUPS[0];
   const d=sheetDate||localYMD(new Date());
   const w=window.open("","_blank");if(!w){alert("팝업이 차단되었습니다.");return;}
   const style=`<style>body{font-family:'Malgun Gothic',sans-serif;padding:16px}h2{font-size:17px;margin:0 0 10px}
     table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #666;padding:5px 7px;text-align:center}
     thead th{background:#eef1f6}.sheet-time{width:60px;background:#eef1f6}
     .sp-room{display:inline-block;width:16px;border-radius:4px;color:#fff;font-weight:700;font-size:10px}
-    .sp-room.sk{background:#f59e0b}.sp-room.sj{background:#8b5cf6}
+    .sp-room.sk{background:#f59e0b}.sp-room.sj{background:#8b5cf6}.sp-room.ss{background:#0ea5e9}.sp-room.sd{background:#10b981}
     .sheet-p{white-space:nowrap}.sp-mrn{color:#777;font-size:10px}
     .sheet-p.has-note::after{content:" ✱";color:#e5484d}
     .sheet-legend{font-size:11px;color:#666;margin-top:8px}</style>`;
   w.document.write(`<html><head><title>치료시트_${d}</title>${style}</head><body>
-    <h2>충격파 · 신장분사 치료 시트 — ${d}</h2>${treatSheetTableHtml(false,sheetDate)}
+    <h2>${esc(sg.title)} 치료 시트 — ${d}</h2>${treatSheetTableHtml(false,sheetDate,sg.rooms)}
     <script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
   w.document.close();
 };
 /* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김 / dateYmd: 지난 날짜 조회) */
-function treatSheetTableHtml(pf,dateYmd){
+function treatSheetTableHtml(pf,dateYmd,rooms){
+  rooms=rooms||SHEET_GROUPS[0].rooms;
   const D=dateYmd||localYMD(new Date());
   const isToday=D===localYMD(new Date());
-  const recs=sheetRecords(dateYmd);
+  const recs=sheetRecords(dateYmd,rooms);
   let NOTES;
   if(isToday)NOTES=SHEET_NOTES;
   else{NOTES=Object.assign({},SHEET_NOTES_HIST[dateYmd]||{});
     Object.keys(SHEET_NOTES).forEach(k=>{if(k.split("|")[0]===dateYmd)NOTES[k]=SHEET_NOTES[k];});}   // 아직 이관 전 메모도 포함
   /* 열: 두 방 배정 전원(휴무자 포함 — 휴무일이면 열 전체 진회색) + 그날 기록에 등장한 사람 */
   let docs=[];
-  SHEET_ROOMS.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
+  rooms.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
     .forEach(n=>{if(n&&sheetStaffActiveOn(n,D)&&!docs.includes(n))docs.push(n);});});   // 그날 재직 중인 사람만
   recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});                  // 기록이 있으면 퇴직자도 그날엔 표시
   if(!docs.length)return '<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
@@ -4394,7 +4442,7 @@ function treatSheetTableHtml(pf,dateYmd){
     const hm=String(Math.floor(s2/2)).padStart(2,"0")+":"+(s2%2?"30":"00");return hm<h.from||hm>=h.to;};
   /* 행: 30분 슬롯 — 근무시간 9:00~21:00, 기록이 밖에 있으면 자동 확장 */
   const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
-  let s0=18,s1=41;   // 9:00=18 ~ 20:30=41
+  let s0=18,s1=isWeekendOrHoliday(new Date(D+"T12:00:00"))?35:41;   // 9:00=18 ~ 평일 20:30=41 / 토·일·공휴일 17:30=35 (마지막 예약 시간대까지)
   recs.forEach(x=>{const s2=slotOf(x.at);if(s2<s0)s0=s2;if(s2>s1)s1=s2;});
   let rows="";
   for(let s2=s0;s2<=s1;s2++){
@@ -4406,7 +4454,7 @@ function treatSheetTableHtml(pf,dateYmd){
         const nm=pf?maskName(x.name):dispName(x.name);
         const nt=NOTES[sheetNoteKey(x)];
         return `<div class="sheet-p${x.live?' live':''}${nt?' has-note':''}"${nt?` title="${esc(nt.text)}${nt.by?' — '+esc(nt.by):''}"`:''}>
-        <span class="sp-room ${x.room==='충격파'?'sk':'sj'}">${x.room==='충격파'?'충':'신'}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;}).join("")}</td>`;
+        <span class="sp-room ${(SHEET_ABBR[x.room]||['?','sj'])[1]}">${(SHEET_ABBR[x.room]||['?'])[0]}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;}).join("")}</td>`;
     }).join("");
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
@@ -4415,7 +4463,7 @@ function treatSheetTableHtml(pf,dateYmd){
       ?`<th class="offhead">${esc(n)}<div class="offsub">휴무</div></th>`
       :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${WH[n]?`<div class="offsub">${WH[n].from}~${WH[n].to}</div>`:''}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <div class="sheet-legend"><span class="sp-room sk">충</span> 충격파 &nbsp; <span class="sp-room sj">신</span> 신장분사 &nbsp;·&nbsp; 파란색 = 현재 치료 중</div>`;
+    <div class="sheet-legend">${rooms.map(r=>`<span class="sp-room ${(SHEET_ABBR[r]||['?','sj'])[1]}">${(SHEET_ABBR[r]||['?'])[0]}</span> ${esc(r)}`).join(' &nbsp; ')} &nbsp;·&nbsp; 파란색 = 현재 치료 중</div>`;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
@@ -4724,10 +4772,10 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   completeVisit(p,'종결');archiveVisit(p);cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();}
 /* ── 자동 마감: 내보내기를 잊은 카드 정리 ──
    · 전날(또는 그 이전) 도착한 카드 → 언제든 즉시 내보내기 (다음 날 등록번호가 #1부터 시작하도록)
-   · CLOSE_HM 이 지난 뒤 → 그날 CLOSE_HM 이전에 도착한 카드 내보내기 (마감 뒤 접수된 야간 환자는 남겨 두고 다음 날 정리)
+   · 그날의 마감 시각(평일 CLOSE_HM_WD / 주말·공휴일 CLOSE_HM_WE)이 지난 뒤 → 그날 마감 전에 도착한 카드 내보내기 (마감 뒤 접수된 환자는 남겨 두고 다음 날 정리)
    여러 화면이 함께 열려 있어도 한 번만 처리되도록, 환자 문서 삭제를 트랜잭션으로 선점한 화면만 내원 기록을 남긴다 */
 function autoClosePick(now){
-  now=now||new Date();const t=localYMD(now),nowM=now.getHours()*60+now.getMinutes(),closeM=hmMin(CLOSE_HM);
+  now=now||new Date();const t=localYMD(now),nowM=now.getHours()*60+now.getMinutes(),closeM=hmMin(closeHmFor(now));   // 그날이 평일/주말·공휴일인지에 따라
   return data.filter(p=>{if(p.discharged)return false;const src=p.arrivedAt||p.enteredAt;if(!src)return false;const d=new Date(src);if(isNaN(d))return false;
     const pd=localYMD(d);if(pd<t)return true;if(pd>t)return false;
     return closeM!=null&&nowM>=closeM&&(d.getHours()*60+d.getMinutes())<closeM;});
@@ -6471,7 +6519,8 @@ function renderRoomsList(){
   if(ps)ps.innerHTML=`<option value="">(없음 — 자동 추가 안 함)</option>`+ROOMS.map(r=>`<option ${r===PAY_ROOM?'selected':''}>${esc(r)}</option>`).join("");
   const pe=document.getElementById("punctEarly");if(pe)pe.value=PUNCT_EARLY;
   const pk=document.getElementById("parkingMinInp");if(pk)pk.value=PARKING_MIN;
-  const ch=document.getElementById("closeHmInp");if(ch)ch.value=CLOSE_HM;
+  const cw=document.getElementById("closeHmWdInp");if(cw)cw.value=CLOSE_HM_WD;const ce=document.getElementById("closeHmWeInp");if(ce)ce.value=CLOSE_HM_WE;
+  const hi=document.getElementById("holidaysInp");if(hi)hi.value=HOLIDAYS.join(', ');
   const pl=document.getElementById("punctLate");if(pl)pl.value=PUNCT_LATE;
   const dli=document.getElementById("docListInput");if(dli)dli.value=DOCTORS.join(', ');
   const psi=document.getElementById("procSetInput");if(psi)psi.value=PROC_SET.join(', ');
@@ -6479,9 +6528,15 @@ function renderRoomsList(){
   renderProcMatList();
 }
 function setPayRoom(v){if(!isAdmin())return;PAY_ROOM=v;localStorage.setItem("patientBoard_payroom",v);cloudSaveConfig();render();}
-function setCloseHm(v){if(!isAdmin())return;v=String(v||'').trim();if(v&&!/^\d{2}:\d{2}$/.test(v)){alert('시각은 HH:MM 형식으로 입력하세요');return;}
-  CLOSE_HM=v;localStorage.setItem("patientBoard_closehm",v);cloudSaveConfig();const inp=document.getElementById("closeHmInp");if(inp)inp.value=v;
-  try{audit('자동마감시각변경',v||'사용 안 함');}catch(e){}try{autoCloseDay();}catch(e){}}
+function setCloseHm(kind,v){if(!isAdmin())return;v=String(v||'').trim();if(v&&!/^\d{2}:\d{2}$/.test(v)){alert('시각은 HH:MM 형식으로 입력하세요');return;}
+  if(kind==='we'){CLOSE_HM_WE=v;localStorage.setItem("patientBoard_closehm_we",v);const i=document.getElementById("closeHmWeInp");if(i)i.value=v;}
+  else{CLOSE_HM_WD=v;localStorage.setItem("patientBoard_closehm_wd",v);const i=document.getElementById("closeHmWdInp");if(i)i.value=v;}
+  CLOSE_HM=closeHmFor(new Date());cloudSaveConfig();
+  try{audit('자동마감시각변경',(kind==='we'?'토일공휴일 ':'평일 ')+(v||'사용 안 함'));}catch(e){}try{autoCloseDay();}catch(e){}}
+function setHolidays(v){if(!isAdmin())return;
+  const list=[...new Set(String(v||'').split(/[,\s]+/).map(x=>x.trim()).filter(Boolean).map(x=>x.replace(/[./]/g,'-')).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x)))].sort();
+  HOLIDAYS=list;localStorage.setItem("patientBoard_holidays",JSON.stringify(list));CLOSE_HM=closeHmFor(new Date());cloudSaveConfig();
+  const i=document.getElementById("holidaysInp");if(i)i.value=list.join(', ');try{audit('공휴일변경',list.join(',')||'없음');}catch(e){}}
 function setParkingMin(v){if(!isAdmin())return;
   let n=parseInt(v);if(isNaN(n)||n<0)n=0;if(n>720)n=720;
   PARKING_MIN=n;localStorage.setItem("patientBoard_parkingmin",String(n));
