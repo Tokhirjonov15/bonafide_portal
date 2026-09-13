@@ -572,6 +572,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #staffModal .body{min-height:min(360px,55vh)}
   .hist-pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 0}
   .hist-pager .btn[disabled]{opacity:.4;cursor:default}
+  /* 대기화면 머리글: 병원 이름·부제를 화면 가운데에 더 크게, 시계는 오른쪽 위에 따로 (사용자 요청 2026-09-13) */
+  .wait-header{position:relative;justify-content:center;text-align:center;padding:34px 230px 18px}
+  .wait-brand{align-items:center}
+  .wait-underline{margin:14px auto 0;width:96px}
+  .wait-clock{position:absolute;right:46px;top:30px}
+  .wait-title{font-size:calc(clamp(38px,5.6vw,88px) * var(--wheadscale,1))}
+  .wait-sub{font-size:calc(clamp(14px,1.5vw,24px) * var(--wheadscale,1))}
+  @media(max-width:1100px){.wait-header{padding:30px 46px 18px;justify-content:flex-start;text-align:left}.wait-brand{align-items:flex-start}.wait-underline{margin:12px 0 0}.wait-clock{position:static}}
   .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
   #roomsModal .modal,#viewModal .modal{overflow:hidden;display:flex;flex-direction:column}
@@ -2862,6 +2870,13 @@ async function runSelfTest(){
       ok('검사실 보기: 합산 칸은 준비 중(처치실)이 대기(근전도)보다 위', cols[2].querySelector('.wait-p').textContent.includes('처치실'));
       const chips=[...document.querySelectorAll('#waitRoomSel .chipf')].map(b=>b.textContent.trim());
       ok('검사실 보기: 칩은 하나(C-Arm, Sono, 근전도, 처치), 개별 칩 없음', chips.filter(t=>t==='C-Arm, Sono, 근전도, 처치').length===1&&!chips.includes('Sono')&&!chips.includes('처치실'));
+      waitRotSec=10;renderWaitScreen();
+      ok('검사실 보기: 회전 모드여도 세 칸이 한 화면에 함께(회전 안 함)', document.querySelectorAll('#waitCols .wait-col').length===3&&!document.getElementById('waitCols').classList.contains('rot')&&!document.querySelector('#waitCols .wait-rot-dots'));
+      waitRooms.push('x-ray실');waitRotIdx=0;renderWaitScreen();
+      ok('검사실 보기 + 다른 방: 회전 단위 2개 — 첫 단위는 세 칸 함께, 점 2개', document.querySelectorAll('#waitCols .wait-col').length===3&&document.querySelectorAll('#waitCols .wrd').length===2);
+      waitRotIdx=1;renderWaitScreen();
+      ok('검사실 보기 + 다른 방: 다음 단위는 x-ray실 한 칸(크게)', document.querySelectorAll('#waitCols .wait-col').length===1&&document.getElementById('waitCols').classList.contains('rot'));
+      waitRotSec=0;waitRotIdx=0;waitRooms=waitRooms.filter(r=>r!=='x-ray실');
       toggleWaitRoom('x-ray실');eq('검사실 보기: 다른 방을 고르면 보기가 닫히고 그 방만', waitRooms, ['x-ray실']);
       toggleWaitView('__EXAM__');toggleWaitView('__EXAM__');eq('검사실 보기: 칩 다시 누르면 해제', waitRooms, []);
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';}}
@@ -4150,11 +4165,13 @@ function renderWaitScreen(){
   rs=rs.filter(r=>!SHEET_ROOMS.includes(r));
   if(hasSheet)rs.push("__SHEET__");
   if(!rs.length){cols.classList.remove("rot");cols.innerHTML=`<div class="wait-hint"><i data-lucide="settings"></i> 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
-  const rot=waitRotSec>0&&rs.length>1;   // 회전 모드: 한 방씩 크게, N초마다 다음 방
-  cols.classList.toggle("rot",rot);
+  /* 회전 단위: 검사실 보기의 세 칸은 한 단위(회전 중에도 항상 함께 한 화면), 그 외는 칸 하나가 한 단위 */
+  const units=[];rs.forEach(k=>{const vc=waitViewCol(k);const last=units[units.length-1];if(vc&&last&&last.view===vc.view)last.keys.push(k);else units.push({view:vc?vc.view:null,keys:[k]});});
+  const rot=waitRotSec>0&&units.length>1;   // 회전 모드: 한 단위씩, N초마다 다음
   let showRs=rs;
-  if(rot){waitRotIdx=((waitRotIdx%rs.length)+rs.length)%rs.length;showRs=[rs[waitRotIdx]];}
-  const dotsHtml=rot?`<div class="wait-rot-dots">${rs.map((r,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(waitColTitle(r))}"></span>`).join("")}</div>`:'';
+  if(rot){waitRotIdx=((waitRotIdx%units.length)+units.length)%units.length;showRs=units[waitRotIdx].keys;}
+  cols.classList.toggle("rot",rot&&showRs.length===1);   // '한 방 크게' 배치는 단위가 칸 하나일 때만
+  const dotsHtml=rot?`<div class="wait-rot-dots">${units.map((u,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(u.view?u.view.chip:waitColTitle(u.keys[0]))}"></span>`).join("")}</div>`:'';
   document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.includes("__SHEET__"));
   cols.innerHTML=showRs.map(room=>{
     if(room==='__SHEET__'){
