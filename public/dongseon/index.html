@@ -572,6 +572,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #staffModal .body{min-height:min(360px,55vh)}
   .hist-pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 0}
   .hist-pager .btn[disabled]{opacity:.4;cursor:default}
+  /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
+  #roomsModal .modal,#viewModal .modal{overflow:hidden;display:flex;flex-direction:column}
+  #roomsModal .body,#viewModal .body{overflow:auto;min-height:0;flex:1 1 auto}
+  #roomsModal .modal h3,#viewModal .modal h3,#roomsModal .foot,#viewModal .foot{flex:0 0 auto}
 /* 환자 추가/수정(#modal) — 넓은 3단 레이아웃(환자정보 | 동선·상담 | 차팅) */
 /* 닥터팔레트식 배치: 좌=현재 방 레일, 우=환자 정보 패널(드로어) */
 #modal.modal-bg{align-items:stretch;justify-content:flex-end;padding:12px;gap:12px}
