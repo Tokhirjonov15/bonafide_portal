@@ -560,6 +560,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .row2{display:flex;gap:10px}
   .row2>*{flex:1}
   .modal .foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+  /* 통계 창: 날짜 필터로 내용이 비어도 창 크기가 줄지 않게(비면 오류처럼 보임) — 본문 최소 높이 고정, 넘치면 본문만 스크롤 */
+  #statsModal .body{height:min(640px,78vh);overflow:auto}
+  #statsModal .modal{overflow:hidden;display:flex;flex-direction:column}
+  #statsModal .modal h3{flex:0 0 auto}#statsModal .foot{flex:0 0 auto}
 /* 환자 추가/수정(#modal) — 넓은 3단 레이아웃(환자정보 | 동선·상담 | 차팅) */
 /* 닥터팔레트식 배치: 좌=현재 방 레일, 우=환자 정보 패널(드로어) */
 #modal.modal-bg{align-items:stretch;justify-content:flex-end;padding:12px;gap:12px}
