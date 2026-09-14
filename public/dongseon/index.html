@@ -2858,6 +2858,14 @@ async function runSelfTest(){
      const iso=(d,h,m)=>{const x=new Date(d);x.setHours(h,m,0,0);return x.toISOString();};
      data=[{id:'y1',seq:118,arrivedAt:iso(y,10,0),route:['R'],step:0},{id:'t1',seq:2,arrivedAt:iso(now,9,0),route:['R'],step:0},{id:'t2',seq:3,arrivedAt:iso(now,23,58),route:['R'],step:0}];
      ok('maxSeqToday: 전날 남은 카드(#118)는 무시하고 오늘 최대(#3)만', maxSeqToday()===3);
+     {const _V9=VISITS,_sn=seqNext,_sd=seqDate;
+      VISITS=[{id:'v9',seq:4,arrivedAt:iso(now,8,0),dischargedAt:iso(now,8,30)}];
+      ok('maxSeqToday: 오늘 내보낸 내원 기록(#4)도 포함', maxSeqToday()===4);
+      seqNext=218;seqDate=localYMD(y);seqSyncFromCfg({seqNext:6,seqDate:localYMD(now)});
+      ok('seqSync: 이 기기의 어제 카운터(218)는 버리고 오늘 최대+1/클라우드(6) 중 큰 값', seqNext===6&&seqDate===localYMD(now));
+      seqNext=1;seqDate=localYMD(now);seqSyncFromCfg({seqNext:218,seqDate:localYMD(y)});
+      ok('seqSync: 클라우드 카운터가 어제 것이면 무시', seqNext===5);
+      VISITS=_V9;seqNext=_sn;seqDate=_sd;}
      CLOSE_HM_WD='';CLOSE_HM_WE='';HOLIDAYS=[];
      eq('autoClosePick: 마감 시각 없음 → 전날 카드만 정리', autoClosePick(new Date(iso(now,12,0))).map(p=>p.id), ['y1']);
      CLOSE_HM_WD='20:00';CLOSE_HM_WE='20:00';
@@ -2871,6 +2879,15 @@ async function runSelfTest(){
      eq('autoClosePick: 오늘을 공휴일로 지정 → 주말 시각(18:00) 적용', autoClosePick(new Date(iso(now,20,0))).map(p=>p.id).sort(), ['t1','y1']);
      ok('closeHmFor: 평일/주말 시각 선택', (()=>{HOLIDAYS=[];const mon=new Date(2026,8,14),sun=new Date(2026,8,13);return closeHmFor(mon)==='21:00'&&closeHmFor(sun)==='18:00';})());
      data=_d7;CLOSE_HM_WD=_wd;CLOSE_HM_WE=_we;HOLIDAYS=_ho;CLOSE_HM=closeHmFor(new Date());}
+    // ── 등록번호 다시 매기기(#218 → 도착 순서) ──
+    {const _d10=data,_V10=VISITS,_sn=seqNext,_sd=seqDate,_sv=window.save,_av=window.cloudAddVisit,_cs=window.cloudSaveConfig,_rd=window.render;
+     window.save=()=>{};window.cloudAddVisit=()=>{};window.cloudSaveConfig=()=>{};window.render=()=>{};
+     const now=new Date();const iso=(h,m)=>{const x=new Date(now);x.setHours(h,m,0,0);return x.toISOString();};
+     VISITS=[{id:'a',seq:1,arrivedAt:iso(9,0),dischargedAt:iso(9,40)},{id:'b',seq:2,arrivedAt:iso(9,5),dischargedAt:iso(9,50)}];
+     data=[{id:'c',seq:5,name:'c',route:['R'],step:0,arrivedAt:iso(9,4),enteredAt:iso(9,4),notes:{}},{id:'d',seq:218,name:'d',route:['R'],step:0,arrivedAt:iso(9,9),enteredAt:iso(9,9),notes:{}}];
+     const r=renumberToday();
+     eq('renumberToday: 도착 순서대로 1..N, #218 → #4, 다음 번호 5', [VISITS[0].seq,data[0].seq,VISITS[1].seq,data[1].seq,seqNext,r.total,r.changed], [1,2,3,4,5,4,3]);
+     data=_d10;VISITS=_V10;seqNext=_sn;seqDate=_sd;window.save=_sv;window.cloudAddVisit=_av;window.cloudSaveConfig=_cs;window.render=_rd;}
     // ── 통계 초기화: 확인 창 두 단계 없이는 아무것도 지우지 않음 ──
     {const _S=STATS,_V=VISITS,_cf=window.confirm,_pr=window.prompt,_al=window.alert,_au=window.audit,_rs=window.renderStats,_rd=window.render;
      const _lsV=localStorage.getItem(VISIT_STORE),_lsS=localStorage.getItem(STATS_STORE);
@@ -3093,11 +3110,7 @@ function applyCfg(d){
   if(typeof d.closeHmWe==='string'){CLOSE_HM_WE=d.closeHmWe;localStorage.setItem("patientBoard_closehm_we",CLOSE_HM_WE);}
   if(Array.isArray(d.holidays)){HOLIDAYS=d.holidays.filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));localStorage.setItem("patientBoard_holidays",JSON.stringify(HOLIDAYS));}
   CLOSE_HM=closeHmFor(new Date());   // (옛 closeHm 단일값은 무시 — 평일 20:00 마감 사고 방지)
-  const maxSeq=maxSeqToday();   // 오늘 도착 카드만 — 전날 내보내지 않은 카드(#118 등)가 남아 있어도 오늘은 #1부터
-  const _today=localYMD(new Date());
-  if(d.seqDate&&d.seqDate!==_today){seqNext=1;seqDate=_today;}  // 클라우드 기록이 어제면 새 날 → #1부터
-  else{seqDate=d.seqDate||seqDate||_today;seqNext=Math.max(d.seqNext||1,maxSeq+1,seqNext);}
-  localStorage.setItem("patientBoard_seq",String(seqNext));localStorage.setItem("patientBoard_seqdate",seqDate);
+  seqSyncFromCfg(d);
   normalizeMeta();
   if(currentUser){const me=STAFF.find(u=>u.id===currentUser.id);if(me)currentUser=me;}
   localStorage.setItem(ROOMS_STORE,JSON.stringify(ROOMS));localStorage.setItem(META_STORE,JSON.stringify(ROOM_META));
@@ -4621,17 +4634,41 @@ function totalMsNow(p){return Math.max(0,(Date.now()-new Date(p.arrivedAt||p.ent
 function recvHM(p){return (p.receiveAt&&/^\d{1,2}:\d{2}$/.test(p.receiveAt))?p.receiveAt:clockHM(p.arrivedAt||p.enteredAt);}
 function totalLabel(p){const r=recvHM(p);return `<i data-lucide="hospital"></i> 원내 <b>${fmtClock(totalMsNow(p))}</b>${r?`<span class="recv" title="접수 시각">· 접수 <b>${esc(r)}</b></span>`:''}`;}
 /* 오늘 도착한 카드 중 가장 큰 등록번호 — 전날 카드가 보드에 남아 있어도 오늘 번호에 영향 없음 (2026-09-13: 남은 카드 때문에 #119로 시작한 문제) */
-function maxSeqToday(){const t=localYMD(new Date());return data.reduce((m,p)=>{const src=p.arrivedAt||p.enteredAt;const pt=src?localYMD(new Date(src)):t;return (pt===t&&typeof p.seq==='number'&&p.seq>m)?p.seq:m;},0);}
+function maxSeqToday(){const t=localYMD(new Date());
+  const live=data.reduce((m,p)=>{const src=p.arrivedAt||p.enteredAt;const pt=src?localYMD(new Date(src)):t;return (pt===t&&typeof p.seq==='number'&&p.seq>m)?p.seq:m;},0);
+  /* 오늘 내보낸 내원 기록도 포함 — 내보낸 뒤 번호가 재사용되지 않도록(저장된 카운터에 기대지 않음) */
+  const done=(Array.isArray(VISITS)?VISITS:[]).reduce((m,v)=>{const src=v.arrivedAt||v.dischargedAt;return (src&&localYMD(new Date(src))===t&&typeof v.seq==='number'&&v.seq>m)?v.seq:m;},0);
+  return Math.max(live,done);}
+/* 설정 문서가 올 때 등록번호 카운터 맞추기 — 규칙: ① 이 기기에 남은 어제 카운터는 버린다(2026-09-14 #218 사고: 어제 218까지 쓴 기기가 오늘 그대로 이어 씀)
+   ② 클라우드 카운터도 오늘 날짜일 때만 참고 ③ 오늘 카드·내원 기록의 최대 번호+1 보다 작아지지 않게 */
+function seqSyncFromCfg(d){
+  const _today=localYMD(new Date());
+  if(seqDate!==_today){seqNext=1;seqDate=_today;}
+  const cloudNext=(d&&d.seqDate===_today&&typeof d.seqNext==='number')?d.seqNext:1;
+  seqNext=Math.max(seqNext,cloudNext,maxSeqToday()+1);
+  localStorage.setItem("patientBoard_seq",String(seqNext));localStorage.setItem("patientBoard_seqdate",seqDate);
+}
+/* 오늘 등록번호 다시 매기기(관리자) — 오늘의 내원 기록 + 보드 카드를 도착 시각순으로 1번부터. 잘못 붙은 번호(#218 등)를 바로잡는다 */
+function renumberToday(){
+  const t=localYMD(new Date());const day=x=>{const src=x.arrivedAt||x.enteredAt||x.dischargedAt;return src?localYMD(new Date(src)):'';};
+  const at=x=>new Date(x.arrivedAt||x.enteredAt||x.dischargedAt||0).getTime()||0;
+  const vis=(Array.isArray(VISITS)?VISITS:[]).filter(v=>day(v)===t), live=data.filter(p=>!p.discharged&&day(p)===t);
+  const all=[...vis.map(v=>({kind:'v',o:v})),...live.map(p=>({kind:'p',o:p}))].sort((a,b)=>at(a.o)-at(b.o)||((a.o.seq||0)-(b.o.seq||0)));
+  let n=0,changed=0;
+  all.forEach(x=>{n++;if(x.o.seq!==n){x.o.seq=n;changed++;if(x.kind==='p')save(x.o);else cloudAddVisit(x.o);}});
+  seqNext=n+1;seqDate=t;localStorage.setItem("patientBoard_seq",String(seqNext));localStorage.setItem("patientBoard_seqdate",t);
+  saveLocal();cloudSaveConfig();render();return {total:n,changed};
+}
 function nextSeq(){const t=localYMD(new Date());
   if(seqDate!==t){seqNext=1;seqDate=t;localStorage.setItem("patientBoard_seqdate",t);}  // 날짜 바뀌면 자동 리셋
   // 동시 등록 중복 방지: 다른 기기가 먼저 쓴 오늘 번호(onSnapshot로 동기화됨)보다 항상 크게 매김
   const maxToday=maxSeqToday();
   const n=Math.max(seqNext,maxToday+1);seqNext=n+1;localStorage.setItem("patientBoard_seq",String(seqNext));return n;}
 function resetSeq(){if(!isAdmin())return;
-  if(!confirm("등록 번호를 #1부터 다시 시작할까요?\n(이미 보드에 있는 환자 번호는 그대로 유지됩니다)"))return;
-  seqNext=1;seqDate=localYMD(new Date());
-  localStorage.setItem("patientBoard_seq","1");localStorage.setItem("patientBoard_seqdate",seqDate);
-  cloudSaveConfig();alert("등록 번호를 초기화했습니다. 다음 환자부터 #1입니다.");}
+  const t=localYMD(new Date());const cnt=data.filter(p=>!p.discharged&&localYMD(new Date(p.arrivedAt||p.enteredAt||0))===t).length+(Array.isArray(VISITS)?VISITS:[]).filter(v=>localYMD(new Date(v.arrivedAt||v.dischargedAt||0))===t).length;
+  if(!confirm(`오늘 등록번호를 도착 순서대로 #1부터 다시 매길까요?\n(오늘 내원 기록 + 보드 카드 ${cnt}명 — 잘못 붙은 번호를 바로잡습니다)`))return;
+  const r=renumberToday();try{audit('등록번호 재정렬',`${r.total}명 중 ${r.changed}명 변경`);}catch(e){}
+  alert(`등록번호를 다시 매겼습니다. (${r.total}명, 변경 ${r.changed}명) 다음 번호: #${seqNext}`);}
 function dwellLabel(p){
   const rm=meta(curRoom(p));
   const w=fmtClock(waitMsNow(p)),a=fmtClock(activeMsNow(p));
