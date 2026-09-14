@@ -1950,17 +1950,24 @@ function rxParse(rx){
 /* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
 function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
   const nm=String((p&&p.name)||'').trim();if(!nm)return null;const c=BIT_NOTES.filter(n=>String(n.name||'').trim()===nm);return c.length===1?c[0]:null;}
+/* 접수 창 조회 기록(bitLookup)에서 차트번호로 찾기 — 카드가 없거나(접수 전·이미 내보냄) 진료실 창에서 이름·주민앞자리를 못 읽었을 때 슬립 머리글을 채운다.
+   접수에서 그 환자를 한 번이라도 조회했으면 이름·주민앞 7자리가 여기 남아 있다(2026-09-14: 진료실 PC 처방 문서에 이름·주민앞자리가 비어 오던 문제의 보완) */
+function bitLookupByMrn(mrn){mrn=String(mrn||'').trim();if(!mrn)return null;
+  const c=BIT_LOOKUP.filter(l=>String(l.mrn||'').trim()===mrn).sort((a,b)=>new Date(b.at||0)-new Date(a.at||0));return c[0]||null;}
 function slipItems(){
   const room=SLIP_ROOM;
   return BIT_NOTES.map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
       let p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
-      return {id:n.docId,mrn,note:n,p,lines:rp.lines,badges:rp.badges,valid:rp.valid,name:(p&&p.name)||n.name||'',t:new Date(n.updatedAt||0).getTime()||0};})
+      const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
+      return {id:n.docId,mrn,note:n,p,lines:rp.lines,badges:rp.badges,valid:rp.valid,name:(p&&p.name)||n.name||(lk&&lk.name)||'',t:new Date(n.updatedAt||0).getTime()||0};})
     .filter(it=>it.mrn&&it.valid&&it.lines.length&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
 }
 function slipHeaderInfo(it){const p=it.p,n=it.note;
-  const rr=(!p||!p.birth)&&n.rrn7?parseRRN(n.rrn7):null;   // 카드가 없거나 생년월일이 비면 진료실 창의 주민번호 앞 7자리로
+  const lk=(!p||!p.birth)&&!n.rrn7?bitLookupByMrn(it.mrn):null;   // 진료실 창에서도 못 읽었으면 접수 창 조회 기록으로
+  const rr7=n.rrn7||(lk&&lk.rrn7)||'';
+  const rr=(!p||!p.birth)&&rr7?parseRRN(rr7):null;   // 카드가 없거나 생년월일이 비면 주민번호 앞 7자리로
   const birth=(p&&p.birth)||(rr&&rr.birth)||'';const sex=(p&&p.sex)||(rr&&rr.sex)||n.sex||'';
   const sexAge=[sex,birth&&age(birth)?age(birth):''].filter(Boolean).join(' / ');
   const doc=p?(docFor(p,curRoom(p))||p.doctor||''):'';
@@ -2796,7 +2803,7 @@ async function runSelfTest(){
      ok('nudge: 예약배치 방에서는 ▲▼ 숨김', !cardEl(data[0]).querySelector('.nudge-grp'));
      window.save=_sv; data=_d3;}
     // ── 슬립 화면(진료실 처방 목록) ──
-    {const _d4=data,_n4=BIT_NOTES,_r4=SLIP_ROOM;ROOMS=['3층 대기실','물리치료'];ROOM_META={};SLIP_ROOM='';
+    {const _d4=data,_n4=BIT_NOTES,_r4=SLIP_ROOM,_l4=BIT_LOOKUP;ROOMS=['3층 대기실','물리치료'];ROOM_META={};SLIP_ROOM='';BIT_LOOKUP=[];
      data=[{id:'s1',name:'슬립환자',mrn:'297',birth:'1990-01-01',sex:'남',doctor:'김현우',route:['3층 대기실','물리치료'],step:0,status:'대기',ord:1,enteredAt:new Date().toISOString(),notes:{}}];
      normalizeData();
      BIT_NOTES=[{docId:'2026-01-01_297',mrn:'297',name:'슬립환자',pc:'진료실1',rx:'med g\nneuropathic pain\nc-mbb rt 345 / lt 35',rxMarker:true,rxLines:3,updatedAt:new Date().toISOString()},
@@ -2806,6 +2813,11 @@ async function runSelfTest(){
      eq('slipItems: 차트번호로 카드 연결, 최신순 — med 아래 neuropathic pain 없는 문서(999)는 제외', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,3],['777',false,2]]);
      eq('slipItems: med 줄의 g → 그린 배지', items[0].badges, ['그린']);
      ok('슬립: 카드가 없어도 진료실 창의 주민번호 앞자리로 생년월일 표시', slipHTML(items.find(x=>x.mrn==='777')).includes('900101-*******'));
+     {BIT_NOTES=BIT_NOTES.concat([{docId:'2026-01-01_555',mrn:'555',name:'',pc:'진료실2',rx:'med\nneuropathic pain c-mbb',rxMarker:true,rxLines:2,updatedAt:new Date(Date.now()-90000).toISOString()}]);
+      BIT_LOOKUP=[{docId:'l0',mrn:'555',name:'옛이름',rrn7:'800101-1',pc:'접수1',at:new Date(Date.now()-600000).toISOString()},{docId:'l1',mrn:'555',name:'조회이름',rrn7:'850505-2',pc:'접수2',at:new Date().toISOString()}];
+      const it5=slipItems().find(x=>x.mrn==='555');const h5=slipHeaderInfo(it5);
+      eq('슬립: 카드도 없고 진료실 문서에 이름·주민앞자리도 없으면 접수 조회 기록(최신)으로 이름·생년월일', [it5.name,h5.birth,h5.sexAge,slipHTML(it5).includes('850505-*******')], ['조회이름','1985-05-05','여 / '+age('1985-05-05'),true]);
+      BIT_LOOKUP=[];}
      const rp1=rxParse('med gp @ (prone)\nneuropathic pain IA(ulnar side) pdrn기\napnb Lt. hand 5th mcp\ngreen');
      eq('rxParse: med 표시(gp,@,prone) → 배지, 목록은 med 줄부터', [rp1.valid,rp1.badges,rp1.lines.length,rp1.lines[0]], [true,['진료원장님 주사','준비: prone','그린+'],4,'med gp @ (prone)']);
      ok('rxParse: med 아래 neuropathic pain 없으면 처방 아님(특이사항성 메모)', rxParse('med\nPT는 우측 어깨로\nSLS SHORT+coban1').valid===false);
@@ -2823,7 +2835,7 @@ async function runSelfTest(){
         /size:104mm auto/.test(html)&&html.includes('차트번호')&&html.includes('297')&&html.includes('수진자명')&&html.includes('슬립환자')&&html.includes('900101-*******')&&!html.includes('1990-01-01')
         &&html.includes('c-mbb rt 345 / lt 35')&&/발행일자: \d{4}-\d{2}-\d{2}/.test(html)&&html.indexOf('슬립환자')<html.indexOf('c-mbb')&&html.indexOf('c-mbb')<html.indexOf('발행일자'));
      ok('카드: 처방 목록 요약(처방 3줄) 표시, 처방 없는 카드는 없음', /처방 <b>3줄<\/b>/.test(cardEl(data[0]).innerHTML) && (()=>{const _b=BIT_NOTES;BIT_NOTES=[];const r=!cardEl(data[0]).querySelector('.slip-sum');BIT_NOTES=_b;return r;})());
-     data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;}
+     data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
      PMEMO={};data=[];BIT_INTAKE_BAK=BIT_INTAKE;BIT_INTAKE=[];
