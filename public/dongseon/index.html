@@ -246,6 +246,25 @@
   .sp-room.ss{background:#0ea5e9}   /* SASO */
   .sp-room.sd{background:#10b981}   /* 자동차도수 */
   .sp-mrn{font-size:11px;font-weight:700;color:#8a97ab}
+  /* 예약 시트(Google Sheet) 칸 */
+  .sheet-p.bk{justify-content:flex-start;gap:6px;text-align:left}
+  .sheet-p.bk.arr,.sheet-p.bk.live{color:#1d4ed8}
+  .bk-code{font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:5px;background:#e5e7eb;color:#1f2937;flex:0 0 auto}
+  .bk-flag{width:10px;height:10px;border-radius:3px;flex:0 0 auto;border:1px solid rgba(0,0,0,.18)}
+  .bk-sub{font-size:10.5px;font-weight:700;color:#8a97ab}
+  .sheet-tbl td.filled.bkcell{background:#f6f8fc;vertical-align:top}
+  .sheet-tbl td.filled.arrcell{background:#dbeafe}
+  .sheet-tbl td.filled.livecell{background:#bfdbfe}
+  .sheet-tbl td.filled.blk{background:#d7dbe3}
+  .sheet-blk{font-weight:700;color:#4b5563;font-size:.9em}
+  .sheet-cxl{text-decoration:line-through;color:#9aa3b2;font-size:.9em;font-weight:700}
+  .bk-manual{margin:2px 0 10px;font-size:clamp(12px,1.1vw,16px)}
+  .bk-manual-t{font-weight:800;color:#1f2a37;margin-bottom:5px}
+  .bk-manual-list{display:flex;flex-wrap:wrap;gap:6px 10px}
+  .bk-man{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:#223350;background:#fff;border:1px solid #cdd6e3;border-radius:8px;padding:3px 9px}
+  .bk-man.arr{background:#dbeafe;border-color:#93c5fd;color:#1d4ed8}
+  .bk-man.live{background:#bfdbfe;border-color:#60a5fa;color:#1e40af}
+  .bk-man i{font-style:normal;color:#6b7c97;font-size:.85em}
   /* 시트 메모(셀 코멘트) — 우상단 빨간 삼각형, 호버 시 title 툴팁 */
   .sheet-p{position:relative}
   .sheet-p.has-note::after{content:"";position:absolute;top:0;right:-4px;border-left:9px solid transparent;border-top:9px solid #e5484d}
@@ -1855,6 +1874,10 @@ function subscribeBitIntake(){
       BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));onBitNotes();
     },err=>console.warn('bitNote',err));
   }
+  if(cloud.bookingsCol){   // 예약 시트(오늘) — 치료 시트 표의 예약 칸
+    try{if(cloud.unsubBk)cloud.unsubBk();}catch(e){}
+    cloud.unsubBk=cloud.bookingsCol.doc(today).onSnapshot(s=>{BOOKINGS[today]=s.exists?s.data():null;if(waitOpen)renderWaitScreen();},err=>console.warn('bookings',err));
+  }
   if(!cloud.unsubBit){
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
     setTimeout(bitCleanupOld,15000);   // 로그인 직후 한 번: 오래된 접수 대기 문서 정리
@@ -2975,6 +2998,36 @@ async function runSelfTest(){
        try{const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();ok('대기화면: 방이 없을 때 하단 안내 띠가 화면 맨 아래', Math.abs(f.bottom-sr.bottom)<=2);}
        finally{if(!wasShown)ws.classList.remove('show');}}
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
+    // ── 예약 시트(Google Sheet → bookings/{날짜}) → 치료 시트 표 ──
+    {const _bk=BOOKINGS,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sd=sheetDate;
+     try{ROOMS=['충격파','신장분사','SASO','자동차도수'];ROOM_META={};sheetDate=null;const T=localYMD(new Date());const at=new Date();at.setHours(10,5,0,0);
+      meta('충격파').doctors=['박치료'];meta('SASO').doctors=['김도수'];
+      data=[{id:'b1',name:'함수진',mrn:'32750',route:['충격파'],step:0,status:'진행',ord:1,enteredAt:at.toISOString(),doctor:'박치료',notes:{},visits:[]},
+            {id:'b2',name:'기록만',mrn:'555',route:['충격파'],step:0,status:'대기',ord:2,enteredAt:at.toISOString(),doctor:'박치료',notes:{},visits:[]},
+            {id:'b3',name:'도수온',mrn:'32751',route:['SASO'],step:0,status:'대기',ord:3,enteredAt:at.toISOString(),doctor:'김도수',notes:{},visits:[]}];
+      BOOKINGS={};BOOKINGS[T]={date:T,therapists:['Jack','Jennie','Hannah'],
+        items:[{th:'Jennie',t:'10:00',dur:60,kind:'pt',mrn:'32750',room:'1',name:'함수진',visit:1,code:'CME20',color:'',note:'실손 확인'},
+               {th:'Hannah',t:'09:30',dur:30,kind:'pt',mrn:'32188',room:'1',name:'김다함',visit:8,code:'CME10',color:'#ffe599',note:''}],
+        blocks:[{th:'Hannah',t:'15:30',dur:30,kind:'block',text:'1진 모니터링',color:'#999999'}],
+        cancels:[{th:'Hannah',t:'14:00',text:'31300(1) 김민재15',mrn:'31300',name:'김민재'}],
+        manual:[{no:'1',mrn:'32751',name:'박준기',th:'임현주'},{no:'2',mrn:'30038',name:'류종하',th:'박승규'}]};
+      const staff=treatSheetTableHtml(false,null,['충격파','신장분사']);const el=document.createElement('div');el.innerHTML=staff;
+      const heads=[...el.querySelectorAll('thead th')].map(h=>h.firstChild?h.firstChild.textContent.trim():'');
+      eq('예약 시트: 열 = 그날 예약이 있는 치료사(시트 순서) + 예약과 짝이 안 된 기록의 담당자', heads, ['시간','Jennie','Hannah','박치료']);
+      const jen=[...el.querySelectorAll('td.filled')].find(td=>td.textContent.includes('함수진'));
+      ok('예약 시트: 60분 예약은 두 칸(rowspan 2), 보드에서 진행 중이면 파란 칸(livecell)', !!jen&&jen.getAttribute('rowspan')==='2'&&jen.classList.contains('livecell'));
+      ok('예약 시트: 시트에서 내원(연노랑)으로 칠한 예약은 도착(arrcell)', [...el.querySelectorAll('td.filled')].some(td=>td.textContent.includes('김다함')&&td.classList.contains('arrcell')));
+      ok('예약 시트: 차단 칸(1진 모니터링)·취소(김민재 취소선)·메모 툴팁', el.querySelector('td.blk .sheet-blk').textContent.includes('1진 모니터링')&&el.querySelector('.sheet-cxl').textContent.includes('김민재')&&/title="실손 확인"/.test(staff));
+      ok('예약 시트: 예약과 짝지어진 기록(함수진)은 담당자 열에 중복되지 않고, 짝 없는 기록(기록만)은 담당자 열에', (staff.match(/함수진/g)||[]).length===1&&staff.includes('기록만'));
+      ok('예약 시트: 예약이 있는 슬롯은 표에 자동 포함(9:30 김다함)', [...el.querySelectorAll('th.sheet-time')].some(th=>th.textContent==='9:30'));
+      const pt=treatSheetTableHtml(true,null,['충격파','신장분사']);
+      ok('예약 시트(환자 화면): 이름 가림, 차트번호·메모·취소·차단 문구 없음', !pt.includes('함수진')&&pt.includes(maskName('함수진'))&&!pt.includes('32750')&&!pt.includes('실손 확인')&&!pt.includes('김민재')&&!pt.includes('1진 모니터링'));
+      const saso=treatSheetTableHtml(false,null,['SASO','자동차도수']);
+      ok('예약 시트(SASO·자동차도수): Manual Tx 목록, 보드에 온 환자(32751)는 도착·치료 중 표시', saso.includes('류종하')&&/class="bk-man (arr|live)"[^>]*>1\. 박준기/.test(saso)&&/class="bk-man"[^>]*>2\. 류종하/.test(saso));
+      eq('예약 시트: 카드 배지 수 = 예약 + 짝 없는 기록 / 도수는 기록 + 목록', [sheetCount(null,SHEET_GROUPS[0]),sheetCount(null,SHEET_GROUPS[1])], [3,3]);
+      BOOKINGS={};
+      ok('예약 시트 없음: 기존 방식(방 배정 담당자 열)', treatSheetTableHtml(false,null,['충격파','신장분사']).includes('박치료'));
+     }finally{BOOKINGS=_bk;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;}}
     // ── 대기화면 하단 전광판(흐르는 안내 문구) ──
     {const t=document.getElementById('waitTicker');const ws=document.getElementById('waitScreen');const wasShown=ws.classList.contains('show');ws.classList.add('show');
      try{waitTickerFit();const items=t?t.querySelectorAll('.wt-item'):[];
@@ -3311,6 +3364,7 @@ async function startHosted(){
     cloud.intakeCol=cloud.db.collection('bitIntake');      // 비트플러스 접수 PC 감시 스크립트가 쓰는 문서 (id: YYYY-MM-DD_병록번호)
     cloud.bitStatusCol=cloud.db.collection('bitStatus');   // 접수 PC별 하트비트
     cloud.noteCol=cloud.db.collection('bitNote');          // 진료실 PC 감시 스크립트가 쓰는 처방 목록(슬립용, id: YYYY-MM-DD_병록번호)
+    cloud.bookingsCol=cloud.db.collection('bookings');    // 물리치료센터 예약리스트(Google Sheet) 하루치 — Apps Script(tools/sheet_bookings.gs)가 쓴다 (id: YYYY-MM-DD)
     cloud.lookupCol=cloud.db.collection('bitLookup');      // 접수 창에서 조회된 인적정보(어느 PC든, id: YYYY-MM-DD_병록번호) — 차트번호 없는 캐스트 카드를 이름으로 채움
     firebase.auth().onAuthStateChanged(async(user)=>{
       if(!user){currentUser=null;sessionEstablished=false;cloud.email='';
@@ -4293,7 +4347,7 @@ function renderWaitScreen(){
   cols.innerHTML=showRs.map(room=>{
     const sg=sheetGroupOf(room);
     if(sg){
-      const cnt=sheetRecords(sheetDate,sg.rooms).length;
+      const cnt=sheetCount(sheetDate,sg);
       const today=localYMD(new Date());
       const maxD=(function(){const d=new Date();d.setMonth(d.getMonth()+3);return localYMD(d);})();   // 예약 대비 3개월 앞까지
       return `<div class="wait-col wait-sheetcol">
@@ -4324,7 +4378,8 @@ function renderWaitScreen(){
 
 /* ═════ 충격파·신장분사 치료 시트: 열=오늘 근무 담당자, 행=30분 시간대, 칸=치료 환자 ═════ */
 /* 대기화면 치료 시트(엑셀식 표: 열=담당자, 행=30분 슬롯) — 묶음 단위로 한 판씩. 묶음의 방이 하나라도 선택되면 그 시트가 뜬다 */
-const SHEET_GROUPS=[{key:'__SHEET__',title:'충격파 · 신장분사',rooms:['충격파','신장분사']},{key:'__SHEET2__',title:'SASO · 자동차도수',rooms:['SASO','자동차도수']}];
+const SHEET_GROUPS=[{key:'__SHEET__',title:'충격파 · 신장분사',rooms:['충격파','신장분사'],bk:'items'},{key:'__SHEET2__',title:'SASO · 자동차도수',rooms:['SASO','자동차도수'],bk:'manual'}];
+/* bk: 물리치료센터 예약리스트(Google Sheet → bookings/{날짜}, tools/sheet_bookings.gs)에서 붙일 자료 — 'items' = 비급여치료 시간표(치료사별), 'manual' = Manual Tx 목록 */
 const SHEET_ROOMS=SHEET_GROUPS.flatMap(g=>g.rooms);   // 시트로 보는 방 전체(담당자 재직 이력·메모 대상)
 const SHEET_ABBR={"충격파":["충","sk"],"신장분사":["신","sj"],"SASO":["S","ss"],"자동차도수":["도","sd"]};   // 셀 안 방 표시(글자, 색 클래스)
 function sheetGroupOf(key){return SHEET_GROUPS.find(g=>g.key===key)||null;}
@@ -4393,6 +4448,29 @@ window.saveSheetNote=function(){
   cloudSaveConfig();closeSheetNote();render();
 };
 /* 날짜별 시트 기록 — 내원 보관 기록(5년 보존)에서 그날 치를 재구성. 오늘이면 보드의 실시간 기록 포함 */
+/* ── 예약 시트(bookings/{날짜}) ── 물리치료센터 비급여 예약리스트를 Apps Script가 올린 하루치 문서
+   {therapists:[...], items:[{th,t:'10:00',dur,mrn,room,name,visit,code,codeColor,color,note}], blocks:[{th,t,dur,text}], cancels:[{th,t,name,mrn,text}], manual:[{no,mrn,name,th}]} */
+let BOOKINGS={};   // {날짜: 문서|null}
+const BK_LEGEND={'#ffe599':'내원','#ffff00':'임시치료실','#ff0000':'치료실 없음','#00ff00':'시트·비트확인','#00ffff':'실손 청구여부 확인','#9900ff':'카톡친추 확인'};   // 시트 범례 색 → 뜻
+function bookingsFor(D){return BOOKINGS[D]||null;}
+function bkLoad(D){if(!D||BOOKINGS[D]!==undefined||!cloud.bookingsCol)return;BOOKINGS[D]=null;
+  cloud.bookingsCol.doc(D).get().then(sn=>{if(sn.exists){BOOKINGS[D]=sn.data();if(waitOpen)renderWaitScreen();}}).catch(e=>console.warn('bookings get',e));}
+const bkSlot=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(t||'');return m?(+m[1])*2+((+m[2])>=30?1:0):null;};
+/* 예약과 보드 기록 짝짓기: 같은 차트번호(없으면 같은 이름)의 그날 기록이 있으면 그 예약은 '도착'(기록이 live면 '치료 중') */
+function bkMatch(items,recs){const used=new Set();
+  items.forEach(b=>{b._rec=recs.find(x=>!used.has(x)&&((b.mrn&&x.mrn&&String(x.mrn).trim()===String(b.mrn).trim())||(!b.mrn&&b.name&&(x.name||'').trim()===b.name)))||null;if(b._rec)used.add(b._rec);});
+  return recs.filter(x=>!used.has(x));}
+function bkCellHtml(b,pf){
+  const rec=b._rec;const col=String(b.color||'').toLowerCase();
+  const st=rec?(rec.live?'live':'arr'):(col==='#ffe599'?'arr':'');
+  const nm=pf?maskName(b.name):dispName(b.name);
+  const flag=(!pf&&col&&col!=='#ffe599')?`<span class="bk-flag" style="background:${esc(col)}" title="${esc(BK_LEGEND[col]||col)}"></span>`:'';
+  return `<div class="sheet-p bk ${st}${(!pf&&b.note)?' has-note':''}"${(!pf&&b.note)?` title="${esc(b.note)}"`:''}>${b.code?`<span class="bk-code"${b.codeColor?` style="background:${esc(b.codeColor)}"`:''}>${esc(b.code)}</span>`:''}${flag}<span class="bk-name">${esc(nm)}</span>${(!pf&&b.mrn)?`<span class="sp-mrn">${esc(b.mrn)}</span>`:''}${(!pf&&b.visit)?`<span class="bk-sub">${b.visit}회</span>`:''}${(b.dur&&b.dur!==30)?`<span class="bk-sub">${b.dur}분</span>`:''}</div>`;}
+/* 묶음의 카드 배지 수: 예약(시트) + 예약과 짝이 안 된 보드 기록 */
+function sheetCount(dateYmd,sg){const D=dateYmd||localYMD(new Date());const recs=sheetRecords(dateYmd,sg.rooms);const bk=bookingsFor(D);
+  if(!bk)return recs.length;
+  if(sg.bk==='manual')return recs.length+(bk.manual||[]).length;
+  const items=(bk.items||[]).map(x=>Object.assign({},x));const rest=bkMatch(items,recs);return items.length+rest.length;}
 function sheetRecords(dateYmd,rooms){
   rooms=rooms||SHEET_ROOMS;
   const out=[],today=localYMD(new Date()),D=dateYmd||today;
@@ -4426,6 +4504,7 @@ let SHEET_NOTES_HIST={};         // {날짜: {키:{text,by,at}}}
 window.setSheetDate=function(v){
   const today=localYMD(new Date());
   sheetDate=(!v||v===today)?null:v;
+  if(sheetDate)bkLoad(sheetDate);
   if(sheetDate&&!SHEET_NOTES_HIST[sheetDate])loadSheetNotesHist(sheetDate);
   render();
 };
@@ -4445,6 +4524,9 @@ window.printSheet=function(key){
     thead th{background:#eef1f6}.sheet-time{width:60px;background:#eef1f6}
     .sp-room{display:inline-block;width:16px;border-radius:4px;color:#fff;font-weight:700;font-size:10px}
     .sp-room.sk{background:#f59e0b}.sp-room.sj{background:#8b5cf6}.sp-room.ss{background:#0ea5e9}.sp-room.sd{background:#10b981}
+    .bk-code{display:inline-block;font-size:9.5px;font-weight:700;padding:0 4px;border-radius:4px;background:#e5e7eb;margin-right:3px}.bk-flag{display:inline-block;width:8px;height:8px;border:1px solid #999;margin-right:3px}
+    .bk-sub{font-size:9.5px;color:#777;margin-left:3px}td.arrcell{background:#dbeafe}td.livecell{background:#bfdbfe}td.blk{background:#d7dbe3}.sheet-blk{color:#4b5563}.sheet-cxl{text-decoration:line-through;color:#999}
+    .bk-manual{margin:0 0 8px}.bk-manual-t{font-weight:700;margin-bottom:3px}.bk-man{display:inline-block;border:1px solid #999;border-radius:6px;padding:1px 6px;margin:0 6px 4px 0}.bk-man.arr,.bk-man.live{background:#dbeafe}.bk-man i{font-style:normal;color:#666;margin-left:3px}
     .sheet-p{white-space:nowrap}.sp-mrn{color:#777;font-size:10px}
     .sheet-p.has-note::after{content:" ✱";color:#e5484d}
     .sheet-legend{font-size:11px;color:#666;margin-top:8px}</style>`;
@@ -4463,40 +4545,65 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
   if(isToday)NOTES=SHEET_NOTES;
   else{NOTES=Object.assign({},SHEET_NOTES_HIST[dateYmd]||{});
     Object.keys(SHEET_NOTES).forEach(k=>{if(k.split("|")[0]===dateYmd)NOTES[k]=SHEET_NOTES[k];});}   // 아직 이관 전 메모도 포함
-  /* 열: 두 방 배정 전원(휴무자 포함 — 휴무일이면 열 전체 진회색) + 그날 기록에 등장한 사람 */
+  /* 예약 시트(Google Sheet) 자료 — 묶음 설정(bk)에 따라 시간표(items) 또는 Manual Tx 목록(manual) */
+  const sg=SHEET_GROUPS.find(g=>g.rooms.join('|')===rooms.join('|'))||null;
+  const bk=bookingsFor(D);
+  const useItems=!!(bk&&sg&&sg.bk==='items');
+  const bkItems=useItems?(bk.items||[]).filter(x=>x.t&&bkSlot(x.t)!==null).map(x=>Object.assign({},x)):[];
+  const bkBlocks=useItems?(bk.blocks||[]).filter(x=>x.t&&bkSlot(x.t)!==null):[];
+  const bkCancels=(useItems&&!pf)?(bk.cancels||[]).filter(x=>x.t&&bkSlot(x.t)!==null):[];
+  const manual=(bk&&sg&&sg.bk==='manual')?(bk.manual||[]):[];
+  const rest=bkMatch(bkItems,recs);   // 예약과 짝지어진 기록은 예약 칸 안에서 표시, 나머지는 담당자 열에
+  const ths=(bk&&Array.isArray(bk.therapists))?bk.therapists:[];
+  const isTh=n=>ths.includes(n);
+  /* 열: 예약이 있는 날 = 그날 예약·차단·취소가 있는 치료사(시트 순서) + 기록만 있는 담당자
+         예약이 없는 날 = 두 방 배정 전원(휴무자 포함) + 그날 기록에 등장한 사람(기존 방식) */
   let docs=[];
-  rooms.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
-    .forEach(n=>{if(n&&sheetStaffActiveOn(n,D)&&!docs.includes(n))docs.push(n);});});   // 그날 재직 중인 사람만
-  recs.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});                  // 기록이 있으면 퇴직자도 그날엔 표시
-  if(!docs.length)return '<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
-  const off=n=>isOffOn(n,D);
-  const WH={};docs.forEach(n=>{WH[n]=workHoursOn(n,D);});   // 그날 근무시간(시간제) — 밖의 슬롯은 회색
+  if(bkItems.length||bkBlocks.length){ths.forEach(n=>{if(bkItems.some(x=>x.th===n)||bkBlocks.some(x=>x.th===n)||bkCancels.some(x=>x.th===n))docs.push(n);});}
+  else{rooms.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
+    .forEach(n=>{if(n&&sheetStaffActiveOn(n,D)&&!docs.includes(n))docs.push(n);});});}   // 그날 재직 중인 사람만
+  rest.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});                    // 기록이 있으면 퇴직자도 그날엔 표시
+  const manualHtml=manual.length?`<div class="bk-manual"><div class="bk-manual-t">도수치료 예약 (시트) ${manual.length}명</div><div class="bk-manual-list">${manual.map(m=>{
+      const rec=recs.find(x=>(m.mrn&&x.mrn&&String(x.mrn).trim()===String(m.mrn).trim())||(!m.mrn&&(x.name||'').trim()===m.name));const st=rec?(rec.live?' live':' arr'):'';
+      return `<span class="bk-man${st}"${(!pf&&m.note)?` title="${esc(m.note)}"`:''}>${m.no?esc(m.no)+'. ':''}${esc(pf?maskName(m.name):m.name)}${(!pf&&m.mrn)?`<span class="sp-mrn">${esc(m.mrn)}</span>`:''}${m.th?`<i>${esc(m.th)}</i>`:''}</span>`;}).join('')}</div></div>`:'';
+  if(!docs.length)return manualHtml+'<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
+  const off=n=>!isTh(n)&&isOffOn(n,D);
+  const WH={};docs.forEach(n=>{WH[n]=isTh(n)?null:workHoursOn(n,D);});   // 그날 근무시간(시간제) — 밖의 슬롯은 회색 (시트 치료사는 시트의 회색 칸을 따른다)
   const offSlot=(n,s2)=>{if(off(n))return true;const h=WH[n];if(!h)return false;
     const hm=String(Math.floor(s2/2)).padStart(2,"0")+":"+(s2%2?"30":"00");return hm<h.from||hm>=h.to;};
-  /* 행: 30분 슬롯 — 근무시간 9:00~21:00, 기록이 밖에 있으면 자동 확장 */
+  /* 행: 30분 슬롯 — 9:00 ~ 평일 20:30 / 토·일·공휴일 17:30, 기록·예약이 밖에 있으면 자동 확장 */
   const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
-  let s0=18,s1=isWeekendOrHoliday(new Date(D+"T12:00:00"))?35:41;   // 9:00=18 ~ 평일 20:30=41 / 토·일·공휴일 17:30=35 (마지막 예약 시간대까지)
-  recs.forEach(x=>{const s2=slotOf(x.at);if(s2<s0)s0=s2;if(s2>s1)s1=s2;});
+  let s0=18,s1=isWeekendOrHoliday(new Date(D+"T12:00:00"))?35:41;
+  rest.forEach(x=>{const s2=slotOf(x.at);if(s2<s0)s0=s2;if(s2>s1)s1=s2;});
+  bkItems.concat(bkBlocks).forEach(x=>{const a=bkSlot(x.t),e=a+Math.max(1,Math.ceil((x.dur||30)/30))-1;if(a<s0)s0=a;if(e>s1)s1=e;});
+  bkCancels.forEach(x=>{const a=bkSlot(x.t);if(a<s0)s0=a;if(a>s1)s1=a;});
+  const occ={};   // 담당자 → 예약 칸(rowspan)이 차지한 마지막 슬롯 다음
   let rows="";
   for(let s2=s0;s2<=s1;s2++){
     const hh=Math.floor(s2/2),mm=s2%2?"30":"00";
     const cells=docs.map(doc=>{
-      const here=recs.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
-      if(!here.length)return `<td class="${offSlot(doc,s2)?'offcol':''}"></td>`;
-      return `<td class="filled${offSlot(doc,s2)?' offcol':''}">${here.map(x=>{
-        const nm=pf?maskName(x.name):dispName(x.name);
-        const nt=NOTES[sheetNoteKey(x)];
+      if(occ[doc]>s2)return '';   // 위 칸의 rowspan 에 포함
+      const here=rest.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
+      const bks=bkItems.filter(x=>x.th===doc&&bkSlot(x.t)===s2),bls=bkBlocks.filter(x=>x.th===doc&&bkSlot(x.t)===s2),cns=bkCancels.filter(x=>x.th===doc&&bkSlot(x.t)===s2);
+      const recHtml=x=>{const nm=pf?maskName(x.name):dispName(x.name);const nt=NOTES[sheetNoteKey(x)];
         return `<div class="sheet-p${x.live?' live':''}${nt?' has-note':''}"${nt?` title="${esc(nt.text)}${nt.by?' — '+esc(nt.by):''}"`:''}>
-        <span class="sp-room ${(SHEET_ABBR[x.room]||['?','sj'])[1]}">${(SHEET_ABBR[x.room]||['?'])[0]}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;}).join("")}</td>`;
+        <span class="sp-room ${(SHEET_ABBR[x.room]||['?','sj'])[1]}">${(SHEET_ABBR[x.room]||['?'])[0]}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;};
+      const cxlHtml=cns.map(c=>`<div class="sheet-cxl" title="취소/변경${c.note?' — '+esc(c.note):''}">${esc(dispName(c.name||c.text))}</div>`).join('');
+      if(bks.length||bls.length){
+        const span=Math.min(s1-s2+1,Math.max(1,...bks.concat(bls).map(x=>Math.ceil((x.dur||30)/30))));occ[doc]=s2+span;
+        const cls=['filled',bks.length?'bkcell':'blk',bks.some(b=>b._rec&&b._rec.live)?'livecell':(bks.some(b=>b._rec||String(b.color||'').toLowerCase()==='#ffe599')?'arrcell':'')].filter(Boolean).join(' ');
+        return `<td class="${cls}" rowspan="${span}">${bks.map(b=>bkCellHtml(b,pf)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxlHtml}${here.map(recHtml).join('')}</td>`;}
+      if(!here.length&&!cns.length)return `<td class="${offSlot(doc,s2)?'offcol':''}"></td>`;
+      return `<td class="filled${offSlot(doc,s2)?' offcol':''}">${cxlHtml}${here.map(recHtml).join("")}</td>`;
     }).join("");
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
-  return `<div class="sheet-wrap"><table class="sheet-tbl">
+  return `${manualHtml}<div class="sheet-wrap"><table class="sheet-tbl">
     <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>off(n)
       ?`<th class="offhead">${esc(n)}<div class="offsub">휴무</div></th>`
       :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${WH[n]?`<div class="offsub">${WH[n].from}~${WH[n].to}</div>`:''}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <div class="sheet-legend">${rooms.map(r=>`<span class="sp-room ${(SHEET_ABBR[r]||['?','sj'])[1]}">${(SHEET_ABBR[r]||['?'])[0]}</span> ${esc(r)}`).join(' &nbsp; ')} &nbsp;·&nbsp; 파란색 = 현재 치료 중</div>`;
+    <div class="sheet-legend">${rooms.map(r=>`<span class="sp-room ${(SHEET_ABBR[r]||['?','sj'])[1]}">${(SHEET_ABBR[r]||['?'])[0]}</span> ${esc(r)}`).join(' &nbsp; ')} &nbsp;·&nbsp; 파란색 = 현재 치료 중${useItems?' &nbsp;·&nbsp; 예약 시트: 연파랑 칸 = 도착, 회색 칸 = 근무 외'+(pf?'':', 취소선 = 취소·변경, 색 점 = 시트 표시(마우스를 올리면 뜻)'):''}</div>`;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
