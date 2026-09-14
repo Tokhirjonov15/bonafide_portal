@@ -142,9 +142,17 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ack','ackBy','ackAt']);
       allow delete: if request.auth != null;
     }
-    // 그 외(환자·설정 등): 로그인한 직원만 (기존과 동일)
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // 물리치료센터 예약리스트(Google Sheet, tools/sheet_bookings.gs): 쓰기는 sheetbot 만, 직원은 읽기
+    match /bookings/{day} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.email == '<sheetbot 이메일>';
+    }
+    // 그 외(환자·설정 등): 로그인한 직원만.
+    // ※ 여기서 봇 컬렉션을 반드시 제외해야 한다 — Firestore 는 겹치는 match 중 하나라도 허용하면 허용이므로,
+    //    /{document=**} 로 두면 위의 bitbot/sheetbot 제한이 모두 무력화된다(2026-09-14 확인).
+    match /{collection}/{document=**} {
+      allow read, write: if request.auth != null
+        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings']);
     }
   }
 }

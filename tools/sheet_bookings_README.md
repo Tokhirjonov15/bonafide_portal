@@ -17,14 +17,20 @@
 만든 뒤 Firebase 콘솔 → Authentication → Users 에서 `sheetbot` 줄의 **이메일**(`u…@bonafide.app` 꼴)을 복사해 둡니다. (bitbot과 같은 방식)
 
 ## 2. Firestore 규칙에 bookings 추가 (Firebase 콘솔 → Firestore → 규칙)
-기존 규칙(`bitplus_watcher_README.md` 8-2)의 `match /{document=**}` **앞에** 추가하고 게시:
+`bitplus_watcher_README.md` 8-2 의 전체 규칙(이미 bookings 블록이 들어 있음)을 붙여 넣고 `<sheetbot 이메일>` 만 바꿔 게시합니다.
+핵심은 두 가지입니다:
 ```
-    // 물리치료센터 예약리스트(Google Sheet): 쓰기는 sheetbot 만, 직원은 읽기
     match /bookings/{day} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.email == '<sheetbot 이메일>';
     }
+    // 마지막 공통 규칙은 봇 컬렉션을 제외해야 한다(겹치는 match 는 하나라도 허용이면 허용)
+    match /{collection}/{document=**} {
+      allow read, write: if request.auth != null
+        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings']);
+    }
 ```
+확인: 직원 계정으로 bookings 문서를 쓰면 거부(403)돼야 정상입니다.
 
 ## 3. Apps Script 넣기 (예약리스트에 편집 권한이 있는 구글 계정으로)
 1. 예약리스트 파일 열기 → 확장 프로그램 → **Apps Script** (이미 `getColorRatio` 가 있는 프로젝트가 열립니다. 그 코드는 건드리지 않습니다.)
