@@ -926,6 +926,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cl-reason{flex:1;min-width:120px;color:var(--text)}
   .cl-live{font-size:10px;font-weight:700;color:var(--teal);border:1px solid var(--teal-bg);border-radius:6px;padding:0 5px}
 
+  .room-jump{display:none}   /* 넓은 화면에서는 숨김(모든 열이 보임) */
   /* ── 모바일 반응형 ── */
   @media (max-width:760px){
     .topbar{flex-wrap:wrap;gap:8px;padding:8px 10px;position:relative}
@@ -941,7 +942,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     .user-pill{padding:5px}
     .group-tabs{padding:6px 10px 0}
     .board{padding:12px 10px;gap:10px}
-    .col{flex:0 0 86vw;max-width:380px}
+    .col{flex:0 0 86vw;max-width:380px;scroll-snap-align:start}
+    .board{scroll-snap-type:x proximity;scroll-padding-left:10px}
+    /* 방 바로가기 칩: 탭하면 그 방 열로 이동, 보드를 밀면 보이는 방이 강조됨 */
+    .room-jump{display:flex;gap:6px;overflow-x:auto;padding:8px 10px 0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+    .room-jump::-webkit-scrollbar{display:none}
+    .rj{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 11px;font-size:12.5px;font-weight:800;color:#4b5b72;white-space:nowrap;cursor:pointer}
+    .rj b{font-size:11px;font-weight:800;background:#e8edf6;color:#3b4d6b;border-radius:999px;padding:1px 7px}
+    .rj.has b{background:#2563eb;color:#fff}
+    .rj.on{background:#16325c;border-color:#16325c;color:#fff}
+    .rj.on b{background:rgba(255,255,255,.22);color:#fff}
     /* 알람 패널은 전체화면 오버레이 */
     .side-panel{position:fixed;inset:0;max-width:none;flex:none;z-index:150;border-left:0}
   }
@@ -987,6 +997,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <span class="bit-title"><i data-lucide="monitor-down"></i> 비트 접수 대기 <span class="hint" style="font-weight:400">— 비트에서 조회·접수된 환자. [접수]를 누르면 정보가 채워진 접수 창이 열립니다</span></span>
       <div class="bit-chips" id="bitChips"></div>
     </div>
+    <div class="room-jump" id="roomJump"></div>   <!-- 휴대폰: 방 바로가기(760px 이하에서만 표시) -->
     <div class="board" id="board"></div>
   </div>
   <div class="side-panel" id="chatMine">
@@ -2019,7 +2030,7 @@ function renderSlipScreen(){
       <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.note.ack?' · ✔ 확인':''}</div></div>`;}).join('')
     :'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>';
   const it=items.find(x=>x.mrn===slipSel);
-  if(!it){det.innerHTML='<div class="slip-empty">왼쪽에서 환자를 선택하세요</div>';return;}
+  if(!it){det.innerHTML='<div class="slip-empty">목록에서 환자를 선택하세요</div>';return;}
   const h=slipHeaderInfo(it);
   det.innerHTML=`<div class="sd-head">
       <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
@@ -3005,6 +3016,14 @@ async function runSelfTest(){
        try{const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();ok('대기화면: 방이 없을 때 하단 안내 띠가 화면 맨 아래', Math.abs(f.bottom-sr.bottom)<=2);}
        finally{if(!wasShown)ws.classList.remove('show');}}
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
+    // ── 휴대폰 방 바로가기 ──
+    {const _d=data,_ro=ROOMS,_rm=ROOM_META,_g=currentGroup;try{ROOMS=['A방','B방','C방'];ROOM_META={};currentGroup='전체';
+      const now=new Date().toISOString();data=[{id:'j1',name:'점프',route:['B방'],step:0,status:'대기',ord:1,enteredAt:now,notes:{}}];normalizeData();render();
+      const chips=[...document.querySelectorAll('#roomJump .rj')];
+      eq('방 바로가기: 보이는 방마다 칩, 환자 수 표시(B방 1명)', chips.map(c=>c.textContent), ['A방0','B방1','C방0']);
+      jumpToRoom('B방');
+      ok('방 바로가기: 탭한 방이 강조되고 열에 data-room 이 있다', document.querySelector('#roomJump .rj.on').dataset.room==='B방'&&!!document.querySelector('#board .col[data-room="B방"]'));
+     }finally{data=_d;ROOMS=_ro;ROOM_META=_rm;currentGroup=_g;}}
     // ── 화면 역할별 구독(읽기 한도) ──
     {const _w=waitOpen,_s=SLIP_MODE;try{waitOpen=false;SLIP_MODE=false;const r1=bitClientRole();SLIP_MODE=true;const r2=bitClientRole();waitOpen=true;const r3=bitClientRole();
       eq('bitClientRole: 직원 보드 / ?slip 태블릿 / 대기화면 → staff / slip / tv (TV는 접수·하트비트·처방을 듣지 않음)', [r1,r2,r3], ['staff','slip','tv']);
@@ -3996,7 +4015,7 @@ function render(){
     }).join(""):'<span class="hint" style="font-size:11px">담당자 없음</span>';
 
     const col=document.createElement("div");
-    col.className="col"+(mineOwner?" owned":"");
+    col.className="col"+(mineOwner?" owned":"");col.dataset.room=room;
     col.dataset.room=room;
     col.innerHTML=`
       <div class="col-head">
@@ -4052,6 +4071,7 @@ function render(){
   }
 
   renderGroupTabs();
+  renderRoomJump();
   renderChat();
   if(birdOpen)renderBirdView();
   if(waitOpen)renderWaitScreen();
@@ -4065,6 +4085,33 @@ function render(){
   const ob=document.getElementById("offBtn");if(ob)ob.style.display=isAdmin()?"":"none";
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
 }
+/* 휴대폰 방 바로가기 — 보이는 방(현재 층 탭 기준)마다 칩 하나(환자 수 포함). 넓은 화면에서는 CSS로 숨김 */
+let RJ_CUR='';
+function renderRoomJump(){
+  const el=document.getElementById('roomJump');if(!el)return;
+  if(currentGroup==='__disch__'){el.innerHTML='';el.style.display='none';return;}
+  el.style.display='';
+  const rooms=visibleRooms();
+  if(!rooms.includes(RJ_CUR))RJ_CUR=rooms[0]||'';
+  el.innerHTML=rooms.map(r=>{const n=data.filter(p=>!p.discharged&&p.route.length&&(curRoom(p)===r||mirroredHere(p,r))).length;
+    return `<span class="rj${n?' has':''}${r===RJ_CUR?' on':''}" data-room="${esc(r)}" onclick="jumpToRoom(this.dataset.room)">${esc(r)}<b>${n}</b></span>`;}).join('');
+}
+function jumpToRoom(room){
+  const col=document.querySelector(`#board .col[data-room="${CSS.escape(room)}"]`);if(!col)return;
+  RJ_CUR=room;markRoomJump();
+  try{col.scrollIntoView({behavior:'smooth',inline:'start',block:'nearest'});}catch(e){col.scrollIntoView();}
+}
+function markRoomJump(){
+  const el=document.getElementById('roomJump');if(!el)return;
+  el.querySelectorAll('.rj').forEach(c=>{const on=c.dataset.room===RJ_CUR;c.classList.toggle('on',on);
+    if(on){try{c.scrollIntoView({inline:'center',block:'nearest'});}catch(e){}}});
+}
+/* 보드를 옆으로 밀면 화면 왼쪽에 가장 가까운 열의 칩을 강조 */
+(function(){const b=document.getElementById('board');if(!b)return;let t=null;
+  b.addEventListener('scroll',()=>{if(t)return;t=setTimeout(()=>{t=null;
+    const cols=[...b.querySelectorAll('.col[data-room]')];if(!cols.length)return;const bx=b.getBoundingClientRect().left;
+    let best=null,bd=1e9;cols.forEach(c=>{const d=Math.abs(c.getBoundingClientRect().left-bx);if(d<bd){bd=d;best=c;}});
+    if(best&&best.dataset.room!==RJ_CUR){RJ_CUR=best.dataset.room;markRoomJump();}},120);},{passive:true});})();
 function renderGroupTabs(){
   const bar=document.getElementById("groupTabs");if(!bar)return;
   const groups=groupOrder();
