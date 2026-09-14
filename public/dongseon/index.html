@@ -955,8 +955,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     /* 알람 패널은 전체화면 오버레이 */
     .side-panel{position:fixed;inset:0;max-width:none;flex:none;z-index:150;border-left:0}
     /* 비트 상태 pill: 한 줄로 옆으로 밀어 보기(페이지는 화면 폭 고정) */
-    .bit-pill{flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}
-    .bit-pill::-webkit-scrollbar{display:none}
+    .topbar #bitPill.bit-pill{flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:2px}   /* 아래쪽의 일반 .bit-pill{flex-wrap:wrap} 보다 우선하도록 id 선택자 */
+    .topbar #bitPill.bit-pill::-webkit-scrollbar{display:none}
     html,body{max-width:100vw;overflow-x:hidden}
   }
 </style>
