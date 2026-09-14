@@ -2392,6 +2392,12 @@ function renderAccount(){
       <span class="role-tag ${currentUser.role==='admin'?'admin':'staff'}">${currentUser.role==='admin'?(currentUser.super?'최고관리자':'관리자'):'직원'}</span>
       ${currentUser.team?`<span class="team-tag">${esc(currentUser.team)}</span>`:''}</div>
     </div>
+    <div class="acc-sect">
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="bell-ring"></i> 방 도착 소리 <span class="hint" style="font-weight:400">(내 계정에만 적용 — 다른 사람 화면과 무관)</span></div>
+      <p class="hint" style="margin-bottom:8px">선택한 방에 환자가 <b>들어오면 이 화면에서 소리와 알림</b>이 납니다. 누가 어느 컴퓨터에서 옮겼든 상관없습니다. 예: X-ray 담당은 <b>x-ray실</b>만, Sono 담당은 <b>Sono</b>만 켜 두세요.</p>
+      <div id="soundRoomsList" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center"><button class="btn sm" type="button" onclick="beep()">🔊 소리 테스트</button><span class="hint">소리가 안 나면 브라우저 탭을 한 번 클릭한 뒤 다시 시도하세요(브라우저 정책).</span></div>
+    </div>
     <div class="acc-sect" style="display:none"><!-- 모바일 푸시(FCM): 이 프로젝트엔 서비스워커·전송 함수가 없어 동작 안 함 — 사용 안 함(2026-09). 필요 시 display 제거 + FCM 설정 -->
       <div class="sect-t" style="margin-bottom:6px"><i data-lucide="smartphone"></i> 모바일 푸시 알림 <span class="hint" style="font-weight:400">(이 기기에만 적용)</span></div>
       <div id="pushBox"></div>
@@ -2468,6 +2474,7 @@ function renderAccount(){
   box.innerHTML=html;
   renderPushBox();
   renderPrintRooms();
+  renderSoundRooms();
 }
 function renderStaffList(){
   const box=document.getElementById('staffList');if(!box)return;
@@ -3030,6 +3037,24 @@ async function runSelfTest(){
     {const _bs=BIT_STATUS,_cu=currentUser;try{currentUser=currentUser||{name:'t',role:'admin'};const st={};for(let i=0;i<20;i++)st['PC'+i]={pc:'PC'+i,lastSeen:new Date().toISOString(),bitOpen:true};BIT_STATUS=st;renderBitPill();
       const el=document.getElementById('bitPill');ok('비트 pill: PC 20대여도 문서 폭이 창 폭을 넘지 않음(줄바꿈/스크롤)', el.getBoundingClientRect().right<=window.innerWidth+1&&document.documentElement.scrollWidth<=window.innerWidth+1);
      }finally{BIT_STATUS=_bs;currentUser=_cu;renderBitPill();}}
+    // ── 방 도착 소리(계정별) ──
+    {const _d=data,_ro=ROOMS,_sp=STAFF_PREFS,_cu=currentUser,_sv=window.savePrefs,_nf=window.notify,_prev=ROOM_ARR_PREV,_sm=SLIP_MODE;const rang=[];
+     try{ROOMS=['3층 대기실','x-ray실','Sono'];currentUser={email:'xr@x',name:'엑스레이'};STAFF_PREFS={};window.savePrefs=()=>{};window.notify=(i,t,sub)=>rang.push(t);SLIP_MODE=false;
+      toggleSoundRoom('x-ray실',true);
+      eq('방 도착 소리: 내 계정 설정에 저장', mySoundRooms(), ['x-ray실']);
+      const now=new Date().toISOString();
+      data=[{id:'s1',name:'가',route:['3층 대기실','x-ray실'],step:0,status:'대기',ord:1,enteredAt:now,notes:{}},{id:'s2',name:'나',route:['Sono'],step:0,status:'대기',ord:2,enteredAt:now,notes:{}}];
+      ROOM_ARR_PREV=null;scanRoomArrivals();
+      ok('방 도착 소리: 첫 스냅샷은 기준만 잡고 울리지 않음', rang.length===0);
+      data[0].step=1;scanRoomArrivals();
+      eq('방 도착 소리: 다른 기기에서 x-ray실로 옮겨 오면(스냅샷) 울림', rang, ['x-ray실 도착']);
+      data.push({id:'s3',name:'다',route:['Sono'],step:0,status:'대기',ord:3,enteredAt:now,notes:{}});scanRoomArrivals();
+      ok('방 도착 소리: 고르지 않은 방(Sono)은 조용', rang.length===1);
+      data.push({id:'s4',name:'라',route:['x-ray실'],step:0,status:'대기',ord:4,enteredAt:now,notes:{}});enteredRoom(data[3],'x-ray실');scanRoomArrivals();
+      ok('방 도착 소리: 내가 직접 옮긴 카드는 스냅샷에서 두 번 울리지 않음', rang.length===1);
+      currentUser={email:'other@x',name:'다른사람'};data[1].route=['x-ray실'];scanRoomArrivals();
+      ok('방 도착 소리: 다른 계정에는 내 설정이 적용되지 않음', rang.length===1);
+     }finally{data=_d;ROOMS=_ro;STAFF_PREFS=_sp;currentUser=_cu;window.savePrefs=_sv;window.notify=_nf;ROOM_ARR_PREV=_prev;SLIP_MODE=_sm;}}
     // ── 터치 끌기(길게 눌러 끌기) 판정·놓기 ──
     {const _d=data,_ro=ROOMS,_rm=ROOM_META,_g=currentGroup,_mt=window.moveTo,_me=window.moveToEnd,_ri=window.reorderInData;const calls=[];
      try{ROOMS=['A방','B방'];ROOM_META={};currentGroup='전체';const now=new Date().toISOString();
@@ -3445,6 +3470,7 @@ async function startHosted(){
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
         data=s.docs.map(d=>d.data());normalizeData();localStorage.setItem(STORE,JSON.stringify(data));
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
+        try{scanRoomArrivals();}catch(e){console.warn('roomArrivals',e);}   // 내가 고른 방에 환자가 들어오면 소리(다른 기기에서 옮긴 것 포함)
         try{renderBitBar();bitAutoProcess();renderSlipScreen();}catch(e){}
       },err=>cloudErr(err));
       if(cloud.unsubPm)cloud.unsubPm();
@@ -5210,7 +5236,30 @@ function delNote(pid,room,idx){
   cloudPatientTxn(pid,d=>applyNoteDel(d,room,key));   // at로 노트 찾아 삭제(인덱스 어긋남 방지)
 }
 
-function enteredRoom(p,room){if(shouldPopup(room))
+/* ── 방 도착 소리(계정별 개인 설정) ──
+   기존 enteredRoom 은 "옮긴 그 기기"에서, 그 방의 담당자에게만 울린다. 그래서 접수 PC 에서 X-ray 로 옮기면 X-ray 의사 PC 는 아무 소리도 못 들었다.
+   여기서는 patients 스냅샷마다 카드의 현재 방을 이전 스냅샷과 비교해, 내가 고른 방(STAFF_PREFS[email].soundRooms)에 새로 들어온 카드가 있으면
+   이 화면에서 소리+토스트를 낸다. 설정은 내 계정에만 적용되고 다른 사람 화면에는 아무 영향이 없다. '팝업 끄기'와 무관하게 울린다(명시적으로 고른 방이므로). */
+let ROOM_ARR_PREV=null;   // 카드 id → 현재 방 (첫 스냅샷은 기준만 잡고 울리지 않음)
+function mySoundRooms(){const e=currentUser&&currentUser.email;const pr=e&&STAFF_PREFS[e];return (pr&&Array.isArray(pr.soundRooms))?pr.soundRooms.filter(r=>ROOMS.includes(r)):[];}
+function toggleSoundRoom(room,on){if(!currentUser)return;let arr=mySoundRooms().slice();if(on){if(!arr.includes(room))arr.push(room);}else arr=arr.filter(r=>r!==room);
+  STAFF_PREFS[currentUser.email]=Object.assign({},STAFF_PREFS[currentUser.email],{soundRooms:arr});savePrefs();renderSoundRooms();}
+function scanRoomArrivals(){
+  const cur={};data.forEach(p=>{if(p.discharged||!p.route||!p.route.length)return;cur[p.id]=curRoom(p);});
+  const prev=ROOM_ARR_PREV;ROOM_ARR_PREV=cur;
+  if(!prev||!currentUser||SLIP_MODE)return;
+  const rooms=mySoundRooms();if(!rooms.length)return;
+  Object.keys(cur).forEach(pid=>{const r=cur[pid];if(prev[pid]===r||!rooms.includes(r))return;const p=data.find(x=>x.id===pid);if(!p)return;
+    notify("🔔",`${esc(r)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,r);});
+}
+function renderSoundRooms(){
+  const box=document.getElementById('soundRoomsList');if(!box)return;
+  if(!ROOMS.length){box.innerHTML='<div class="hint">방이 없습니다.</div>';return;}
+  const mine=mySoundRooms();
+  box.innerHTML=ROOMS.map(r=>`<label class="owner-chk" style="border:1px solid var(--line);border-radius:8px;padding:5px 10px;${mine.includes(r)?'background:var(--blue-bg);border-color:var(--blue)':''}"><input type="checkbox" ${mine.includes(r)?'checked':''} onchange="toggleSoundRoom('${esc(r)}',this.checked)"> ${esc(r)}</label>`).join('');
+}
+function enteredRoom(p,room){if(ROOM_ARR_PREV)ROOM_ARR_PREV[p.id]=room;   // 내가 직접 옮긴 카드는 스냅샷 비교에서 다시 울리지 않게
+  if(shouldPopup(room))
   notify("🔔",`${esc(room)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,room);
   pushAlarm(ownerEmails(room),`🔔 ${room} 도착`,`${p.name||''}${p.mrn?' · '+p.mrn:''} 환자 도착`);   // 담당자 폰으로 도착 푸시(이동시킨 본인 제외)
 }
