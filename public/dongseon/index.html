@@ -2969,6 +2969,11 @@ async function runSelfTest(){
       sc=[...document.querySelectorAll('#waitCols .wait-sheetcol')];
       eq('치료 시트: 두 묶음 모두 선택 → 시트 두 판, 각자 제목', sc.map(c=>c.querySelector('.wait-ct span').textContent), ['SASO · 자동차도수','충격파 · 신장분사']);
       ok('치료 시트: 화면에 sheet-page 표시', document.getElementById('waitScreen').classList.contains('sheet-page'));
+      waitRooms=[];renderWaitScreen();
+      ok('대기화면: 시트를 보다가 방을 모두 해제하면 sheet-page 도 해제(하단 안내 띠가 화면 맨 아래에 붙도록)', !document.getElementById('waitScreen').classList.contains('sheet-page')&&!!document.querySelector('#waitCols .wait-hint'));
+      {const ws=document.getElementById('waitScreen'),wasShown=ws.classList.contains('show');ws.classList.add('show');
+       try{const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();ok('대기화면: 방이 없을 때 하단 안내 띠가 화면 맨 아래', Math.abs(f.bottom-sr.bottom)<=2);}
+       finally{if(!wasShown)ws.classList.remove('show');}}
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
     // ── 대기화면 하단 전광판(흐르는 안내 문구) ──
     {const t=document.getElementById('waitTicker');const ws=document.getElementById('waitScreen');const wasShown=ws.classList.contains('show');ws.classList.add('show');
@@ -4274,7 +4279,9 @@ function renderWaitScreen(){
     v.cols.forEach((c,i)=>{const k=v.key+':'+i;if(c.rooms.some(x=>ROOMS.includes(x))&&!acc.includes(k))acc.push(k);});return acc;},[]);
   /* 치료 시트 묶음(충격파·신장분사 / SASO·자동차도수): 묶음의 방이 선택돼 있으면 개별 대기열 대신 시트 한 판을 그 자리에 */
   SHEET_GROUPS.forEach(g=>{const i=rs.findIndex(r=>g.rooms.includes(r));if(i<0)return;rs=rs.filter(r=>!g.rooms.includes(r));rs.splice(Math.min(i,rs.length),0,g.key);});
-  if(!rs.length){cols.classList.remove("rot");cols.innerHTML=`<div class="wait-hint"><i data-lucide="settings"></i> 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
+  if(!rs.length){cols.classList.remove("rot");
+    document.getElementById("waitScreen").classList.remove("sheet-page");   // 시트 묶음을 보다가 방을 모두 해제하면 시트용 배치(flex:none)가 남아 하단 안내 띠가 화면 가운데에 걸렸다(2026-09-14)
+    cols.innerHTML=`<div class="wait-hint"><i data-lucide="settings"></i> 설정에서 대기화면에 표시할 방을 선택하세요.</div>`;return;}
   /* 회전 단위: 검사실 보기의 세 칸은 한 단위(회전 중에도 항상 함께 한 화면), 그 외는 칸 하나가 한 단위 */
   const units=[];rs.forEach(k=>{const vc=waitViewCol(k);const last=units[units.length-1];if(vc&&last&&last.view===vc.view)last.keys.push(k);else units.push({view:vc?vc.view:null,keys:[k]});});
   const rot=waitRotSec>0&&units.length>1;   // 회전 모드: 한 단위씩, N초마다 다음
