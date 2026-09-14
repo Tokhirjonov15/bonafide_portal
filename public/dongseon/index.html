@@ -1932,7 +1932,7 @@ setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();autoClose
 /* 진료실 처방 블록 해석 — 감시 스크립트는 'med' 줄부터 원문만 보낸다. 원내 표기 규칙(2026-09-13 공지):
    · 'med' 줄 아래에 'neuropathic pain' 줄이 있어야 처방(약·주사 목록). 없으면 특이사항 성격의 메모 → 슬립에 표시하지 않음
    · med 줄의 표시: @=진료원장님 주사, (prone)/(supine)=준비 포지션, g=그린(진료 없이 주사만), gp=그린+(주사하면서 진료), 약처방o / 약 x 예정=약처방 있음/없음
-   목록은 med 다음 줄부터 끝까지(neuropathic pain 줄 포함). 규칙이 바뀌면 여기만 고치면 된다(PC 재설치 불필요) */
+   목록은 med 줄부터 끝까지(2026-09-14: med 줄도 슬립에 보이도록). 규칙이 바뀌면 여기만 고치면 된다(PC 재설치 불필요) */
 function rxParse(rx){
   const lines=String(rx||'').split('\n').map(s=>s.trim()).filter(Boolean);
   const mi=lines.findIndex(l=>/^med\b/i.test(l));
@@ -1945,7 +1945,7 @@ function rxParse(rx){
   if(/\bprone\b/i.test(h))b.push('준비: prone');if(/\bsupine\b/i.test(h))b.push('준비: supine');
   if(/\bgp\b/i.test(h))b.push('그린+');else if(/\bg\b/i.test(h))b.push('그린');
   if(/약\s*처방\s*[oO0]/.test(h))b.push('약처방 있음');else if(/약\s*(처방)?\s*[xX×]/.test(h)||/약처방\s*없음/.test(h))b.push('약처방 없음');
-  return {valid:true,lines:lines.slice(mi+1),badges:b,head};
+  return {valid:true,lines:lines.slice(mi),badges:b,head};   // med 줄부터 끝까지(의사가 적은 그대로) — med 줄의 표시는 배지로도 보여 준다
 }
 /* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
 function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
@@ -2803,15 +2803,16 @@ async function runSelfTest(){
                 {docId:'2026-01-01_999',mrn:'999',name:'메모환자',pc:'진료실1',rx:'med\nPT는 우측 어깨로\nSLS SHORT+coban1 (5th toe)',rxMarker:true,rxLines:3,updatedAt:new Date(Date.now()-30000).toISOString()},
                 {docId:'2026-01-01_777',mrn:'777',name:'카드없음',pc:'진료실1',rrn7:'900101-1',rx:'med\nneuropathic pain IA(ulnar side)',rxMarker:true,rxLines:2,updatedAt:new Date(Date.now()-60000).toISOString()}];
      const items=slipItems();
-     eq('slipItems: 차트번호로 카드 연결, 최신순 — med 아래 neuropathic pain 없는 문서(999)는 제외', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,2],['777',false,1]]);
+     eq('slipItems: 차트번호로 카드 연결, 최신순 — med 아래 neuropathic pain 없는 문서(999)는 제외', items.map(it=>[it.mrn,!!it.p,it.lines.length]), [['297',true,3],['777',false,2]]);
      eq('slipItems: med 줄의 g → 그린 배지', items[0].badges, ['그린']);
      ok('슬립: 카드가 없어도 진료실 창의 주민번호 앞자리로 생년월일 표시', slipHTML(items.find(x=>x.mrn==='777')).includes('900101-*******'));
      const rp1=rxParse('med gp @ (prone)\nneuropathic pain IA(ulnar side) pdrn기\napnb Lt. hand 5th mcp\ngreen');
-     eq('rxParse: med 표시(gp,@,prone) → 배지, 목록은 med 다음 줄부터', [rp1.valid,rp1.badges,rp1.lines.length], [true,['진료원장님 주사','준비: prone','그린+'],3]);
+     eq('rxParse: med 표시(gp,@,prone) → 배지, 목록은 med 줄부터', [rp1.valid,rp1.badges,rp1.lines.length,rp1.lines[0]], [true,['진료원장님 주사','준비: prone','그린+'],4,'med gp @ (prone)']);
      ok('rxParse: med 아래 neuropathic pain 없으면 처방 아님(특이사항성 메모)', rxParse('med\nPT는 우측 어깨로\nSLS SHORT+coban1').valid===false);
      eq('rxParse: g → 그린, 약 x 예정 → 약처방 없음', rxParse('med g 약 x 예정\nneuropathic pain c-mbb').badges, ['그린','약처방 없음']);
      ok('rxParse: med 없이 중간 줄에 neuropathic pain → 처방 아님', rxParse('PT는 우측 어깨로\nneuropathic pain c-mbb').valid===false);
      eq('rxParse: 구버전 감시 스크립트 호환 — neuropathic pain 으로 시작하는 블록은 배지 없이 처방', (r=>[r.valid,r.lines.length,r.badges.length])(rxParse('neuropathic pain c-mbb\nGreen')), [true,2,0]);
+     ok('rxParse: 목록 첫 줄이 med 줄', rxParse('med g\nneuropathic pain x\nGreen').lines[0]==='med g');
      {const _n=BIT_NOTES;BIT_NOTES=[{docId:'x',mrn:'555',name:'이름연결',rx:'med\nneuropathic pain z',updatedAt:new Date().toISOString()}];
       const pc={id:'c9',name:'이름연결',mrn:'',route:['3층 대기실'],step:0,status:'대기',notes:{}};data.push(pc);
       ok('bitNoteFor: 차트번호 없는 카드도 오늘 그 이름이 하나뿐이면 처방 문서 연결', bitNoteFor(pc)&&bitNoteFor(pc).mrn==='555');data.pop();BIT_NOTES=_n;}
@@ -2821,7 +2822,7 @@ async function runSelfTest(){
      ok('slipHTML: 104mm 용지 · 차트번호/수진자명/생년월일(가림) 위 · 처방 줄 · 발행일자 맨 아래 · 생년월일 원문 없음',
         /size:104mm auto/.test(html)&&html.includes('차트번호')&&html.includes('297')&&html.includes('수진자명')&&html.includes('슬립환자')&&html.includes('900101-*******')&&!html.includes('1990-01-01')
         &&html.includes('c-mbb rt 345 / lt 35')&&/발행일자: \d{4}-\d{2}-\d{2}/.test(html)&&html.indexOf('슬립환자')<html.indexOf('c-mbb')&&html.indexOf('c-mbb')<html.indexOf('발행일자'));
-     ok('카드: 처방 목록 요약(처방 2줄) 표시, 처방 없는 카드는 없음', /처방 <b>2줄<\/b>/.test(cardEl(data[0]).innerHTML) && (()=>{const _b=BIT_NOTES;BIT_NOTES=[];const r=!cardEl(data[0]).querySelector('.slip-sum');BIT_NOTES=_b;return r;})());
+     ok('카드: 처방 목록 요약(처방 3줄) 표시, 처방 없는 카드는 없음', /처방 <b>3줄<\/b>/.test(cardEl(data[0]).innerHTML) && (()=>{const _b=BIT_NOTES;BIT_NOTES=[];const r=!cardEl(data[0]).querySelector('.slip-sum');BIT_NOTES=_b;return r;})());
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
