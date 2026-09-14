@@ -1849,38 +1849,43 @@ let BIT_NOTES=[];                                        // 오늘 진료실 처
 let BIT_LOOKUP=[];                                       // 오늘 접수 창 조회 기록(bitLookup) — 차트번호 없는 캐스트 문서를 이름으로 보완
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
-const BIT_STALE_SEC=150;       // 하트비트(60초 주기)가 이보다 오래되면 '연결 끊김'
+const BIT_STALE_SEC=750;       // 하트비트(v3.2부터 300초 주기, 그 전 60초)가 이보다 오래되면 '연결 끊김' — 2026-09-14 읽기 한도 사고 뒤 60→300초
+/* 이 화면의 역할 — 'staff'(직원 보드) · 'slip'(?slip 태블릿) · 'tv'(대기화면이 떠 있는 화면).
+   Firestore 읽기는 "바뀐 문서 수 × 그 문서를 듣고 있는 화면 수"로 세므로 TV·태블릿은 필요 없는 컬렉션을 듣지 않는다.
+   (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
+function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';return 'staff';}
+let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
+function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBit'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});}
 function subscribeBitIntake(){
   if(!cloud.intakeCol)return;
-  const today=localYMD(new Date());
-  if(cloud.unsubIntake&&BIT_SUB_DATE===today)return;
-  try{if(cloud.unsubIntake)cloud.unsubIntake();}catch(e){}
-  BIT_SUB_DATE=today;
-  cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
-    BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));bitApplyLookups();renderBitBar();
-    try{bitBackfillMrn();}catch(e){console.warn(e);}try{bitBackfillMemo();}catch(e){console.warn(e);}   // 차트번호를 먼저 채운 뒤 메모 보충
-    try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}
-  },err=>console.warn('bitIntake',err));
-  if(cloud.lookupCol){   // 접수 창 조회 기록(오늘) — 캐스트 문서에 차트번호가 없을 때 이름으로 보완 (감시 스크립트 재시작·다른 PC 접수에도 동작)
-    try{if(cloud.unsubLookup)cloud.unsubLookup();}catch(e){}
+  const today=localYMD(new Date()),role=bitClientRole();
+  if(BIT_SUB_DATE===today&&BIT_SUB_ROLE===role&&(cloud.unsubIntake||cloud.unsubNote||cloud.unsubBk))return;
+  bitUnsubAll();BIT_SUB_DATE=today;BIT_SUB_ROLE=role;
+  if(role==='staff'){   // 접수 대기 처리(카드 자동 생성·취소·수납)는 직원 보드만
+    cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
+      BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));bitApplyLookups();renderBitBar();
+      try{bitBackfillMrn();}catch(e){console.warn(e);}try{bitBackfillMemo();}catch(e){console.warn(e);}   // 차트번호를 먼저 채운 뒤 메모 보충
+      try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}
+    },err=>console.warn('bitIntake',err));
+  } else {BIT_INTAKE=[];renderBitBar();}
+  if(role!=='tv'&&cloud.lookupCol){   // 접수 창 조회 기록(오늘) — 캐스트 카드 보완 + 슬립 머리글(이름·생년월일) 보완
     cloud.unsubLookup=cloud.lookupCol.where('date','==',today).onSnapshot(s=>{
       BIT_LOOKUP=s.docs.map(d=>Object.assign({docId:d.id},d.data()));
       if(bitApplyLookups()){renderBitBar();try{bitBackfillMrn();}catch(e){console.warn(e);}try{bitBackfillMemo();}catch(e){console.warn(e);}try{bitAutoProcess();}catch(e){console.warn(e);}}
+      else if(SLIP_MODE)renderSlipScreen();
     },err=>console.warn('bitLookup',err));
   }
-  if(cloud.noteCol){   // 진료실 처방 목록(오늘) — 날짜가 바뀌면 위와 함께 다시 구독
-    try{if(cloud.unsubNote)cloud.unsubNote();}catch(e){}
+  if(role!=='tv'&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 카드 요약·슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
       BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));onBitNotes();
     },err=>console.warn('bitNote',err));
   }
-  if(cloud.bookingsCol){   // 예약 시트(오늘) — 치료 시트 표의 예약 칸
-    try{if(cloud.unsubBk)cloud.unsubBk();}catch(e){}
+  if(cloud.bookingsCol){   // 예약 시트(오늘) — 치료 시트 표(대기화면 포함이라 모든 역할)
     cloud.unsubBk=cloud.bookingsCol.doc(today).onSnapshot(s=>{BOOKINGS[today]=s.exists?s.data():null;if(waitOpen)renderWaitScreen();},err=>console.warn('bookings',err));
   }
-  if(!cloud.unsubBit){
+  if(role==='staff'){   // 감시 PC 하트비트 pill — 직원 보드만
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
-    setTimeout(bitCleanupOld,15000);   // 로그인 직후 한 번: 오래된 접수 대기 문서 정리
+    if(!BIT_CLEANUP_SCHEDULED){BIT_CLEANUP_SCHEDULED=true;setTimeout(bitCleanupOld,15000);}   // 로그인 직후 한 번: 오래된 접수 대기 문서 정리
   }
 }
 /* 7일 지난 비트 접수 문서 삭제 — 환자 정보가 필요 이상 남지 않게 (하루 한 번, 최대 300건) */
@@ -2998,6 +3003,11 @@ async function runSelfTest(){
        try{const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();ok('대기화면: 방이 없을 때 하단 안내 띠가 화면 맨 아래', Math.abs(f.bottom-sr.bottom)<=2);}
        finally{if(!wasShown)ws.classList.remove('show');}}
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
+    // ── 화면 역할별 구독(읽기 한도) ──
+    {const _w=waitOpen,_s=SLIP_MODE;try{waitOpen=false;SLIP_MODE=false;const r1=bitClientRole();SLIP_MODE=true;const r2=bitClientRole();waitOpen=true;const r3=bitClientRole();
+      eq('bitClientRole: 직원 보드 / ?slip 태블릿 / 대기화면 → staff / slip / tv (TV는 접수·하트비트·처방을 듣지 않음)', [r1,r2,r3], ['staff','slip','tv']);
+      ok('BIT_STALE_SEC: 하트비트 300초 주기의 2회 이상(750초)', BIT_STALE_SEC>=600);
+     }finally{waitOpen=_w;SLIP_MODE=_s;}}
     // ── 예약 시트(Google Sheet → bookings/{날짜}) → 치료 시트 표 ──
     {const _bk=BOOKINGS,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sd=sheetDate;
      try{ROOMS=['충격파','신장분사','SASO','자동차도수'];ROOM_META={};sheetDate=null;const T=localYMD(new Date());const at=new Date();at.setHours(10,5,0,0);
@@ -4293,9 +4303,9 @@ function waitTickerFit(){const t=document.getElementById('waitTicker');if(!t)ret
   /* 두 번째 문장이 화면 오른쪽 끝에서 시작하도록 트랙을 놓는다(첫 문장은 그보다 P 앞 = 이미 지나가는 중인 꼬리). 한 주기 뒤 상태가 시작 상태와 같아 이음새가 없다 */
   t.style.marginLeft=(window.innerWidth-P)+'px';}
 window.addEventListener('resize',()=>{if(waitOpen){waitTickerFit();waitSubFit();}});
-function openWaitScreen(){waitOpen=true;applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(()=>{waitTickerFit();waitSubFit();});
+function openWaitScreen(){waitOpen=true;try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(()=>{waitTickerFit();waitSubFit();});
   if(waitClockTimer)clearInterval(waitClockTimer);waitClockTimer=setInterval(updateWaitClock,1000);restartWaitRot();}
-function closeWaitScreen(){waitOpen=false;document.getElementById("waitScreen").classList.remove("show");
+function closeWaitScreen(){waitOpen=false;try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}document.getElementById("waitScreen").classList.remove("show");
   if(waitClockTimer){clearInterval(waitClockTimer);waitClockTimer=null;}
   if(waitRotTimer){clearInterval(waitRotTimer);waitRotTimer=null;}}
 function toggleWaitRoom(room){const i=waitRooms.indexOf(room);if(i>=0)waitRooms.splice(i,1);else{waitRooms=waitRooms.filter(r=>!waitViewOf(r));waitRooms.push(room);}   // 다른 방을 고르면 검사실 보기는 닫힘
