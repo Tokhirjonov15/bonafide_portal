@@ -1850,6 +1850,7 @@ let BIT_LOOKUP=[];                                       // 오늘 접수 창 �
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
 const BIT_STALE_SEC=750;       // 하트비트(v3.2부터 300초 주기, 그 전 60초)가 이보다 오래되면 '연결 끊김' — 2026-09-14 읽기 한도 사고 뒤 60→300초
+const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3.3부터 30분(1800초)마다만 신호 → 35분까지는 살아 있는 것으로 본다
 /* 이 화면의 역할 — 'staff'(직원 보드) · 'slip'(?slip 태블릿) · 'tv'(대기화면이 떠 있는 화면).
    Firestore 읽기는 "바뀐 문서 수 × 그 문서를 듣고 있는 화면 수"로 세므로 TV·태블릿은 필요 없는 컬렉션을 듣지 않는다.
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
@@ -1945,7 +1946,8 @@ function renderBitPill(){
   if(!pcs.length||!currentUser){el.style.display='none';return;}
   el.style.display='';const now=Date.now();
   el.innerHTML='비트 '+pcs.map(pc=>{const st=BIT_STATUS[pc]||{};const age=(now-new Date(st.lastSeen||0).getTime())/1000;
-    const cls=age>BIT_STALE_SEC?'':((st.bitOpen||st.doctorOpen)?'ok':'warn');   // 접수 창(접수 PC) 또는 외래진료실 창(진료실 PC)이 열려 있으면 정상
+    const idle=!(st.bitOpen||st.doctorOpen);   // 비트 창이 하나도 안 열림(노랑) — 이런 PC 는 하트비트가 드물다(30분)
+    const cls=age>(idle?BIT_STALE_IDLE_SEC:BIT_STALE_SEC)?'':(idle?'warn':'ok');   // 접수 창(접수 PC) 또는 외래진료실 창(진료실 PC)이 열려 있으면 정상
     const t=new Date(st.lastSeen||0);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     /* 툴팁 = 감시 스크립트의 자가 진단: 상태·마지막 신호·가동 시간·열린 창·마지막 오류·로그 끝부분 (그 PC에 가지 않고도 확인) */
     const up=st.uptimeSec?(st.uptimeSec>=3600?Math.floor(st.uptimeSec/3600)+'시간 '+Math.floor(st.uptimeSec%3600/60)+'분':Math.floor(st.uptimeSec/60)+'분'):'';
@@ -3006,7 +3008,12 @@ async function runSelfTest(){
     // ── 화면 역할별 구독(읽기 한도) ──
     {const _w=waitOpen,_s=SLIP_MODE;try{waitOpen=false;SLIP_MODE=false;const r1=bitClientRole();SLIP_MODE=true;const r2=bitClientRole();waitOpen=true;const r3=bitClientRole();
       eq('bitClientRole: 직원 보드 / ?slip 태블릿 / 대기화면 → staff / slip / tv (TV는 접수·하트비트·처방을 듣지 않음)', [r1,r2,r3], ['staff','slip','tv']);
-      ok('BIT_STALE_SEC: 하트비트 300초 주기의 2회 이상(750초)', BIT_STALE_SEC>=600);
+      ok('BIT_STALE_SEC: 하트비트 300초 주기의 2회 이상(750초), 놀고 있는 PC 는 30분 주기보다 길게', BIT_STALE_SEC>=600&&BIT_STALE_IDLE_SEC>1800);
+      {const _bs=BIT_STATUS,_cu=currentUser;try{currentUser=currentUser||{name:'t',role:'admin'};const now=Date.now();
+        BIT_STATUS={'A':{lastSeen:new Date(now-1200*1000).toISOString(),bitOpen:false,doctorOpen:false},'B':{lastSeen:new Date(now-1200*1000).toISOString(),bitOpen:true,doctorOpen:false},'C':{lastSeen:new Date(now-100*1000).toISOString(),bitOpen:false,doctorOpen:true}};
+        renderBitPill();const el=document.getElementById('bitPill');const dots=el?[...el.querySelectorAll('.bit-dot,[class*="dot"]')]:[];
+        ok('pill: 창 닫힌 PC 20분 무신호 = 노랑(살아 있음) / 창 열린 PC 20분 무신호 = 회색 / 창 열린 PC 최근 신호 = 초록', /warn/.test(el.innerHTML)&&/ok/.test(el.innerHTML)&&(el.innerHTML.match(/class="[^"]*\bok\b/g)||[]).length===1);
+      }finally{BIT_STATUS=_bs;currentUser=_cu;renderBitPill();}}
      }finally{waitOpen=_w;SLIP_MODE=_s;}}
     // ── 예약 시트(Google Sheet → bookings/{날짜}) → 치료 시트 표 ──
     {const _bk=BOOKINGS,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sd=sheetDate;

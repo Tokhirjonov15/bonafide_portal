@@ -414,7 +414,7 @@ function HandleCast($m) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.2: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3.3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
@@ -448,10 +448,12 @@ while ($true) {
       $open = ($null -ne $bw)
       $dw = $null; try { $dw = FindDoctorWindow } catch { Log "외래진료실 창 찾기 오류: $($_.Exception.Message)" }
       $docOpen = ($null -ne $dw)
-      if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
+      # 비트 창이 하나도 안 열린 PC(대부분의 진료·치료실 PC)는 30분에 한 번만 — 창이 열리거나 닫히면 즉시. 동선관리 BIT_STALE_IDLE_SEC=2100 과 짝
+      $hbSec = if ($open -or $docOpen) { $HeartbeatSec } else { [Math]::Max($HeartbeatSec, 1800) }
+      if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.2'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.3'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
         catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
