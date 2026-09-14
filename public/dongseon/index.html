@@ -927,6 +927,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cl-live{font-size:10px;font-weight:700;color:var(--teal);border:1px solid var(--teal-bg);border-radius:6px;padding:0 5px}
 
   .room-jump{display:none}   /* 넓은 화면에서는 숨김(모든 열이 보임) */
+  /* 터치 끌기: 손가락을 따라가는 카드 그림자, 끌기 중에는 화면 스크롤·선택 금지, 칩 위에 놓기 표시 */
+  .card.tdrag-ghost{position:fixed;z-index:400;pointer-events:none;opacity:.9;transform:scale(1.03) rotate(1.2deg);box-shadow:0 18px 44px rgba(20,40,80,.32);margin:0}
+  body.tdragging{overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+  body.tdragging .board,body.tdragging .col-body{touch-action:none}
+  #roomJump .rj.drop{background:#2563eb;border-color:#2563eb;color:#fff;transform:scale(1.08)}
+  #roomJump .rj.drop b{background:rgba(255,255,255,.25);color:#fff}
   /* ── 모바일 반응형 ── */
   @media (max-width:760px){
     .topbar{flex-wrap:wrap;gap:8px;padding:8px 10px;position:relative}
@@ -3024,6 +3030,17 @@ async function runSelfTest(){
     {const _bs=BIT_STATUS,_cu=currentUser;try{currentUser=currentUser||{name:'t',role:'admin'};const st={};for(let i=0;i<20;i++)st['PC'+i]={pc:'PC'+i,lastSeen:new Date().toISOString(),bitOpen:true};BIT_STATUS=st;renderBitPill();
       const el=document.getElementById('bitPill');ok('비트 pill: PC 20대여도 문서 폭이 창 폭을 넘지 않음(줄바꿈/스크롤)', el.getBoundingClientRect().right<=window.innerWidth+1&&document.documentElement.scrollWidth<=window.innerWidth+1);
      }finally{BIT_STATUS=_bs;currentUser=_cu;renderBitPill();}}
+    // ── 터치 끌기(길게 눌러 끌기) 판정·놓기 ──
+    {const _d=data,_ro=ROOMS,_rm=ROOM_META,_g=currentGroup,_mt=window.moveTo,_me=window.moveToEnd,_ri=window.reorderInData;const calls=[];
+     try{ROOMS=['A방','B방'];ROOM_META={};currentGroup='전체';const now=new Date().toISOString();
+      data=[{id:'t1',name:'끌기',route:['A방'],step:0,status:'대기',ord:1,enteredAt:now,notes:{}},{id:'t2',name:'대상',route:['A방'],step:0,status:'대기',ord:2,enteredAt:now,notes:{}}];normalizeData();render();
+      window.moveTo=(pid,room)=>calls.push(['moveTo',pid,room]);window.moveToEnd=pid=>calls.push(['moveToEnd',pid]);window.reorderInData=(a,b,before)=>calls.push(['reorder',a,b,before]);
+      TD.pid='t1';TD.room='A방';TD.card=document.querySelector('#board .card[data-pid="t1"]');   // 보드에 그려진 카드(끌기 판정은 #board 안의 카드만)
+      const chip=document.querySelector('#roomJump .rj[data-room="B방"]'),body=document.querySelector('#board .col-body[data-room="B방"]'),c2=document.querySelector('#board .card[data-pid="t2"]');
+      eq('터치 끌기: 손가락 아래 요소 → 칩/방 목록/카드 판정', [tdragResolve(chip).kind,tdragResolve(chip).room,tdragResolve(body).kind,tdragResolve(c2).kind,tdragResolve(c2).id,tdragResolve(TD.card)], ['room','B방','body','card','t2',null]);
+      tdragCommit({kind:'room',room:'B방'});tdragCommit({kind:'body',room:'A방'});tdragCommit({kind:'card',id:'t2',room:'A방',before:true});
+      eq('터치 끌기: 칩=이동, 같은 방 빈 곳=맨 뒤로, 같은 방 카드 위=순서 바꾸기 (PC 드래그와 같은 함수)', calls, [['moveTo','t1','B방'],['moveToEnd','t1'],['reorder','t1','t2',true]]);
+     }finally{window.moveTo=_mt;window.moveToEnd=_me;window.reorderInData=_ri;TD.pid=null;TD.room=null;TD.card=null;data=_d;ROOMS=_ro;ROOM_META=_rm;currentGroup=_g;}}
     // ── 휴대폰 방 바로가기 ──
     {const _d=data,_ro=ROOMS,_rm=ROOM_META,_g=currentGroup;try{ROOMS=['A방','B방','C방'];ROOM_META={};currentGroup='전체';
       const now=new Date().toISOString();data=[{id:'j1',name:'점프',route:['B방'],step:0,status:'대기',ord:1,enteredAt:now,notes:{}}];normalizeData();render();
@@ -4816,8 +4833,73 @@ function cardEl(p){
     if(draggedRoom===curRoom(p))reorderInData(draggedPid,p.id,before); else moveTo(draggedPid,curRoom(p));
     draggedPid=null;draggedRoom=null;});
   c.addEventListener("click",e=>{if(e.target.closest("button")||e.target.closest("select")||e.target.closest("input"))return;openEdit(p.id)});  // 카드 클릭=환자 정보(3열: 정보·동선·차팅)
+  attachTouchDrag(c,p);   // 터치 기기: 길게 눌러 끌기
   return c;
 }
+
+/* ───── 터치 끌기(휴대폰·태블릿) ─────
+   HTML5 drag&drop 은 터치에서 동작하지 않아 손가락으로 끌면 화면만 밀렸다. 카드를 0.35초 길게 누르면 끌기 모드:
+   손가락을 따라 카드 그림자가 움직이고, 다른 카드 위(같은 방=순서 바꾸기, 다른 방=이동)·방 목록 빈 곳·위의 방 바로가기 칩 위에 놓으면
+   PC 의 드래그와 같은 함수(reorderInData / moveTo / moveToEnd)를 호출한다. 짧게 누르거나 바로 움직이면 평소처럼 스크롤·탭. */
+const TD={pid:null,room:null,card:null,ghost:null,timer:null,x0:0,y0:0,dx:0,dy:0,active:false,over:null,raf:null};
+function attachTouchDrag(c,p){
+  c.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1||e.target.closest('button,select,input,a,textarea'))return;
+    const t=e.touches[0];TD.x0=t.clientX;TD.y0=t.clientY;TD.card=c;TD.pid=p.id;TD.room=curRoom(p);
+    const r=c.getBoundingClientRect();TD.dx=t.clientX-r.left;TD.dy=t.clientY-r.top;
+    clearTimeout(TD.timer);TD.timer=setTimeout(()=>tdragStart(),350);
+  },{passive:true});
+  c.addEventListener('touchmove',e=>{if(TD.active||!TD.timer)return;const t=e.touches[0];if(Math.hypot(t.clientX-TD.x0,t.clientY-TD.y0)>8){clearTimeout(TD.timer);TD.timer=null;}},{passive:true});   // 먼저 움직이면 스크롤
+  c.addEventListener('touchend',()=>{if(!TD.active){clearTimeout(TD.timer);TD.timer=null;}},{passive:true});
+  c.addEventListener('touchcancel',()=>{clearTimeout(TD.timer);TD.timer=null;},{passive:true});
+}
+function tdragStart(){
+  TD.timer=null;const c=TD.card;if(!c||!c.isConnected)return;
+  TD.active=true;draggedPid=TD.pid;draggedRoom=TD.room;
+  const r=c.getBoundingClientRect();const g=c.cloneNode(true);g.classList.add('tdrag-ghost');g.style.width=r.width+'px';g.style.left=r.left+'px';g.style.top=r.top+'px';
+  document.body.appendChild(g);TD.ghost=g;c.classList.add('dragging');document.body.classList.add('tdragging');
+  try{if(navigator.vibrate)navigator.vibrate(25);}catch(e){}
+}
+/* 손가락 아래 요소 → 놓을 곳: 카드(위/아래) · 방 목록 · 방 바로가기 칩 */
+function tdragResolve(el){
+  if(!el)return null;
+  if(TD.card&&(el===TD.card||TD.card.contains(el)))return null;   // 끌던 카드 자기 자리 위 = 아무것도 안 함(맨 뒤로 보내지 않음)
+  const chip=el.closest&&el.closest('#roomJump .rj[data-room]');if(chip)return {kind:'room',room:chip.dataset.room,el:chip};
+  const card=el.closest&&el.closest('#board .card');
+  if(card&&card!==TD.card&&!card.classList.contains('tdrag-ghost')){const id=card.dataset.pid||card.dataset.id||'';const pt=data.find(x=>x.id===id);if(pt)return {kind:'card',id,room:curRoom(pt),el:card};}
+  const body=el.closest&&el.closest('#board .col-body[data-room]');if(body)return {kind:'body',room:body.dataset.room,el:body};
+  return null;
+}
+function tdragClearMarks(){document.querySelectorAll('.card.drop-before,.card.drop-after').forEach(x=>x.classList.remove('drop-before','drop-after'));
+  document.querySelectorAll('.col-body.drag-over').forEach(x=>x.classList.remove('drag-over'));document.querySelectorAll('#roomJump .rj.drop').forEach(x=>x.classList.remove('drop'));}
+function tdragMove(x,y){
+  if(TD.ghost){TD.ghost.style.left=(x-TD.dx)+'px';TD.ghost.style.top=(y-TD.dy)+'px';}
+  const el=document.elementFromPoint(x,y);const t=tdragResolve(el);TD.over=t;tdragClearMarks();
+  if(t){if(t.kind==='card'){const r=t.el.getBoundingClientRect();t.before=y<r.top+r.height/2;t.el.classList.toggle('drop-before',t.before);t.el.classList.toggle('drop-after',!t.before);}
+    else if(t.kind==='body')t.el.classList.add('drag-over');else t.el.classList.add('drop');}
+  /* 가장자리 자동 스크롤: 보드 좌우, 방 목록 상하 */
+  const b=document.getElementById('board');if(b){const r=b.getBoundingClientRect();const Z=48;
+    let hx=0;if(x<r.left+Z)hx=-10;else if(x>r.right-Z)hx=10;
+    let vy=0;const body=el&&el.closest?el.closest('.col-body'):null;if(body){const br=body.getBoundingClientRect();if(y<br.top+Z)vy=-8;else if(y>br.bottom-Z)vy=8;}
+    if(hx||vy){if(hx)b.scrollLeft+=hx;if(vy&&body)body.scrollTop+=vy;}}
+}
+/* 놓기: PC 드래그의 drop 처리와 같은 함수 호출 */
+function tdragCommit(t){
+  const pid=TD.pid,from=TD.room;if(!pid||!t)return false;
+  if(t.kind==='card'){if(t.id===pid)return false;if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveTo(pid,t.room);return true;}
+  if(t.kind==='body'||t.kind==='room'){if(from===t.room){if(t.kind==='body')moveToEnd(pid);}else moveTo(pid,t.room);return true;}
+  return false;
+}
+function tdragEnd(commit){
+  if(!TD.active)return;const t=TD.over;
+  tdragClearMarks();if(TD.ghost){TD.ghost.remove();TD.ghost=null;}if(TD.card)TD.card.classList.remove('dragging');document.body.classList.remove('tdragging');
+  TD.active=false;
+  try{if(commit)tdragCommit(t);}catch(e){console.warn('touch drop',e);}
+  draggedPid=null;draggedRoom=null;TD.over=null;TD.card=null;TD.pid=null;TD.room=null;
+}
+document.addEventListener('touchmove',e=>{if(!TD.active)return;e.preventDefault();const t=e.touches[0];tdragMove(t.clientX,t.clientY);},{passive:false});
+document.addEventListener('touchend',e=>{if(!TD.active)return;e.preventDefault();tdragEnd(true);},{passive:false});
+document.addEventListener('touchcancel',()=>{if(TD.active)tdragEnd(false);},{passive:true});
 
 /* ───── 체류시간/상태 (대기·진행 시간 각각 측정) ───── */
 function fmtDur(ms){ms=Math.max(0,Math.round(ms));const m=Math.floor(ms/60000);if(m<1)return Math.floor(ms/1000)+"초";if(m<60)return m+"분";const h=Math.floor(m/60);return h+"시간 "+(m%60)+"분";}
