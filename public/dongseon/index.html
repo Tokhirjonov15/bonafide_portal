@@ -3050,10 +3050,14 @@ async function runSelfTest(){
       eq('방 도착 소리: 다른 기기에서 x-ray실로 옮겨 오면(스냅샷) 울림', rang, ['x-ray실 도착']);
       data.push({id:'s3',name:'다',route:['Sono'],step:0,status:'대기',ord:3,enteredAt:now,notes:{}});scanRoomArrivals();
       ok('방 도착 소리: 고르지 않은 방(Sono)은 조용', rang.length===1);
-      data.push({id:'s4',name:'라',route:['x-ray실'],step:0,status:'대기',ord:4,enteredAt:now,notes:{}});enteredRoom(data[3],'x-ray실');scanRoomArrivals();
-      ok('방 도착 소리: 내가 직접 옮긴 카드는 스냅샷에서 두 번 울리지 않음', rang.length===1);
+      data.push({id:'s4',name:'라',route:['x-ray실'],step:0,status:'대기',ord:4,enteredAt:now,notes:{}});enteredRoom(data[3],'x-ray실');
+      ok('방 도착 소리: 내가 직접 옮겨도(담당자가 아니어도) 고른 방이면 한 번 울림', rang.length===2);
+      scanRoomArrivals();
+      ok('방 도착 소리: 직접 옮긴 카드는 이어지는 스냅샷에서 두 번 울리지 않음', rang.length===2);
+      ROOM_ARR_PREV=null;scanRoomArrivals();data.push({id:'s5',name:'마',route:['Sono'],step:0,status:'대기',ord:5,enteredAt:now,notes:{}});enteredRoom(data[4],'Sono');scanRoomArrivals();
+      ok('방 도착 소리: 고르지 않은 방으로 직접 옮기면 조용(담당자 아님)', rang.length===2);
       currentUser={email:'other@x',name:'다른사람'};data[1].route=['x-ray실'];scanRoomArrivals();
-      ok('방 도착 소리: 다른 계정에는 내 설정이 적용되지 않음', rang.length===1);
+      ok('방 도착 소리: 다른 계정에는 내 설정이 적용되지 않음', rang.length===2);
      }finally{data=_d;ROOMS=_ro;STAFF_PREFS=_sp;currentUser=_cu;window.savePrefs=_sv;window.notify=_nf;ROOM_ARR_PREV=_prev;SLIP_MODE=_sm;}}
     // ── 터치 끌기(길게 눌러 끌기) 판정·놓기 ──
     {const _d=data,_ro=ROOMS,_rm=ROOM_META,_g=currentGroup,_mt=window.moveTo,_me=window.moveToEnd,_ri=window.reorderInData;const calls=[];
@@ -5258,8 +5262,8 @@ function renderSoundRooms(){
   const mine=mySoundRooms();
   box.innerHTML=ROOMS.map(r=>`<label class="owner-chk" style="border:1px solid var(--line);border-radius:8px;padding:5px 10px;${mine.includes(r)?'background:var(--blue-bg);border-color:var(--blue)':''}"><input type="checkbox" ${mine.includes(r)?'checked':''} onchange="toggleSoundRoom('${esc(r)}',this.checked)"> ${esc(r)}</label>`).join('');
 }
-function enteredRoom(p,room){if(ROOM_ARR_PREV)ROOM_ARR_PREV[p.id]=room;   // 내가 직접 옮긴 카드는 스냅샷 비교에서 다시 울리지 않게
-  if(shouldPopup(room))
+function enteredRoom(p,room){if(ROOM_ARR_PREV)ROOM_ARR_PREV[p.id]=room;   // 내가 직접 옮긴 카드는 스냅샷 비교에서 다시 울리지 않게(여기서 한 번만)
+  if(shouldPopup(room)||mySoundRooms().includes(room))   // 담당자이거나, 내가 소리 낼 방으로 고른 방이면 — 직접 옮겼어도 한 번 울린다
   notify("🔔",`${esc(room)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,room);
   pushAlarm(ownerEmails(room),`🔔 ${room} 도착`,`${p.name||''}${p.mrn?' · '+p.mrn:''} 환자 도착`);   // 담당자 폰으로 도착 푸시(이동시킨 본인 제외)
 }
