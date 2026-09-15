@@ -154,6 +154,7 @@
   .wait-bg{position:absolute;inset:0;z-index:0;background:radial-gradient(120% 90% at 12% 0%,#eef5ff 0%,rgba(238,245,255,0) 55%),radial-gradient(120% 100% at 100% 100%,#f3edfb 0%,rgba(243,237,251,0) 55%),linear-gradient(165deg,#eef3fb 0%,#e7eef8 48%,#eef0f9 100%);background-size:cover;background-position:center}
   .wait-bg.has-img::after{content:"";position:absolute;inset:0;background:rgba(245,248,253,.55);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
   .wait-bg.idle::after{display:none}   /* 빈 화면 배경은 흐림·밝힘 없이 그대로 */
+  .wait-screen.idle .wait-header,.wait-screen.idle .wait-foot{display:none}   /* 빈 화면 = 이미지만(제목·시계·안내 띠 숨김) */
   .wait-controls{position:relative;z-index:3;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(255,255,255,.9);border-bottom:1px solid rgba(20,40,80,.08);flex-wrap:wrap;flex-shrink:0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .wait-controls.hidden{display:none}
   .wait-msg-input{flex:1;min-width:200px;padding:8px 12px;border:1px solid #cdd7e3;border-radius:10px;font-size:14px;color:#26344a;background:#fff;outline:0}
@@ -3009,7 +3010,7 @@ async function runSelfTest(){
         data=[mk('a','C-Arm','대기',1)];renderWaitScreen();
         eq('검사실 보기: 한 칸에만 있으면 그 칸만', [...document.querySelectorAll('#waitCols .wait-col')].length, 1);
         data=[];renderWaitScreen();const bgEl=document.getElementById('waitBg');
-        ok('검사실 보기: 세 칸 모두 비면 목록 없이 빈 화면 배경만(흐림 없이)', waitIdle&&!document.querySelector('#waitCols .wait-col')&&bgEl.classList.contains('idle')&&/R0lGOD/.test(bgEl.style.backgroundImage));
+        ok('검사실 보기: 세 칸 모두 비면 목록 없이 빈 화면 배경만(흐림 없이, 제목·안내 띠 숨김)', waitIdle&&!document.querySelector('#waitCols .wait-col')&&bgEl.classList.contains('idle')&&/R0lGOD/.test(bgEl.style.backgroundImage)&&document.getElementById('waitScreen').classList.contains('idle'));
         data=[mk('b','Sono','진행',2)];renderWaitScreen();
         ok('검사실 보기: 환자가 다시 오면 평소 배경으로 복귀', !waitIdle&&!bgEl.classList.contains('idle'));
        }finally{waitIdleBg=_ib;waitIdle=false;applyWaitBg();waitRooms=_wr2;}}
@@ -4475,7 +4476,8 @@ function onWaitBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)e
 function clearWaitBg(){waitBg="";waitPresets[waitCur].bg="";saveWaitPresets();applyWaitBg();}
 function applyWaitBg(){const el=document.getElementById("waitBg");if(!el)return;
   const idle=waitIdle&&!!waitIdleBg;const src=idle?waitIdleBg:waitBg;   // 빈 화면이면 빈 화면 배경(있을 때만), 아니면 평소 배경
-  el.style.backgroundImage=src?`url("${src}")`:"";el.classList.toggle("has-img",!!src);el.classList.toggle("idle",idle);}
+  el.style.backgroundImage=src?`url("${src}")`:"";el.classList.toggle("has-img",!!src);el.classList.toggle("idle",idle);
+  const ws=document.getElementById("waitScreen");if(ws)ws.classList.toggle("idle",idle);}   // 빈 화면: 제목·시계·하단 띠도 숨겨 이미지만 전체 화면
 function onWaitIdleBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)ev.target.value="";if(!f)return;
   const r=new FileReader();r.onload=()=>{waitIdleBg=r.result;waitPresets[waitCur].idleBg=r.result;saveWaitPresets();applyWaitBg();};r.readAsDataURL(f);}
 function clearWaitIdleBg(){waitIdleBg="";waitPresets[waitCur].idleBg="";saveWaitPresets();applyWaitBg();}
