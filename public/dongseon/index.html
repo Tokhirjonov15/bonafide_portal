@@ -3148,6 +3148,14 @@ async function runSelfTest(){
       ok('예약 수정본: 고른 배경색이 칸 배경으로(시트처럼)', /color-mix\(in srgb, #00ffff 45%, white\)/.test(rb.innerHTML));
       {openBkEdit(T,k);const ta=document.getElementById('bke_note');const has=ta&&ta.tagName==='TEXTAREA'&&!!document.getElementById('bke_color')&&document.getElementById('bke_color').value==='#00ffff';bkPickColor('#ffe599');const picked=document.getElementById('bke_color').value==='#ffe599'&&!!document.querySelector('#bkEditBody .bk-sw > span.on');closeBkEdit();
        ok('예약 수정 창: 메모는 늘어나는 textarea, 배경색 선택(현재색 표시·클릭으로 바꿈)', has&&picked);}
+      {const _rg=REGISTRY;try{REGISTRY=[{mrn:'4242',name:'등록환자',birth:'1975-03-03',sex:'여'}];openBkEdit(T,null,{th:'Zoe',t:'12:00'});
+        const codes=[...document.querySelectorAll('#bke_codes option')].map(o=>o.value);
+        ok('예약 수정 창: 코드 칸에 시트의 드롭다운 목록(CRYO10·MT9·CME15 …)', document.getElementById('bke_code').getAttribute('list')==='bke_codes'&&codes.includes('CRYO10')&&codes.includes('MT9')&&codes.includes('CME15')&&codes.includes('EES6'));
+        const mi=document.getElementById('bke_mrn'),ni=document.getElementById('bke_name');mi.value='4242';bkMrnChanged(mi);const auto=ni.value==='등록환자'&&/등록 환자: 등록환자 · 1975-03-03/.test(document.getElementById('bke_mrnHint').textContent);
+        ni.value='직접입력';ni.dispatchEvent(new Event('input'));mi.value='4242';bkMrnChanged(mi);const kept=ni.value==='직접입력';
+        mi.value='9999';bkMrnChanged(mi);const unknown=/등록되지 않은/.test(document.getElementById('bke_mrnHint').textContent)&&ni.value==='직접입력';closeBkEdit();
+        ok('예약 수정 창: 차트번호를 넣으면 이름 자동(등록부), 직접 고친 이름은 덮지 않음, 모르는 번호는 안내', auto&&kept&&unknown);
+       }finally{REGISTRY=_rg;}}
       eq('예약 수정본: 통계도 수정본 기준(예약 2·도수 1)', [resvStats(null).items,resvStats(null).manual,sheetCount(null,SHEET_GROUPS[0])], [2,1,2]);
       ok('예약 수정본: 시트에서 그 예약이 바뀌면(키 불일치) 수정본은 저절로 빠짐', (()=>{BOOKINGS[T].items[0].t='10:30';const M=bkMerged(T);BOOKINGS[T].items[0].t='10:00';const x=M.items.find(x=>x.mrn==='2');return x.t==='10:30'&&!x.edited;})());
       {const _c=cloud.active;cloud.active=false;openBkEdit(T,null,{th:'Zoe',t:'11:00'});document.getElementById('bke_name').value='창추가';document.getElementById('bke_mrn').value='888';bkEditSave();cloud.active=_c;
@@ -4813,6 +4821,24 @@ function renderResvScreen(){
 }
 /* ── 예약 수정 창 ── 시트 예약을 고치거나(시간·치료사·시간·코드·메모), 취소하거나, 새로 넣는다. 결과는 bookingEdits/{날짜}에 저장돼 모든 화면에 겹쳐 보인다 */
 let BK_EDIT=null;   // {D,key,manual,isNew,cur}
+/* 치료 코드 목록 — 예약리스트 시트의 '데이터 확인' 드롭다운(2026-09 파일, 두 블록의 목록을 합침)과 같다. 시트에 새 코드가 생기면 여기 추가 */
+const BK_CODES=(()=>{const g={CRYO:[10,15,20,25,30],MT:[9,10,14,15,18,19,20,24,25,29,30,35,40,45,50],TMT:[10,15,20,25,30],ES:[9,10,14,15,19,20,24,25,29,30,35,40,45,50],EES:[6,9,10,14,15,19,20,24,25,29,30,35,40,45,50],CM:[9,10,14,15,19,20,24,25,29,30,35,40,45,50],CME:[9,10,14,15,19,20,24,25,29,30,35,40,45,50],CE:[9,10,14,15,19,20,24,25,29,30,35,40,45,50]};
+  const out=[];Object.keys(g).forEach(p=>g[p].forEach(n=>out.push(p+n)));return out;})();
+const BK_MANUAL_THS=['임현주','박승규','신소현','조현신','고민정','김재하','김건휘','김지은','황지현','이세영','한상훈','허빈','서효성'];   // 시트 BN열(치료사) 드롭다운
+/* 차트번호 → 이름·생년월일: 환자 등록부(REGISTRY) → 오늘 보드 카드 → 내원 기록 → 오늘 접수 조회(bitLookup)·처방 문서 순 */
+function nameByMrn(mrn){mrn=String(mrn||'').trim();if(!mrn)return null;const eq=x=>x&&String(x.mrn||'').trim()===mrn;
+  let r=(Array.isArray(REGISTRY)?REGISTRY:[]).find(eq);if(r)return {name:r.name||'',birth:r.birth||'',src:'등록 환자'};
+  r=data.find(eq);if(r)return {name:r.name||'',birth:r.birth||'',src:'오늘 보드'};
+  r=(Array.isArray(VISITS)?VISITS:[]).find(eq);if(r)return {name:r.name||'',birth:r.birth||'',src:'내원 기록'};
+  r=(BIT_LOOKUP||[]).find(eq)||(BIT_NOTES||[]).find(eq);if(r&&r.name){const p=r.rrn7?parseRRN(r.rrn7):null;return {name:r.name,birth:p?p.birth:'',src:'비트 조회'};}
+  return null;}
+/* 차트번호 칸 입력 → 이름을 자동으로(직접 고친 이름은 덮지 않음) */
+function bkMrnChanged(inp){const nm=document.getElementById('bke_name'),hint=document.getElementById('bke_mrnHint');if(!inp||!nm)return;
+  const f=nameByMrn(inp.value);
+  if(f&&f.name){if(!nm.value.trim()||nm.dataset.auto==='1'){nm.value=f.name;nm.dataset.auto='1';}if(hint)hint.textContent=`${f.src}: ${f.name}${f.birth?' · '+f.birth:''}`;}
+  else{if(nm.dataset.auto==='1'){nm.value='';nm.dataset.auto='';}if(hint)hint.textContent=inp.value.trim()?'등록되지 않은 차트번호 — 이름을 직접 넣으세요':'';}}
+function bkCodeListHtml(D){const M=bkMerged(D);const extra=[];M.items.forEach(x=>{if(x.code&&!BK_CODES.includes(x.code)&&!extra.includes(x.code))extra.push(x.code);});
+  return `<datalist id="bke_codes">${BK_CODES.concat(extra).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`;}
 const BK_SLOTS=(()=>{const a=[];for(let s=16;s<=43;s++)a.push(String(Math.floor(s/2)).padStart(2,'0')+':'+(s%2?'30':'00'));return a;})();   // 08:00~21:30
 function openBkEdit(D,key,opt){
   opt=opt||{};const M=bkMerged(D);let cur=null,isNew=!key;
@@ -4825,9 +4851,10 @@ function openBkEdit(D,key,opt){
   if(opt.manual){
     body.innerHTML=`<div class="bkf">
       <label>번호</label><input id="bke_no" value="${v('no')}" placeholder="시트 번호">
-      <label>환자번호</label><input id="bke_mrn" value="${v('mrn')}" placeholder="차트번호">
-      <label>성함</label><input id="bke_name" value="${v('name')}">
-      <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="임현주 …"><datalist id="bke_ths">${ths.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+      <label>환자번호</label><input id="bke_mrn" value="${v('mrn')}" placeholder="차트번호" inputmode="numeric" oninput="bkMrnChanged(this)">
+      <span></span><span class="hint" id="bke_mrnHint"></span>
+      <label>성함</label><input id="bke_name" value="${v('name')}" oninput="this.dataset.auto=''">
+      <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="임현주 …"><datalist id="bke_ths">${BK_MANUAL_THS.concat(ths.filter(t=>!BK_MANUAL_THS.includes(t))).map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
       <label>메모</label><textarea id="bke_note" rows="2" oninput="autoGrowTa(this)">${v('note')}</textarea>
       <label>배경색</label>${bkColorPickerHtml(cur?cur.color:'')}</div>`;
   }else{
@@ -4836,9 +4863,10 @@ function openBkEdit(D,key,opt){
       <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="Jennie …"><datalist id="bke_ths">${ths.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
       <label>시간</label><select id="bke_t">${BK_SLOTS.map(s=>`<option value="${s}"${s===t?' selected':''}>${s}</option>`).join('')}</select>
       <label>치료시간</label><select id="bke_dur">${[15,30,45,60,90,120].map(d=>`<option value="${d}"${String(d)===String(cur?cur.dur:(opt.dur||30))?' selected':''}>${d}분</option>`).join('')}</select>
-      <label>차트번호</label><input id="bke_mrn" value="${v('mrn')}">
-      <label>성함</label><input id="bke_name" value="${v('name')}">
-      <label>코드</label><input id="bke_code" value="${v('code')}" placeholder="CME15 …">
+      <label>차트번호</label><input id="bke_mrn" value="${v('mrn')}" inputmode="numeric" oninput="bkMrnChanged(this)">
+      <span></span><span class="hint" id="bke_mrnHint"></span>
+      <label>성함</label><input id="bke_name" value="${v('name')}" oninput="this.dataset.auto=''">
+      <label>코드</label><input id="bke_code" list="bke_codes" value="${v('code')}" placeholder="CME15 … (▼ 또는 두 번 눌러 목록)" autocomplete="off">${bkCodeListHtml(D)}
       <label>메모</label><textarea id="bke_note" rows="2" oninput="autoGrowTa(this)">${v('note')}</textarea>
       <label>배경색</label>${bkColorPickerHtml(cur?cur.color:'')}</div>
       ${cur&&cur.orig?`<p class="hint" style="margin-top:8px">시트 원본: ${esc(cur.orig.th)} ${esc(cur.orig.t)} ${esc(String(cur.orig.dur||''))}분 ${esc(cur.orig.code||'')}</p>`:''}`;
