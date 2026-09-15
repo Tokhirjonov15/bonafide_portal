@@ -568,7 +568,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* 직원용 예약관리 화면 */
   .resv-screen{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;background:var(--bg);color:var(--text)}
   .resv-screen.show{display:flex}
-  .resv-screen .sheet-date-inp.dark{border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-weight:700;color:var(--text);background:var(--panel2)}
+  .resv-screen .sheet-date-inp.dark{border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-weight:700;color:var(--text);background:var(--panel2);color-scheme:light;margin-left:6px}   /* 밝은 화면: 달력 아이콘도 어둡게 */
+  .resv-screen .sheet-date-inp.dark:hover{background:var(--panel)}
   .resv-body{flex:1;overflow:auto;padding:14px 18px}
   .resv-stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
   .rs-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 14px;min-width:110px}
