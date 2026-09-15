@@ -219,8 +219,9 @@
   .wait-screen.sheet-page{overflow-y:auto}
   .wait-screen.sheet-page .wait-bg{position:fixed}
   .wait-screen.sheet-page .wait-gear{position:fixed}
-  .wait-screen.sheet-page .wait-stage{overflow:visible;flex:none;min-height:100%}
-  .wait-screen.sheet-page .wait-cols{overflow:visible;flex:none}
+  /* 시트 페이지: 표가 길면 화면 전체가 스크롤되고, 짧으면 열 영역이 남은 높이를 채워 하단 안내 띠가 화면 맨 아래에 붙는다 */
+  .wait-screen.sheet-page .wait-stage{overflow:visible;flex:1 0 auto;min-height:0;display:flex;flex-direction:column}
+  .wait-screen.sheet-page .wait-cols{overflow:visible;flex:1 0 auto;align-content:flex-start}
   .wait-screen.sheet-page .wait-sheetcol .wait-list{overflow:visible}
   .wait-screen.sheet-page .sheet-wrap{overflow-x:auto;overflow-y:visible}
   .wait-screen.sheet-page .sheet-tbl thead th{position:static}
@@ -3043,6 +3044,13 @@ async function runSelfTest(){
       ok('치료 시트: 화면에 sheet-page 표시', document.getElementById('waitScreen').classList.contains('sheet-page'));
       waitRooms=[];renderWaitScreen();
       ok('대기화면: 시트를 보다가 방을 모두 해제하면 sheet-page 도 해제(하단 안내 띠가 화면 맨 아래에 붙도록)', !document.getElementById('waitScreen').classList.contains('sheet-page')&&!!document.querySelector('#waitCols .wait-hint'));
+      {const _bk2=BOOKINGS;const ws=document.getElementById('waitScreen'),wasShown=ws.classList.contains('show');
+       try{const T=localYMD(new Date());BOOKINGS={};BOOKINGS[T]={date:T,therapists:[],items:[],blocks:[],cancels:[],manual:[{no:'1',mrn:'1',name:'가',th:'신소현'},{no:'2',mrn:'2',name:'나',th:''}]};
+        waitRooms=['SASO'];ws.classList.add('show');renderWaitScreen();
+        const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();
+        // 자체 시험 창이 작으면 내용이 화면보다 길 수 있으므로 "띠가 화면 아래쪽 끝보다 위에 뜨지 않는다"로 확인(가운데에 걸리는 문제만 잡음)
+        ok('시트 페이지(도수 명단 2명): 내용이 짧아도 하단 안내 띠가 화면 가운데에 걸리지 않고 맨 아래(또는 그 아래)', ws.classList.contains('sheet-page')&&f.bottom>=sr.bottom-2);
+       }finally{BOOKINGS=_bk2;waitRooms=[];renderWaitScreen();if(!wasShown)ws.classList.remove('show');}}
       {const ws=document.getElementById('waitScreen'),wasShown=ws.classList.contains('show');ws.classList.add('show');
        try{const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();ok('대기화면: 방이 없을 때 하단 안내 띠가 화면 맨 아래', Math.abs(f.bottom-sr.bottom)<=2);}
        finally{if(!wasShown)ws.classList.remove('show');}}
