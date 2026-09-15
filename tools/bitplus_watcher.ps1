@@ -141,6 +141,11 @@ function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는
   $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 6 -Compress
   $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 }
+function FsPatchNested($path, $key, $fields) {   # 문서의 맵 필드 하나만 갱신(merge) — bitStatus/_all 의 'PC이름' 필드. 필드 경로는 백틱으로 감싼다(한글·하이픈 허용)
+  $mask = 'updateMask.fieldPaths=' + [Uri]::EscapeDataString('`' + $key + '`')
+  $body = @{ fields = @{ $key = @{ mapValue = @{ fields = (FsFields $fields) } } } } | ConvertTo-Json -Depth 8 -Compress
+  $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
 function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
 function Today { return (Get-Date).ToString('yyyy-MM-dd') }
 function FsFindDocByMrn($mrn) {   # 오늘 접수 문서 중 차트번호가 같은 것의 id (다른 PC에서 접수돼 이 PC가 문서 id 를 모를 때)
@@ -414,7 +419,7 @@ function HandleCast($m) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.3: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3.4: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
@@ -453,9 +458,10 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.3'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.4'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
-        try { FsPatch "bitStatus/$([Uri]::EscapeDataString($Pc))" $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
+        # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
+        try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
         catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
       }
       # ── ③ 외래진료실 증상 칸 맨 아래 처방 목록 (진료실 PC) ──
