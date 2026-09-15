@@ -588,6 +588,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .resv-sect .sheet-tbl,.resv-sect .mx-tbl{font-size:13.5px}
   .resv-sect .sheet-tbl thead th{font-size:13px}
   .resv-empty{color:var(--muted);font-weight:700;padding:14px}
+  .sheet-tbl td.bk-free{cursor:pointer}
+  .sheet-tbl td.bk-free:hover{background:#eef4ff;box-shadow:inset 0 0 0 2px #93c5fd}
+  .resv-sect .sheet-p.bk,.resv-sect .mx-row{cursor:pointer}
+  .resv-sect .sheet-p.bk:hover{text-decoration:underline}
+  .resv-sect .mx-row:hover td{background:#f1f5fb}
+  .bk-tag{font-size:10px;font-weight:800;border-radius:4px;padding:0 5px;background:#fde68a;color:#78350f;margin-left:4px;flex:0 0 auto}
+  .bk-tag.add{background:#bbf7d0;color:#14532d}
+  .bkf{display:grid;grid-template-columns:84px 1fr;gap:8px 10px;align-items:center;font-size:13px}
+  .bkf label{font-weight:700;color:var(--sub)}
+  .bkf input,.bkf select{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13.5px;width:100%;box-sizing:border-box;background:var(--panel);color:var(--text)}
   .slip-screen{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;background:var(--bg);color:var(--text)}
   .slip-screen.show{display:flex}
   .slip-top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-size:15px}
@@ -1222,6 +1232,20 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn sm" id="resvCloseBtn" onclick="closeResvScreen()"><i data-lucide="x"></i> 닫기</button>
   </div>
   <div class="resv-body" id="resvBody"></div>
+</div>
+<!-- 예약 수정 창(4층 비급여 치료) -->
+<div class="modal-bg" id="bkEditModal" style="z-index:400">
+  <div class="modal" style="width:min(460px,94vw)">
+    <h3 id="bkEditTitle">예약 수정</h3>
+    <div class="body" id="bkEditBody"></div>
+    <div class="foot" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="bkEditDel" onclick="bkEditDelete()">취소 처리</button>
+      <button class="btn" id="bkEditRevert" onclick="bkEditRevert()" title="동선관리에서 고친 내용을 지우고 시트 원본대로">시트대로 되돌리기</button>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="closeBkEdit()">닫기</button>
+      <button class="btn primary" onclick="bkEditSave()">저장</button>
+    </div>
+  </div>
 </div>
 <div id="waitScreen" class="wait-screen">
   <div class="wait-bg" id="waitBg"></div>
@@ -1939,7 +1963,7 @@ const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
 function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
-function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBit'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});}
+function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});}
 function subscribeBitIntake(){
   if(!cloud.intakeCol)return;
   const today=localYMD(new Date()),role=bitClientRole();
@@ -1966,6 +1990,7 @@ function subscribeBitIntake(){
   }
   if(role!=='tv'&&cloud.bookingsCol){   // 예약 시트(오늘) — 직원용 예약관리 화면(환자용 TV 는 듣지 않음)
     cloud.unsubBk=cloud.bookingsCol.doc(today).onSnapshot(s=>{BOOKINGS[today]=s.exists?s.data():null;if(resvOpen)renderResvScreen();},err=>console.warn('bookings',err));
+    if(cloud.bookingEditsCol)cloud.unsubBkEd=cloud.bookingEditsCol.doc(today).onSnapshot(s=>{BK_EDITS[today]=s.exists?s.data():null;if(resvOpen)renderResvScreen();},err=>console.warn('bookingEdits',err));
   }
   if(role==='staff'){   // 감시 PC 하트비트 pill — 직원 보드만
     cloud.unsubBit=cloud.bitStatusCol.onSnapshot(s=>{const m={};s.docs.forEach(d=>{m[d.id]=d.data()||{};});BIT_STATUS=m;renderBitPill();},err=>console.warn('bitStatus',err));
@@ -3087,29 +3112,39 @@ async function runSelfTest(){
       if(title&&clock&&getComputedStyle(clock).position==='absolute'){const tb=title.getBoundingClientRect(),cb=clock.getBoundingClientRect();
         ok('제목: 오른쪽 시계와 겹치지 않음(시계 자리만큼 양쪽을 비우고 필요하면 축소)', tb.right<=cb.left-8);}
      }finally{hdr.style.padding=_pad;if(!wasShown)ws.classList.remove('show');}}
-    // ── 직원용 예약관리 화면: 시트 자료는 여기서만, 환자용 대기화면은 보통 방 목록 ──
-    {const _wr=waitRooms,_ws=waitRotSec,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sp=window.saveWaitPresets,_sd=sheetDate,_bk=BOOKINGS,_ro2=resvOpen;window.saveWaitPresets=()=>{};
+    // ── 4층 비급여 치료(직원용) 화면: 시트 자료는 여기서만, 환자용 대기화면은 보통 방 목록 ──
+    {const _wr=waitRooms,_ws=waitRotSec,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sp=window.saveWaitPresets,_sd=sheetDate,_bk=BOOKINGS,_ed=BK_EDITS,_ro2=resvOpen;window.saveWaitPresets=()=>{};
      try{ROOMS=['충격파','신장분사','SASO','자동차도수','x-ray실'];ROOM_META={};waitRotSec=0;sheetDate=null;const now=new Date().toISOString();const T=localYMD(new Date());
       meta('SASO').doctors=['김치료'];meta('충격파').doctors=['박치료'];
       data=[{id:'s1',name:'환자S',mrn:'1',route:['SASO'],step:0,status:'진행',ord:1,enteredAt:now,doctor:'김치료',notes:{},visits:[]},
             {id:'s2',name:'환자충',mrn:'2',route:['충격파'],step:0,status:'진행',ord:2,enteredAt:now,doctor:'박치료',notes:{},visits:[]}];
-      eq('치료 시트: 묶음별 기록 분리', [sheetRecords(null,['SASO','자동차도수']).length, sheetRecords(null,['충격파','신장분사']).length, sheetRecords().length], [1,1,2]);
-      BOOKINGS={};BOOKINGS[T]={date:T,updatedAt:now,file:'예약리스트 9월',therapists:['Jennie'],items:[{th:'Jennie',t:'10:00',dur:60,kind:'pt',mrn:'2',name:'환자충',code:'CME20',color:''}],blocks:[],cancels:[{th:'Jennie',t:'14:00',name:'취소자',mrn:'9'}],manual:[{no:'1',mrn:'1',name:'환자S',th:'임현주'}],stats:[{label:'당월 누적 상담수',value:4}]};
+      BOOKINGS={};BK_EDITS={};BOOKINGS[T]={date:T,updatedAt:now,file:'예약리스트 9월',therapists:['Jennie'],items:[{th:'Jennie',t:'10:00',dur:60,kind:'pt',mrn:'2',name:'환자충',code:'CME20',color:'#ffe599'}],blocks:[],cancels:[{th:'Jennie',t:'14:00',name:'취소자',mrn:'9'}],manual:[{no:'1',mrn:'1',name:'환자S',th:'임현주'}],stats:[{label:'당월 누적 상담수',value:4}]};
       waitRooms=['SASO','충격파'];renderWaitScreen();const wc=document.getElementById('waitCols');
-      ok('환자용 대기화면: 시트 자료 없이 보통 방 목록(마스킹) — 시트 표·예약 코드·취소 없음', !wc.querySelector('.sheet-tbl,.mx-tbl,.wait-sheetcol')&&wc.querySelectorAll('.wait-col').length===2&&!document.getElementById('waitScreen').classList.contains('sheet-page')&&!wc.innerHTML.includes('취소자')&&!wc.innerHTML.includes('CME20')&&!wc.innerHTML.includes('환자충'));
+      ok('환자용 대기화면: 시트 자료 없이 보통 방 목록(마스킹) — 시트 표·예약 코드·취소 없음', !wc.querySelector('.sheet-tbl,.mx-tbl,.wait-sheetcol')&&wc.querySelectorAll('.wait-col').length===2&&!wc.innerHTML.includes('취소자')&&!wc.innerHTML.includes('CME20')&&!wc.innerHTML.includes('환자충'));
       resvOpen=true;renderResvScreen();
       const rb=document.getElementById('resvBody');const sects=[...rb.querySelectorAll('.resv-sect h3')].map(h=>h.firstChild.textContent.trim());
-      eq('직원용 예약관리: 두 시트(충격파·신장분사 / SASO·자동차도수)', sects, ['충격파 · 신장분사','SASO · 자동차도수']);
-      ok('직원용 예약관리: 직원용 표(이름 그대로·차트번호·취소·예약 코드) + 도수 표', rb.innerHTML.includes('환자충')&&rb.innerHTML.includes('CME20')&&rb.innerHTML.includes('취소자')&&!!rb.querySelector('.mx-tbl')&&rb.innerHTML.includes('임현주'));
-      ok('직원용 예약관리: 통계 카드(예약 1·도착 1·취소 1·도수 1) + 시트 숫자(당월 누적 상담수 4)', [...rb.querySelectorAll('.rs-card b')].slice(0,4).map(b=>b.textContent).join()==='1,1,1,1'&&rb.innerHTML.includes('당월 누적 상담수')&&rb.innerHTML.includes('<b>4</b>'));
-      ok('직원용 예약관리: 시트 동기화 시각 표시', /시트 동기화/.test(document.getElementById('resvSync').textContent));
-      BOOKINGS={};renderResvScreen();
-      ok('직원용 예약관리: 시트 자료 없는 날 → 안내 + 보드 기록만', /시트 자료 없음/.test(document.getElementById('resvSync').textContent)&&rb.innerHTML.includes('박치료'));
+      eq('4층 비급여 치료: 두 표(충격파·신장분사 / SASO·자동차도수)', sects, ['충격파 · 신장분사','SASO · 자동차도수']);
+      ok('4층 비급여 치료: 직원용 표(이름 그대로·차트번호·취소·코드) + 도수 표, 보드 카드(의사 열·시트 외)는 없음', rb.innerHTML.includes('환자충')&&rb.innerHTML.includes('CME20')&&rb.innerHTML.includes('취소자')&&!!rb.querySelector('.mx-tbl')&&rb.innerHTML.includes('임현주')&&!rb.innerHTML.includes('박치료')&&!rb.innerHTML.includes('시트 외'));
+      ok('4층 비급여 치료: 통계 카드(예약 1·내원 1·취소 1·도수 1) + 시트 숫자(당월 누적 상담수 4)', [...rb.querySelectorAll('.rs-card b')].slice(0,4).map(b=>b.textContent).join()==='1,1,1,1'&&rb.innerHTML.includes('당월 누적 상담수')&&rb.innerHTML.includes('<b>4</b>'));
+      ok('4층 비급여 치료: 시트 동기화 시각 표시', /시트 동기화/.test(document.getElementById('resvSync').textContent));
+      // 수정본 겹치기: 10:00 → 14:00 으로 옮기고, 새 예약 추가, 도수 한 줄 삭제·추가
+      const k=bkKey(BOOKINGS[T].items[0]);BK_EDITS[T]={items:{[k]:{t:'14:00',dur:60,th:'Jennie',mrn:'2',name:'환자충',code:'CME20',note:'옮김'}},added:[{id:'add_1',th:'Hannah',t:'16:00',dur:30,mrn:'777',name:'추가환자',code:'CM10'}],manual:{[bkManualKey(BOOKINGS[T].manual[0])]:{removed:true}},manualAdded:[{id:'add_2',no:'2',mrn:'555',name:'도수추가',th:'박승규'}]};
+      renderResvScreen();const html=rb.innerHTML;const el=document.createElement('div');el.innerHTML=html;
+      const cell=[...el.querySelectorAll('td.filled')].find(td=>td.textContent.includes('환자충'));const row=cell&&cell.parentElement;
+      ok('예약 수정본: 시트의 10:00 예약이 14:00 줄에 "수정" 표시로, 원래 자리는 비어 있음', !!row&&row.querySelector('th.sheet-time').textContent==='14:00'&&cell.textContent.includes('수정')&&![...el.querySelectorAll('tr')].some(tr=>tr.querySelector('th.sheet-time')&&tr.querySelector('th.sheet-time').textContent==='10:00'&&tr.textContent.includes('환자충')));
+      ok('예약 수정본: 추가 예약은 새 치료사 열(Hannah)에 "추가" 표시', [...el.querySelectorAll('thead th')].some(th=>th.textContent==='Hannah')&&/추가환자[\s\S]*?추가/.test(html));
+      ok('예약 수정본: 도수 삭제/추가 반영', !html.includes('환자S')&&html.includes('도수추가'));
+      eq('예약 수정본: 통계도 수정본 기준(예약 2·도수 1)', [resvStats(null).items,resvStats(null).manual,sheetCount(null,SHEET_GROUPS[0])], [2,1,2]);
+      ok('예약 수정본: 시트에서 그 예약이 바뀌면(키 불일치) 수정본은 저절로 빠짐', (()=>{BOOKINGS[T].items[0].t='10:30';const M=bkMerged(T);BOOKINGS[T].items[0].t='10:00';const x=M.items.find(x=>x.mrn==='2');return x.t==='10:30'&&!x.edited;})());
+      {const _c=cloud.active;cloud.active=false;openBkEdit(T,null,{th:'Zoe',t:'11:00'});document.getElementById('bke_name').value='창추가';document.getElementById('bke_mrn').value='888';bkEditSave();cloud.active=_c;
+       ok('예약 수정 창: 빈 칸에서 추가 → 수정본 added 에 저장되고 표에 나타남', (BK_EDITS[T].added||[]).some(a=>a.name==='창추가'&&a.th==='Zoe'&&a.t==='11:00')&&rb.innerHTML.includes('창추가')&&!document.getElementById('bkEditModal').classList.contains('show'));}
+      BOOKINGS={};BK_EDITS={};renderResvScreen();
+      ok('4층 비급여 치료: 시트 자료 없는 날 → 안내(직접 추가 가능), 보드 카드는 표시하지 않음', /시트 자료 없음/.test(document.getElementById('resvSync').textContent)&&!!rb.querySelector('.resv-empty')&&!rb.innerHTML.includes('박치료'));
       waitRooms=[];renderWaitScreen();
       {const ws=document.getElementById('waitScreen'),wasShown=ws.classList.contains('show');ws.classList.add('show');
        try{const f=document.querySelector('#waitScreen .wait-foot').getBoundingClientRect(),sr=ws.getBoundingClientRect();ok('대기화면: 방이 없을 때 하단 안내 띠가 화면 맨 아래', Math.abs(f.bottom-sr.bottom)<=2);}
        finally{if(!wasShown)ws.classList.remove('show');}}
-     }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;BOOKINGS=_bk;resvOpen=_ro2;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';const rb2=document.getElementById('resvBody');if(rb2)rb2.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
+     }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;BOOKINGS=_bk;BK_EDITS=_ed;resvOpen=_ro2;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';const rb2=document.getElementById('resvBody');if(rb2)rb2.innerHTML='';document.getElementById('waitScreen').classList.remove('sheet-page');}}
     // ── 비트 pill 20대여도 페이지 폭이 늘지 않음 ──
     {const _bs=BIT_STATUS,_cu=currentUser;try{currentUser=currentUser||{name:'t',role:'admin'};const st={};for(let i=0;i<20;i++)st['PC'+i]={pc:'PC'+i,lastSeen:new Date().toISOString(),bitOpen:true};BIT_STATUS=st;renderBitPill();
       const el=document.getElementById('bitPill');ok('비트 pill: PC 20대여도 문서 폭이 창 폭을 넘지 않음(줄바꿈/스크롤)', el.getBoundingClientRect().right<=window.innerWidth+1&&document.documentElement.scrollWidth<=window.innerWidth+1);
@@ -3165,42 +3200,37 @@ async function runSelfTest(){
         ok('pill: 창 닫힌 PC 20분 무신호 = 노랑(살아 있음) / 창 열린 PC 20분 무신호 = 회색 / 창 열린 PC 최근 신호 = 초록', /warn/.test(el.innerHTML)&&/ok/.test(el.innerHTML)&&(el.innerHTML.match(/class="[^"]*\bok\b/g)||[]).length===1);
       }finally{BIT_STATUS=_bs;currentUser=_cu;renderBitPill();}}
      }finally{waitOpen=_w;SLIP_MODE=_s;}}
-    // ── 예약 시트(Google Sheet → bookings/{날짜}) → 치료 시트 표 ──
-    {const _bk=BOOKINGS,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sd=sheetDate;
+    // ── 예약 시트(Google Sheet → bookings/{날짜}) → 표(예약만, 보드 카드는 보지 않음) ──
+    {const _bk=BOOKINGS,_ed=BK_EDITS,_ro=ROOMS,_rm=ROOM_META,_dd=data,_sd=sheetDate;
      try{ROOMS=['충격파','신장분사','SASO','자동차도수'];ROOM_META={};sheetDate=null;const T=localYMD(new Date());const at=new Date();at.setHours(10,5,0,0);
-      meta('충격파').doctors=['박치료'];meta('SASO').doctors=['김도수'];
-      data=[{id:'b1',name:'함수진',mrn:'32750',route:['충격파'],step:0,status:'진행',ord:1,enteredAt:at.toISOString(),doctor:'박치료',notes:{},visits:[]},
-            {id:'b2',name:'기록만',mrn:'555',route:['충격파'],step:0,status:'대기',ord:2,enteredAt:at.toISOString(),doctor:'박치료',notes:{},visits:[]},
-            {id:'b3',name:'도수온',mrn:'32751',route:['SASO'],step:0,status:'대기',ord:3,enteredAt:at.toISOString(),doctor:'김도수',notes:{},visits:[]}];
-      BOOKINGS={};BOOKINGS[T]={date:T,therapists:['Jack','Jennie','Hannah'],
+      meta('충격파').doctors=['박치료'];
+      data=[{id:'b1',name:'함수진',mrn:'32750',route:['충격파'],step:0,status:'진행',ord:1,enteredAt:at.toISOString(),doctor:'박치료',notes:{},visits:[]}];
+      BOOKINGS={};BK_EDITS={};BOOKINGS[T]={date:T,therapists:['Jack','Jennie','Hannah'],
         items:[{th:'Jennie',t:'10:00',dur:60,kind:'pt',mrn:'32750',room:'1',name:'함수진',visit:1,code:'CME20',color:'',note:'실손 확인'},
                {th:'Hannah',t:'09:30',dur:30,kind:'pt',mrn:'32188',room:'1',name:'김다함',visit:8,code:'CME10',color:'#ffe599',note:''}],
         blocks:[{th:'Hannah',t:'15:30',dur:30,kind:'block',text:'1진 모니터링',color:'#999999'}],
         cancels:[{th:'Hannah',t:'14:00',text:'31300(1) 김민재15',mrn:'31300',name:'김민재'}],
-        manual:[{no:'1',mrn:'32751',name:'박준기',th:'임현주'},{no:'2',mrn:'30038',name:'류종하',th:'박승규'}]};
+        manual:[{no:'1',mrn:'32751',name:'박준기',th:'임현주'},{no:'2',mrn:'30038',name:'류종하',th:'박승규',color:'#ffe599'}]};
       const staff=treatSheetTableHtml(false,null,['충격파','신장분사']);const el=document.createElement('div');el.innerHTML=staff;
       const heads=[...el.querySelectorAll('thead th')].map(h=>h.firstChild?h.firstChild.textContent.trim():'');
-      eq('예약 시트: 열 = 그날 예약이 있는 치료사(시트 순서) + 시트에 없는 보드 카드는 \'시트 외\' 열 하나(의사 이름 열 없음)', heads, ['시간','Jennie','Hannah','시트 외']);
+      eq('예약 표: 열 = 그날 예약이 있는 치료사(시트 순서)만 — 보드 카드의 의사·시트 외 열 없음', heads, ['시간','Jennie','Hannah']);
       const jen=[...el.querySelectorAll('td.filled')].find(td=>td.textContent.includes('함수진'));
-      ok('예약 시트: 60분 예약은 두 칸(rowspan 2), 보드에서 진행 중이면 파란 칸(livecell)', !!jen&&jen.getAttribute('rowspan')==='2'&&jen.classList.contains('livecell'));
-      ok('예약 시트: 시트에서 내원(연노랑)으로 칠한 예약은 도착(arrcell)', [...el.querySelectorAll('td.filled')].some(td=>td.textContent.includes('김다함')&&td.classList.contains('arrcell')));
-      ok('예약 시트: 차단 칸(1진 모니터링)·취소(김민재 취소선)·메모 툴팁', el.querySelector('td.blk .sheet-blk').textContent.includes('1진 모니터링')&&el.querySelector('.sheet-cxl').textContent.includes('김민재')&&/title="실손 확인"/.test(staff));
-      ok('예약 시트: 예약과 짝지어진 기록(함수진)은 담당자 열에 중복되지 않고, 짝 없는 기록(기록만)은 담당자 열에', (staff.match(/함수진/g)||[]).length===1&&staff.includes('기록만'));
-      ok('예약 시트: 예약이 있는 슬롯은 표에 자동 포함(9:30 김다함)', [...el.querySelectorAll('th.sheet-time')].some(th=>th.textContent==='9:30'));
+      ok('예약 표: 60분 예약은 두 칸(rowspan 2); 보드에 진행 중 카드가 있어도 색은 시트 기준', !!jen&&jen.getAttribute('rowspan')==='2'&&!jen.classList.contains('arrcell'));
+      ok('예약 표: 시트에서 내원(연노랑)으로 칠한 예약은 연파랑 칸', [...el.querySelectorAll('td.filled')].some(td=>td.textContent.includes('김다함')&&td.classList.contains('arrcell')));
+      ok('예약 표: 차단 칸(1진 모니터링)·취소(김민재 취소선)·메모 툴팁·빈 칸 클릭(추가)', el.querySelector('td.blk .sheet-blk').textContent.includes('1진 모니터링')&&el.querySelector('.sheet-cxl').textContent.includes('김민재')&&/실손 확인/.test(staff)&&!!el.querySelector('td.bk-free[onclick]'));
+      ok('예약 표: 예약이 있는 슬롯은 표에 자동 포함(9:30 김다함)', [...el.querySelectorAll('th.sheet-time')].some(th=>th.textContent==='9:30'));
       const pt=treatSheetTableHtml(true,null,['충격파','신장분사']);
-      ok('예약 시트(환자 화면): 이름 가림, 차트번호·메모·취소·차단 문구 없음', !pt.includes('함수진')&&pt.includes(maskName('함수진'))&&!pt.includes('32750')&&!pt.includes('실손 확인')&&!pt.includes('김민재')&&!pt.includes('1진 모니터링'));
-      const saso=treatSheetTableHtml(false,null,['SASO','자동차도수']);
-      {const el2=document.createElement('div');el2.innerHTML=saso;
-       const heads=[...el2.querySelectorAll('.mx-tbl thead th')].map(h=>h.textContent);
-       eq('도수 명단 표: 시트와 같은 열(번호·환자번호·성함·치료사)+상태, 시간표 없음', [heads, !!el2.querySelector('.sheet-tbl')], [['번호','환자번호','성함','치료사','상태'], false]);
-       const r1=[...el2.querySelectorAll('.mx-row')].find(r=>r.textContent.includes('박준기'));
-       ok('도수 명단 표: 보드에 카드 있는 환자(32751)는 도착/치료 중 줄, 시트 번호 순', !!r1&&(r1.classList.contains('arr')||r1.classList.contains('live'))&&r1.querySelector('.mx-no').textContent==='1'&&saso.includes('류종하')&&[...el2.querySelectorAll('tbody td.mx-no')].map(t=>t.textContent).slice(0,2).join()==='1,2');
-       const pt2=treatSheetTableHtml(true,null,['SASO','자동차도수']);
-       ok('도수 명단 표(환자 화면): 이름 가림, 환자번호 열 없음', !pt2.includes('박준기')&&pt2.includes(maskName('박준기'))&&!pt2.includes('32751')&&!pt2.includes('환자번호'));}
-      eq('예약 시트: 카드 배지 수 = 예약 + 짝 없는 기록 / 도수는 기록 + 목록', [sheetCount(null,SHEET_GROUPS[0]),sheetCount(null,SHEET_GROUPS[1])], [3,3]);
+      ok('예약 표(환자용 렌더): 이름 가림, 차트번호·메모·취소·차단 문구·클릭 없음', !pt.includes('함수진')&&pt.includes(maskName('함수진'))&&!pt.includes('32750')&&!pt.includes('실손 확인')&&!pt.includes('김민재')&&!pt.includes('1진 모니터링')&&!pt.includes('onclick'));
+      const saso=treatSheetTableHtml(false,null,['SASO','자동차도수']);const el2=document.createElement('div');el2.innerHTML=saso;
+      eq('도수 명단 표: 시트와 같은 열(번호·환자번호·성함·치료사)+상태, 시간표 없음', [[...el2.querySelectorAll('.mx-tbl thead th')].map(h=>h.textContent), !!el2.querySelector('.sheet-tbl')], [['번호','환자번호','성함','치료사','상태'], false]);
+      const r2=[...el2.querySelectorAll('.mx-row')].find(r=>r.textContent.includes('류종하'));
+      ok('도수 명단 표: 시트 연노랑 = 내원, 그 외 = 예약(보드 카드는 보지 않음), 번호 순', !!r2&&r2.classList.contains('arr')&&[...el2.querySelectorAll('tbody td.mx-no')].map(t=>t.textContent).join()==='1,2'&&!saso.includes('시트 외'));
+      const pt2=treatSheetTableHtml(true,null,['SASO','자동차도수']);
+      ok('도수 명단 표(환자용 렌더): 이름 가림, 환자번호 열 없음', !pt2.includes('박준기')&&pt2.includes(maskName('박준기'))&&!pt2.includes('32751')&&!pt2.includes('환자번호'));
+      eq('예약 표: 건수 배지 = 예약 수 / 도수 수', [sheetCount(null,SHEET_GROUPS[0]),sheetCount(null,SHEET_GROUPS[1])], [2,2]);
       BOOKINGS={};
-      ok('예약 시트 없음: 기존 방식(방 배정 담당자 열)', treatSheetTableHtml(false,null,['충격파','신장분사']).includes('박치료'));
-     }finally{BOOKINGS=_bk;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;}}
+      ok('예약 표: 시트 없는 날 → 안내 문구(보드 카드로 표를 만들지 않음)', /시트 자료가 없습니다/.test(treatSheetTableHtml(false,null,['충격파','신장분사'])));
+     }finally{BOOKINGS=_bk;BK_EDITS=_ed;ROOMS=_ro;ROOM_META=_rm;data=_dd;sheetDate=_sd;}}
     // ── 대기화면 하단 전광판(흐르는 안내 문구) ──
     {const t=document.getElementById('waitTicker');const ws=document.getElementById('waitScreen');const wasShown=ws.classList.contains('show');ws.classList.add('show');
      try{waitTickerFit();const items=t?t.querySelectorAll('.wt-item'):[];
@@ -3538,6 +3568,7 @@ async function startHosted(){
     cloud.bitStatusCol=cloud.db.collection('bitStatus');   // 접수 PC별 하트비트
     cloud.noteCol=cloud.db.collection('bitNote');          // 진료실 PC 감시 스크립트가 쓰는 처방 목록(슬립용, id: YYYY-MM-DD_병록번호)
     cloud.bookingsCol=cloud.db.collection('bookings');    // 물리치료센터 예약리스트(Google Sheet) 하루치 — Apps Script(tools/sheet_bookings.gs)가 쓴다 (id: YYYY-MM-DD)
+    cloud.bookingEditsCol=cloud.db.collection('bookingEdits');   // 직원이 4층 비급여 치료 화면에서 고친 예약(수정·취소·추가) — 시트 문서 위에 겹쳐 보임 (id: YYYY-MM-DD)
     cloud.lookupCol=cloud.db.collection('bitLookup');      // 접수 창에서 조회된 인적정보(어느 PC든, id: YYYY-MM-DD_병록번호) — 차트번호 없는 캐스트 카드를 이름으로 채움
     firebase.auth().onAuthStateChanged(async(user)=>{
       if(!user){currentUser=null;sessionEstablished=false;cloud.email='';
@@ -4668,26 +4699,45 @@ window.saveSheetNote=function(){
 /* ── 예약 시트(bookings/{날짜}) ── 물리치료센터 비급여 예약리스트를 Apps Script가 올린 하루치 문서
    {therapists:[...], items:[{th,t:'10:00',dur,mrn,room,name,visit,code,codeColor,color,note}], blocks:[{th,t,dur,text}], cancels:[{th,t,name,mrn,text}], manual:[{no,mrn,name,th}]} */
 let BOOKINGS={};   // {날짜: 문서|null}
+/* ── 예약 수정본(동선관리에서 바꾼 것) ── bookingEdits/{날짜}: {items:{키:{t,dur,th,mrn,name,code,note,removed,by,at}}, added:[…], manual:{키:{…}}, manualAdded:[…]}
+   시트 문서(bookings)는 Apps Script 가 통째로 덮어쓰므로 수정은 따로 두고 화면에서 겹쳐 보인다. 시트 쪽에서 그 예약을 고치면 키가 달라져 수정본은 자연히 빠진다.
+   시트 없이 직접 넣은 예약(added)도 같은 문서에 — 나중에 시트를 쓰지 않게 되면 이 문서가 그대로 예약 원본이 된다. */
+let BK_EDITS={};   // {날짜: 수정본 문서}
+function bkKey(b){return String((b.th||'')+'__'+String(b.t||'').replace(':','')+'__'+(b.mrn||b.name||'')).replace(/[^\w가-힣-]/g,'_');}
+function bkManualKey(m){return String((m.no||'')+'__'+(m.mrn||m.name||'')).replace(/[^\w가-힣-]/g,'_');}
+/* 시트 문서 + 수정본 → 화면용 하루치 (보드 카드는 보지 않는다 — 이 화면은 예약만) */
+function bkMerged(D){
+  const bk=bookingsFor(D)||{};const ed=BK_EDITS[D]||{};const eItems=ed.items||{},eMan=ed.manual||{};
+  const items=[];
+  (bk.items||[]).forEach(b=>{const k=bkKey(b);const e=eItems[k];const x=Object.assign({},b,{key:k,orig:b});
+    if(e){if(e.removed){x.removed=true;x.edit=e;}else{['t','dur','th','mrn','name','code','note'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;x.edit=e;}}
+    items.push(x);});
+  (ed.added||[]).forEach(a=>items.push(Object.assign({kind:'pt',color:''},a,{key:a.id,added:true})));
+  const cancels=(bk.cancels||[]).slice();
+  items.filter(x=>x.removed).forEach(x=>cancels.push({th:x.th,t:x.t,name:x.name,mrn:x.mrn,text:x.text||x.name,note:'동선관리에서 취소'+(x.edit&&x.edit.by?' · '+x.edit.by:'')}));
+  const live=items.filter(x=>!x.removed);
+  const ths=(bk.therapists||[]).slice();live.forEach(x=>{if(x.th&&!ths.includes(x.th))ths.push(x.th);});
+  const manual=[];
+  (bk.manual||[]).forEach(m=>{const k=bkManualKey(m);const e=eMan[k];if(e&&e.removed)return;const x=Object.assign({},m,{key:k});if(e){['no','mrn','name','th','note'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;}manual.push(x);});
+  (ed.manualAdded||[]).forEach(a=>manual.push(Object.assign({},a,{key:a.id,added:true})));
+  return {hasSheet:!!bookingsFor(D),items:live,blocks:bk.blocks||[],cancels,manual,therapists:ths,updatedAt:bk.updatedAt||'',file:bk.file||'',stats:Array.isArray(bk.stats)?bk.stats:[]};
+}
 const BK_LEGEND={'#ffe599':'내원','#ffff00':'임시치료실','#ff0000':'치료실 없음','#00ff00':'시트·비트확인','#00ffff':'실손 청구여부 확인','#9900ff':'카톡친추 확인'};   // 시트 범례 색 → 뜻
 function bookingsFor(D){return BOOKINGS[D]||null;}
-function bkLoad(D){if(!D||BOOKINGS[D]!==undefined||!cloud.bookingsCol)return;BOOKINGS[D]=null;
-  cloud.bookingsCol.doc(D).get().then(sn=>{if(sn.exists){BOOKINGS[D]=sn.data();if(resvOpen)renderResvScreen();}}).catch(e=>console.warn('bookings get',e));}
+function bkLoad(D){if(!D||!cloud.bookingsCol)return;
+  if(BOOKINGS[D]===undefined){BOOKINGS[D]=null;cloud.bookingsCol.doc(D).get().then(sn=>{if(sn.exists){BOOKINGS[D]=sn.data();if(resvOpen)renderResvScreen();}}).catch(e=>console.warn('bookings get',e));}
+  if(BK_EDITS[D]===undefined&&cloud.bookingEditsCol){BK_EDITS[D]=null;cloud.bookingEditsCol.doc(D).get().then(sn=>{if(sn.exists){BK_EDITS[D]=sn.data();if(resvOpen)renderResvScreen();}}).catch(e=>console.warn('bookingEdits get',e));}}
 const bkSlot=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(t||'');return m?(+m[1])*2+((+m[2])>=30?1:0):null;};
-/* 예약과 보드 기록 짝짓기: 같은 차트번호(없으면 같은 이름)의 그날 기록이 있으면 그 예약은 '도착'(기록이 live면 '치료 중') */
-function bkMatch(items,recs){const used=new Set();
-  items.forEach(b=>{b._rec=recs.find(x=>!used.has(x)&&((b.mrn&&x.mrn&&String(x.mrn).trim()===String(b.mrn).trim())||(!b.mrn&&b.name&&(x.name||'').trim()===b.name)))||null;if(b._rec)used.add(b._rec);});
-  return recs.filter(x=>!used.has(x));}
-function bkCellHtml(b,pf){
-  const rec=b._rec;const col=String(b.color||'').toLowerCase();
-  const st=rec?(rec.live?'live':'arr'):(col==='#ffe599'?'arr':'');
+/* 예약 칸 — pf(환자용)면 이름 가림·차트번호·메모 없음. 직원용은 누르면 수정 */
+function bkCellHtml(b,pf,D){
+  const col=String(b.color||'').toLowerCase();const arr=col==='#ffe599';
   const nm=pf?maskName(b.name):dispName(b.name);
-  const flag=(!pf&&col&&col!=='#ffe599')?`<span class="bk-flag" style="background:${esc(col)}" title="${esc(BK_LEGEND[col]||col)}"></span>`:'';
-  return `<div class="sheet-p bk ${st}${(!pf&&b.note)?' has-note':''}"${(!pf&&b.note)?` title="${esc(b.note)}"`:''}>${b.code?`<span class="bk-code"${b.codeColor?` style="background:${esc(b.codeColor)}"`:''}>${esc(b.code)}</span>`:''}${flag}<span class="bk-name">${esc(nm)}</span>${(!pf&&b.mrn)?`<span class="sp-mrn">${esc(b.mrn)}</span>`:''}${(!pf&&b.visit)?`<span class="bk-sub">${b.visit}회</span>`:''}${(b.dur&&b.dur!==30)?`<span class="bk-sub">${b.dur}분</span>`:''}</div>`;}
-/* 묶음의 카드 배지 수: 예약(시트) + 예약과 짝이 안 된 보드 기록 */
-function sheetCount(dateYmd,sg){const D=dateYmd||localYMD(new Date());const recs=sheetRecords(dateYmd,sg.rooms);const bk=bookingsFor(D);
-  if(!bk)return recs.length;
-  if(sg.bk==='manual')return recs.length+(bk.manual||[]).length;
-  const items=(bk.items||[]).map(x=>Object.assign({},x));const rest=bkMatch(items,recs);return items.length+rest.length;}
+  const flag=(!pf&&col&&!arr)?`<span class="bk-flag" style="background:${esc(col)}" title="${esc(BK_LEGEND[col]||col)}"></span>`:'';
+  const tag=pf?'':(b.added?'<span class="bk-tag add">추가</span>':(b.edited?`<span class="bk-tag" title="원래: ${esc((b.orig&&b.orig.th)||'')} ${esc((b.orig&&b.orig.t)||'')} ${esc(String((b.orig&&b.orig.dur)||''))}분">수정</span>`:''));
+  const click=(!pf&&D)?` onclick="openBkEdit('${esc(D)}','${esc(b.key||'')}')" title="${esc(b.note||'')}${b.note?' — ':''}누르면 수정"`:((!pf&&b.note)?` title="${esc(b.note)}"`:'');
+  return `<div class="sheet-p bk ${arr?'arr':''}${(!pf&&b.note)?' has-note':''}"${click}>${b.code?`<span class="bk-code"${b.codeColor?` style="background:${esc(b.codeColor)}"`:''}>${esc(b.code)}</span>`:''}${flag}<span class="bk-name">${esc(nm)}</span>${(!pf&&b.mrn)?`<span class="sp-mrn">${esc(b.mrn)}</span>`:''}${(!pf&&b.visit)?`<span class="bk-sub">${b.visit}회</span>`:''}${(b.dur&&b.dur!==30)?`<span class="bk-sub">${b.dur}분</span>`:''}${tag}</div>`;}
+/* 묶음의 건수 배지 — 예약(시트+수정본)만 */
+function sheetCount(dateYmd,sg){const D=dateYmd||localYMD(new Date());const M=bkMerged(D);return sg.bk==='manual'?M.manual.length:M.items.length;}
 function sheetRecords(dateYmd,rooms){
   rooms=rooms||SHEET_ROOMS;
   const out=[],today=localYMD(new Date()),D=dateYmd||today;
@@ -4722,30 +4772,108 @@ let SHEET_NOTES_HIST={};         // {날짜: {키:{text,by,at}}}
 function openResvScreen(){resvOpen=true;const el=document.getElementById('resvScreen');if(el)el.classList.add('show');
   const cb=document.getElementById('resvCloseBtn');if(cb)cb.style.display=RESV_MODE?'none':'';if(sheetDate)bkLoad(sheetDate);renderResvScreen();}
 function closeResvScreen(){resvOpen=false;const el=document.getElementById('resvScreen');if(el)el.classList.remove('show');}
-/* 하루 통계: 예약·도착(시트 연노랑 또는 보드 카드)·취소·도수·치료시간 합, 치료사별·코드별 건수, 시트 아래쪽 숫자(당월 누적 상담수·평균 내원률 등) */
+/* 하루 통계 — 예약(시트+수정본)만: 예약·내원(시트 연노랑)·취소·도수·치료시간 합, 치료사별·코드별, 시트 아래쪽 숫자 */
 function resvStats(dateYmd){
-  const D=dateYmd||localYMD(new Date());const bk=bookingsFor(D)||{};const items=bk.items||[];const recs=sheetRecords(dateYmd,SHEET_ROOMS);
-  const arrived=items.filter(b=>String(b.color||'').toLowerCase()==='#ffe599'||recs.some(x=>b.mrn&&x.mrn&&String(x.mrn).trim()===String(b.mrn).trim())).length;
+  const D=dateYmd||localYMD(new Date());const M=bkMerged(D);const items=M.items;
+  const arrived=items.filter(b=>String(b.color||'').toLowerCase()==='#ffe599').length;
   const byTh={},byCode={};items.forEach(b=>{byTh[b.th||'?']=(byTh[b.th||'?']||0)+1;const k=String(b.code||'').replace(/\d+$/,'')||'?';byCode[k]=(byCode[k]||0)+1;});
-  return {items:items.length,arrived,cancels:(bk.cancels||[]).length,manual:(bk.manual||[]).length,minutes:items.reduce((a,b)=>a+(+b.dur||0),0),byTh,byCode,sheet:Array.isArray(bk.stats)?bk.stats:[],updatedAt:bk.updatedAt||'',file:bk.file||''};
+  return {items:items.length,arrived,cancels:M.cancels.length,manual:M.manual.length,minutes:items.reduce((a,b)=>a+(+b.dur||0),0),byTh,byCode,sheet:M.stats,updatedAt:M.updatedAt,file:M.file,hasSheet:M.hasSheet,edited:items.filter(x=>x.edited||x.added).length+M.manual.filter(x=>x.edited||x.added).length};
 }
 function renderResvScreen(){
   if(!resvOpen)return;const body=document.getElementById('resvBody');if(!body)return;
   const D=sheetDate||localYMD(new Date());const di=document.getElementById('resvDate');if(di&&di.value!==D)di.value=D;
-  const bk=bookingsFor(D);const st=resvStats(sheetDate);
-  const sy=document.getElementById('resvSync');if(sy)sy.textContent=bk?('시트 동기화 '+hhmm(bk.updatedAt)+(bk.file?' · '+bk.file:'')):'이 날짜의 시트 자료 없음 — 보드 기록만 표시';
+  const st=resvStats(sheetDate);
+  const sy=document.getElementById('resvSync');if(sy)sy.textContent=(st.hasSheet?('시트 동기화 '+hhmm(st.updatedAt)+(st.file?' · '+st.file:'')):'이 날짜의 시트 자료 없음')+(st.edited?` · 동선관리 수정 ${st.edited}건`:'');
   const chips=o=>Object.keys(o).map(k=>`<span class="rs-chip">${esc(k)} <b>${o[k]}</b></span>`).join('');
   body.innerHTML=`<div class="resv-stats">
       <div class="rs-card"><b>${st.items}</b><span>비급여 예약</span></div>
-      <div class="rs-card"><b>${st.arrived}</b><span>도착·내원</span></div>
+      <div class="rs-card"><b>${st.arrived}</b><span>내원(시트 표시)</span></div>
       <div class="rs-card"><b>${st.cancels}</b><span>취소·변경</span></div>
       <div class="rs-card"><b>${st.manual}</b><span>도수 예약</span></div>
       <div class="rs-card"><b>${Math.round(st.minutes/6)/10}h</b><span>예약 치료시간 합</span></div>
       ${st.sheet.map(x=>`<div class="rs-card sheet"><b>${esc(String(x.value))}</b><span>${esc(x.label)} · 시트</span></div>`).join('')}
     </div>
     ${(Object.keys(st.byTh).length||Object.keys(st.byCode).length)?`<div class="resv-chips">${chips(st.byTh)}${Object.keys(st.byCode).length?'<i></i>'+chips(st.byCode):''}</div>`:''}
-    ${SHEET_GROUPS.map(sg=>`<div class="resv-sect"><h3>${esc(sg.title)}<span class="hint">${sheetCount(sheetDate,sg)}건</span><span class="spacer"></span>${sheetDate?'':'<button class="btn sm" onclick="openSheetNote()" title="시트 메모 쓰기">＋ 메모</button>'}<button class="btn sm" onclick="printSheet('${sg.key}')"><i data-lucide="printer"></i> 인쇄</button></h3>${treatSheetTableHtml(false,sheetDate,sg.rooms)}</div>`).join('')}`;
+    ${SHEET_GROUPS.map(sg=>`<div class="resv-sect"><h3>${esc(sg.title)}<span class="hint">${sheetCount(sheetDate,sg)}건</span><span class="spacer"></span><button class="btn sm primary" onclick="openBkEdit('${esc(D)}',null,{manual:${sg.bk==='manual'}})">＋ ${sg.bk==='manual'?'도수':'예약'} 추가</button><button class="btn sm" onclick="printSheet('${sg.key}')"><i data-lucide="printer"></i> 인쇄</button></h3>${treatSheetTableHtml(false,sheetDate,sg.rooms)}</div>`).join('')}`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}
+}
+/* ── 예약 수정 창 ── 시트 예약을 고치거나(시간·치료사·시간·코드·메모), 취소하거나, 새로 넣는다. 결과는 bookingEdits/{날짜}에 저장돼 모든 화면에 겹쳐 보인다 */
+let BK_EDIT=null;   // {D,key,manual,isNew,cur}
+const BK_SLOTS=(()=>{const a=[];for(let s=16;s<=43;s++)a.push(String(Math.floor(s/2)).padStart(2,'0')+':'+(s%2?'30':'00'));return a;})();   // 08:00~21:30
+function openBkEdit(D,key,opt){
+  opt=opt||{};const M=bkMerged(D);let cur=null,isNew=!key;
+  if(key)cur=(opt.manual?M.manual:M.items).find(x=>x.key===key)||null;
+  if(key&&!cur){alert('이 예약을 찾지 못했습니다(시트가 바뀌었을 수 있음). 화면을 다시 확인하세요.');return;}
+  BK_EDIT={D,key,manual:!!opt.manual,isNew,cur};
+  const ths=M.therapists.slice();(opt.manual?M.manual:M.items).forEach(x=>{if(x.th&&!ths.includes(x.th))ths.push(x.th);});
+  const v=(f,d)=>esc(cur?(cur[f]===undefined||cur[f]===null?'':String(cur[f])):(opt[f]!==undefined?String(opt[f]):(d||'')));
+  const body=document.getElementById('bkEditBody');
+  if(opt.manual){
+    body.innerHTML=`<div class="bkf">
+      <label>번호</label><input id="bke_no" value="${v('no')}" placeholder="시트 번호">
+      <label>환자번호</label><input id="bke_mrn" value="${v('mrn')}" placeholder="차트번호">
+      <label>성함</label><input id="bke_name" value="${v('name')}">
+      <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="임현주 …"><datalist id="bke_ths">${ths.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+      <label>메모</label><input id="bke_note" value="${v('note')}"></div>`;
+  }else{
+    const t=cur?cur.t:(opt.t||'10:00');
+    body.innerHTML=`<div class="bkf">
+      <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="Jennie …"><datalist id="bke_ths">${ths.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
+      <label>시간</label><select id="bke_t">${BK_SLOTS.map(s=>`<option value="${s}"${s===t?' selected':''}>${s}</option>`).join('')}</select>
+      <label>치료시간</label><select id="bke_dur">${[15,30,45,60,90,120].map(d=>`<option value="${d}"${String(d)===String(cur?cur.dur:(opt.dur||30))?' selected':''}>${d}분</option>`).join('')}</select>
+      <label>차트번호</label><input id="bke_mrn" value="${v('mrn')}">
+      <label>성함</label><input id="bke_name" value="${v('name')}">
+      <label>코드</label><input id="bke_code" value="${v('code')}" placeholder="CME15 …">
+      <label>메모</label><input id="bke_note" value="${v('note')}"></div>
+      ${cur&&cur.orig?`<p class="hint" style="margin-top:8px">시트 원본: ${esc(cur.orig.th)} ${esc(cur.orig.t)} ${esc(String(cur.orig.dur||''))}분 ${esc(cur.orig.code||'')}</p>`:''}`;
+  }
+  document.getElementById('bkEditTitle').textContent=(isNew?'예약 추가':'예약 수정')+(opt.manual?' (도수)':'')+' — '+D;
+  const del=document.getElementById('bkEditDel'),rv=document.getElementById('bkEditRevert');
+  if(del)del.style.display=isNew?'none':'';if(rv)rv.style.display=(cur&&cur.edited&&!cur.added)?'':'none';
+  document.getElementById('bkEditModal').classList.add('show');
+  setTimeout(()=>{const f=document.getElementById(opt.manual?'bke_name':'bke_th');if(f)f.focus();},50);
+}
+function closeBkEdit(){document.getElementById('bkEditModal').classList.remove('show');BK_EDIT=null;}
+function bkEditsDoc(D){const d=BK_EDITS[D]&&typeof BK_EDITS[D]==='object'?BK_EDITS[D]:{};return {items:Object.assign({},d.items||{}),added:(d.added||[]).slice(),manual:Object.assign({},d.manual||{}),manualAdded:(d.manualAdded||[]).slice()};}
+function bkEditsSave(D,doc,what){
+  BK_EDITS[D]=doc;
+  try{if(cloud.bookingEditsCol&&cloud.active)cloud.bookingEditsCol.doc(D).set(Object.assign({},doc,{date:D,updatedAt:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}));}catch(e){console.warn('bookingEdits set',e);}
+  try{audit('예약 수정',what);}catch(e){}
+  renderResvScreen();
+}
+function bkEditSave(){
+  if(!BK_EDIT)return;const {D,key,manual,isNew,cur}=BK_EDIT;const g=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
+  const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
+  if(manual){
+    const f={no:g('bke_no'),mrn:g('bke_mrn'),name:g('bke_name'),th:g('bke_th'),note:g('bke_note')};
+    if(!f.mrn&&!f.name){alert('환자번호나 성함 중 하나는 넣어 주세요.');return;}
+    if(isNew)doc.manualAdded.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
+    else if(cur.added){doc.manualAdded=doc.manualAdded.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
+    else doc.manual[key]=Object.assign({},f,{by,at});
+    bkEditsSave(D,doc,`도수 ${isNew?'추가':'수정'} ${f.name||f.mrn}`);
+  }else{
+    const f={th:g('bke_th'),t:g('bke_t'),dur:parseInt(g('bke_dur'),10)||30,mrn:g('bke_mrn'),name:g('bke_name'),code:g('bke_code'),note:g('bke_note')};
+    if(!f.th){alert('치료사를 넣어 주세요.');return;}if(!f.mrn&&!f.name){alert('차트번호나 성함 중 하나는 넣어 주세요.');return;}
+    if(isNew)doc.added.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
+    else if(cur.added){doc.added=doc.added.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
+    else{const o=cur.orig||{};const same=['th','t','mrn','name','code','note'].every(k=>String(o[k]||'')===String(f[k]||''))&&(+o.dur||30)===f.dur;
+      if(same)delete doc.items[key];else doc.items[key]=Object.assign({},f,{by,at});}
+    bkEditsSave(D,doc,`예약 ${isNew?'추가':'수정'} ${f.name||f.mrn} ${f.th} ${f.t}`);
+  }
+  closeBkEdit();
+}
+function bkEditDelete(){
+  if(!BK_EDIT||BK_EDIT.isNew)return;const {D,key,manual,cur}=BK_EDIT;
+  if(!confirm(manual?'이 도수 예약을 목록에서 지울까요?':'이 예약을 취소 처리할까요? (시트에는 반영되지 않고, 이 화면에서 취소선으로 표시됩니다)'))return;
+  const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
+  if(manual){if(cur.added)doc.manualAdded=doc.manualAdded.filter(a=>a.id!==key);else doc.manual[key]={removed:true,by,at};}
+  else{if(cur.added)doc.added=doc.added.filter(a=>a.id!==key);else doc.items[key]={removed:true,by,at};}
+  bkEditsSave(D,doc,`예약 취소 ${cur.name||cur.mrn||''}`);closeBkEdit();
+}
+function bkEditRevert(){
+  if(!BK_EDIT||BK_EDIT.isNew)return;const {D,key,manual}=BK_EDIT;const doc=bkEditsDoc(D);
+  if(manual)delete doc.manual[key];else delete doc.items[key];
+  bkEditsSave(D,doc,'예약 수정 되돌림');closeBkEdit();
 }
 window.setSheetDate=function(v){
   const today=localYMD(new Date());
@@ -4782,100 +4910,56 @@ window.printSheet=function(key){
     <script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
   w.document.close();
 };
-/* 도수(Manual Tx) 명단 보드 — 열 = 치료사(시트 순서), 행 = 시트 번호순. 보드 카드와 차트번호(없으면 이름)로 짝지어 '도착/치료 중' 표시.
-   시트에 없는데 보드에 있는 SASO·자동차도수 환자는 맨 오른쪽 '시트 외' 열에. pf=true(환자용): 이름 가림, 차트번호·메모 없음 */
-function manualBoardHtml(pf,manual,recs){
-  /* 시트(BK~BN)와 같은 한 장의 표: 번호 · 환자번호 · 성함 · 치료사, 시트 순서 그대로. 보드 카드와 짝지어 상태(대기/도착/치료 중) 열을 더한다.
-     시트에 없는데 보드에 있는 SASO·자동차도수 환자는 표 아래에 '시트 외' 줄로. 환자용 화면(pf)은 이름 가림·환자번호 열 없음 */
-  const used=new Set();const rows=[];
-  manual.forEach(m=>{
-    const rec=recs.find(x=>!used.has(x)&&((m.mrn&&x.mrn&&String(x.mrn).trim()===String(m.mrn).trim())||(!m.mrn&&m.name&&(x.name||'').trim()===m.name)))||null;if(rec)used.add(rec);
-    rows.push({no:m.no,name:m.name,mrn:m.mrn,th:m.th,note:m.note,room:rec?rec.room:'',st:rec?(rec.live?'live':'arr'):''});});
-  const extra=recs.filter(x=>!used.has(x)).map(x=>({no:'',name:x.name,mrn:x.mrn,th:x.doc||'',note:'',room:x.room,st:x.live?'live':'arr',extra:true}));
-  const label={live:'치료 중',arr:'도착',"":'대기'};
-  const tr=r=>`<tr class="mx-row ${r.st}${r.extra?' extra':''}"${(!pf&&r.note)?` title="${esc(r.note)}"`:''}>
-      <td class="mx-no">${r.no?esc(r.no):(r.extra?'시트 외':'')}</td>${pf?'':`<td class="mx-mrn">${esc(r.mrn||'')}</td>`}
-      <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}</td>
+/* 도수(Manual Tx) 명단 — 시트(BK~BN)와 같은 한 장의 표: 번호 · 환자번호 · 성함 · 치료사 (+상태: 시트 연노랑 = 내원). 시트 순서 그대로, 10명 넘으면 두 표.
+   직원용은 줄을 누르면 수정. pf=true(환자용): 이름 가림·환자번호 열 없음 */
+function manualBoardHtml(pf,manual,D){
+  const rows=manual.map(m=>Object.assign({},m,{st:String(m.color||'').toLowerCase()==='#ffe599'?'arr':''}));
+  const label={arr:'내원',"":'예약'};
+  const tr=r=>`<tr class="mx-row ${r.st}"${(!pf&&D)?` onclick="openBkEdit('${esc(D)}','${esc(r.key||'')}',{manual:true})" title="${esc(r.note||'')}${r.note?' — ':''}누르면 수정"`:((!pf&&r.note)?` title="${esc(r.note)}"`:'')}>
+      <td class="mx-no">${r.no?esc(String(r.no)):''}</td>${pf?'':`<td class="mx-mrn">${esc(r.mrn||'')}</td>`}
+      <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}${pf?'':(r.added?' <span class="bk-tag add">추가</span>':(r.edited?' <span class="bk-tag">수정</span>':''))}</td>
       <td class="mx-th">${esc(r.th||'')}</td>
-      <td class="mx-st">${r.room?`<span class="sp-room ${(SHEET_ABBR[r.room]||['?','sd'])[1]}" title="${esc(r.room)}">${(SHEET_ABBR[r.room]||['?'])[0]}</span> `:''}<span class="mx-tag ${r.st}">${label[r.st]}</span></td></tr>`;
-  const all=rows.concat(extra);
-  const per=all.length>10?Math.ceil(all.length/2):all.length;   // 10명 넘으면 두 표로 나눠 나란히(TV 한 화면에)
-  const chunks=[];for(let i=0;i<all.length;i+=per)chunks.push(all.slice(i,i+per));
+      <td class="mx-st"><span class="mx-tag ${r.st}">${label[r.st]}</span></td></tr>`;
+  if(!rows.length)return `<div class="resv-empty">이 날짜의 도수 예약이 없습니다${pf?'':' — 위의 <b>＋ 도수 추가</b>로 직접 넣을 수 있습니다'}.</div>`;
+  const per=rows.length>10?Math.ceil(rows.length/2):rows.length;   // 10명 넘으면 두 표로 나눠 나란히
+  const chunks=[];for(let i=0;i<rows.length;i+=per)chunks.push(rows.slice(i,i+per));
   const head=`<thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th><th class="mx-st">상태</th></tr></thead>`;
   return `<div class="mx-tblwrap${chunks.length>1?' two':''}">${chunks.map(ch=>`<table class="mx-tbl">${head}<tbody>${ch.map(tr).join('')}</tbody></table>`).join('')}</div>
-    <div class="sheet-legend">순서 = 예약 시트의 번호 &nbsp;·&nbsp; <span class="mx-tag arr">도착</span> 보드에 카드 있음 &nbsp;·&nbsp; <span class="mx-tag live">치료 중</span> 진행 중${pf?'':' &nbsp;·&nbsp; 시트 외 = 시트에 없는데 보드에 있는 환자'}</div>`;
+    <div class="sheet-legend">순서 = 예약 시트의 번호 &nbsp;·&nbsp; <span class="mx-tag arr">내원</span> 시트에서 내원 표시${pf?'':' &nbsp;·&nbsp; 줄을 누르면 수정 · 수정/추가 표시 = 동선관리에서 바꾼 것(시트에는 반영되지 않음)'}</div>`;
 }
-/* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김 / dateYmd: 지난 날짜 조회) */
+/* 4층 비급여 치료 시간표 — 예약(시트+수정본)만. 열 = 그날 예약·차단·취소가 있는 치료사(시트 순서), 행 = 30분. 보드 카드는 보지 않는다.
+   pf=true(환자용): 이름 가림, 차트번호·메모·취소·차단 문구 없음(지금은 직원 화면·인쇄에서만 쓰인다) */
 function treatSheetTableHtml(pf,dateYmd,rooms){
-  rooms=rooms||SHEET_GROUPS[0].rooms;
-  const D=dateYmd||localYMD(new Date());
-  const isToday=D===localYMD(new Date());
-  const recs=sheetRecords(dateYmd,rooms);
-  let NOTES;
-  if(isToday)NOTES=SHEET_NOTES;
-  else{NOTES=Object.assign({},SHEET_NOTES_HIST[dateYmd]||{});
-    Object.keys(SHEET_NOTES).forEach(k=>{if(k.split("|")[0]===dateYmd)NOTES[k]=SHEET_NOTES[k];});}   // 아직 이관 전 메모도 포함
-  /* 예약 시트(Google Sheet) 자료 — 묶음 설정(bk)에 따라 시간표(items) 또는 Manual Tx 목록(manual) */
-  const sg=SHEET_GROUPS.find(g=>g.rooms.join('|')===rooms.join('|'))||null;
-  const bk=bookingsFor(D);
-  const useItems=!!(bk&&sg&&sg.bk==='items');
-  const bkItems=useItems?(bk.items||[]).filter(x=>x.t&&bkSlot(x.t)!==null).map(x=>Object.assign({},x)):[];
-  const bkBlocks=useItems?(bk.blocks||[]).filter(x=>x.t&&bkSlot(x.t)!==null):[];
-  const bkCancels=(useItems&&!pf)?(bk.cancels||[]).filter(x=>x.t&&bkSlot(x.t)!==null):[];
-  const manual=(bk&&sg&&sg.bk==='manual')?(bk.manual||[]):[];
-  if(manual.length)return manualBoardHtml(pf,manual,recs);   // 도수: 시간이 없는 명단 → 시간표 대신 치료사별 목록 보드
-  const rest=bkMatch(bkItems,recs);   // 예약과 짝지어진 기록은 예약 칸 안에서 표시, 나머지는 담당자 열에
-  const ths=(bk&&Array.isArray(bk.therapists))?bk.therapists:[];
-  const isTh=n=>ths.includes(n);
-  /* 열: 예약이 있는 날 = 그날 예약·차단·취소가 있는 치료사(시트 순서) + 기록만 있는 담당자
-         예약이 없는 날 = 두 방 배정 전원(휴무자 포함) + 그날 기록에 등장한 사람(기존 방식) */
-  let docs=[];
-  if(bkItems.length||bkBlocks.length){ths.forEach(n=>{if(bkItems.some(x=>x.th===n)||bkBlocks.some(x=>x.th===n)||bkCancels.some(x=>x.th===n))docs.push(n);});}
-  else{rooms.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
-    .forEach(n=>{if(n&&sheetStaffActiveOn(n,D)&&!docs.includes(n))docs.push(n);});});}   // 그날 재직 중인 사람만
-  if(bkItems.length||bkBlocks.length){   // 시트가 있는 날: 시트에 없는 보드 기록(3층 의사 배정 카드가 충격파·신장분사로 옮겨진 경우 등)은 의사 이름 열이 아니라 '시트 외' 열 하나에
-    rest.forEach(x=>{x.doc='시트 외';});if(rest.length&&!docs.includes('시트 외'))docs.push('시트 외');}
-  else rest.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});               // 시트가 없는 날: 기록의 담당자 열(퇴직자도 그날엔 표시)
-  const manualHtml='';   // (도수 명단은 위에서 manualBoardHtml 로 처리)
-  if(!docs.length)return manualHtml+'<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
-  const off=n=>!isTh(n)&&isOffOn(n,D);
-  const WH={};docs.forEach(n=>{WH[n]=isTh(n)?null:workHoursOn(n,D);});   // 그날 근무시간(시간제) — 밖의 슬롯은 회색 (시트 치료사는 시트의 회색 칸을 따른다)
-  const offSlot=(n,s2)=>{if(off(n))return true;const h=WH[n];if(!h)return false;
-    const hm=String(Math.floor(s2/2)).padStart(2,"0")+":"+(s2%2?"30":"00");return hm<h.from||hm>=h.to;};
-  /* 행: 30분 슬롯 — 9:00 ~ 평일 20:30 / 토·일·공휴일 17:30, 기록·예약이 밖에 있으면 자동 확장 */
-  const slotOf=iso=>{const t=new Date(iso);return t.getHours()*2+(t.getMinutes()>=30?1:0);};
-  let s0=18,s1=isWeekendOrHoliday(new Date(D+"T12:00:00"))?35:41;
-  rest.forEach(x=>{const s2=slotOf(x.at);if(s2<s0)s0=s2;if(s2>s1)s1=s2;});
-  bkItems.concat(bkBlocks).forEach(x=>{const a=bkSlot(x.t),e=a+Math.max(1,Math.ceil((x.dur||30)/30))-1;if(a<s0)s0=a;if(e>s1)s1=e;});
-  bkCancels.forEach(x=>{const a=bkSlot(x.t);if(a<s0)s0=a;if(a>s1)s1=a;});
-  const occ={};   // 담당자 → 예약 칸(rowspan)이 차지한 마지막 슬롯 다음
-  let rows="";
+  rooms=rooms||SHEET_GROUPS[0].rooms;const D=dateYmd||localYMD(new Date());
+  const sg=SHEET_GROUPS.find(g=>g.rooms.join('|')===rooms.join('|'))||SHEET_GROUPS[0];
+  const M=bkMerged(D);
+  if(sg.bk==='manual')return manualBoardHtml(pf,M.manual,D);
+  const items=M.items.filter(x=>x.t&&bkSlot(x.t)!==null),blocks=M.blocks.filter(x=>x.t&&bkSlot(x.t)!==null),cancels=pf?[]:M.cancels.filter(x=>x.t&&bkSlot(x.t)!==null);
+  if(!items.length&&!blocks.length&&!cancels.length)return `<div class="resv-empty">${M.hasSheet?'이 날짜에 예약이 없습니다':'이 날짜의 시트 자료가 없습니다'}${pf?'':' — 위의 <b>＋ 예약 추가</b>로 직접 넣을 수 있습니다'}.</div>`;
+  const docs=M.therapists.filter(n=>items.some(x=>x.th===n)||blocks.some(x=>x.th===n)||cancels.some(x=>x.th===n));
+  let s0=18,s1=isWeekendOrHoliday(new Date(D+"T12:00:00"))?35:41;   // 9:00 ~ 평일 20:30 / 토·일·공휴일 17:30, 밖의 예약이 있으면 확장
+  items.concat(blocks).forEach(x=>{const a=bkSlot(x.t),e=a+Math.max(1,Math.ceil((x.dur||30)/30))-1;if(a<s0)s0=a;if(e>s1)s1=e;});
+  cancels.forEach(x=>{const a=bkSlot(x.t);if(a<s0)s0=a;if(a>s1)s1=a;});
+  const occ={};let rows="";
   for(let s2=s0;s2<=s1;s2++){
-    const hh=Math.floor(s2/2),mm=s2%2?"30":"00";
+    const hh=Math.floor(s2/2),mm=s2%2?"30":"00";const hm=String(hh).padStart(2,'0')+':'+mm;
     const cells=docs.map(doc=>{
       if(occ[doc]>s2)return '';   // 위 칸의 rowspan 에 포함
-      const here=rest.filter(x=>x.doc===doc&&slotOf(x.at)===s2);
-      const bks=bkItems.filter(x=>x.th===doc&&bkSlot(x.t)===s2),bls=bkBlocks.filter(x=>x.th===doc&&bkSlot(x.t)===s2),cns=bkCancels.filter(x=>x.th===doc&&bkSlot(x.t)===s2);
-      const recHtml=x=>{const nm=pf?maskName(x.name):dispName(x.name);const nt=NOTES[sheetNoteKey(x)];
-        return `<div class="sheet-p${x.live?' live':''}${nt?' has-note':''}"${nt?` title="${esc(nt.text)}${nt.by?' — '+esc(nt.by):''}"`:''}>
-        <span class="sp-room ${(SHEET_ABBR[x.room]||['?','sj'])[1]}">${(SHEET_ABBR[x.room]||['?'])[0]}</span>${esc(nm)}${(!pf&&x.mrn)?`<span class="sp-mrn">${esc(x.mrn)}</span>`:''}</div>`;};
-      const cxlHtml=cns.map(c=>`<div class="sheet-cxl" title="취소/변경${c.note?' — '+esc(c.note):''}">${esc(dispName(c.name||c.text))}</div>`).join('');
+      const bks=items.filter(x=>x.th===doc&&bkSlot(x.t)===s2),bls=blocks.filter(x=>x.th===doc&&bkSlot(x.t)===s2),cns=cancels.filter(x=>x.th===doc&&bkSlot(x.t)===s2);
+      const cxl=cns.map(c=>`<div class="sheet-cxl" title="취소/변경${c.note?' — '+esc(c.note):''}">${esc(dispName(c.name||c.text))}</div>`).join('');
       if(bks.length||bls.length){
         const span=Math.min(s1-s2+1,Math.max(1,...bks.concat(bls).map(x=>Math.ceil((x.dur||30)/30))));occ[doc]=s2+span;
-        const cls=['filled',bks.length?'bkcell':'blk',bks.some(b=>b._rec&&b._rec.live)?'livecell':(bks.some(b=>b._rec||String(b.color||'').toLowerCase()==='#ffe599')?'arrcell':'')].filter(Boolean).join(' ');
-        return `<td class="${cls}" rowspan="${span}">${bks.map(b=>bkCellHtml(b,pf)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxlHtml}${here.map(recHtml).join('')}</td>`;}
-      if(!here.length&&!cns.length)return `<td class="${offSlot(doc,s2)?'offcol':''}"></td>`;
-      return `<td class="filled${offSlot(doc,s2)?' offcol':''}">${cxlHtml}${here.map(recHtml).join("")}</td>`;
+        const arr=bks.some(b=>String(b.color||'').toLowerCase()==='#ffe599');
+        return `<td class="filled ${bks.length?'bkcell':'blk'}${arr?' arrcell':''}" rowspan="${span}">${bks.map(b=>bkCellHtml(b,pf,D)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxl}</td>`;}
+      if(cns.length)return `<td class="filled">${cxl}</td>`;
+      return pf?'<td></td>':`<td class="bk-free" onclick="openBkEdit('${esc(D)}',null,{th:'${esc(doc)}',t:'${hm}'})" title="빈 칸: 누르면 ${esc(doc)} ${hm} 예약 추가"></td>`;
     }).join("");
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
-  return `${manualHtml}<div class="sheet-wrap"><table class="sheet-tbl">
-    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>off(n)
-      ?`<th class="offhead">${esc(n)}<div class="offsub">휴무</div></th>`
-      :(n==='시트 외'?`<th class="extrahead">시트 외<div class="offsub">시트에 없는 보드 카드</div></th>`
-      :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${WH[n]?`<div class="offsub">${WH[n].from}~${WH[n].to}</div>`:''}</th>`)).join("")}</tr></thead>
+  return `<div class="sheet-wrap"><table class="sheet-tbl">
+    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <div class="sheet-legend">${rooms.map(r=>`<span class="sp-room ${(SHEET_ABBR[r]||['?','sj'])[1]}">${(SHEET_ABBR[r]||['?'])[0]}</span> ${esc(r)}`).join(' &nbsp; ')} &nbsp;·&nbsp; 파란색 = 현재 치료 중${useItems?' &nbsp;·&nbsp; 예약 시트: 연파랑 칸 = 도착, 회색 칸 = 근무 외'+(pf?'':', 취소선 = 취소·변경, 색 점 = 시트 표시(마우스를 올리면 뜻)'):''}</div>`;
+    <div class="sheet-legend">연파랑 칸 = 시트에서 내원 표시 &nbsp;·&nbsp; 회색 칸 = 근무 외/차단${pf?'':' &nbsp;·&nbsp; 취소선 = 취소·변경 &nbsp;·&nbsp; 색 점 = 시트 표시(마우스를 올리면 뜻) &nbsp;·&nbsp; <b>칸을 누르면 수정</b>, 빈 칸을 누르면 추가 &nbsp;·&nbsp; 수정/추가 표시 = 동선관리에서 바꾼 것(시트에는 반영되지 않음)'}</div>`;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본
