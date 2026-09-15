@@ -277,6 +277,7 @@
   .mx-tbl td.mx-th{width:120px}
   .mx-tbl td.mx-st{width:130px;white-space:nowrap}
   .mx-tbl tr.arr td{background:#dbeafe}
+  .mx-tbl tr[style*="color-mix"] td{background:transparent}   /* 줄에 색이 있으면 칸 배경은 줄 색을 따른다 */
   .mx-tbl tr.live td{background:#bfdbfe;color:#1e40af}
   .mx-tbl tr.extra td{background:#fafbfd;border-style:dashed}
   .mx-tag{flex:0 0 auto;font-size:.72em;font-weight:800;border-radius:999px;padding:2px 9px;background:#e5e7eb;color:#4b5563}
@@ -597,7 +598,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .bk-tag.add{background:#bbf7d0;color:#14532d}
   .bkf{display:grid;grid-template-columns:84px 1fr;gap:8px 10px;align-items:center;font-size:13px}
   .bkf label{font-weight:700;color:var(--sub)}
-  .bkf input,.bkf select{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13.5px;width:100%;box-sizing:border-box;background:var(--panel);color:var(--text)}
+  .bkf input,.bkf select,.bkf textarea{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13.5px;width:100%;box-sizing:border-box;background:var(--panel);color:var(--text);font-family:inherit}
+  .bkf textarea{resize:vertical;min-height:40px;line-height:1.45;overflow:hidden}
+  .bkf label{align-self:start;padding-top:8px}
+  .bk-sw{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .bk-sw > span:not(.hint){width:24px;height:24px;border-radius:50%;border:1px solid rgba(0,0,0,.22);cursor:pointer;flex:0 0 auto}
+  .bk-sw > span.none:not(.hint){background:linear-gradient(135deg,#fff 45%,#e5484d 47%,#e5484d 53%,#fff 55%) !important}
+  .bk-sw > span.on:not(.hint){box-shadow:0 0 0 3px #2563eb}
+  .bk-sw .bk-custom{display:inline-flex;align-items:center;gap:2px;font-size:12px;font-weight:700;color:var(--sub);cursor:pointer}
+  .bk-sw .bk-custom input{width:26px;height:26px;padding:0;border:0;background:none;cursor:pointer}
+  .bk-sw > .hint{flex:1 0 100%;font-size:12px;white-space:nowrap;margin-top:2px}   /* 고른 색 이름은 아래 줄에 한 줄로 */
   .slip-screen{position:fixed;inset:0;z-index:300;display:none;flex-direction:column;background:var(--bg);color:var(--text)}
   .slip-screen.show{display:flex}
   .slip-top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-size:15px}
@@ -3134,6 +3144,10 @@ async function runSelfTest(){
       ok('예약 수정본: 시트의 10:00 예약이 14:00 줄에 "수정" 표시로, 원래 자리는 비어 있음', !!row&&row.querySelector('th.sheet-time').textContent==='14:00'&&cell.textContent.includes('수정')&&![...el.querySelectorAll('tr')].some(tr=>tr.querySelector('th.sheet-time')&&tr.querySelector('th.sheet-time').textContent==='10:00'&&tr.textContent.includes('환자충')));
       ok('예약 수정본: 추가 예약은 새 치료사 열(Hannah)에 "추가" 표시', [...el.querySelectorAll('thead th')].some(th=>th.textContent==='Hannah')&&/추가환자[\s\S]*?추가/.test(html));
       ok('예약 수정본: 도수 삭제/추가 반영', !html.includes('환자S')&&html.includes('도수추가'));
+      BK_EDITS[T].items[k].color='#00ffff';renderResvScreen();
+      ok('예약 수정본: 고른 배경색이 칸 배경으로(시트처럼)', /color-mix\(in srgb, #00ffff 45%, white\)/.test(rb.innerHTML));
+      {openBkEdit(T,k);const ta=document.getElementById('bke_note');const has=ta&&ta.tagName==='TEXTAREA'&&!!document.getElementById('bke_color')&&document.getElementById('bke_color').value==='#00ffff';bkPickColor('#ffe599');const picked=document.getElementById('bke_color').value==='#ffe599'&&!!document.querySelector('#bkEditBody .bk-sw > span.on');closeBkEdit();
+       ok('예약 수정 창: 메모는 늘어나는 textarea, 배경색 선택(현재색 표시·클릭으로 바꿈)', has&&picked);}
       eq('예약 수정본: 통계도 수정본 기준(예약 2·도수 1)', [resvStats(null).items,resvStats(null).manual,sheetCount(null,SHEET_GROUPS[0])], [2,1,2]);
       ok('예약 수정본: 시트에서 그 예약이 바뀌면(키 불일치) 수정본은 저절로 빠짐', (()=>{BOOKINGS[T].items[0].t='10:30';const M=bkMerged(T);BOOKINGS[T].items[0].t='10:00';const x=M.items.find(x=>x.mrn==='2');return x.t==='10:30'&&!x.edited;})());
       {const _c=cloud.active;cloud.active=false;openBkEdit(T,null,{th:'Zoe',t:'11:00'});document.getElementById('bke_name').value='창추가';document.getElementById('bke_mrn').value='888';bkEditSave();cloud.active=_c;
@@ -4710,7 +4724,7 @@ function bkMerged(D){
   const bk=bookingsFor(D)||{};const ed=BK_EDITS[D]||{};const eItems=ed.items||{},eMan=ed.manual||{};
   const items=[];
   (bk.items||[]).forEach(b=>{const k=bkKey(b);const e=eItems[k];const x=Object.assign({},b,{key:k,orig:b});
-    if(e){if(e.removed){x.removed=true;x.edit=e;}else{['t','dur','th','mrn','name','code','note'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;x.edit=e;}}
+    if(e){if(e.removed){x.removed=true;x.edit=e;}else{['t','dur','th','mrn','name','code','note','color'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;x.edit=e;}}
     items.push(x);});
   (ed.added||[]).forEach(a=>items.push(Object.assign({kind:'pt',color:''},a,{key:a.id,added:true})));
   const cancels=(bk.cancels||[]).slice();
@@ -4718,7 +4732,7 @@ function bkMerged(D){
   const live=items.filter(x=>!x.removed);
   const ths=(bk.therapists||[]).slice();live.forEach(x=>{if(x.th&&!ths.includes(x.th))ths.push(x.th);});
   const manual=[];
-  (bk.manual||[]).forEach(m=>{const k=bkManualKey(m);const e=eMan[k];if(e&&e.removed)return;const x=Object.assign({},m,{key:k});if(e){['no','mrn','name','th','note'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;}manual.push(x);});
+  (bk.manual||[]).forEach(m=>{const k=bkManualKey(m);const e=eMan[k];if(e&&e.removed)return;const x=Object.assign({},m,{key:k});if(e){['no','mrn','name','th','note','color'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;}manual.push(x);});
   (ed.manualAdded||[]).forEach(a=>manual.push(Object.assign({},a,{key:a.id,added:true})));
   return {hasSheet:!!bookingsFor(D),items:live,blocks:bk.blocks||[],cancels,manual,therapists:ths,updatedAt:bk.updatedAt||'',file:bk.file||'',stats:Array.isArray(bk.stats)?bk.stats:[]};
 }
@@ -4814,7 +4828,8 @@ function openBkEdit(D,key,opt){
       <label>환자번호</label><input id="bke_mrn" value="${v('mrn')}" placeholder="차트번호">
       <label>성함</label><input id="bke_name" value="${v('name')}">
       <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="임현주 …"><datalist id="bke_ths">${ths.map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
-      <label>메모</label><input id="bke_note" value="${v('note')}"></div>`;
+      <label>메모</label><textarea id="bke_note" rows="2" oninput="autoGrowTa(this)">${v('note')}</textarea>
+      <label>배경색</label>${bkColorPickerHtml(cur?cur.color:'')}</div>`;
   }else{
     const t=cur?cur.t:(opt.t||'10:00');
     body.innerHTML=`<div class="bkf">
@@ -4824,15 +4839,26 @@ function openBkEdit(D,key,opt){
       <label>차트번호</label><input id="bke_mrn" value="${v('mrn')}">
       <label>성함</label><input id="bke_name" value="${v('name')}">
       <label>코드</label><input id="bke_code" value="${v('code')}" placeholder="CME15 …">
-      <label>메모</label><input id="bke_note" value="${v('note')}"></div>
+      <label>메모</label><textarea id="bke_note" rows="2" oninput="autoGrowTa(this)">${v('note')}</textarea>
+      <label>배경색</label>${bkColorPickerHtml(cur?cur.color:'')}</div>
       ${cur&&cur.orig?`<p class="hint" style="margin-top:8px">시트 원본: ${esc(cur.orig.th)} ${esc(cur.orig.t)} ${esc(String(cur.orig.dur||''))}분 ${esc(cur.orig.code||'')}</p>`:''}`;
   }
   document.getElementById('bkEditTitle').textContent=(isNew?'예약 추가':'예약 수정')+(opt.manual?' (도수)':'')+' — '+D;
   const del=document.getElementById('bkEditDel'),rv=document.getElementById('bkEditRevert');
   if(del)del.style.display=isNew?'none':'';if(rv)rv.style.display=(cur&&cur.edited&&!cur.added)?'':'none';
   document.getElementById('bkEditModal').classList.add('show');
-  setTimeout(()=>{const f=document.getElementById(opt.manual?'bke_name':'bke_th');if(f)f.focus();},50);
+  setTimeout(()=>{const f=document.getElementById(opt.manual?'bke_name':'bke_th');if(f)f.focus();const ta=document.getElementById('bke_note');if(ta)autoGrowTa(ta);},50);
 }
+/* 메모 칸: 내용 길이에 맞춰 아래로 늘어남(긴 메모를 한눈에 보고 고칠 수 있게) */
+function autoGrowTa(ta){if(!ta)return;ta.style.height='auto';ta.style.height=Math.min(320,Math.max(40,ta.scrollHeight+2))+'px';}
+/* 배경색 선택: 시트 범례색 + 자주 쓰는 색 + 임의색(컬러 피커). 값은 #bke_color 에 */
+const BK_SWATCHES=[['','없음'],['#ffe599','내원'],['#ffff00','임시치료실'],['#ff0000','치료실 없음'],['#00ff00','시트·비트확인'],['#00ffff','실손 청구여부 확인'],['#9900ff','카톡친추 확인'],['#8e7cc3','보라'],['#b7e1cd','연두'],['#f4cccc','연분홍'],['#cfe2f3','연파랑']];
+function bkColorPickerHtml(cur){cur=String(cur||'').toLowerCase();if(cur==='#ffffff')cur='';
+  return `<div class="bk-sw"><input type="hidden" id="bke_color" value="${esc(cur)}">${BK_SWATCHES.map(([c,l])=>`<span class="${c===cur?'on':''}${c?'':' none'}" style="background:${c||'#fff'}" title="${esc(l)}" onclick="bkPickColor('${c}')"></span>`).join('')}
+    <label class="bk-custom" title="다른 색"><input type="color" value="${/^#[0-9a-f]{6}$/.test(cur)?cur:'#ffe599'}" oninput="bkPickColor(this.value)">…</label><span class="hint" id="bke_colorLbl">${esc((BK_SWATCHES.find(x=>x[0]===cur)||[,cur||'없음'])[1])}</span></div>`;}
+function bkPickColor(c){c=String(c||'').toLowerCase();const h=document.getElementById('bke_color');if(h)h.value=c;
+  document.querySelectorAll('#bkEditBody .bk-sw > span:not(.hint)').forEach(sp=>sp.classList.toggle('on',(sp.getAttribute('onclick')||'').includes("'"+c+"'")));
+  const l=document.getElementById('bke_colorLbl');if(l)l.textContent=(BK_SWATCHES.find(x=>x[0]===c)||[,c||'없음'])[1];}
 function closeBkEdit(){document.getElementById('bkEditModal').classList.remove('show');BK_EDIT=null;}
 function bkEditsDoc(D){const d=BK_EDITS[D]&&typeof BK_EDITS[D]==='object'?BK_EDITS[D]:{};return {items:Object.assign({},d.items||{}),added:(d.added||[]).slice(),manual:Object.assign({},d.manual||{}),manualAdded:(d.manualAdded||[]).slice()};}
 function bkEditsSave(D,doc,what){
@@ -4845,18 +4871,18 @@ function bkEditSave(){
   if(!BK_EDIT)return;const {D,key,manual,isNew,cur}=BK_EDIT;const g=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
   const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
   if(manual){
-    const f={no:g('bke_no'),mrn:g('bke_mrn'),name:g('bke_name'),th:g('bke_th'),note:g('bke_note')};
+    const f={no:g('bke_no'),mrn:g('bke_mrn'),name:g('bke_name'),th:g('bke_th'),note:g('bke_note'),color:g('bke_color')};
     if(!f.mrn&&!f.name){alert('환자번호나 성함 중 하나는 넣어 주세요.');return;}
     if(isNew)doc.manualAdded.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
     else if(cur.added){doc.manualAdded=doc.manualAdded.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
     else doc.manual[key]=Object.assign({},f,{by,at});
     bkEditsSave(D,doc,`도수 ${isNew?'추가':'수정'} ${f.name||f.mrn}`);
   }else{
-    const f={th:g('bke_th'),t:g('bke_t'),dur:parseInt(g('bke_dur'),10)||30,mrn:g('bke_mrn'),name:g('bke_name'),code:g('bke_code'),note:g('bke_note')};
+    const f={th:g('bke_th'),t:g('bke_t'),dur:parseInt(g('bke_dur'),10)||30,mrn:g('bke_mrn'),name:g('bke_name'),code:g('bke_code'),note:g('bke_note'),color:g('bke_color')};
     if(!f.th){alert('치료사를 넣어 주세요.');return;}if(!f.mrn&&!f.name){alert('차트번호나 성함 중 하나는 넣어 주세요.');return;}
     if(isNew)doc.added.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
     else if(cur.added){doc.added=doc.added.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
-    else{const o=cur.orig||{};const same=['th','t','mrn','name','code','note'].every(k=>String(o[k]||'')===String(f[k]||''))&&(+o.dur||30)===f.dur;
+    else{const o=cur.orig||{};const same=['th','t','mrn','name','code','note'].every(k=>String(o[k]||'')===String(f[k]||''))&&(+o.dur||30)===f.dur&&String(o.color||'').toLowerCase()===String(f.color||'').toLowerCase();
       if(same)delete doc.items[key];else doc.items[key]=Object.assign({},f,{by,at});}
     bkEditsSave(D,doc,`예약 ${isNew?'추가':'수정'} ${f.name||f.mrn} ${f.th} ${f.t}`);
   }
@@ -4915,7 +4941,7 @@ window.printSheet=function(key){
 function manualBoardHtml(pf,manual,D){
   const rows=manual.map(m=>Object.assign({},m,{st:String(m.color||'').toLowerCase()==='#ffe599'?'arr':''}));
   const label={arr:'내원',"":'예약'};
-  const tr=r=>`<tr class="mx-row ${r.st}"${(!pf&&D)?` onclick="openBkEdit('${esc(D)}','${esc(r.key||'')}',{manual:true})" title="${esc(r.note||'')}${r.note?' — ':''}누르면 수정"`:((!pf&&r.note)?` title="${esc(r.note)}"`:'')}>
+  const tr=r=>`<tr class="mx-row ${r.st}"${(r.color&&String(r.color).toLowerCase()!=='#ffffff')?` style="background:color-mix(in srgb, ${esc(String(r.color))} 45%, white)"`:''}${(!pf&&D)?` onclick="openBkEdit('${esc(D)}','${esc(r.key||'')}',{manual:true})" title="${esc(r.note||'')}${r.note?' — ':''}누르면 수정"`:((!pf&&r.note)?` title="${esc(r.note)}"`:'')}>
       <td class="mx-no">${r.no?esc(String(r.no)):''}</td>${pf?'':`<td class="mx-mrn">${esc(r.mrn||'')}</td>`}
       <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}${pf?'':(r.added?' <span class="bk-tag add">추가</span>':(r.edited?' <span class="bk-tag">수정</span>':''))}</td>
       <td class="mx-th">${esc(r.th||'')}</td>
@@ -4950,7 +4976,8 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
       if(bks.length||bls.length){
         const span=Math.min(s1-s2+1,Math.max(1,...bks.concat(bls).map(x=>Math.ceil((x.dur||30)/30))));occ[doc]=s2+span;
         const arr=bks.some(b=>String(b.color||'').toLowerCase()==='#ffe599');
-        return `<td class="filled ${bks.length?'bkcell':'blk'}${arr?' arrcell':''}" rowspan="${span}">${bks.map(b=>bkCellHtml(b,pf,D)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxl}</td>`;}
+        const c0=bks.map(b=>String(b.color||'').toLowerCase()).find(c=>c&&c!=='#ffffff')||'';   // 시트(또는 수정본)에서 칠한 색 → 칸 배경(흰색과 섞어 글자가 읽히게)
+        return `<td class="filled ${bks.length?'bkcell':'blk'}${arr?' arrcell':''}" rowspan="${span}"${c0?` style="background:color-mix(in srgb, ${esc(c0)} 45%, white)"`:''}>${bks.map(b=>bkCellHtml(b,pf,D)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxl}</td>`;}
       if(cns.length)return `<td class="filled">${cxl}</td>`;
       return pf?'<td></td>':`<td class="bk-free" onclick="openBkEdit('${esc(D)}',null,{th:'${esc(doc)}',t:'${hm}'})" title="빈 칸: 누르면 ${esc(doc)} ${hm} 예약 추가"></td>`;
     }).join("");
