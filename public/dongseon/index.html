@@ -237,6 +237,8 @@
   .sheet-tbl td.filled{background:#fbfcff}
   /* 휴무 열 — 진회색(엑셀 시트처럼) */
   .sheet-tbl thead th.offhead{background:#7d8494;color:#fff}
+  .sheet-tbl thead th.extrahead{background:#fafbfd;border-style:dashed;color:#6b7c97}
+  .sheet-tbl thead th.extrahead .offsub{font-size:10.5px;font-weight:700;opacity:.85}
   .sheet-tbl thead th.offhead .offsub{font-size:10.5px;font-weight:700;opacity:.85}
   .sheet-tbl td.offcol{background:#a2a8b3}
   .sheet-tbl td.filled.offcol{background:#a2a8b3}
@@ -1030,7 +1032,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
-    <button class="btn" id="resvBtn" onclick="openResvScreen()" title="물리치료센터 예약리스트(Google Sheet) — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 예약관리</button>
+    <button class="btn" id="resvBtn" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
@@ -1212,7 +1214,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 <!-- 직원용 예약관리: 물리치료센터 예약리스트(Google Sheet) 자료 — 직원 전용(환자용 대기화면에는 내지 않음) -->
 <div id="resvScreen" class="resv-screen">
   <div class="slip-top">
-    <b><i data-lucide="calendar-check"></i> 직원용 예약관리</b><span class="hint">물리치료센터 예약리스트(Google Sheet) · 직원 전용</span>
+    <b><i data-lucide="calendar-check"></i> 4층 비급여 치료</b><span class="hint">물리치료센터 예약리스트(Google Sheet) · 직원 전용</span>
     <input type="date" id="resvDate" class="sheet-date-inp dark" onchange="setSheetDate(this.value)" title="지난/예정 날짜 보기">
     <span class="hint" id="resvSync"></span>
     <div class="spacer"></div>
@@ -3178,7 +3180,7 @@ async function runSelfTest(){
         manual:[{no:'1',mrn:'32751',name:'박준기',th:'임현주'},{no:'2',mrn:'30038',name:'류종하',th:'박승규'}]};
       const staff=treatSheetTableHtml(false,null,['충격파','신장분사']);const el=document.createElement('div');el.innerHTML=staff;
       const heads=[...el.querySelectorAll('thead th')].map(h=>h.firstChild?h.firstChild.textContent.trim():'');
-      eq('예약 시트: 열 = 그날 예약이 있는 치료사(시트 순서) + 예약과 짝이 안 된 기록의 담당자', heads, ['시간','Jennie','Hannah','박치료']);
+      eq('예약 시트: 열 = 그날 예약이 있는 치료사(시트 순서) + 시트에 없는 보드 카드는 \'시트 외\' 열 하나(의사 이름 열 없음)', heads, ['시간','Jennie','Hannah','시트 외']);
       const jen=[...el.querySelectorAll('td.filled')].find(td=>td.textContent.includes('함수진'));
       ok('예약 시트: 60분 예약은 두 칸(rowspan 2), 보드에서 진행 중이면 파란 칸(livecell)', !!jen&&jen.getAttribute('rowspan')==='2'&&jen.classList.contains('livecell'));
       ok('예약 시트: 시트에서 내원(연노랑)으로 칠한 예약은 도착(arrcell)', [...el.querySelectorAll('td.filled')].some(td=>td.textContent.includes('김다함')&&td.classList.contains('arrcell')));
@@ -4831,7 +4833,9 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
   if(bkItems.length||bkBlocks.length){ths.forEach(n=>{if(bkItems.some(x=>x.th===n)||bkBlocks.some(x=>x.th===n)||bkCancels.some(x=>x.th===n))docs.push(n);});}
   else{rooms.forEach(r=>{[...(meta(r).doctors||[]),...(meta(r).nurses||[]),...(meta(r).rads||[])]
     .forEach(n=>{if(n&&sheetStaffActiveOn(n,D)&&!docs.includes(n))docs.push(n);});});}   // 그날 재직 중인 사람만
-  rest.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});                    // 기록이 있으면 퇴직자도 그날엔 표시
+  if(bkItems.length||bkBlocks.length){   // 시트가 있는 날: 시트에 없는 보드 기록(3층 의사 배정 카드가 충격파·신장분사로 옮겨진 경우 등)은 의사 이름 열이 아니라 '시트 외' 열 하나에
+    rest.forEach(x=>{x.doc='시트 외';});if(rest.length&&!docs.includes('시트 외'))docs.push('시트 외');}
+  else rest.forEach(x=>{if(x.doc&&!docs.includes(x.doc))docs.push(x.doc);});               // 시트가 없는 날: 기록의 담당자 열(퇴직자도 그날엔 표시)
   const manualHtml='';   // (도수 명단은 위에서 manualBoardHtml 로 처리)
   if(!docs.length)return manualHtml+'<div class="wait-empty">담당자가 지정되지 않았습니다</div>';
   const off=n=>!isTh(n)&&isOffOn(n,D);
@@ -4868,7 +4872,8 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
   return `${manualHtml}<div class="sheet-wrap"><table class="sheet-tbl">
     <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>off(n)
       ?`<th class="offhead">${esc(n)}<div class="offsub">휴무</div></th>`
-      :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${WH[n]?`<div class="offsub">${WH[n].from}~${WH[n].to}</div>`:''}</th>`).join("")}</tr></thead>
+      :(n==='시트 외'?`<th class="extrahead">시트 외<div class="offsub">시트에 없는 보드 카드</div></th>`
+      :`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}${WH[n]?`<div class="offsub">${WH[n].from}~${WH[n].to}</div>`:''}</th>`)).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
     <div class="sheet-legend">${rooms.map(r=>`<span class="sp-room ${(SHEET_ABBR[r]||['?','sj'])[1]}">${(SHEET_ABBR[r]||['?'])[0]}</span> ${esc(r)}`).join(' &nbsp; ')} &nbsp;·&nbsp; 파란색 = 현재 치료 중${useItems?' &nbsp;·&nbsp; 예약 시트: 연파랑 칸 = 도착, 회색 칸 = 근무 외'+(pf?'':', 취소선 = 취소·변경, 색 점 = 시트 표시(마우스를 올리면 뜻)'):''}</div>`;
 }
