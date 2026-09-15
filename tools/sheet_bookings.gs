@@ -87,7 +87,14 @@ function parseDaySheet(grid, L) {
     manual.push({ no: numStr(val(r4, L.manualFrom)), mrn: mrn, name: nm, th: String(val(r4, L.manualFrom + 3)).trim(),
                   color: bg(r4, L.manualFrom + 2) || bg(r4, L.manualFrom + 1), note: note(r4, L.manualFrom + 2) || note(r4, L.manualFrom + 1) });
   }
-  return { therapists: therapists, items: items, blocks: blocks, cancels: cancels, manual: manual };
+  /* 표 아래 숫자칸(54행~): A열 라벨(당월 누적 상담수·평균 내원률·비급여 합계 등) + B열 값 → 직원용 예약관리 통계 카드 */
+  var stats = [];
+  for (var r5 = L.lastRow + 1; r5 <= L.lastRow + 7; r5++) {   // 54~60행(참고사항·당월 누적 상담수·평균 내원률·비급여 합계)까지만
+    var lab = String(val(r5, 1)).replace(/\s+/g, ' ').trim(); if (!lab) continue;
+    var sv = val(r5, 2); if (sv === '' || sv === null || sv === undefined) continue;
+    stats.push({ label: lab, value: (typeof sv === 'number') ? Math.round(sv * 100) / 100 : String(sv).trim() });
+  }
+  return { therapists: therapists, items: items, blocks: blocks, cancels: cancels, manual: manual, stats: stats };
 }
 /* '32750(1) 함수진1' · '16315(6) \n조기원15' · '9330(7)\n차중현97' → {mrn, room, name, visit} (안 맞으면 null) */
 function parsePatient(text) {
@@ -138,7 +145,7 @@ function syncDate(d) {
   if (!sheet) { Logger.log('탭 없음: ' + tab); return 'no-tab'; }
   var parsed = parseDaySheet(readGrid_(sheet), LAYOUT);
   var date = ymd_(d);
-  var doc = { date: date, file: ss.getName(), fileId: ss.getId(), tab: tab, therapists: parsed.therapists, items: parsed.items, blocks: parsed.blocks, cancels: parsed.cancels, manual: parsed.manual };
+  var doc = { date: date, file: ss.getName(), fileId: ss.getId(), tab: tab, therapists: parsed.therapists, items: parsed.items, blocks: parsed.blocks, cancels: parsed.cancels, manual: parsed.manual, stats: parsed.stats };
   var body = JSON.stringify(doc);
   var key = 'hash_' + date, h = hash_(body);
   if (props_().getProperty(key) === h) return 'unchanged';
