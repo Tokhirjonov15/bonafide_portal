@@ -260,11 +260,14 @@
   .sheet-blk{font-weight:700;color:#4b5563;font-size:.9em}
   .sheet-cxl{text-decoration:line-through;color:#9aa3b2;font-size:.9em;font-weight:700}
   /* 도수 명단 표(시트와 같은 열) */
-  .mx-tblwrap{overflow:auto;max-width:900px;margin:0 auto}
+  .mx-tblwrap{overflow:auto;max-width:900px;margin:0 auto;display:flex;gap:18px;align-items:flex-start;justify-content:center}
+  .mx-tblwrap.two{max-width:1240px}
+  .mx-tblwrap .mx-tbl{flex:1 1 0;min-width:360px}
   .mx-tbl{border-collapse:collapse;width:100%;background:#fff;font-size:clamp(13px,1.3vw,20px)}
   .mx-tbl th,.mx-tbl td{border:1px solid #b9c3d4;padding:8px 12px;text-align:center;font-weight:700;color:#223350}
   .mx-tbl thead th{background:#eef1f6;font-weight:800;color:#1f2a37;position:sticky;top:0}
-  .mx-tbl td.mx-no{width:64px;color:#6b7c97;font-variant-numeric:tabular-nums}
+  .mx-tbl th.mx-no,.mx-tbl td.mx-no{width:64px;white-space:nowrap}
+  .mx-tbl td.mx-no{color:#6b7c97;font-variant-numeric:tabular-nums}
   .mx-tbl td.mx-mrn{width:110px;color:#6b7c97;font-variant-numeric:tabular-nums}
   .mx-tbl td.mx-name{text-align:left;letter-spacing:1px}
   .mx-tbl td.mx-th{width:120px}
@@ -4701,9 +4704,11 @@ function manualBoardHtml(pf,manual,recs){
       <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}</td>
       <td class="mx-th">${esc(r.th||'')}</td>
       <td class="mx-st">${r.room?`<span class="sp-room ${(SHEET_ABBR[r.room]||['?','sd'])[1]}" title="${esc(r.room)}">${(SHEET_ABBR[r.room]||['?'])[0]}</span> `:''}<span class="mx-tag ${r.st}">${label[r.st]}</span></td></tr>`;
-  return `<div class="mx-tblwrap"><table class="mx-tbl">
-    <thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th><th class="mx-st">상태</th></tr></thead>
-    <tbody>${rows.map(tr).join('')}${extra.map(tr).join('')}</tbody></table></div>
+  const all=rows.concat(extra);
+  const per=all.length>10?Math.ceil(all.length/2):all.length;   // 10명 넘으면 두 표로 나눠 나란히(TV 한 화면에)
+  const chunks=[];for(let i=0;i<all.length;i+=per)chunks.push(all.slice(i,i+per));
+  const head=`<thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th><th class="mx-st">상태</th></tr></thead>`;
+  return `<div class="mx-tblwrap${chunks.length>1?' two':''}">${chunks.map(ch=>`<table class="mx-tbl">${head}<tbody>${ch.map(tr).join('')}</tbody></table>`).join('')}</div>
     <div class="sheet-legend">순서 = 예약 시트의 번호 &nbsp;·&nbsp; <span class="mx-tag arr">도착</span> 보드에 카드 있음 &nbsp;·&nbsp; <span class="mx-tag live">치료 중</span> 진행 중${pf?'':' &nbsp;·&nbsp; 시트 외 = 시트에 없는데 보드에 있는 환자'}</div>`;
 }
 /* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김 / dateYmd: 지난 날짜 조회) */
