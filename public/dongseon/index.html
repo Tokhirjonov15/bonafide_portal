@@ -259,6 +259,19 @@
   .sheet-tbl td.filled.blk{background:#d7dbe3}
   .sheet-blk{font-weight:700;color:#4b5563;font-size:.9em}
   .sheet-cxl{text-decoration:line-through;color:#9aa3b2;font-size:.9em;font-weight:700}
+  /* 도수 명단 표(시트와 같은 열) */
+  .mx-tblwrap{overflow:auto;max-width:900px;margin:0 auto}
+  .mx-tbl{border-collapse:collapse;width:100%;background:#fff;font-size:clamp(13px,1.3vw,20px)}
+  .mx-tbl th,.mx-tbl td{border:1px solid #b9c3d4;padding:8px 12px;text-align:center;font-weight:700;color:#223350}
+  .mx-tbl thead th{background:#eef1f6;font-weight:800;color:#1f2a37;position:sticky;top:0}
+  .mx-tbl td.mx-no{width:64px;color:#6b7c97;font-variant-numeric:tabular-nums}
+  .mx-tbl td.mx-mrn{width:110px;color:#6b7c97;font-variant-numeric:tabular-nums}
+  .mx-tbl td.mx-name{text-align:left;letter-spacing:1px}
+  .mx-tbl td.mx-th{width:120px}
+  .mx-tbl td.mx-st{width:130px;white-space:nowrap}
+  .mx-tbl tr.arr td{background:#dbeafe}
+  .mx-tbl tr.live td{background:#bfdbfe;color:#1e40af}
+  .mx-tbl tr.extra td{background:#fafbfd;border-style:dashed}
   /* 도수 명단 보드 */
   .mx-wrap{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;font-size:clamp(13px,1.25vw,19px)}
   .mx-col{flex:1 1 230px;min-width:210px;max-width:420px;background:#fff;border:1px solid #d5dce8;border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(20,40,80,.06)}
@@ -3136,12 +3149,12 @@ async function runSelfTest(){
       ok('예약 시트(환자 화면): 이름 가림, 차트번호·메모·취소·차단 문구 없음', !pt.includes('함수진')&&pt.includes(maskName('함수진'))&&!pt.includes('32750')&&!pt.includes('실손 확인')&&!pt.includes('김민재')&&!pt.includes('1진 모니터링'));
       const saso=treatSheetTableHtml(false,null,['SASO','자동차도수']);
       {const el2=document.createElement('div');el2.innerHTML=saso;
-       const heads=[...el2.querySelectorAll('.mx-head span')].map(h=>h.textContent);
-       eq('도수 명단 보드: 열 = 시트의 치료사(시트 순서), 시간표 없음', [heads, !!el2.querySelector('.sheet-tbl')], [['임현주','박승규'], false]);
+       const heads=[...el2.querySelectorAll('.mx-tbl thead th')].map(h=>h.textContent);
+       eq('도수 명단 표: 시트와 같은 열(번호·환자번호·성함·치료사)+상태, 시간표 없음', [heads, !!el2.querySelector('.sheet-tbl')], [['번호','환자번호','성함','치료사','상태'], false]);
        const r1=[...el2.querySelectorAll('.mx-row')].find(r=>r.textContent.includes('박준기'));
-       ok('도수 명단 보드: 보드에 카드 있는 환자(32751)는 도착/치료 중 표시, 번호 순', !!r1&&(r1.classList.contains('arr')||r1.classList.contains('live'))&&r1.querySelector('.mx-no').textContent==='1'&&saso.includes('류종하'));
+       ok('도수 명단 표: 보드에 카드 있는 환자(32751)는 도착/치료 중 줄, 시트 번호 순', !!r1&&(r1.classList.contains('arr')||r1.classList.contains('live'))&&r1.querySelector('.mx-no').textContent==='1'&&saso.includes('류종하')&&[...el2.querySelectorAll('tbody td.mx-no')].map(t=>t.textContent).slice(0,2).join()==='1,2');
        const pt2=treatSheetTableHtml(true,null,['SASO','자동차도수']);
-       ok('도수 명단 보드(환자 화면): 이름 가림, 차트번호 없음', !pt2.includes('박준기')&&pt2.includes(maskName('박준기'))&&!pt2.includes('32751'));}
+       ok('도수 명단 표(환자 화면): 이름 가림, 환자번호 열 없음', !pt2.includes('박준기')&&pt2.includes(maskName('박준기'))&&!pt2.includes('32751')&&!pt2.includes('환자번호'));}
       eq('예약 시트: 카드 배지 수 = 예약 + 짝 없는 기록 / 도수는 기록 + 목록', [sheetCount(null,SHEET_GROUPS[0]),sheetCount(null,SHEET_GROUPS[1])], [3,3]);
       BOOKINGS={};
       ok('예약 시트 없음: 기존 방식(방 배정 담당자 열)', treatSheetTableHtml(false,null,['충격파','신장분사']).includes('박치료'));
@@ -4673,6 +4686,7 @@ window.printSheet=function(key){
     .sp-room.sk{background:#f59e0b}.sp-room.sj{background:#8b5cf6}.sp-room.ss{background:#0ea5e9}.sp-room.sd{background:#10b981}
     .bk-code{display:inline-block;font-size:9.5px;font-weight:700;padding:0 4px;border-radius:4px;background:#e5e7eb;margin-right:3px}.bk-flag{display:inline-block;width:8px;height:8px;border:1px solid #999;margin-right:3px}
     .bk-sub{font-size:9.5px;color:#777;margin-left:3px}td.arrcell{background:#dbeafe}td.livecell{background:#bfdbfe}td.blk{background:#d7dbe3}.sheet-blk{color:#4b5563}.sheet-cxl{text-decoration:line-through;color:#999}
+    .mx-tbl{border-collapse:collapse;width:100%;font-size:12px}.mx-tbl th,.mx-tbl td{border:1px solid #666;padding:4px 7px;text-align:center}.mx-tbl td.mx-name{text-align:left}.mx-tbl tr.arr td{background:#dbeafe}.mx-tbl tr.live td{background:#bfdbfe}
     .mx-wrap{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}.mx-col{flex:1 1 200px;border:1px solid #666;border-radius:6px}.mx-head{display:flex;justify-content:space-between;padding:4px 8px;font-weight:700;background:#eef1f6}
     .mx-row{display:flex;gap:6px;align-items:center;padding:3px 8px;border-top:1px solid #ccc}.mx-row.arr{background:#dbeafe}.mx-row.live{background:#bfdbfe}.mx-no{min-width:18px;text-align:right;color:#777}.mx-name{flex:1}.mx-tag{font-size:9.5px;border:1px solid #999;border-radius:6px;padding:0 5px}
     .bk-manual{margin:0 0 8px}.bk-manual-t{font-weight:700;margin-bottom:3px}.bk-man{display:inline-block;border:1px solid #999;border-radius:6px;padding:1px 6px;margin:0 6px 4px 0}.bk-man.arr,.bk-man.live{background:#dbeafe}.bk-man i{font-style:normal;color:#666;margin-left:3px}
@@ -4687,15 +4701,22 @@ window.printSheet=function(key){
 /* 도수(Manual Tx) 명단 보드 — 열 = 치료사(시트 순서), 행 = 시트 번호순. 보드 카드와 차트번호(없으면 이름)로 짝지어 '도착/치료 중' 표시.
    시트에 없는데 보드에 있는 SASO·자동차도수 환자는 맨 오른쪽 '시트 외' 열에. pf=true(환자용): 이름 가림, 차트번호·메모 없음 */
 function manualBoardHtml(pf,manual,recs){
-  const used=new Set();const cols=[];const colOf={};
-  const put=(th,row)=>{if(!colOf[th]){colOf[th]={th,rows:[]};cols.push(colOf[th]);}colOf[th].rows.push(row);};
+  /* 시트(BK~BN)와 같은 한 장의 표: 번호 · 환자번호 · 성함 · 치료사, 시트 순서 그대로. 보드 카드와 짝지어 상태(대기/도착/치료 중) 열을 더한다.
+     시트에 없는데 보드에 있는 SASO·자동차도수 환자는 표 아래에 '시트 외' 줄로. 환자용 화면(pf)은 이름 가림·환자번호 열 없음 */
+  const used=new Set();const rows=[];
   manual.forEach(m=>{
     const rec=recs.find(x=>!used.has(x)&&((m.mrn&&x.mrn&&String(x.mrn).trim()===String(m.mrn).trim())||(!m.mrn&&m.name&&(x.name||'').trim()===m.name)))||null;if(rec)used.add(rec);
-    put(String(m.th||'').trim()||'미지정',{no:m.no,name:m.name,mrn:m.mrn,note:m.note,room:rec?rec.room:'',st:rec?(rec.live?'live':'arr'):''});});
-  recs.filter(x=>!used.has(x)).forEach(x=>put('시트 외',{no:'',name:x.name,mrn:x.mrn,note:'',room:x.room,st:x.live?'live':'arr',extra:true}));
+    rows.push({no:m.no,name:m.name,mrn:m.mrn,th:m.th,note:m.note,room:rec?rec.room:'',st:rec?(rec.live?'live':'arr'):''});});
+  const extra=recs.filter(x=>!used.has(x)).map(x=>({no:'',name:x.name,mrn:x.mrn,th:x.doc||'',note:'',room:x.room,st:x.live?'live':'arr',extra:true}));
   const label={live:'치료 중',arr:'도착',"":'대기'};
-  return `<div class="mx-wrap">${cols.map(c=>`<div class="mx-col${c.th==='시트 외'?' extra':''}"><div class="mx-head"><span>${esc(c.th)}</span><b>${c.rows.length}</b></div>
-      ${c.rows.map(r=>`<div class="mx-row ${r.st}"${(!pf&&r.note)?` title="${esc(r.note)}"`:''}>${r.no?`<span class="mx-no">${esc(r.no)}</span>`:'<span class="mx-no">·</span>'}<span class="mx-name">${esc(pf?maskName(r.name):dispName(r.name))}</span>${(!pf&&r.mrn)?`<span class="sp-mrn">${esc(r.mrn)}</span>`:''}${r.room?`<span class="sp-room ${(SHEET_ABBR[r.room]||['?','sd'])[1]}" title="${esc(r.room)}">${(SHEET_ABBR[r.room]||['?'])[0]}</span>`:''}<span class="mx-tag ${r.st}">${label[r.st]}</span></div>`).join('')}</div>`).join('')}</div>
+  const tr=r=>`<tr class="mx-row ${r.st}${r.extra?' extra':''}"${(!pf&&r.note)?` title="${esc(r.note)}"`:''}>
+      <td class="mx-no">${r.no?esc(r.no):(r.extra?'시트 외':'')}</td>${pf?'':`<td class="mx-mrn">${esc(r.mrn||'')}</td>`}
+      <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}</td>
+      <td class="mx-th">${esc(r.th||'')}</td>
+      <td class="mx-st">${r.room?`<span class="sp-room ${(SHEET_ABBR[r.room]||['?','sd'])[1]}" title="${esc(r.room)}">${(SHEET_ABBR[r.room]||['?'])[0]}</span> `:''}<span class="mx-tag ${r.st}">${label[r.st]}</span></td></tr>`;
+  return `<div class="mx-tblwrap"><table class="mx-tbl">
+    <thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th><th class="mx-st">상태</th></tr></thead>
+    <tbody>${rows.map(tr).join('')}${extra.map(tr).join('')}</tbody></table></div>
     <div class="sheet-legend">순서 = 예약 시트의 번호 &nbsp;·&nbsp; <span class="mx-tag arr">도착</span> 보드에 카드 있음 &nbsp;·&nbsp; <span class="mx-tag live">치료 중</span> 진행 중${pf?'':' &nbsp;·&nbsp; 시트 외 = 시트에 없는데 보드에 있는 환자'}</div>`;
 }
 /* 시트 표 HTML — 대기화면 안에 삽입 (pf=true: 환자용 → 이름 마스킹, 병록번호 숨김 / dateYmd: 지난 날짜 조회) */

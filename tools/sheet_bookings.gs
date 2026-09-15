@@ -82,7 +82,8 @@ function parseDaySheet(grid, L) {
   for (var r4 = L.firstRow; r4 <= L.lastRow + 20; r4++) {
     var mrn = numStr(val(r4, L.manualFrom + 1)), nm = String(val(r4, L.manualFrom + 2)).trim();
     if (!mrn && !nm) continue;
-    if (!/^[가-힣A-Za-z]/.test(nm) || /^(null|0)$/i.test(mrn)) continue;   // 빈 행의 수식 결과('NULL', '0') 는 건너뜀
+    if (/^(null|0)$/i.test(mrn) || /^0$/.test(nm)) continue;                 // 빈 행의 수식 결과('NULL', '0') 는 건너뜀
+    if (!/^\d+$/.test(mrn) && !/^[가-힣A-Za-z]/.test(nm)) continue;          // 환자번호(숫자)나 성함 중 하나는 있어야 한 줄로 친다(성함이 아직 비어 있어도 표시)
     manual.push({ no: numStr(val(r4, L.manualFrom)), mrn: mrn, name: nm, th: String(val(r4, L.manualFrom + 3)).trim(),
                   color: bg(r4, L.manualFrom + 2) || bg(r4, L.manualFrom + 1), note: note(r4, L.manualFrom + 2) || note(r4, L.manualFrom + 1) });
   }
