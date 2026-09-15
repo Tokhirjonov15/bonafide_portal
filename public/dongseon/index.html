@@ -153,6 +153,7 @@
   .wait-screen.show{display:flex}
   .wait-bg{position:absolute;inset:0;z-index:0;background:radial-gradient(120% 90% at 12% 0%,#eef5ff 0%,rgba(238,245,255,0) 55%),radial-gradient(120% 100% at 100% 100%,#f3edfb 0%,rgba(243,237,251,0) 55%),linear-gradient(165deg,#eef3fb 0%,#e7eef8 48%,#eef0f9 100%);background-size:cover;background-position:center}
   .wait-bg.has-img::after{content:"";position:absolute;inset:0;background:rgba(245,248,253,.55);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  .wait-bg.idle::after{display:none}   /* 빈 화면 배경은 흐림·밝힘 없이 그대로 */
   .wait-controls{position:relative;z-index:3;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(255,255,255,.9);border-bottom:1px solid rgba(20,40,80,.08);flex-wrap:wrap;flex-shrink:0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .wait-controls.hidden{display:none}
   .wait-msg-input{flex:1;min-width:200px;padding:8px 12px;border:1px solid #cdd7e3;border-radius:10px;font-size:14px;color:#26344a;background:#fff;outline:0}
@@ -1195,6 +1196,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="wait-ctl" title="상단 안내 문구 글자 크기 (%)"><i data-lucide="megaphone"></i> 안내 <input id="waitHeadInp" type="number" min="50" max="300" step="10" onchange="setWaitHeadPct(this.value)">%</span>
     <label class="btn sm" style="cursor:pointer"><i data-lucide="image"></i> 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitBg(event)"></label>
     <button class="btn sm" onclick="clearWaitBg()">배경 없음</button>
+    <label class="btn sm" style="cursor:pointer" title="검사실 보기(C-Arm, Sono, 근전도, 처치)에 대기 환자가 한 명도 없을 때 대신 보여 줄 이미지"><i data-lucide="image-off"></i> 빈 화면 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitIdleBg(event)"></label>
+    <button class="btn sm" onclick="clearWaitIdleBg()" title="빈 화면 배경 지우기">빈 화면 배경 없음</button>
     <button class="btn sm" onclick="toggleWaitControls()"><i data-lucide="eye-off"></i> 컨트롤 숨기기</button>
     <button class="btn sm" onclick="closeWaitScreen()">✕ 닫기</button>
   </div>
@@ -2999,6 +3002,18 @@ async function runSelfTest(){
      try{ROOMS=['C-Arm','Sono','근전도검사','처치실','x-ray실'];ROOM_META={};waitRotSec=0;const now=new Date().toISOString();
       const mk=(id,room,st,ord)=>({id,name:'환자'+id,route:[room],step:0,status:st,ord,enteredAt:now,notes:{}});
       data=[mk('a','C-Arm','대기',1),mk('b','Sono','진행',2),mk('c','근전도검사','대기',3),mk('d','처치실','준비',4),mk('e','x-ray실','대기',5)];
+      {const _ib=waitIdleBg,_wr2=waitRooms.slice();try{waitRooms=[];toggleWaitView('__EXAM__');waitIdleBg='data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+        data=[mk('a','C-Arm','대기',1),mk('d','처치실','준비',4)];renderWaitScreen();
+        const titles=[...document.querySelectorAll('#waitCols .wait-ct span')].map(x=>x.textContent);
+        eq('검사실 보기: 환자 없는 칸(Sono)은 숨김, 안내 문구 없음', [titles, document.querySelector('#waitCols .wait-empty')?1:0, waitIdle], [['실시간 영상유도하 주사','근전도검사, 처치'],0,false]);
+        data=[mk('a','C-Arm','대기',1)];renderWaitScreen();
+        eq('검사실 보기: 한 칸에만 있으면 그 칸만', [...document.querySelectorAll('#waitCols .wait-col')].length, 1);
+        data=[];renderWaitScreen();const bgEl=document.getElementById('waitBg');
+        ok('검사실 보기: 세 칸 모두 비면 목록 없이 빈 화면 배경만(흐림 없이)', waitIdle&&!document.querySelector('#waitCols .wait-col')&&bgEl.classList.contains('idle')&&/R0lGOD/.test(bgEl.style.backgroundImage));
+        data=[mk('b','Sono','진행',2)];renderWaitScreen();
+        ok('검사실 보기: 환자가 다시 오면 평소 배경으로 복귀', !waitIdle&&!bgEl.classList.contains('idle'));
+       }finally{waitIdleBg=_ib;waitIdle=false;applyWaitBg();waitRooms=_wr2;}}
+      data=[mk('a','C-Arm','대기',1),mk('b','Sono','진행',2),mk('c','근전도검사','대기',3),mk('d','처치실','준비',4),mk('e','x-ray실','대기',5)];
       waitRooms=['x-ray실'];toggleWaitView('__EXAM__');
       eq('검사실 보기: 칩 켜면 그 방들만 선택(x-ray실 해제)', waitRooms.slice().sort(), ['C-Arm','Sono','근전도검사','처치실']);
       const cols=[...document.querySelectorAll('#waitCols .wait-col')];
@@ -4384,9 +4399,11 @@ let waitCur=(function(){const n=parseInt(localStorage.getItem("patientBoard_wait
 let waitRooms=Array.isArray(waitPresets[waitCur].rooms)?waitPresets[waitCur].rooms.slice():[];
 let waitMsg=waitPresets[waitCur].msg||"";
 let waitBg=waitPresets[waitCur].bg||"";
+let waitIdleBg=waitPresets[waitCur].idleBg||"";   // 빈 화면 배경: 검사실 보기의 세 칸에 환자가 한 명도 없을 때 대신 보여 줄 이미지(양식별)
+let waitIdle=false;                                // 지금 빈 화면인가(renderWaitScreen 이 정함)
 function saveWaitPresets(){ try{localStorage.setItem("patientBoard_waitpresets",JSON.stringify(waitPresets));}catch(e){alert("대기화면 양식 저장 실패 — 배경 이미지가 너무 클 수 있어요. 더 작은 이미지를 쓰거나 배경을 비워 주세요.");} }
 function loadWaitPreset(i){ if(i<0||i>=5)return; waitCur=i; localStorage.setItem("patientBoard_waitcur",String(i));
-  const p=waitPresets[i]||{}; waitMsg=p.msg||""; waitBg=p.bg||""; waitRooms=Array.isArray(p.rooms)?p.rooms.slice():[];
+  const p=waitPresets[i]||{}; waitMsg=p.msg||""; waitBg=p.bg||""; waitIdleBg=p.idleBg||""; waitRooms=Array.isArray(p.rooms)?p.rooms.slice():[];
   applyWaitBg(); renderWaitScreen(); const inp=document.getElementById("waitMsgInput"); if(inp)inp.value=waitMsg; }
 function renameWaitPreset(i){ if(i<0||i>=5)return; const cur=(waitPresets[i]&&waitPresets[i].name)||("양식 "+(i+1)); const n=prompt("이 양식의 이름",cur); if(n==null)return; waitPresets[i].name=(n.trim()||("양식 "+(i+1))); saveWaitPresets(); renderWaitPresetSel(); }
 function renderWaitPresetSel(){ const el=document.getElementById("waitPresetSel"); if(!el)return;
@@ -4456,7 +4473,12 @@ function setWaitMsg(v){waitMsg=v;waitPresets[waitCur].msg=v;saveWaitPresets();co
 function onWaitBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)ev.target.value="";if(!f)return;
   const r=new FileReader();r.onload=()=>{waitBg=r.result;waitPresets[waitCur].bg=r.result;saveWaitPresets();applyWaitBg();};r.readAsDataURL(f);}
 function clearWaitBg(){waitBg="";waitPresets[waitCur].bg="";saveWaitPresets();applyWaitBg();}
-function applyWaitBg(){const el=document.getElementById("waitBg");if(!el)return;el.style.backgroundImage=waitBg?`url("${waitBg}")`:"";el.classList.toggle("has-img",!!waitBg);}
+function applyWaitBg(){const el=document.getElementById("waitBg");if(!el)return;
+  const idle=waitIdle&&!!waitIdleBg;const src=idle?waitIdleBg:waitBg;   // 빈 화면이면 빈 화면 배경(있을 때만), 아니면 평소 배경
+  el.style.backgroundImage=src?`url("${src}")`:"";el.classList.toggle("has-img",!!src);el.classList.toggle("idle",idle);}
+function onWaitIdleBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)ev.target.value="";if(!f)return;
+  const r=new FileReader();r.onload=()=>{waitIdleBg=r.result;waitPresets[waitCur].idleBg=r.result;saveWaitPresets();applyWaitBg();};r.readAsDataURL(f);}
+function clearWaitIdleBg(){waitIdleBg="";waitPresets[waitCur].idleBg="";saveWaitPresets();applyWaitBg();}
 function toggleWaitControls(){waitHideControls=!waitHideControls;localStorage.setItem("patientBoard_waithide",waitHideControls?"1":"0");applyWaitControls();}
 function applyWaitControls(){const c=document.getElementById("waitControls");if(c)c.classList.toggle("hidden",waitHideControls);const inp=document.getElementById("waitMsgInput");if(inp)inp.value=waitMsg;
   const ri=document.getElementById("waitRotInp");if(ri)ri.value=waitRotSec;
@@ -4496,6 +4518,12 @@ function renderWaitScreen(){
   cols.classList.toggle("rot",rot&&showRs.length===1);   // '한 방 크게' 배치는 단위가 칸 하나일 때만
   const dotsHtml=rot?`<div class="wait-rot-dots">${units.map((u,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(u.view?u.view.chip:waitColTitle(u.keys[0]))}"></span>`).join("")}</div>`:'';
   document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.some(k=>!!sheetGroupOf(k)));
+  /* 검사실 보기(C-Arm / Sono / 근전도·처치): 환자가 없는 칸은 아예 숨기고('현재 대기 환자 없음' 없이), 세 칸 모두 비면 목록 대신 '빈 화면 배경'만 (2026-09-15 원장님 지시) */
+  const viewCnt=k=>{const vc=waitViewCol(k);if(!vc)return 1;return data.filter(p=>!p.discharged&&!p.out&&p.route.length&&vc.rooms.includes(curRoom(p))).length;};
+  const hadView=showRs.some(k=>!!waitViewCol(k));
+  if(hadView)showRs=showRs.filter(k=>viewCnt(k)>0);
+  waitIdle=hadView&&showRs.length===0;applyWaitBg();
+  if(waitIdle){cols.innerHTML=dotsHtml;return;}
   cols.innerHTML=showRs.map(room=>{
     const sg=sheetGroupOf(room);
     if(sg){
