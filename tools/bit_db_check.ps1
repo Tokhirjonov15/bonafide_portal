@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 function Say($s) { Write-Host $s }
 function Mask($n) { $s = [string]$n; if ($s.Length -ge 2) { return $s.Substring(0,1) + '○' + $s.Substring($s.Length-1) }; return $s }
-function Q($cn, $sql) { $cmd = $cn.CreateCommand(); $cmd.CommandText = $sql; $cmd.CommandTimeout = 15; $r = $cmd.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close(); return $t }
+function Q($cn, $sql) { $cmd = $cn.CreateCommand(); $cmd.CommandText = $sql; $cmd.CommandTimeout = 15; $r = $cmd.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close(); return ,$t }
 
 Say "== 1. 이 컴퓨터의 SQL Server =="
 $svcs = Get-Service | Where-Object { $_.Name -like 'MSSQL*' -or $_.Name -like 'SQLBrowser' -or $_.Name -like 'SQLAgent*' }
