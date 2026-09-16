@@ -47,7 +47,12 @@ $BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'b
 New-Item -ItemType Directory -Force $StateDir | Out-Null
 $LogFile = Join-Path $StateDir 'agent.log'; $StateFile = Join-Path $StateDir 'state.json'
 $script:StartedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'); $script:LastErr = ''; $script:LastErrAt = ''; $script:CycMax = 0
-function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write-Host $line; try { Add-Content $LogFile $line -Encoding UTF8 } catch {}
+# 로그는 큐에 넣고 파일에 몰아서 쓴다: 다른 프로그램(tail -f 등)이 로그 파일을 잡고 있어 쓰기가 실패하면 줄을 버리지 않고 다음에 다시 쓴다 (2026-09-16 실제로 30분간 로그가 비었던 사고)
+$script:LogQ = New-Object System.Collections.Generic.List[string]
+function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write-Host $line
+  $script:LogQ.Add($line); if ($script:LogQ.Count -gt 500) { $script:LogQ.RemoveRange(0, $script:LogQ.Count - 500) }
+  try { $fs = [IO.File]::Open($LogFile, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite); $sw = New-Object IO.StreamWriter($fs, (New-Object Text.UTF8Encoding $false))
+        foreach ($l in $script:LogQ) { $sw.WriteLine($l) }; $sw.Close(); $script:LogQ.Clear() } catch {}
   if ($m -match '오류|실패') { $script:LastErr = $m; $script:LastErrAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') } }
 function LogTail($n = 5) { try { return ((Get-Content $LogFile -Tail $n -Encoding UTF8 -ErrorAction Stop) -join "`n") } catch { return '' } }
 function TrimLog() { try { if ((Get-Item $LogFile -ErrorAction SilentlyContinue).Length -gt 2MB) { Get-Content $LogFile -Tail 2000 | Set-Content $LogFile -Encoding UTF8 } } catch {} }
@@ -157,8 +162,10 @@ ORDER BY o.OcmAcpDtm, o.OcmNum
 "@
 
 # ── 상태 코드 분류 (DtlMst COMSTT, 2026-09-16 실측 36개) ──
-$ACTIVE   = @('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','TN','FN','TC','FC','TT','PN','PC','PT')   # 접수 계열(원내에 왔거나 왔다 간 환자)
-$RETAIN   = @('HN','HC','HT')                       # 보류
+$ACTIVE   = @('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','WH','TN','FN','TC','FC','TT','PN','PC','PT')   # 접수 계열(원내에 왔거나 왔다 간 환자)
+$RETAIN   = @('HN','HC','HT','WH')                  # 보류 (WH 는 COMSTT 표에 없지만 2026-09-16 실데이터에 나옴 — 접수 보류로 취급)
+$SKIP     = @('WR','NR','HR','TR','FR','PR','CR','SR')   # 예약만(미도착)·예약 취소 — 보내지 않음. O*/V* 입원도 보내지 않음
+$script:UnknownStt = @{}
 $DONEWAIT = @('TN','FN','TC','FC','TT')             # 진료 완료 = 수납 대기
 $PAID     = @('PN','PC','PT')                       # 수납 완료
 $CANCEL   = @('CN')
@@ -211,6 +218,9 @@ function Poll($st, $first) {
     $k = ([string]$r.k -replace '\D', ''); if (-not $k -or $done.ContainsKey($k)) { continue }; $done[$k] = 1; $n++   # OcmNum 은 char(10) 앞 공백 패딩('    182357') → 숫자만. 캐스트 채널(bitplus_watcher)과 같은 문서 id 가 된다. RsvInf 조인으로 같은 접수가 두 줄이면 첫 줄만
     $stt = [string]$r.stt; $prev = $st.seen[$k]
     $isActive = ($ACTIVE -contains $stt)
+    if (-not $isActive -and -not ($CANCEL -contains $stt) -and -not ($SKIP -contains $stt) -and $stt -notmatch '^[OV]' -and -not $script:UnknownStt.ContainsKey($stt)) {
+      $script:UnknownStt[$stt] = 1; Log "알 수 없는 상태 코드 '$stt' (ocm$k) — 보내지 않음. 필요하면 `$ACTIVE/`$SKIP 에 추가"   # 한 코드당 한 번만
+    }
     if ($first -and -not $SendExistingOnStart) {   # 시작 스냅샷: 이미 접수된 건은 보낸 것으로 간주(재시작 때 오늘 접수분을 다시 올리지 않기 위해)
       if ($isActive) { $st.sent[$k] = (CmdOf $stt $null) }
       $st.seen[$k] = $stt; continue
