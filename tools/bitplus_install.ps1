@@ -32,8 +32,21 @@ function ReadSecret($prompt, $file) {   # 비밀번호를 입력받아 파일에
   return $plain.Length
 }
 function RemoveSecret($file) { if (Test-Path $file) { icacls $file /grant "$($env:USERNAME):F" | Out-Null; Remove-Item $file -Force } }
-function KillScript($name) {   # '-File …<name>' 로 실행된 PowerShell 만 종료 (파일명이 우연히 들어간 다른 창·편집기·이 설치 창은 건드리지 않음)
-  Get-Process powershell -ErrorAction SilentlyContinue | Where-Object { if ($_.Id -eq $PID) { return $false }; try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine -match ('-File\s+"?[^"\s]*' + [regex]::Escape($name)) } catch { $false } } | Stop-Process -Force -ErrorAction SilentlyContinue
+function KillScript($name, $task) {   # 작업을 멈추고, '-File …<name>' 로 실행된 PowerShell 을 모두 종료 (파일명이 우연히 들어간 다른 창·편집기·이 설치 창은 건드리지 않음)
+  if ($task) { Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue }
+  $pat = '-File\s+"?[^"\s]*' + [regex]::Escape($name)
+  $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match $pat })
+  foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep -Milliseconds 800
+  $left = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match $pat })
+  if ($left.Count) { Write-Host "   !! 이전 $name 프로세스를 끝내지 못함(PID $($left.ProcessId -join ',')) — 관리자 PowerShell 에서 다시 실행하거나 PC 재로그온" -ForegroundColor Red }
+  elseif ($procs.Count) { Write-Host "   이전 $name 프로세스 $($procs.Count)개 종료" }
+}
+function VerifyStarted($log, $since) {   # 시작 뒤 로그에 새 '시작' 줄이 찍혔는지 확인 — 옛 프로세스가 살아 있으면 새 인수(우선순위 등)가 적용되지 않는다
+  Start-Sleep 6
+  $ok = $false; if (Test-Path $log) { $ok = @(Get-Content $log -Tail 8 -Encoding UTF8 | Where-Object { $_ -match '시작' -and $_.Length -ge 19 -and ([DateTime]::ParseExact($_.Substring(0, 19), 'yyyy-MM-dd HH:mm:ss', $null) -ge $since) }).Count -gt 0 }
+  if (-not $ok) { Write-Host "   !! 새로 시작된 흔적이 로그에 없음 — 작업이 시작되지 않았거나 옛 프로세스가 남아 있음: $log" -ForegroundColor Red }
+  return $ok
 }
 function RegisterTask($name, $args_, $log) {   # 로그온 시 자동 시작(관리자 아니어도 현재 사용자 작업). 실행 시간 제한 없음, 죽으면 1분 뒤 재시작, 5분마다 생존 확인
   try {
@@ -63,7 +76,7 @@ Write-Host "① 스크립트 복사: $Dest\bitplus_watcher.ps1"
 
 $secret = Join-Path $Dest 'bitplus_watcher.secret'
 if ($ResetPw) { RemoveSecret $secret; Write-Host "② 기존 bitbot 비밀번호 파일 삭제(-ResetPw)" }
-if (-not (Test-Path $secret)) { $n = ReadSecret "동선관리 bitbot 계정 비밀번호" $secret; Write-Host "② bitbot 비밀번호 파일 저장(현재 사용자만 접근): $secret  ($n자)" }
+if (-not (Test-Path $secret)) { $n = ReadSecret "동선관리 bitbot 계정 비밀번호" $secret; Write-Host "② bitbot 비밀번호 파일 저장(현재 사용자만 접근): $secret  (${n}자)" }
 else { Write-Host "② bitbot 비밀번호 파일 이미 있음: $secret  (다시 입력하려면 -ResetPw)" }
 
 # 다른 에이전트 PC 목록 — 감시 스크립트(에이전트 확인)와 에이전트(우선순위)가 함께 읽는다
@@ -81,9 +94,11 @@ if ($isAdmin) {
   Write-Host "③ 방화벽: TCP 9000 인바운드(같은 네트워크) 허용"
 } else { Write-Host "③ (관리자 아님) 방화벽 규칙은 건너뜀 — 다른 PC의 캐스트가 안 오면 관리자 PowerShell에서 다시 실행" -ForegroundColor Yellow }
 
-KillScript 'bitplus_watcher.ps1'   # 이전 수동 실행분 정리
 Write-Host "④ 감시 스크립트:"
+KillScript 'bitplus_watcher.ps1' 'BitPlusWatcher'   # 작업 정지 + 이전 프로세스 정리(옛 프로세스가 남으면 새 스크립트·인수가 적용되지 않음)
+$since = Get-Date
 RegisterTask 'BitPlusWatcher' "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bitplus_watcher.ps1`" -Pc $Pc" (Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log')
+$null = VerifyStarted (Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log') $since
 
 # ── ⑤ DB 에이전트 (-Agent) ──
 if ($Agent) {
@@ -93,7 +108,7 @@ if ($Agent) {
   Write-Host "⑤ DB 에이전트 복사: $Dest\bit_db_agent.ps1  (bitbot 비밀번호는 감시 스크립트의 .secret 을 같이 씀)"
   $sqlSecret = Join-Path $Dest 'bit_db_agent.sql.secret'
   if ($ResetSqlPw) { RemoveSecret $sqlSecret; Write-Host "   기존 dongseon_ro 비밀번호 파일 삭제(-ResetSqlPw)" }
-  if (-not (Test-Path $sqlSecret)) { $n = ReadSecret "비트 DB 읽기 전용 계정 dongseon_ro 비밀번호" $sqlSecret; Write-Host "   dongseon_ro 비밀번호 파일 저장: $sqlSecret  ($n자)" }
+  if (-not (Test-Path $sqlSecret)) { $n = ReadSecret "비트 DB 읽기 전용 계정 dongseon_ro 비밀번호" $sqlSecret; Write-Host "   dongseon_ro 비밀번호 파일 저장: $sqlSecret  (${n}자)" }
   else { Write-Host "   dongseon_ro 비밀번호 파일 이미 있음: $sqlSecret  (다시 입력하려면 -ResetSqlPw)" }
   if ($isAdmin) {
     if (-not (Get-NetFirewallRule -DisplayName 'BitPlus DB Agent (TCP 9001)' -ErrorAction SilentlyContinue)) {
@@ -101,8 +116,10 @@ if ($Agent) {
     }
     Write-Host "   방화벽: TCP 9001 인바운드(같은 네트워크) 허용 — 다른 PC 가 이 에이전트의 상태를 묻는 포트"
   } else { Write-Host "   (관리자 아님) 9001 방화벽 규칙은 건너뜀 — 다른 PC 의 감시 스크립트가 이 에이전트를 못 보면 관리자 PowerShell 에서 다시 실행" -ForegroundColor Yellow }
-  KillScript 'bit_db_agent.ps1'
+  KillScript 'bit_db_agent.ps1' 'BitDbAgent'
+  $since = Get-Date
   RegisterTask 'BitDbAgent' "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bit_db_agent.ps1`" -Pc `"DB-$Pc`" -Priority $Priority" (Join-Path $env:LOCALAPPDATA 'bit_db_agent\agent.log')
+  $null = VerifyStarted (Join-Path $env:LOCALAPPDATA 'bit_db_agent\agent.log') $since
 } elseif (Get-ScheduledTask BitDbAgent -ErrorAction SilentlyContinue) {
   Write-Host "⑤ (이 PC 에 DB 에이전트 작업이 이미 있음 — 스크립트를 갱신하려면 -Agent 를 붙여 실행)" -ForegroundColor DarkGray
 }
@@ -111,7 +128,7 @@ Start-Sleep 6
 $log = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log'
 $tail = @(); if (Test-Path $log) { $tail = @(Get-Content $log -Tail 4) }
 Write-Host "⑥ 감시 스크립트 시작됨 — 최근 로그:"; $tail | ForEach-Object { "   $_" }
-if ($Agent) { $alog = Join-Path $env:LOCALAPPDATA 'bit_db_agent\agent.log'; if (Test-Path $alog) { Write-Host "   DB 에이전트 최근 로그:"; Get-Content $alog -Tail 4 | ForEach-Object { "   $_" } } }
+if ($Agent) { $alog = Join-Path $env:LOCALAPPDATA 'bit_db_agent\agent.log'; if (Test-Path $alog) { Write-Host "   DB 에이전트 최근 로그:"; Get-Content $alog -Tail 4 -Encoding UTF8 | ForEach-Object { "   $_" } } }   # 에이전트 로그는 BOM 없는 UTF-8
 if ($tail -match 'TOO_MANY_ATTEMPTS') {
   Write-Host ""
   Write-Host "⚠ Firebase 가 이 병원 IP의 로그인을 잠시 차단 중입니다(다른 PC의 잦은 실패 때문). 비밀번호 문제가 아닐 수 있습니다." -ForegroundColor Yellow

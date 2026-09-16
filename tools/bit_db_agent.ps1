@@ -295,7 +295,9 @@ function HealthDrain() {   # 대기 중인 접속마다 한 줄 답하고 끊는
   if (-not $health) { return }
   while ($health.Pending()) { $cli = $null
     try { $cli = $health.AcceptTcpClient(); $cli.SendTimeout = 500
+      # 5번째 칸: 내가 아는 동료 IP 목록 — 묻는 쪽이 이를 합쳐 목록이 불완전해도(설치 때 -Peers 를 빠뜨려도) 서로를 알게 된다(전송 담당이 둘이 되는 일 방지)
       $line = if (DbHealthy) { "OK $Priority $Pc $(if ($script:IsLeader) { 'leader' } else { 'standby' })" } else { "DOWN $Priority $Pc db" }
+      $line += ' ' + ((@($Peers) + @($MyIps | Where-Object { $_ -like '192.168.*' -or $_ -like '10.*' })) -join ',')
       $b = [Text.Encoding]::UTF8.GetBytes($line + "`n"); $cli.GetStream().Write($b, 0, $b.Length) }
     catch {} finally { if ($cli) { try { $cli.Close() } catch {} } } }
 }
@@ -303,13 +305,18 @@ function ProbePeer($ip) {   # 300ms 안에 연결·응답이 없으면 죽은 �
   $cli = New-Object System.Net.Sockets.TcpClient
   try { $ar = $cli.BeginConnect($ip, $PeerPort, $null, $null); if (-not $ar.AsyncWaitHandle.WaitOne(300)) { return $null }; $cli.EndConnect($ar)
     $cli.ReceiveTimeout = 500; $line = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if (-not $line) { return $null }
-    $f = $line -split ' '; $pr = 0; [void][int]::TryParse($f[1], [ref]$pr); return @{ ok = ($f[0] -eq 'OK'); prio = $pr; pc = $(if ($f.Count -gt 2) { $f[2] } else { '' }) } }
+    $f = $line -split ' '; $pr = 0; [void][int]::TryParse($f[1], [ref]$pr)
+    $known = @(); if ($f.Count -gt 4) { $known = @($f[4] -split ',' | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' }) }
+    return @{ ok = ($f[0] -eq 'OK'); prio = $pr; pc = $(if ($f.Count -gt 2) { $f[2] } else { '' }); known = $known } }
   catch { return $null } finally { try { $cli.Close() } catch {} }
 }
-function ElectLeader() {   # 나보다 우선순위가 높은(같으면 PC 이름이 앞선) 정상 에이전트가 하나라도 있으면 대기
-  $lead = $true; $who = ''
-  foreach ($ip in $Peers) { $p = ProbePeer $ip
-    if ($p -and $p.ok -and ($p.prio -gt $Priority -or ($p.prio -eq $Priority -and [string]::CompareOrdinal($p.pc, $Pc) -lt 0))) { $lead = $false; $who = "$($p.pc)@$ip(우선순위 $($p.prio))" } }
+function ElectLeader() {   # 나보다 우선순위가 높은(같으면 PC 이름이 앞선) 정상 에이전트가 하나라도 있으면 대기. 동료가 알려 준 IP 는 내 목록에 합친다
+  $lead = $true; $who = ''; $learned = @()
+  foreach ($ip in @($Peers)) { $p = ProbePeer $ip
+    if (-not $p) { continue }
+    foreach ($k in $p.known) { if (($Peers -notcontains $k) -and ($MyIps -notcontains $k) -and $k -ne '127.0.0.1' -and ($learned -notcontains $k)) { $learned += $k } }
+    if ($p.ok -and ($p.prio -gt $Priority -or ($p.prio -eq $Priority -and [string]::CompareOrdinal($p.pc, $Pc) -lt 0))) { $lead = $false; $who = "$($p.pc)@$ip(우선순위 $($p.prio))" } }
+  if ($learned.Count) { $script:Peers = @($Peers) + $learned; Log "동료 목록에 추가(다른 에이전트가 알려 줌): $($learned -join ', ') → $($script:Peers -join ', ')" }
   if ($lead -ne $script:IsLeader) { Log $(if ($lead) { "→ 전송 담당(leader): 더 높은 우선순위의 정상 에이전트 없음" } else { "→ 대기(standby): $who 가 전송 담당" }) }
   $script:IsLeader = $lead; $script:LeaderInfo = $who
 }
