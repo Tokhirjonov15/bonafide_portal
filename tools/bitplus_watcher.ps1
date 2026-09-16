@@ -457,7 +457,7 @@ function HandleCast($m, $force = $false) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.4: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3.5: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
