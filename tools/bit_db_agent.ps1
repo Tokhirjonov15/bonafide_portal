@@ -34,8 +34,13 @@ param(
   [switch]$DryRun,                          # Firestore 에 쓰지 않고 로그만
   [switch]$SendExistingOnStart,             # 시작 시 오늘 접수분을 전부 보냄(기본: 스냅샷만 찍고 보내지 않음)
   [int]$Cycles = 0,                         # 0 = 무한, N = N번 조회 뒤 종료(시험용)
-  [string]$StateDir = (Join-Path $env:LOCALAPPDATA 'bit_db_agent')
+  [string]$StateDir = (Join-Path $env:LOCALAPPDATA 'bit_db_agent'),
+  [int]$Priority = 1,                       # 여러 PC 에서 함께 돌 때 우선순위(큰 수가 우선). 가장 높은 '정상' 에이전트만 Firestore 에 쓰고 나머지는 대기(상태만 따라감)
+  [int]$HealthPort = 9001,                  # 감시 스크립트·다른 에이전트가 "살아 있나"를 묻는 TCP 포트(LAN 전용, Firestore 비용 없음). 0 = 끔
+  [string]$PeersFile = (Join-Path $PSScriptRoot 'bitplus_peers.txt'),   # 다른 에이전트 PC IP 목록(한 줄에 하나, # 뒤는 주석). 없으면 단독 운영
+  [int]$PeerPort = 0                        # 동료 에이전트의 상태 포트(0 = HealthPort 와 같음). 한 PC 에서 두 인스턴스로 시험할 때만 다르게
 )
+if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $VER = 'db1.0'
@@ -67,6 +72,7 @@ $SqlPassword = (Get-Content $SqlSecretFile -Encoding UTF8 -TotalCount 1).Trim()
 $BotPassword = ''
 if (-not $DryRun) {
   $SecretFile = Join-Path $PSScriptRoot 'bit_db_agent.secret'
+  if (-not (Test-Path $SecretFile) -and (Test-Path (Join-Path $PSScriptRoot 'bitplus_watcher.secret'))) { $SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret' }   # 감시 스크립트와 같은 폴더(C:\bitplus)면 그 bitbot 비밀번호를 같이 쓴다
   if (-not (Test-Path $SecretFile)) { Log "bitbot 비밀번호 파일이 없습니다: $SecretFile (첫 줄에 bitbot 비밀번호). 전송 없이 시험하려면 -DryRun"; exit 1 }
   $BotPassword = (Get-Content $SecretFile -Encoding UTF8 -TotalCount 1).Trim()
 }
@@ -204,6 +210,7 @@ function SaveState($st) { try { @{ date = $st.date; seen = $st.seen; sent = $st.
 
 function Send($docId, $fields, $what) {
   if ($DryRun) { Log "DRY 전송: $docId $what"; return }
+  if (-not $script:IsLeader) { Log "대기 중 — 생략(전송 담당: $($script:LeaderInfo)): $docId $what"; return }   # 상태는 보낸 것으로 기록 → 담당이 되는 순간부터 새 변화만 보낸다
   FsPatch "bitIntake/$docId" $fields
   Log "전송: $docId $what"
 }
@@ -264,13 +271,55 @@ function Heartbeat($sqlOk) {
   $ips = @(); try { $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.*' } | ForEach-Object { $_.IPAddress }) } catch {}
   $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = [bool]$sqlOk; doctorOpen = $false; cast = $false; ip = ($ips -join ','); ver = $VER; startedAt = $script:StartedAt
            uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID; lastErr = $script:LastErr; lastErrAt = $script:LastErrAt
-           cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5); src = 'db'; sqlServer = $SqlServer }
+           cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5); src = 'db'; sqlServer = $SqlServer
+           priority = [int]$Priority; leader = [bool]$script:IsLeader; leaderInfo = [string]$script:LeaderInfo; peers = ($Peers -join ',') }
   if ($DryRun) { Log "DRY 하트비트: sqlOk=$sqlOk"; return }
   FsPatchNested "bitStatus/_all" $Pc $hb
 }
 
+# ── 상태 포트 / 다른 에이전트와의 우선순위 (LAN 만 사용, Firestore 비용 없음) ──
+#  · 이 에이전트는 TCP $HealthPort 에 "OK <우선순위> <PC> <leader|standby>" 한 줄로 답한다 — 단, 최근 30초 안에 DB 를 성공적으로 읽었을 때만. 아니면 "DOWN".
+#  · 감시 스크립트(bitplus_watcher.ps1)는 캐스트가 오면 이 포트에 물어 보고, 정상인 에이전트가 있으면 bitIntake 에 쓰지 않는다.
+#  · 여러 PC 에 에이전트가 있으면(bitplus_peers.txt) 매 주기 서로 물어 보고, 우선순위가 가장 높은 정상 에이전트만 전송한다. 그 PC 가 꺼지면 4~8초 안에 다음 순위가 이어받는다.
+$script:LastDbOk = [DateTime]::MinValue; $script:IsLeader = $true; $script:LeaderInfo = ''
+$MyIps = @(); try { $MyIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }) } catch {}
+$Peers = @()
+if (Test-Path $PeersFile) { $Peers = @(Get-Content $PeersFile -Encoding UTF8 | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' -and ($PeerPort -ne $HealthPort -or (($MyIps -notcontains $_) -and $_ -ne '127.0.0.1')) } | Select-Object -Unique) }   # 자기 자신은 뺀다(시험용 PeerPort 가 다르면 포함)
+function DbHealthy() { return (((Get-Date) - $script:LastDbOk).TotalSeconds -lt 30) }
+$health = $null
+if ($HealthPort -gt 0) {
+  try { $health = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $HealthPort; $health.Start() }
+  catch { Log "TCP $HealthPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 다른 PC 가 이 에이전트를 확인할 수 없음"; $health = $null }
+}
+function HealthDrain() {   # 대기 중인 접속마다 한 줄 답하고 끊는다
+  if (-not $health) { return }
+  while ($health.Pending()) { $cli = $null
+    try { $cli = $health.AcceptTcpClient(); $cli.SendTimeout = 500
+      $line = if (DbHealthy) { "OK $Priority $Pc $(if ($script:IsLeader) { 'leader' } else { 'standby' })" } else { "DOWN $Priority $Pc db" }
+      $b = [Text.Encoding]::UTF8.GetBytes($line + "`n"); $cli.GetStream().Write($b, 0, $b.Length) }
+    catch {} finally { if ($cli) { try { $cli.Close() } catch {} } } }
+}
+function ProbePeer($ip) {   # 300ms 안에 연결·응답이 없으면 죽은 것으로 본다. 반환 @{ ok; prio; pc } 또는 $null
+  $cli = New-Object System.Net.Sockets.TcpClient
+  try { $ar = $cli.BeginConnect($ip, $PeerPort, $null, $null); if (-not $ar.AsyncWaitHandle.WaitOne(300)) { return $null }; $cli.EndConnect($ar)
+    $cli.ReceiveTimeout = 500; $line = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if (-not $line) { return $null }
+    $f = $line -split ' '; $pr = 0; [void][int]::TryParse($f[1], [ref]$pr); return @{ ok = ($f[0] -eq 'OK'); prio = $pr; pc = $(if ($f.Count -gt 2) { $f[2] } else { '' }) } }
+  catch { return $null } finally { try { $cli.Close() } catch {} }
+}
+function ElectLeader() {   # 나보다 우선순위가 높은(같으면 PC 이름이 앞선) 정상 에이전트가 하나라도 있으면 대기
+  $lead = $true; $who = ''
+  foreach ($ip in $Peers) { $p = ProbePeer $ip
+    if ($p -and $p.ok -and ($p.prio -gt $Priority -or ($p.prio -eq $Priority -and [string]::CompareOrdinal($p.pc, $Pc) -lt 0))) { $lead = $false; $who = "$($p.pc)@$ip(우선순위 $($p.prio))" } }
+  if ($lead -ne $script:IsLeader) { Log $(if ($lead) { "→ 전송 담당(leader): 더 높은 우선순위의 정상 에이전트 없음" } else { "→ 대기(standby): $who 가 전송 담당" }) }
+  $script:IsLeader = $lead; $script:LeaderInfo = $who
+}
+function IdleWait($ms) {   # 다음 주기까지 기다리는 동안에도 상태 포트에는 바로 답한다(감시 스크립트가 300ms 만 기다리므로)
+  $end = (Get-Date).AddMilliseconds($ms)
+  while ((Get-Date) -lt $end) { HealthDrain; Start-Sleep -Milliseconds 150 }
+}
+
 # ── 메인 ──
-Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
+Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
 AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
 if (-not $DryRun) { try { $null = FbToken } catch { Log $_.Exception.Message } }
 $st = LoadState; $first = $st.fresh
@@ -279,8 +328,11 @@ $lastBeat = [DateTime]::MinValue; $sqlOk = $null; $cyc = 0
 while ($true) {
   $cycStart = Get-Date
   if ($st.date -ne (Today)) { Log "날짜 변경 → 상태 초기화"; $st = @{ date = (Today); seen = @{}; sent = @{}; fresh = $true }; $first = $true; TrimLog }
+  HealthDrain
+  if ($Peers.Count) { ElectLeader }   # 다른 에이전트가 있으면 매 주기 우선순위 확인(LAN, 수 ms)
   try {
     $n = Poll $st $first
+    $script:LastDbOk = Get-Date
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { ' (보내지 않음)' })"; $first = $false }
     SaveState $st
     if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }
@@ -292,5 +344,5 @@ while ($true) {
   }
   $ms = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($ms -gt $script:CycMax) { $script:CycMax = $ms }
   $cyc++; if ($Cycles -gt 0 -and $cyc -ge $Cycles) { Log "시험 종료 ($Cycles 회)"; break }
-  Start-Sleep -Milliseconds ([Math]::Max(500, $PollSec * 1000 - $ms))
+  IdleWait ([Math]::Max(500, $PollSec * 1000 - $ms))
 }

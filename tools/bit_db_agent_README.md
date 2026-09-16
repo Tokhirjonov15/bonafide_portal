@@ -46,38 +46,37 @@
 - 이미 보낸 접수의 상태가 바뀌면(수납대기·수납완료·수납취소·취소) 그 command 만 갱신. 취소 뒤 재접수는 `registered=true` 를 다시 세워 자동 생성 대상으로.
 - 날짜가 바뀌면 상태 초기화.
 
-## 설치 (관리 PC 192.168.0.25, 1회)
+## 어디에 설치하나 — 접수 PC 3대 (우선순위 + 자동 인계)
 
-1. `tools/bit_db_agent.ps1` 을 `C:\dongseon_agent\` 로 복사.
-2. 같은 폴더에 비밀번호 파일 두 개(첫 줄만):
-   - `bit_db_agent.sql.secret` — `dongseon_ro` 비밀번호
-   - `bit_db_agent.secret` — 동선관리 `bitbot` 계정 비밀번호 (`bitplus_watcher.secret` 과 같은 값)
-   ```
-   icacls C:\dongseon_agent\*.secret /inheritance:r /grant:r "%USERNAME%:M"
-   ```
-3. 먼저 **전송 없이** 하루 돌려 본다:
-   ```
-   powershell -ExecutionPolicy Bypass -File C:\dongseon_agent\bit_db_agent.ps1 -DryRun
-   ```
-   로그 `%LOCALAPPDATA%\bit_db_agent\agent.log` 에 `DRY 전송: 2026-…_ocm194430 접수 (이름 3자, 차트번호 있음, WN, 접수 14:06)` 줄이 비트 접수 뒤 4초 안에 찍히는지, 캐스트 채널의 `bitIntake` 문서 id 와 같은지 확인.
-4. 실전 (캐스트 채널과 **병행** — 같은 문서에 merge 되므로 카드는 하나만 생긴다):
-   ```
-   powershell -ExecutionPolicy Bypass -File C:\dongseon_agent\bit_db_agent.ps1
-   ```
-   로그온 자동 시작은 `bitplus_install.ps1` 과 같은 방식의 예약 작업으로 등록(작업 이름 `BitDbAgent`, 실행 시간 제한 없음, 실패 시 1분 뒤 재시작):
-   ```
-   $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-ExecutionPolicy Bypass -WindowStyle Hidden -File C:\dongseon_agent\bit_db_agent.ps1'
-   $t = New-ScheduledTaskTrigger -AtLogOn
-   $s = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
-   Register-ScheduledTask -TaskName BitDbAgent -Action $a -Trigger $t -Settings $s -Force
-   Start-ScheduledTask BitDbAgent
-   ```
-5. 동선관리 상단 pill 에 `비트 DB ●` 가 초록으로 보이면 정상(하트비트 `bitStatus/_all.DB`, `bitOpen` = DB 연결 상태). 5분마다 갱신.
+관리 PC(192.168.0.25)는 주 5일 8시간만 켜져 있어 병원 운영 시간(매일 12시간)을 덮지 못한다. 그래서 에이전트는 **접수 PC 에 함께 설치**한다(접수 PC 는 진료 중 항상 켜져 있고 비트 DB 서버에 닿는다).
+- 여러 PC 의 에이전트가 모두 4초마다 DB 를 읽되, **우선순위(`-Priority`, 큰 수가 우선)가 가장 높은 정상 에이전트만 Firestore 에 쓴다.** 나머지는 대기하며 상태만 따라간다.
+- 서로의 상태는 LAN 상태 포트 **TCP 9001** 로 확인한다(Firestore 비용 없음). 에이전트는 최근 30초 안에 DB 를 성공적으로 읽었을 때만 `OK <우선순위> <PC> <leader|standby>` 로 답하고, 아니면 `DOWN`.
+- 전송 담당 PC 가 꺼지거나 DB 에 못 닿으면 다음 순위가 **4~8초 안에** 이어받는다(같은 DB 스냅샷을 보고 있으므로 빠진 접수 없음). 돌아오면 다시 담당이 된다.
+- 같은 PC 의 감시 스크립트(`bitplus_watcher.ps1` v3.5)는 캐스트가 오면 9001 에 물어 보고, 정상인 에이전트가 있으면 `bitIntake` 에 쓰지 않는다. 에이전트가 모두 죽으면 캐스트로 직접 쓴다 → 예비 경로 유지.
+- 관리 PC 의 에이전트는 `-Priority 0` 으로 두면 켜져 있는 동안 추가 예비가 되고, 꺼져도 아무 영향이 없다.
+
+## 설치 (접수 PC 마다 1회, 관리자 PowerShell)
+
+`tools/bitplus_watcher.ps1`·`tools/bit_db_agent.ps1`·`tools/bitplus_install.ps1` 을 같은 폴더(USB 등)에 두고, 다른 두 에이전트 PC 의 IP 를 `-Peers` 로 넘긴다:
+```
+powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 접수1 -Agent -Priority 3 -Peers 192.168.0.44,192.168.0.57
+powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 접수2 -Agent -Priority 2 -Peers 192.168.0.16,192.168.0.57
+powershell -ExecutionPolicy Bypass -File bitplus_install.ps1 -Pc 접수3 -Agent -Priority 1 -Peers 192.168.0.16,192.168.0.44
+```
+(IP 는 동선관리 pill 의 각 PC 항목에서 확인. 2026-09-16 기준 접수1=192.168.0.16, 접수2=192.168.0.44, 접수3=192.168.0.57.)
+설치 스크립트가: 감시 스크립트 갱신 → (있으면 그대로) bitbot 비밀번호 → `bitplus_peers.txt` 저장 → 에이전트 복사 → **`dongseon_ro` 비밀번호 입력**(`bit_db_agent.sql.secret`) → 방화벽 9000·9001 → 작업 `BitPlusWatcher`·`BitDbAgent` 등록·시작.
+에이전트는 bitbot 비밀번호를 감시 스크립트의 `bitplus_watcher.secret` 에서 같이 읽는다.
+
+확인:
+- 동선관리 상단 pill 에 `DB-접수1`·`DB-접수2`·`DB-접수3` 이 초록. 툴팁의 `leader` 가 하나만 `true`.
+- 에이전트 로그 `%LOCALAPPDATA%\bit_db_agent\agent.log`: 담당 PC 는 `전송: …`, 나머지는 `→ 대기(standby): DB-접수1@192.168.0.16(우선순위 3) 가 전송 담당`.
+- 감시 로그 `%LOCALAPPDATA%\bitplus_watcher\watcher.log`: `DB 에이전트 정상(…) → 캐스트는 bitIntake 에 쓰지 않음`, 접수 때 `cast 접수 … → 생략 (15초 뒤 확인)` 다음 `확인: … 에이전트가 전송함`.
+- 전송 담당 PC 를 꺼 보면 다른 PC 로그에 몇 초 안에 `→ 전송 담당(leader)` 가 찍힌다.
 
 ## 시험용 옵션
 
-- `-Cycles 1 -SendExistingOnStart -DryRun -StateDir <임시폴더>` — 오늘 접수분 전체를 한 번 판정해 보고 종료(위 dry-run 확인용).
-- `-PollSec`, `-LeadMin`, `-HeartbeatSec`, `-Pc` 로 주기·이름 조정.
+- `-DryRun` — Firestore 에 쓰지 않고 로그만. `-Cycles N` — N번 조회 뒤 종료. `-SendExistingOnStart` — 시작 스냅샷을 보내지 않는 대신 전부 보냄. `-StateDir <폴더>` — 상태·로그 위치.
+- `-HealthPort`(기본 9001)·`-PeerPort`(시험용: 한 PC 에서 두 인스턴스를 다른 포트로 띄워 우선순위를 시험할 때) · `-PollSec`, `-LeadMin`, `-HeartbeatSec`, `-Pc`.
 
 ## 남은 일
 

@@ -380,9 +380,47 @@ function MatchLookup($name) { return (LookupState $name).rec }
 $script:MyIps = @()
 try { $script:MyIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }) } catch {}
 
-function HandleCast($m) {
+# ── DB 에이전트(bit_db_agent.ps1) 우선 (v3.5, 2026-09-16) ──
+#  비트 DB 를 직접 읽는 에이전트가 정상이면 캐스트로는 bitIntake 에 쓰지 않는다(에이전트가 같은 문서 id 로 쓴다 → Firestore 쓰기·읽기 절감).
+#  확인은 LAN 상태 포트(TCP 9001)로만 한다(Firestore 비용 없음): 이 PC(127.0.0.1) 와 bitplus_peers.txt 의 IP 중 하나라도 "OK…" 로 답하면 정상.
+#  에이전트가 없거나 모두 응답이 없으면(꺼짐·DB 서버 불통) 지금까지처럼 캐스트로 직접 전송한다 → 접수 PC 3대가 그대로 예비 경로.
+#  이중 안전: 접수 캐스트는 에이전트에 맡긴 뒤 15초 후 문서에 src=db 가 있는지 1회 읽어 확인하고, 없으면 직접 전송한다.
+$AgentPort = 9001
+$PeersFile = Join-Path $PSScriptRoot 'bitplus_peers.txt'
+$script:AgentHosts = @('127.0.0.1')
+if (Test-Path $PeersFile) { $script:AgentHosts += @(Get-Content $PeersFile -Encoding UTF8 | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' }) }
+$script:AgentHosts = @($script:AgentHosts | Select-Object -Unique)
+$script:AgentOkAt = [DateTime]::MinValue; $script:AgentOk = $false; $script:AgentWho = ''
+function AgentAlive() {   # 3초 캐시(캐스트가 몰려도 매번 묻지 않음). 호스트 중 하나라도 'OK' 면 살아 있음
+  if (((Get-Date) - $script:AgentOkAt).TotalSeconds -lt 3) { return $script:AgentOk }
+  $ok = $false; $who = ''
+  foreach ($ip in $script:AgentHosts) { $cli = New-Object System.Net.Sockets.TcpClient
+    try { $ar = $cli.BeginConnect($ip, $AgentPort, $null, $null); if (-not $ar.AsyncWaitHandle.WaitOne(300)) { continue }; $cli.EndConnect($ar); $cli.ReceiveTimeout = 500
+      $line = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if ($line -and $line.StartsWith('OK')) { $ok = $true; $who = "$ip $line"; break } }
+    catch {} finally { try { $cli.Close() } catch {} } }
+  if ($ok -ne $script:AgentOk) { Log $(if ($ok) { "DB 에이전트 정상($who) → 캐스트는 bitIntake 에 쓰지 않음(에이전트가 씀)" } else { "DB 에이전트 응답 없음 → 캐스트로 직접 전송" }) }
+  $script:AgentOk = $ok; $script:AgentOkAt = Get-Date; $script:AgentWho = $who; return $ok
+}
+$script:PendingVerify = @{}   # 문서 id → @{ at; m } : 에이전트에 맡긴 접수 캐스트, 15초 뒤 확인
+function FsHasDbSrc($docId) {
+  try { $r = Invoke-RestMethod -TimeoutSec 15 -Method Get -Uri "$DocBase/bitIntake/$docId`?mask.fieldPaths=src" -Headers @{ Authorization = "Bearer $(FbToken)" }; return ($r.fields.src.stringValue -eq 'db') }
+  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $false }; throw }
+}
+function VerifyPending() {
+  foreach ($id in @($script:PendingVerify.Keys)) { $pv = $script:PendingVerify[$id]; if (((Get-Date) - $pv.at).TotalSeconds -lt 15) { continue }
+    $script:PendingVerify.Remove($id)
+    try { if (FsHasDbSrc $id) { Log "확인: $id 에이전트가 전송함" } else { Log "확인: $id 에이전트 전송 없음 → 캐스트로 직접 전송"; HandleCast $pv.m $true } }
+    catch { Log "확인 오류 $id → 캐스트로 직접 전송: $($_.Exception.Message)"; try { HandleCast $pv.m $true } catch { Log "cast 처리 오류: $($_.Exception.Message)" } } }
+}
+
+function HandleCast($m, $force = $false) {
   $cname = if ($CMD_NAMES.ContainsKey($m.command)) { $CMD_NAMES[$m.command] } else { "cmd$($m.command)" }
   $docId = "$(Today)_ocm$($m.ocmNum)"
+  if (-not $force -and (AgentAlive)) {   # DB 에이전트가 정상 → 캐스트로는 쓰지 않는다. 문서 id 매핑만 기억해 두어 뒤따르는 인적정보·원외처방 보충은 그 문서로 간다
+    if ($m.command -in 2, 1, 0) { $script:CastDocByName[$m.name] = $docId; $script:PendingVerify[$docId] = @{ at = (Get-Date); m = $m } }
+    Log "cast $cname 접수번호 $($m.ocmNum): DB 에이전트 정상 → 생략$(if ($m.command -in 2, 1, 0) { ' (15초 뒤 확인)' })"
+    return
+  }
   $local = ($script:MyIps -contains $m.fromIp)
   $fields = @{ pc = $Pc; castIp = $m.fromIp; lastSeenAt = (NowIso); date = (Today); ocmNum = $m.ocmNum; command = [int]$m.command; commandName = $cname
                name = $m.name; room = $m.room; doctor = $m.doctor; castMemo = $m.memo; hourMin = [int]$m.hourMin; beforeRoom = $m.beforeRoom }
@@ -445,6 +483,7 @@ while ($true) {
         try { HandleCast $m } catch { Log "cast 처리 오류: $($_.Exception.Message)" }
       }
       foreach ($k in @($recent.Keys)) { if (((Get-Date) - $recent[$k]).TotalMinutes -gt 30) { $recent.Remove($k) } }
+      if ($script:PendingVerify.Count) { try { VerifyPending } catch { Log "확인 처리 오류: $($_.Exception.Message)" } }   # 에이전트에 맡긴 접수 캐스트 15초 뒤 확인
     }
     # ── ① 인적정보 패널 (PollSec 간격) + 하트비트 ──
     if (((Get-Date) - $lastPanel).TotalSeconds -ge $PollSec) {
@@ -458,7 +497,7 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.4'; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.5'; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
