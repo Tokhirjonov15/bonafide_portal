@@ -53,7 +53,7 @@ $cn.ChangeDatabase($Database)
 $tabs = (Q $cn "SELECT name FROM sys.tables WHERE name IN ('OcmInf','PbsInf','UidMst','RsvInf','DtlMst') ORDER BY name").Rows | ForEach-Object { $_.name }
 Say ("  필요한 테이블: " + ($tabs -join ', ') + $(if ($tabs.Count -eq 5) { " ✔ (5/5)" } else { " — 일부 없음(비트 버전 차이). 있는 테이블: " + ((Q $cn "SELECT COUNT(*) AS n FROM sys.tables").Rows[0].n) + "개" }))
 if ($tabs -contains 'DtlMst') {
-  $codes = Q $cn "SELECT RTRIM(DtlCod) AS c, RTRIM(DtlNam) AS n FROM DtlMst WITH (NOLOCK) WHERE DtlTblCod='COMSTT' ORDER BY DtlCod"
+  $codes = Q $cn "SELECT RTRIM(DtlCod) AS c, RTRIM(DtlCodNam) AS n FROM DtlMst WITH (NOLOCK) WHERE RTRIM(DtlTblCod)='COMSTT' ORDER BY DtlCod"
   Say ("  접수 상태 코드(COMSTT) " + $codes.Rows.Count + "개: " + (($codes.Rows | ForEach-Object { "$($_.c)=$($_.n)" }) -join ', '))
 }
 if ($tabs -contains 'OcmInf') {
