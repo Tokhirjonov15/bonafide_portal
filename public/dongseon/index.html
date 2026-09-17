@@ -596,13 +596,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .rv-day .rv-dow{color:var(--muted);font-size:11px}
   .rv-day.we .rv-dow{color:var(--red)}
   .rv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:6px 12px}
-  .rv-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;min-width:0}
+  .rv-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px;min-width:0;overflow:hidden}
   .rv-row .rv-t{font-variant-numeric:tabular-nums;font-weight:800;width:44px;flex:none}
   .rv-row .rv-room{font-size:11px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:1px 5px;flex:none;white-space:nowrap}
-  .rv-row .rv-name{font-weight:800;white-space:nowrap}
-  .rv-row .rv-sub{color:var(--muted);font-size:12px;white-space:nowrap}
-  .rv-row .rv-memo{color:var(--sub);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-  .rv-row .rv-st{font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;flex:none;white-space:nowrap}
+  /* 긴 이름(외국인 등)·차트·나이는 줄여서(…) 넣고, 메모가 남은 폭을 쓰며, 상태 표시는 항상 오른쪽 끝에 — 칸 밖으로 밀려 나가지 않게 (2026-09-17) */
+  .rv-row .rv-name{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:3em;max-width:40%}
+  .rv-row .rv-sub{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
+  .rv-row .rv-memo{color:var(--sub);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 30px;min-width:0}
+  .rv-row .rv-st{font-size:11px;font-weight:800;border-radius:6px;padding:1px 6px;flex:none;white-space:nowrap;margin-left:auto}
   .rv-row.arrived{background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.5)}
   .rv-row.arrived .rv-st{color:var(--t-green);background:rgba(34,197,94,.14)}
   .rv-row.late{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.45)}
@@ -2116,10 +2117,15 @@ function renderBitResvSection(D){
   </div>`;
 }
 /* ── 진료 예약 화면(별도 페이지, 4층 비급여 치료와 분리) ── */
+function bitResvSumSub(){   // 날짜별 건수 요약(문서 1개) — 화면이 열려 있는 동안만
+  if(!cloud.resvCol||!currentUser||cloud.unsubResvSum)return;
+  cloud.unsubResvSum=cloud.resvCol.doc('_summary').onSnapshot(s=>{BIT_RESV_SUM=s.exists?(s.data()||{}):{};if(bitResvOpen)renderBitResvScreen();},err=>console.warn('bitResv summary',err));
+}
+function bitResvUnsub(){['unsubResv','unsubResvSum'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});BIT_RESV_DATE='';}
 function openBitResvScreen(){bitResvOpen=true;const el=document.getElementById('bitResvScreen');if(el)el.classList.add('show');
   const cb=document.getElementById('bitResvCloseBtn');if(cb)cb.style.display=BITRESV_MODE?'none':'';
-  try{bitResvSub(bitResvDate||localYMD(new Date()));}catch(e){console.warn(e);}renderBitResvScreen();}
-function closeBitResvScreen(){bitResvOpen=false;const el=document.getElementById('bitResvScreen');if(el)el.classList.remove('show');}
+  try{bitResvSumSub();bitResvSub(bitResvDate||localYMD(new Date()));}catch(e){console.warn(e);}renderBitResvScreen();}
+function closeBitResvScreen(){bitResvOpen=false;const el=document.getElementById('bitResvScreen');if(el)el.classList.remove('show');if(!BITRESV_MODE)bitResvUnsub();}   // 닫으면 구독 해제 → 읽기 절약
 window.setBitResvDate=function(v){const today=localYMD(new Date());bitResvDate=(!v||v===today)?null:v;try{bitResvSub(bitResvDate||today);}catch(e){console.warn(e);}renderBitResvScreen();};
 function renderBitResvScreen(){
   if(!bitResvOpen)return;const body=document.getElementById('bitResvBody');if(!body)return;
@@ -2211,8 +2217,8 @@ function subscribeBitIntake(){
       try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}
     },err=>console.warn('bitIntake',err));
   } else {BIT_INTAKE=[];renderBitBar();}
-  if((role==='staff'||role==='resv')&&cloud.resvCol){   // 비트 진료 예약: 날짜별 건수 요약(문서 1개) — 4층 화면 상단 7일 띠. 날짜별 문서는 화면을 열 때 bitResvSub 로
-    cloud.unsubResvSum=cloud.resvCol.doc('_summary').onSnapshot(s=>{BIT_RESV_SUM=s.exists?(s.data()||{}):{};if(bitResvOpen)renderBitResvScreen();},err=>console.warn('bitResv summary',err));
+  if((role==='staff'||role==='resv')&&cloud.resvCol&&(bitResvOpen||BITRESV_MODE)){   // 비트 진료 예약: 진료 예약 화면이 열려 있을 때만 듣는다(읽기 = 문서 변경 × 듣는 화면 수 — 2026-09-17 읽기 한도 초과 뒤 지연 구독)
+    bitResvSumSub();
     try{bitResvSub(bitResvDate||today);}catch(e){console.warn(e);}
   }
   if((role==='staff'||role==='slip')&&cloud.lookupCol){   // 접수 창 조회 기록(오늘) — 캐스트 카드 보완 + 슬립 머리글(이름·생년월일) 보완
