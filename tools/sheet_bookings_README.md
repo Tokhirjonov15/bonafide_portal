@@ -34,7 +34,7 @@
     // 마지막 공통 규칙은 봇 컬렉션을 제외해야 한다(겹치는 match 는 하나라도 허용이면 허용)
     match /{collection}/{document=**} {
       allow read, write: if request.auth != null
-        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings']);
+        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings','bitResv']);
     }
 ```
 확인: 직원 계정으로 bookings 문서를 쓰면 거부(403)돼야 정상입니다.

@@ -32,6 +32,9 @@ param(
   [int]$HeartbeatSec = 300,                 # 하트비트 주기(초) — 동선관리 BIT_STALE_SEC=750 과 짝
   [int]$LeadMin = 5,                        # 접수 시각이 지금보다 이만큼 뒤면 아직 보내지 않음(사전 등록분)
   [int]$RecentMin = 30,                     # 시작 스냅샷이라도 이 시간 안에 접수된 환자는 보낸다(아침에 PC 가 켜지기 전 접수된 환자가 빠지지 않도록, 2026-09-17). 0 = 끔
+  [int]$ResvDays = 7,                       # 진료 예약(RsvInf)을 오늘부터 며칠치 올릴지 → bitResv/{날짜}. 0 = 예약 연동 끔
+  [int]$ResvEvery = 2,                      # 예약은 몇 주기마다 읽을지(2 = 8초). 바뀐 날짜의 문서만 다시 쓴다
+  [switch]$ResvAlways,                      # 대기(standby)여도 예약 문서는 쓴다 — 담당 PC 의 에이전트가 예약 기능이 없는 옛 버전인 동안 임시로(관리 PC 용)
   [switch]$DryRun,                          # Firestore 에 쓰지 않고 로그만
   [switch]$SendExistingOnStart,             # 시작 시 오늘 접수분을 전부 보냄(기본: 스냅샷만 찍고 보내지 않음)
   [int]$Cycles = 0,                         # 0 = 무한, N = N번 조회 뒤 종료(시험용)
@@ -120,17 +123,18 @@ function FbToken() {
   FbLogin; return $script:Tok
 }
 $DocBase = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents"
-function FsFields($h) {
-  $f = @{}
-  foreach ($k in $h.Keys) { $v = $h[$k]
-    if ($v -is [bool]) { $f[$k] = @{ booleanValue = $v } }
-    elseif ($v -is [int] -or $v -is [long]) { $f[$k] = @{ integerValue = [string]$v } }
-    else { $f[$k] = @{ stringValue = [string]$v } } }
-  return $f
+function FsVal($v) {   # PowerShell 값 → Firestore 값 (문자열/불리언/정수/배열/맵 — 예약 문서의 items 배열용)
+  if ($null -eq $v) { return @{ nullValue = $null } }
+  if ($v -is [bool]) { return @{ booleanValue = $v } }
+  if ($v -is [int] -or $v -is [long]) { return @{ integerValue = [string]$v } }
+  if ($v -is [System.Collections.IDictionary]) { $m = @{}; foreach ($k in $v.Keys) { $m[[string]$k] = FsVal $v[$k] }; return @{ mapValue = @{ fields = $m } } }
+  if (($v -is [System.Collections.IEnumerable]) -and -not ($v -is [string])) { return @{ arrayValue = @{ values = @(foreach ($x in $v) { FsVal $x }) } } }
+  return @{ stringValue = [string]$v }
 }
-function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는 문서는 생성
+function FsFields($h) { $f = @{}; foreach ($k in $h.Keys) { $f[$k] = FsVal $h[$k] }; return $f }
+function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는 문서는 생성. 배열 필드는 통째로 바뀐다
   $mask = ($fields.Keys | ForEach-Object { 'updateMask.fieldPaths=' + [Uri]::EscapeDataString($_) }) -join '&'
-  $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 6 -Compress
+  $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 14 -Compress
   $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
 }
 function FsPatchNested($path, $key, $fields) {   # bitStatus/_all 의 'PC이름' 맵 필드만 갱신
@@ -321,12 +325,63 @@ function ElectLeader() {   # 나보다 우선순위가 높은(같으면 PC 이�
     foreach ($k in $p.known) { if (($Peers -notcontains $k) -and ($MyIps -notcontains $k) -and $k -ne '127.0.0.1' -and ($learned -notcontains $k)) { $learned += $k } }
     if ($p.ok -and ($p.prio -gt $Priority -or ($p.prio -eq $Priority -and [string]::CompareOrdinal($p.pc, $Pc) -lt 0))) { $lead = $false; $who = "$($p.pc)@$ip(우선순위 $($p.prio))" } }
   if ($learned.Count) { $script:Peers = @($Peers) + $learned; Log "동료 목록에 추가(다른 에이전트가 알려 줌): $($learned -join ', ') → $($script:Peers -join ', ')" }
-  if ($lead -ne $script:IsLeader) { Log $(if ($lead) { "→ 전송 담당(leader): 더 높은 우선순위의 정상 에이전트 없음" } else { "→ 대기(standby): $who 가 전송 담당" }) }
+  if ($lead -ne $script:IsLeader) { Log $(if ($lead) { "→ 전송 담당(leader): 더 높은 우선순위의 정상 에이전트 없음" } else { "→ 대기(standby): $who 가 전송 담당" }); if ($lead) { $script:RsvHash = @{} } }   # 담당이 되면 예약 문서를 전부 다시 쓴다
   $script:IsLeader = $lead; $script:LeaderInfo = $who
 }
 function IdleWait($ms) {   # 다음 주기까지 기다리는 동안에도 상태 포트에는 바로 답한다(감시 스크립트가 300ms 만 기다리므로)
   $end = (Get-Date).AddMilliseconds($ms)
   while ((Get-Date) -lt $end) { HealthDrain; Start-Sleep -Milliseconds 150 }
+}
+
+# ── 진료 예약(RsvInf) → bitResv/{날짜} (2026-09-17) ──
+#  접수 PC 가 비트 예약관리에서 예약을 넣거나 시각을 옮기거나 취소하면 RsvInf 가 바로 바뀐다. 오늘~ResvDays 일치를 ResvEvery 주기마다 읽어
+#  날짜별 해시가 바뀐 날만 문서를 다시 쓴다(items 배열 통째로). 담당(leader)만 쓴다. bitResv/_summary 에는 날짜별 건수만(동선관리 상단 7일 띠).
+#  항목: k(접수번호) t(HH:MM) room(진료실 이름) dr mrn name birth sex div(R/X/Z) sts(OS/OC) ostt(OcmInf 상태: WR 미도착, WN·TN·PN… 도착, CN 취소) acp(도착 HH:MM) memo by naver
+$RSV_QUERY = @"
+SELECT RTRIM(r.RsvOcmNum) AS k, RTRIM(r.RsvDtm) AS dtm, RTRIM(r.RsvSts) AS sts, RTRIM(r.RsvDivTyp) AS div, RTRIM(r.RsvDepCod) AS dep, RTRIM(r.RsvUidCod) AS uid,
+       RTRIM(r.RsvRefCmt) AS memo, COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), RTRIM(o.OcmChtNum)) AS mrn, RTRIM(p.PbsPatNam) AS name, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex,
+       RTRIM(u.UidNam) AS dr, RTRIM(o.OcmComStt) AS ostt, RTRIM(o.OcmAcpDtm) AS acp
+FROM RsvInf r WITH (NOLOCK)
+LEFT JOIN OcmInf o WITH (NOLOCK) ON o.OcmNum = r.RsvOcmNum
+LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), o.OcmChtNum)
+LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = r.RsvDtrCod
+WHERE LEFT(r.RsvDtm, 8) BETWEEN '{0}' AND '{1}'
+ORDER BY r.RsvDtm, r.RsvOcmNum
+"@
+$script:RsvHash = @{}; $script:DepName = @{}
+function LoadDepNames() { try { foreach ($r in (SqlRows "SELECT RTRIM(DepCod) AS c, RTRIM(DepKorNam) AS n FROM DepMst WITH (NOLOCK)").Rows) { $script:DepName[[string]$r.c] = [string]$r.n } } catch { Log "진료과 이름표 읽기 오류: $($_.Exception.Message)" } }
+function PollResv() {
+  if ($ResvDays -le 0) { return }
+  $d0 = (Get-Date).ToString('yyyyMMdd'); $d1 = (Get-Date).AddDays($ResvDays).ToString('yyyyMMdd')
+  $rows = SqlRows ($RSV_QUERY -f $d0, $d1)
+  $byDay = @{}; for ($i = 0; $i -le $ResvDays; $i++) { $byDay[(Get-Date).AddDays($i).ToString('yyyy-MM-dd')] = New-Object System.Collections.ArrayList }
+  foreach ($r in $rows.Rows) {
+    $dtm = [string]$r.dtm; if ($dtm.Length -lt 12) { continue }
+    $day = $dtm.Substring(0, 4) + '-' + $dtm.Substring(4, 2) + '-' + $dtm.Substring(6, 2); if (-not $byDay.ContainsKey($day)) { continue }
+    $memo = ([string]$r.memo).Trim(); $dep = ([string]$r.dep).Trim()
+    $it = [ordered]@{ k = ([string]$r.k -replace '\D', ''); t = $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2); room = $(if ($script:DepName.ContainsKey($dep)) { $script:DepName[$dep] } else { $dep })
+                      dr = ([string]$r.dr).Trim(); mrn = (([string]$r.mrn) -replace '\D', ''); name = ([string]$r.name).Trim(); birth = (DateOf $r.bir); sex = ([string]$r.sex).Trim()
+                      div = ([string]$r.div).Trim(); sts = ([string]$r.sts).Trim(); ostt = ([string]$r.ostt).Trim(); acp = ''; memo = $memo; by = ([string]$r.uid).Trim()
+                      naver = ($memo -match '네이버|naver') }
+    $a = [string]$r.acp; if ($it.ostt -and $it.ostt -ne 'WR' -and $it.ostt -ne 'CN' -and $a.Length -ge 12 -and $a.Substring(0, 8) -eq $dtm.Substring(0, 8)) { $it.acp = $a.Substring(8, 2) + ':' + $a.Substring(10, 2) }
+    [void]$byDay[$day].Add($it)
+  }
+  $changed = @()
+  foreach ($day in ($byDay.Keys | Sort-Object)) {
+    $h = (($byDay[$day] | ForEach-Object { "$($_.k)|$($_.t)|$($_.room)|$($_.mrn)|$($_.sts)|$($_.ostt)|$($_.acp)|$($_.memo)|$($_.div)|$($_.dr)" }) -join "`n")
+    if ($script:RsvHash[$day] -eq $h) { continue }
+    if ($DryRun) { Log "DRY 예약 문서: $day $($byDay[$day].Count)건"; $script:RsvHash[$day] = $h; $changed += $day; continue }
+    if (-not $script:IsLeader -and -not $ResvAlways) { $script:RsvHash[$day] = $h; continue }   # 대기 중엔 쓰지 않고 해시만 따라감(담당이 되면 해시를 비워 전부 다시 씀)
+    try {
+      FsPatch "bitResv/$day" @{ date = $day; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$byDay[$day].Count; items = @($byDay[$day]) }
+      $script:RsvHash[$day] = $h; $changed += $day
+      Log "예약 문서: $day $($byDay[$day].Count)건 (취소 $(@($byDay[$day] | Where-Object { $_.sts -eq 'OC' }).Count))"
+    } catch { Log "예약 문서 전송 오류 ${day}: $($_.Exception.Message)" }
+  }
+  if ($changed.Count -and -not $DryRun -and ($script:IsLeader -or $ResvAlways)) {   # 날짜별 요약(건수만) — 화면 상단 7일 띠용, 문서 1개
+    $days = @{}; foreach ($day in $byDay.Keys) { $L = $byDay[$day]; $days[$day] = @{ n = [int]@($L | Where-Object { $_.sts -ne 'OC' }).Count; canc = [int]@($L | Where-Object { $_.sts -eq 'OC' }).Count; arrived = [int]@($L | Where-Object { $_.acp }).Count; naver = [int]@($L | Where-Object { $_.naver -and $_.sts -ne 'OC' }).Count } }
+    try { FsPatch "bitResv/_summary" @{ updatedAt = (NowIso); pc = $Pc; days = $days } } catch { Log "예약 요약 전송 오류: $($_.Exception.Message)" }
+  }
 }
 
 # ── 메인 ──
@@ -344,6 +399,7 @@ while ($true) {
   try {
     $n = Poll $st $first
     $script:LastDbOk = Get-Date
+    if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st
     if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }

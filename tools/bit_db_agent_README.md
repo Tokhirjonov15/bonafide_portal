@@ -45,6 +45,16 @@
 - 여러 명을 한꺼번에 만들 때는 접수 시각(`hourMin`) 순으로 한 건씩 만들어 `#번호`가 도착 순서를 따른다.
 - 그래도 아침에는 동선관리를 한 화면에 열어 두는 것이 가장 정확하다(번호가 실시간으로 붙고, 진료실 처방·슬립도 바로 보임).
 
+## 진료 예약 → `bitResv/{날짜}` (2026-09-17)
+
+비트 예약관리(`RsvInf`, 1진료실·16진료실, 하루 50~90건)를 오늘부터 `-ResvDays`(7)일치 읽어 동선관리 4층 예약관리 화면의 **진료 예약 (비트)** 절에 보여 준다.
+- `-ResvEvery`(2) 주기마다(8초) 읽고, **날짜별 해시가 바뀐 날만** 문서를 다시 쓴다(items 배열 통째로). 접수 PC 가 비트에서 시각을 옮기거나 취소하면 몇 초 안에 반영.
+- 담당(leader)만 쓴다. `-ResvAlways` 를 주면 대기 중에도 쓴다(담당 PC 가 예약 기능이 없는 옛 버전인 동안 관리 PC 에서 임시로).
+- `bitResv/_summary` = `{days:{날짜:{n,canc,arrived,naver}}}` 한 문서(화면 상단 7일 띠). 동선관리는 요약 1개 + 보고 있는 날짜 1개만 구독한다.
+- 항목: `k`(접수번호) `t`(HH:MM) `room`(DepMst 한글 이름) `dr` `mrn` `name` `birth` `sex` `div`(R/X/Z — 뜻은 아직 미확인, 화면의 `BIT_RSV_DIV` 표로 표시) `sts`(OS 유효/OC 취소) `ostt`(OcmInf 상태: WR 미도착, WN·TN·PN… 도착, CN 취소) `acp`(도착 HH:MM) `memo`(`[신규예약]`, `1wfu`, `그린` 등) `by`(입력자 JUP/PT/PRO) `naver`(메모에 '네이버').
+- 물리치료센터 비급여 예약(충격파·신장분사·도수)은 비트 DB 에 없다(`PtRsvInf` 등 예약 모듈 테이블이 비어 있음) → Google Sheet 연동(`sheet_bookings.gs`)이 그대로 원본.
+- Firestore 규칙: `bitResv` 도 bitbot 만 쓰도록 `bitplus_watcher_README.md` 8-2 의 규칙에 추가돼 있다(마지막 공통 규칙의 제외 목록에도).
+
 ## 새 접수 판정 (파트너 문서 6절과 동일)
 
 - 상태 파일 `%LOCALAPPDATA%\bit_db_agent\state.json` = `{ date, seen: {접수번호: 상태}, sent: {접수번호: 마지막 command} }`.
