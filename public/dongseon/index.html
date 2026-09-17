@@ -647,6 +647,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .bkf{display:grid;grid-template-columns:84px 1fr;gap:8px 10px;align-items:center;font-size:13px}
   .bkf label{font-weight:700;color:var(--sub)}
   .bkf input,.bkf select,.bkf textarea{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13.5px;width:100%;box-sizing:border-box;background:var(--panel);color:var(--text);font-family:inherit}
+  /* 콤보(입력 + ▼ 전체 목록): datalist 는 입력한 글자로 걸러서 이미 값이 있으면 목록이 안 보였다 — ▼ 를 누르면 값과 무관하게 전체 목록 (2026-09-17) */
+  .combo{position:relative;display:flex;align-items:center;min-width:0}
+  .combo>input{flex:1;min-width:0;padding-right:30px!important}
+  .combo-btn{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:24px;height:24px;border:0;background:transparent;color:var(--muted);cursor:pointer;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center}
+  .combo-btn:hover{background:var(--panel2);color:var(--text)}
+  .combo-list{position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:40;max-height:220px;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-h);display:none;font-size:13.5px}
+  .combo-list.show{display:block}
+  .combo-item{padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .combo-item:hover,.combo-item.on{background:var(--panel2)}
+  .combo-item.cur{font-weight:800;color:var(--blue)}
+  .combo-empty{padding:6px 10px;color:var(--muted);font-size:12px}
   .bkf textarea{resize:vertical;min-height:40px;line-height:1.45;overflow:hidden}
   .bkf label{align-self:start;padding-top:8px}
   .bk-sw{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -5109,7 +5120,7 @@ function openBkEdit(D,key,opt){
       <label>차트번호</label><input id="bke_mrn" value="${v('mrn')}" inputmode="numeric" oninput="bkMrnChanged(this)">
       <span></span><span class="hint" id="bke_mrnHint"></span>
       <label>성함</label><input id="bke_name" value="${v('name')}" oninput="this.dataset.auto=''">
-      <label>코드</label><input id="bke_code" list="bke_codes" value="${v('code')}" placeholder="CME15 … (▼ 또는 두 번 눌러 목록)" autocomplete="off">${bkCodeListHtml(D)}
+      <label>코드</label><input id="bke_code" list="bke_codes" value="${v('code')}" placeholder="CME15 … (▼ 전체 목록)" autocomplete="off">${bkCodeListHtml(D)}
       <label>메모</label><textarea id="bke_note" rows="2" oninput="autoGrowTa(this)">${v('note')}</textarea>
       <label>배경색</label>${bkColorPickerHtml(cur?cur.color:'')}</div>
       ${cur&&cur.orig?`<p class="hint" style="margin-top:8px">시트 원본: ${esc(cur.orig.th)} ${esc(cur.orig.t)} ${esc(String(cur.orig.dur||''))}분 ${esc(cur.orig.code||'')}</p>`:''}`;
@@ -5118,10 +5129,40 @@ function openBkEdit(D,key,opt){
   const del=document.getElementById('bkEditDel'),rv=document.getElementById('bkEditRevert');
   if(del)del.style.display=isNew?'none':'';if(rv)rv.style.display=(cur&&cur.edited&&!cur.added)?'':'none';
   document.getElementById('bkEditModal').classList.add('show');
+  try{comboifyAll(body);}catch(e){console.warn('combo',e);}   // 치료사·코드: ▼ 로 전체 목록
   setTimeout(()=>{const f=document.getElementById(opt.manual?'bke_name':'bke_th');if(f)f.focus();const ta=document.getElementById('bke_note');if(ta)autoGrowTa(ta);},50);
 }
 /* 메모 칸: 내용 길이에 맞춰 아래로 늘어남(긴 메모를 한눈에 보고 고칠 수 있게) */
 function autoGrowTa(ta){if(!ta)return;ta.style.height='auto';ta.style.height=Math.min(320,Math.max(40,ta.scrollHeight+2))+'px';}
+/* ── 콤보 입력: <input list="…"> 를 감싸 ▼ 단추와 자체 목록을 붙인다.
+   브라우저 datalist 는 입력한 글자로 목록을 걸러서, 값이 이미 있으면 ▼ 를 눌러도 다른 항목이 안 보여 값을 지워야 했다(직원이 잘못 고른 뒤 바꾸기 어려움).
+   ▼ 를 누르면 값과 무관하게 전체 목록, 글자를 치면 포함 검색, ↑↓·Enter·Esc 지원. 목록은 열 때마다 datalist 에서 다시 읽는다(동적 목록도 OK) */
+function comboify(inp){
+  if(!inp||inp.dataset.combo)return;const listId=inp.getAttribute('list');const dl=listId?document.getElementById(listId):null;if(!dl)return;
+  inp.dataset.combo=listId;inp.removeAttribute('list');inp.setAttribute('autocomplete','off');
+  const wrap=document.createElement('div');wrap.className='combo';inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);
+  const btn=document.createElement('button');btn.type='button';btn.className='combo-btn';btn.title='전체 목록';btn.tabIndex=-1;btn.innerHTML='▼';wrap.appendChild(btn);
+  const list=document.createElement('div');list.className='combo-list';wrap.appendChild(list);
+  let idx=-1,all=false;   // all: ▼ 로 연 전체 목록 / false: 입력 글자로 거른 목록
+  const opts=()=>[...dl.querySelectorAll('option')].map(o=>o.value).filter(Boolean);
+  const close=()=>{list.classList.remove('show');idx=-1;};
+  const pick=v=>{inp.value=v;close();inp.dispatchEvent(new Event('input',{bubbles:true}));inp.dispatchEvent(new Event('change',{bubbles:true}));inp.focus();};
+  const shown=()=>{const q=(inp.value||'').trim().toLowerCase();return opts().filter(v=>all||!q||v.toLowerCase().includes(q));};
+  const render=()=>{const arr=shown();
+    list.innerHTML=arr.length?arr.map((v,i)=>`<div class="combo-item${v===inp.value?' cur':''}${i===idx?' on':''}" data-v="${esc(v)}">${esc(v)}</div>`).join(''):'<div class="combo-empty">일치하는 항목 없음</div>';
+    list.classList.add('show');const on=list.querySelector('.combo-item.on');if(on)on.scrollIntoView({block:'nearest'});};
+  list.addEventListener('mousedown',e=>{e.preventDefault();const it=e.target.closest('.combo-item');if(it)pick(it.dataset.v);});
+  btn.addEventListener('mousedown',e=>{e.preventDefault();if(list.classList.contains('show'))close();else{idx=-1;all=true;render();inp.focus();}});
+  inp.addEventListener('input',()=>{idx=-1;all=false;render();});
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();if(!list.classList.contains('show')){all=true;idx=-1;}idx=Math.min(shown().length-1,idx+1);render();}
+    else if(e.key==='ArrowUp'){e.preventDefault();idx=Math.max(0,idx-1);render();}
+    else if(e.key==='Enter'){const arr=shown();if(list.classList.contains('show')&&idx>=0&&arr[idx]){e.preventDefault();pick(arr[idx]);}else close();}
+    else if(e.key==='Escape'){close();}});
+  inp.addEventListener('blur',()=>setTimeout(close,120));
+}
+function comboifyAll(root){(root||document).querySelectorAll('input[list]').forEach(el=>{if(el.id==='f_reload')return;comboify(el);});}   // f_reload 는 검색창(입력으로 거르는 게 목적) → 그대로
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{try{comboifyAll(document);}catch(e){console.warn('combo',e);}});else{try{comboifyAll(document);}catch(e){console.warn('combo',e);}}
 /* 배경색 선택: 시트 범례색 + 자주 쓰는 색 + 임의색(컬러 피커). 값은 #bke_color 에 */
 const BK_SWATCHES=[['','없음'],['#ffe599','내원'],['#ffff00','임시치료실'],['#ff0000','치료실 없음'],['#00ff00','시트·비트확인'],['#00ffff','실손 청구여부 확인'],['#9900ff','카톡친추 확인'],['#8e7cc3','보라'],['#b7e1cd','연두'],['#f4cccc','연분홍'],['#cfe2f3','연파랑']];
 function bkColorPickerHtml(cur){cur=String(cur||'').toLowerCase();if(cur==='#ffffff')cur='';
@@ -7417,6 +7458,7 @@ function renderRoomsList(){
         <span class="${meta(r).smsAuto?'':'off'}" title="앞 대기 인원이 이 숫자가 되면 발송(쉼표로 여러 개, 예: 2,0)">앞대기 <input type="text" placeholder="예: 2,0" value="${esc((meta(r).smsAhead||[]).join(','))}" onchange="setSmsAhead(${i},this.value)">명일 때</span>
       </div>
     </div>`).join("");
+  try{comboifyAll(box);}catch(e){console.warn('combo',e);}   // 그룹 칸: ▼ 로 전체 그룹 목록
   [...box.querySelectorAll(".rmrow")].forEach(row=>{
     row.addEventListener("dragstart",e=>{roomDragIdx=+row.dataset.i;row.classList.add("dragging");e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","");});
     row.addEventListener("dragend",()=>{row.classList.remove("dragging");[...box.querySelectorAll(".rmrow")].forEach(x=>x.classList.remove("drop-target"));});
