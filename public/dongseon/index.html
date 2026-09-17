@@ -413,7 +413,7 @@
   #modal:not(.adding) .pinfo-fold .pf-body{max-height:0;overflow:hidden;opacity:0;transition:max-height .28s ease,opacity .2s ease}
   #modal:not(.adding) .pinfo-fold:hover .pf-body,
   #modal:not(.adding) .pinfo-fold:focus-within .pf-body,
-  #modal:not(.adding) .pinfo-fold.open .pf-body{max-height:640px;opacity:1;padding-bottom:8px}
+  #modal:not(.adding) .pinfo-fold.open .pf-body{max-height:1400px;opacity:1;padding-bottom:8px}   /* 640px 이면 마지막 칸(실비보험 한도)이 잘렸다 (2026-09-17) */
   #modal:not(.adding) .pinfo-fold:hover .pf-caret,
   #modal:not(.adding) .pinfo-fold:focus-within .pf-caret,
   #modal:not(.adding) .pinfo-fold.open .pf-caret{transform:rotate(180deg)}
@@ -715,7 +715,11 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   @supports (field-sizing:content){.fld .rrn-wrap input{field-sizing:content;width:auto;min-width:8ch}}   /* 입력한 글자 폭에 딱 맞춰 ****** 가 바로 이어진다(Chrome 123+). 미지원이면 9ch 고정 */
   .rrn-mask{display:none;color:var(--muted);letter-spacing:1px;font-size:14px;user-select:none;line-height:1}
   .rrn-wrap input:not(:placeholder-shown)+.rrn-mask{display:inline}
-  .row2{display:flex;gap:10px;align-items:flex-end}   /* 한 줄의 두 칸: 라벨이 두 줄로 접혀도 입력칸 아래선을 맞춘다 (병록번호 · 이름, 2026-09-17) */
+  .row2{display:flex;gap:10px;align-items:flex-end}
+  .hist-filter{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
+  .hist-filter svg{width:15px;height:15px;color:var(--muted)}
+  .hist-filter input[type=date]{padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);font-family:inherit}
+  .hist-filter .chipf.on{font-weight:800}   /* 한 줄의 두 칸: 라벨이 두 줄로 접혀도 입력칸 아래선을 맞춘다 (병록번호 · 이름, 2026-09-17) */
   .row2>*{flex:1}
   .modal .foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
   /* 통계 창: 날짜 필터로 내용이 비어도 창 크기가 줄지 않게(비면 오류처럼 보임) — 본문 최소 높이 고정, 넘치면 본문만 스크롤 */
@@ -1267,6 +1271,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <h3><i data-lucide="users"></i> 환자 관리</h3>
     <div class="body">
       <input id="histSearch" placeholder="환자 검색 (이름·병록번호) — 누르면 과거 기록이 모두 보여요" oninput="renderHistory()" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;outline:0">
+      <!-- 내원 기간 필터: 그 기간에 한 번이라도 내원한 환자만 (2026-09-17) -->
+      <div class="hist-filter" id="histFilter">
+        <i data-lucide="calendar"></i>
+        <input type="date" id="histFrom" onchange="histDateChanged()" title="내원일 시작">
+        <span class="hint">~</span>
+        <input type="date" id="histTo" onchange="histDateChanged()" title="내원일 끝">
+        <button class="chipf" onclick="histQuick('today')">오늘</button>
+        <button class="chipf" onclick="histQuick('week')">이번 주</button>
+        <button class="chipf" onclick="histQuick('month')">이번 달</button>
+        <button class="chipf" onclick="histQuick('all')">전체</button>
+      </div>
       <div id="histList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
     <div class="foot">
@@ -2139,6 +2154,7 @@ function openBitResvDetail(k){
       ${row('일시',esc(D)+' '+esc(x.t||'')+(x.room?' · '+esc(x.room):'')+(x.dr?' · '+esc(x.dr):''))}
       ${row('구분',esc(x.div||'')+(x.naver?' <span class="rv-badge nv">네이버</span>':'')+(/신규/.test(x.memo||'')?' <span class="rv-badge new">신규</span>':''))}
       ${row('입력',esc(x.by||''))}
+      ${x.tel?row('전화',`<a href="tel:${esc(String(x.tel).replace(/\D/g,''))}">${esc(normTel(x.tel))}</a>`):''}
     </div>
     <div class="rvd-sect"><h4>메모 <span class="hint">비트 예약 메모</span></h4>${x.memo?`<div class="rvd-pre">${esc(x.memo)}</div>`:'<div class="hint">없음</div>'}</div>
     <div class="rvd-sect"><h4>특이사항 <span class="hint">환자 명단(영구 메모)</span></h4>${memo?`<div class="rvd-pre">${esc(memo)}</div>`:'<div class="hint">없음</div>'}</div>
@@ -2465,6 +2481,8 @@ function bitBackfillMemo(){
       if(nt&&nt!==cur&&autoMemo){p.memoToday=nt;if(p.bit)p.bit.memoSrc=nt;save(p);}
       /* 보험: 카드에 없고 문서(DB 에이전트 또는 조회 기록)에 있으면 채운다 — 차트번호가 처음부터 있는 DB 카드는 bitBackfillMrn 을 거치지 않아 빠져 있었다 (2026-09-17) */
       if(!p.ins&&r.ins){const si=document.getElementById('f_ins');if(si&&[...si.options].some(o=>o.value===r.ins)){p.ins=r.ins;save(p);render();}}
+      /* 전화: 카드에 없고 문서(DB 에이전트)에 있으면 채운다 — 문자 발송용. 직원이 손으로 넣은 번호는 유지 */
+      if(!(p.tel||'').trim()&&r.tel){const t=normTel(r.tel);if(t){p.tel=t;save(p);render();}}
     }
     /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
        카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
@@ -2691,7 +2709,7 @@ function bitCreatePatient(r,name,reg){
   const alreadyPaid=(r.command===8&&r.src==='db');
   if(alreadyPaid&&payRoom)first=payRoom;
   const _now=new Date().toISOString();
-  const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:'',smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
+  const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:normTel(r.tel||''),smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
   p.memoToday=r.memoToday||r.castMemo||'';
   p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true,
          ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn,memoSrc:p.memoToday||''};
@@ -6287,12 +6305,21 @@ function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else expo
 /* ───── 환자 기록(환자 리스트 → 과거 기록) ───── */
 let histKey=null;  // null=리스트, 값=특정 환자 상세
 let histPage=0, histQ='';   // 환자 목록 페이지(0부터)·마지막 검색어 — 검색어가 바뀌면 1페이지로
+/* 내원 기간 필터(환자 관리 목록): 그 기간에 한 번이라도 내원(내보내기 완료)한 환자만. 비어 있으면 전체 */
+let histFrom='', histTo='';
+function histDateChanged(){histFrom=(document.getElementById('histFrom')||{}).value||'';histTo=(document.getElementById('histTo')||{}).value||'';histPage=0;renderHistory();}
+window.histQuick=function(kind){const t=new Date();const ymd0=d=>localYMD(d);let a='',b='';
+  if(kind==='today'){a=b=ymd0(t);}
+  else if(kind==='week'){const d=new Date(t);const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);a=ymd0(d);b=ymd0(t);}   // 월요일부터 오늘
+  else if(kind==='month'){a=ymd0(new Date(t.getFullYear(),t.getMonth(),1));b=ymd0(t);}
+  const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value=a;if(g)g.value=b;histDateChanged();};
+function histVisitInRange(v){if(!histFrom&&!histTo)return true;const d=localYMD(new Date(v.dischargedAt||v.enteredAt||0));if(d==='Invalid Date')return false;return (!histFrom||d>=histFrom)&&(!histTo||d<=histTo);}
 const HIST_PAGE=50;         // 한 페이지 환자 수
 function histGo(d){histPage=Math.max(0,histPage+d);renderHistory();const b=document.querySelector('#historyModal .body');if(b)b.scrollTop=0;}
 let histView='all';        // all=내원기록 전체, consult=상담만
 let histConsultRoom='전체'; // 상담만 모드에서 방 필터
 function histAdminHint(){const b=document.getElementById("histAdminHint");if(b)b.style.display=isAdmin()?"":"none";}
-function openHistory(){histKey=null;histView='all';histConsultRoom='전체';histPage=0;histQ='';document.getElementById("histSearch").value="";histAdminHint();renderHistory();document.getElementById("historyModal").classList.add("show");}
+function openHistory(){histKey=null;histView='all';histConsultRoom='전체';histPage=0;histQ='';document.getElementById("histSearch").value="";histFrom='';histTo='';{const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value='';if(g)g.value='';}histAdminHint();renderHistory();document.getElementById("historyModal").classList.add("show");}
 function closeHistory(){document.getElementById("historyModal").classList.remove("show");}
 /* 보드 카드 → 그 환자의 과거 기록 바로 열기 */
 function openHistForPid(pid){const p=data.find(x=>x.id===pid);if(!p)return;
@@ -6718,8 +6745,11 @@ function renderHistory(){
     // 환자 리스트
     let groups=patientGroups();
     if(q)groups=groups.filter(g=>(g.name||"").includes(q)||(g.mrn||"").includes(q));
+    const ranged=!!(histFrom||histTo);
+    {const fr=document.getElementById('histFilter');if(fr)fr.style.display='';}
+    if(ranged)groups=groups.filter(g=>g.visits.some(histVisitInRange));   // 기간 내 내원한 환자만
     groups.sort((a,b)=>lastVisitMs(b)-lastVisitMs(a)||(a.name||"").localeCompare(b.name||""));
-    if(!groups.length){box.innerHTML=`<div class="route-empty">${REGISTRY.length||VISITS.length?"검색 결과가 없습니다.":"아직 등록된 환자가 없습니다."}</div>`;return;}
+    if(!groups.length){box.innerHTML=`<div class="route-empty">${ranged?"이 기간에 내원한 환자가 없습니다.":(REGISTRY.length||VISITS.length?"검색 결과가 없습니다.":"아직 등록된 환자가 없습니다.")}</div>`;return;}
     /* 페이지: 환자가 늘어도 스크롤이 끝없이 길어지지 않게 HIST_PAGE 명씩. 검색어가 바뀌면 1페이지부터 */
     if(q!==histQ){histQ=q;histPage=0;}
     const pages=Math.max(1,Math.ceil(groups.length/HIST_PAGE));if(histPage>pages-1)histPage=pages-1;
@@ -6730,12 +6760,13 @@ function renderHistory(){
       <div class="hv-row"><div class="hv-head" onclick="openPatientHist('${esc(g.key)}')">
         <span class="hv-name">${esc(g.name)}</span>
         <span class="hint">${g.mrn?esc(g.mrn)+' · ':''}${esc(g.birth||'')}</span>
-        <span class="hint" style="margin-left:auto">방문 ${g.visits.length}회</span>
+        <span class="hint" style="margin-left:auto">${ranged?`기간 내 ${g.visits.filter(histVisitInRange).length}회 · `:''}방문 ${g.visits.length}회</span>
         <span class="hv-total">${lv?ymd(new Date(lv).toISOString()).slice(0,10):'-'}</span>
         ${isAdmin()?`<button class="hv-del" title="이 환자 기록 삭제" onclick="event.stopPropagation();deletePatientRecord('${esc(g.key)}')"><i data-lucide="trash-2"></i></button>`:'<span class="hint">›</span>'}
       </div></div>`;}).join("")+(pages>1?pager:'');
   }else{
     // 특정 환자 상세 (과거 기록 모두)
+    {const fr=document.getElementById('histFilter');if(fr)fr.style.display='none';}   // 기간 필터는 목록에서만
     const g=patientGroups().find(x=>x.key===histKey);
     if(!g){histKey=null;return renderHistory();}
     const visits=g.visits.slice().sort((a,b)=>new Date(b.dischargedAt)-new Date(a.dischargedAt));

@@ -164,7 +164,8 @@ $QUERY = @"
 SELECT RTRIM(o.OcmNum) AS k, RTRIM(o.OcmComStt) AS stt, RTRIM(p.PbsPatNam) AS name, RTRIM(o.OcmChtNum) AS mrn,
        RTRIM(p.PbsResNum) AS rrn, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex, RTRIM(p.PbsNewDte) AS newdte,
        RTRIM(o.OcmAcpDtm) AS recv, RTRIM(u.UidNam) AS dr, RTRIM(o.OcmDepCod) AS dep, RTRIM(r.RsvDtm) AS rsvdtm,
-       RTRIM(o.OcmRefCmt) AS memo1, RTRIM(p.PbsRefCmt) AS memo2, CAST(m.PbsSpcCmt AS nvarchar(max)) AS memo3, o.OcmInsCod AS ins, o.OcmInsSeq AS insseq
+       RTRIM(o.OcmRefCmt) AS memo1, RTRIM(p.PbsRefCmt) AS memo2, CAST(m.PbsSpcCmt AS nvarchar(max)) AS memo3, o.OcmInsCod AS ins, o.OcmInsSeq AS insseq,
+       COALESCE(NULLIF(RTRIM(p.PbsCelPhn),''), RTRIM(p.PbsPhnNum)) AS tel
 FROM OcmInf o WITH (NOLOCK)
 LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = o.OcmChtNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OcmDtrCod
@@ -260,6 +261,7 @@ function Poll($st, $first) {
                         command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; registered = $true; registeredAt = (NowIso); cancelled = $false; seenAt = (NowIso) }
         $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }
         $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
+        $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }   # 휴대폰(없으면 전화) 숫자만 — 카드의 전화 칸(문자 발송용). 2026-09-17 사용자 결정으로 추가
         $fv = DateOf $r.newdte; if ($fv) { $f.firstVisit = $fv }
         $rv = DtmOf $r.rsvdtm; if ($rv -and $rv.StartsWith((Today))) { $f.nextResv = $rv }
         if ($f.rrn7 -eq '') { $f.Remove('rrn7') }
@@ -271,6 +273,7 @@ function Poll($st, $first) {
           $f = $base + @{ command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; event = $CMD_NAMES[$cmd]; eventAt = (NowIso); cancelled = $false }
           $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }   # 접수 뒤에 적힌 메모도 상태가 바뀔 때 따라간다
           $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
+          $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }
           if ($CANCEL -contains $prev) { $f.registered = $true; $f.registeredAt = (NowIso); $f.seenAt = (NowIso) }   # 취소 뒤 재접수 → 동선관리가 다시 자동 생성
           try { Send "$(Today)_ocm$k" $f "$($CMD_NAMES[$cmd]) $tag"; $st.sent[$k] = $cmd } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
         }
@@ -351,7 +354,8 @@ function IdleWait($ms) {   # 다음 주기까지 기다리는 동안에도 상�
 $RSV_QUERY = @"
 SELECT RTRIM(r.RsvOcmNum) AS k, RTRIM(r.RsvDtm) AS dtm, RTRIM(r.RsvSts) AS sts, RTRIM(r.RsvDivTyp) AS div, RTRIM(r.RsvDepCod) AS dep, RTRIM(r.RsvUidCod) AS uid,
        RTRIM(r.RsvRefCmt) AS memo, COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), RTRIM(o.OcmChtNum)) AS mrn, RTRIM(p.PbsPatNam) AS name, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex,
-       RTRIM(u.UidNam) AS dr, RTRIM(o.OcmComStt) AS ostt, RTRIM(o.OcmAcpDtm) AS acp
+       RTRIM(u.UidNam) AS dr, RTRIM(o.OcmComStt) AS ostt, RTRIM(o.OcmAcpDtm) AS acp,
+       COALESCE(NULLIF(RTRIM(p.PbsCelPhn),''), RTRIM(p.PbsPhnNum)) AS tel
 FROM RsvInf r WITH (NOLOCK)
 LEFT JOIN OcmInf o WITH (NOLOCK) ON o.OcmNum = r.RsvOcmNum
 LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), o.OcmChtNum)
@@ -378,8 +382,8 @@ function PollResv() {
     $it = [ordered]@{ k = ([string]$r.k -replace '\D', ''); t = $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2); room = $(if ($script:DepName.ContainsKey($dep)) { $script:DepName[$dep] } else { $dep })
                       dr = ([string]$r.dr).Trim(); mrn = $mrn; name = $nm; birth = (DateOf $r.bir); sex = ([string]$r.sex).Trim()
                       div = ([string]$r.div).Trim(); sts = $sts; ostt = $ostt; acp = ''; memo = $memo; by = ([string]$r.uid).Trim()
-                      naver = ($memo -match '네이버|naver'); block = [bool]$isBlock }
-    if ($isBlock) { $it.name = '예약금지'; $it.birth = ''; $it.sex = '' }
+                      naver = ($memo -match '네이버|naver'); block = [bool]$isBlock; tel = (([string]$r.tel) -replace '\D', '') }
+    if ($isBlock) { $it.name = '예약금지'; $it.birth = ''; $it.sex = ''; $it.tel = '' }
     $a = [string]$r.acp; if ($it.ostt -and $it.ostt -ne 'WR' -and $it.ostt -ne 'CN' -and $a.Length -ge 12 -and $a.Substring(0, 8) -eq $dtm.Substring(0, 8)) { $it.acp = $a.Substring(8, 2) + ':' + $a.Substring(10, 2) }
     [void]$byDay[$day].Add($it)
   }
