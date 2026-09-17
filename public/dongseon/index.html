@@ -303,7 +303,7 @@
   .sheet-tbl thead th{position:relative}
   .sth-rz{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:3;background:transparent}
   .sth-rz:hover,body.sheet-resizing .sth-rz{background:rgba(59,130,246,.35)}
-  .sheet-tbl.fixedw{table-layout:fixed}   /* 너비는 인라인(열 너비 합) — 컨테이너에 맞춰 늘리지 않으므로 한 열만 바뀐다 */
+  .sheet-tbl.fixedw{table-layout:fixed;width:100%}   /* 열 너비는 비율(colgroup) — 경계를 끌면 양옆 두 열만 주고받고 표는 늘 화면에 꼭 맞는다 */
   .sheet-tbl.fixedw th,.sheet-tbl.fixedw td{min-width:0;overflow:hidden}
   body.sheet-resizing{cursor:col-resize;user-select:none}
   .rs-btn{align-self:stretch;display:inline-flex;align-items:center;gap:8px;padding:0 22px;border:1px solid var(--blue);border-radius:12px;background:var(--panel);color:var(--blue);font-family:inherit;font-size:17px;font-weight:800;cursor:pointer;white-space:nowrap}   /* 옆 통계 카드와 같은 높이(stretch) */
@@ -5559,19 +5559,23 @@ window.sheetThMove=function(name,dir){const cur=SHEET_TH_LAST.slice();const i=cu
 let SHEET_TH_W=(function(){try{const o=JSON.parse(localStorage.getItem('patientBoard_sheetThWidth'));return (o&&typeof o==='object')?o:{};}catch(e){return {};}})();
 const SHEET_TH_W_DEFAULT=220;   // 너비를 정하지 않은 열의 기본(고정 레이아웃일 때)
 function sheetThWSave(){try{localStorage.setItem('patientBoard_sheetThWidth',JSON.stringify(SHEET_TH_W));}catch(e){}}
-(function sheetColResizeInit(){
-  let drag=null;   // {name, startX, startW, col}
+(function sheetColResizeInit(){   // 경계 끌기: 왼쪽 열(a)과 오른쪽 열(b)이 너비를 주고받는다. 합은 그대로라 표는 늘 화면에 꼭 맞는다
+  let drag=null;   // {a,b,startX,wa,wb,colA,colB,tbl}
+  const px=th=>th.getBoundingClientRect().width;
+  const pct=(w,sum)=>(w/sum*100).toFixed(3)+'%';
   document.addEventListener('mousedown',e=>{const h=e.target.closest&&e.target.closest('.sth-rz');if(!h)return;e.preventDefault();e.stopPropagation();
-    const name=h.dataset.th;const th=h.closest('th');const tbl=h.closest('table');if(!th||!tbl)return;
-    if(!Object.keys(SHEET_TH_W).length||!tbl.classList.contains('fixedw')){   // 처음 끌 때: 지금 보이는 너비를 모든 열에 저장해 고정 레이아웃으로 바꾼다(다른 열이 갑자기 변하지 않게)
-      tbl.querySelectorAll('thead th[data-th]').forEach(x=>{SHEET_TH_W[x.dataset.th]=Math.max(90,Math.round(x.getBoundingClientRect().width));});sheetThWSave();if(resvOpen)renderResvScreen();
-      const th2=document.querySelector(`.sheet-tbl th[data-th="${CSS.escape(name)}"]`);if(!th2)return;drag={name,startX:e.clientX,startW:th2.getBoundingClientRect().width,col:th2.closest('table').querySelector(`col[data-th="${CSS.escape(name)}"]`)};}
-    else drag={name,startX:e.clientX,startW:th.getBoundingClientRect().width,col:tbl.querySelector(`col[data-th="${CSS.escape(name)}"]`)};
+    const a=h.dataset.th,b=h.dataset.next;let tbl=h.closest('table');if(!tbl||!b)return;
+    tbl.querySelectorAll('thead th[data-th]').forEach(x=>{SHEET_TH_W[x.dataset.th]=Math.max(90,Math.round(px(x)));});   // 지금 보이는 px 를 모든 열에 기록(비율의 기준)
+    if(!tbl.classList.contains('fixedw')){sheetThWSave();if(resvOpen)renderResvScreen();tbl=document.querySelector('.sheet-tbl.fixedw')||tbl;}   // 처음이면 고정 레이아웃으로 다시 그림
+    const thA=tbl.querySelector(`th[data-th="${CSS.escape(a)}"]`),thB=tbl.querySelector(`th[data-th="${CSS.escape(b)}"]`);if(!thA||!thB)return;
+    drag={a,b,startX:e.clientX,wa:px(thA),wb:px(thB),colA:tbl.querySelector(`col[data-th="${CSS.escape(a)}"]`),colB:tbl.querySelector(`col[data-th="${CSS.escape(b)}"]`),tbl};
     document.body.classList.add('sheet-resizing');});
-  document.addEventListener('mousemove',e=>{if(!drag)return;const w=Math.max(90,Math.round(drag.startW+(e.clientX-drag.startX)));SHEET_TH_W[drag.name]=w;if(drag.col)drag.col.style.width=w+'px';
-    const tbl=drag.col&&drag.col.closest('table');if(tbl){let tot=60;tbl.querySelectorAll('thead th[data-th]').forEach(x=>{tot+=SHEET_TH_W[x.dataset.th]||SHEET_TH_W_DEFAULT;});tbl.style.width=tot+'px';}});   // 표 너비도 같이 → 다른 열 불변
+  document.addEventListener('mousemove',e=>{if(!drag)return;let dx=e.clientX-drag.startX;dx=Math.max(90-drag.wa,Math.min(drag.wb-90,dx));   // 양쪽 다 90px 이상
+    const wa=Math.round(drag.wa+dx),wb=Math.round(drag.wb-dx);SHEET_TH_W[drag.a]=wa;SHEET_TH_W[drag.b]=wb;
+    let sum=60;drag.tbl.querySelectorAll('thead th[data-th]').forEach(x=>{sum+=SHEET_TH_W[x.dataset.th]||SHEET_TH_W_DEFAULT;});
+    if(drag.colA)drag.colA.style.width=pct(wa,sum);if(drag.colB)drag.colB.style.width=pct(wb,sum);});
   document.addEventListener('mouseup',()=>{if(!drag)return;drag=null;document.body.classList.remove('sheet-resizing');sheetThWSave();if(resvOpen)renderResvScreen();});
-  document.addEventListener('dblclick',e=>{const h=e.target.closest&&e.target.closest('.sth-rz');if(!h)return;e.preventDefault();delete SHEET_TH_W[h.dataset.th];sheetThWSave();if(resvOpen)renderResvScreen();});
+  document.addEventListener('dblclick',e=>{const h=e.target.closest&&e.target.closest('.sth-rz');if(!h)return;e.preventDefault();SHEET_TH_W={};sheetThWSave();if(resvOpen)renderResvScreen();});   // 두 번 누르면 모두 균등
 })();
 /* 4층 비급여 치료 시간표 — 예약(시트+수정본)만. 열 = 그날 예약·차단·취소가 있는 치료사(시트 순서), 행 = 30분. 보드 카드는 보지 않는다.
    pf=true(환자용): 이름 가림, 차트번호·메모·취소·차단 문구 없음(지금은 직원 화면·인쇄에서만 쓰인다) */
@@ -5605,11 +5609,12 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
   /* 열 너비: 머리글 오른쪽 가장자리를 끌어 정한 값(기기별 저장)이 하나라도 있으면 고정 레이아웃(colgroup)으로 그린다. 없으면 종전처럼 균등 */
+  /* 열 너비: 경계를 끌면 양옆 두 열이 너비를 주고받는다(합은 그대로 = 화면 너비). 저장값은 비율이라 어느 화면에서도 표가 화면에 꼭 맞는다 */
   const hasW=!pf&&docs.some(n=>SHEET_TH_W[n]);
-  const colgroup=hasW?`<colgroup><col style="width:60px">${docs.map(n=>`<col data-th="${esc(n)}" style="width:${SHEET_TH_W[n]||SHEET_TH_W_DEFAULT}px">`).join('')}</colgroup>`:'';
-  const tblW=hasW?60+docs.reduce((a,n)=>a+(SHEET_TH_W[n]||SHEET_TH_W_DEFAULT),0):0;   // 표 너비 = 열 너비 합 → 한 열을 바꿔도 다른 열은 그대로
-  return `<div class="sheet-wrap"><table class="sheet-tbl${hasW?' fixedw':''}"${hasW?` style="width:${tblW}px"`:''}>${colgroup}
-    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th data-th="${esc(n)}" style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${pf?esc(n):`<span class="sth-wrap"><button class="sth-mv" title="왼쪽으로" ${i===0?'disabled':''} onclick="event.stopPropagation();sheetThMove('${esc(n)}',-1)">◀</button><span class="sth-name">${esc(n)}</span><button class="sth-mv" title="오른쪽으로" ${i===docs.length-1?'disabled':''} onclick="event.stopPropagation();sheetThMove('${esc(n)}',1)">▶</button></span><span class="sth-rz" data-th="${esc(n)}" title="끌어서 열 너비 조절 · 두 번 누르면 원래대로"></span>`}</th>`).join("")}</tr></thead>
+  const wsum=hasW?60+docs.reduce((a,n)=>a+(SHEET_TH_W[n]||SHEET_TH_W_DEFAULT),0):0;   // 시간 열(60)도 비율에 넣어 합이 정확히 100% 가 되게(고정 레이아웃에서 표가 넘치지 않도록)
+  const colgroup=hasW?`<colgroup><col style="width:${(60/wsum*100).toFixed(3)}%">${docs.map(n=>`<col data-th="${esc(n)}" style="width:${((SHEET_TH_W[n]||SHEET_TH_W_DEFAULT)/wsum*100).toFixed(3)}%">`).join('')}</colgroup>`:'';
+  return `<div class="sheet-wrap"><table class="sheet-tbl${hasW?' fixedw':''}">${colgroup}
+    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th data-th="${esc(n)}" style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${pf?esc(n):`<span class="sth-wrap"><button class="sth-mv" title="왼쪽으로" ${i===0?'disabled':''} onclick="event.stopPropagation();sheetThMove('${esc(n)}',-1)">◀</button><span class="sth-name">${esc(n)}</span><button class="sth-mv" title="오른쪽으로" ${i===docs.length-1?'disabled':''} onclick="event.stopPropagation();sheetThMove('${esc(n)}',1)">▶</button></span>${i<docs.length-1?`<span class="sth-rz" data-th="${esc(n)}" data-next="${esc(docs[i+1])}" title="끌어서 옆 열과 너비 조절 · 두 번 누르면 모두 균등"></span>`:''}`}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
 `;
 }
