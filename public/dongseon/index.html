@@ -283,6 +283,15 @@
   .mx-tag{flex:0 0 auto;font-size:.72em;font-weight:800;border-radius:999px;padding:2px 9px;background:#e5e7eb;color:#4b5563}
   .mx-tag.arr{background:#93c5fd;color:#1e3a8a}
   .mx-tag.live{background:#2563eb;color:#fff}
+  .mx-tag.done{background:#d1fae5;color:#065f46}
+  .mx-stat-tools{margin-bottom:10px}
+  .rs-card.rs-btn{cursor:pointer;font-family:inherit;color:var(--text);text-align:left;border-color:var(--blue)}
+  .rs-card.rs-btn:hover{background:var(--panel2)}
+  .rs-card.rs-btn b svg{width:18px;height:18px;color:var(--blue)}
+  .mx-stat th,.mx-stat td{text-align:center}
+  .mx-stat td.mx-name,.mx-stat th.mx-name{text-align:left}
+  .mx-stat tr.mx-total td{border-top:2px solid var(--line);background:var(--panel2)}
+  .mx-row.done td{color:var(--muted)}
   .bk-manual{margin:2px 0 10px;font-size:clamp(12px,1.1vw,16px)}
   .bk-manual-t{font-weight:800;color:#1f2a37;margin-bottom:5px}
   .bk-manual-list{display:flex;flex-wrap:wrap;gap:6px 10px}
@@ -316,6 +325,17 @@
   .col-title{font-weight:700;font-size:15px}
   .col-count{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;min-width:30px;padding:2px 10px;border-radius:999px;color:var(--sub);background:var(--panel);border:1px solid var(--line);font-weight:800;font-size:12px;font-variant-numeric:tabular-nums}
   .col-count.has{color:#fff;background:var(--blue);border-color:transparent}
+  /* 방(컬럼) 접기 — 내 화면에만(기기별 저장). 접힌 방은 세로 띠(이름·인원)로만 보이고, 카드를 그 위에 놓으면 그 방으로 이동 (2026-09-17) */
+  .col-fold-btn{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;flex-shrink:0;padding:0}
+  .col-fold-btn:hover{color:var(--text);background:var(--panel2)}
+  .col.folded{flex:0 0 46px;max-width:46px;padding:8px 4px 6px;cursor:pointer}
+  .col.folded .col-head{flex-direction:column;gap:8px;padding:0;align-items:center}
+  .col.folded .col-title{writing-mode:vertical-rl;text-orientation:mixed;font-size:14px;letter-spacing:1px;max-height:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .col.folded .col-count{margin-left:0;min-width:0;padding:2px 6px;font-size:11px}
+  .col.folded .col-grip,.col.folded .owner-chk,.col.folded .col-search-btn,.col.folded .col-search,.col.folded .owners-row,.col.folded .col-body{display:none}
+  .col.folded.drag-over{background:var(--blue-bg,rgba(59,130,246,.12));border-color:var(--blue)}
+  .fold-tools{display:inline-flex;gap:4px}
+  .fold-tools .btn{padding:6px 9px;font-size:12px}
   .owner-chk{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;white-space:nowrap}
   .owner-chk input{accent-color:var(--teal)}
   .owners-row{display:flex;flex-wrap:wrap;gap:4px;padding:0 2px 8px;min-height:10px}
@@ -1121,6 +1141,11 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="mineBtn" onclick="toggleChatMine()"><i data-lucide="hand"></i> 담당알람<span id="mineBadge"></span></button>
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
+    <span class="fold-tools" title="방(컬럼) 접기/펼치기 — 이 화면(기기)에만 적용. 각 방 머리의 ▾/▸ 로 하나씩도 됩니다">
+      <button class="btn" onclick="foldEmpty()" title="지금 환자가 없는 방만 접기"><i data-lucide="fold-horizontal"></i> 빈 방 접기</button>
+      <button class="btn" onclick="foldAll(true)" title="모든 방 접기">모두 접기</button>
+      <button class="btn" onclick="foldAll(false)" title="모든 방 펼치기"><i data-lucide="unfold-horizontal"></i> 모두 펼치기</button>
+    </span>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
     <button class="btn" id="resvBtn" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
@@ -1325,6 +1350,23 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn sm" id="resvCloseBtn" onclick="closeResvScreen()"><i data-lucide="x"></i> 닫기</button>
   </div>
   <div class="resv-body" id="resvBody"></div>
+</div>
+<!-- 4층 비급여 치료 통계 창: 치료실별 이용(충격파·신장분사, 시트의 '차트번호(치료실)' 괄호 숫자) + 치료사별 도수(SASO·자동차도수). 기간 필터 공용 -->
+<div class="modal-bg" id="resvStatModal" style="z-index:400" onclick="if(event.target===this)closeResvStats()">
+  <div class="modal" style="width:min(94vw,760px)">
+    <h3><i data-lucide="bar-chart-3"></i> 4층 비급여 치료 통계</h3>
+    <div class="body">
+      <div class="hist-filter mx-stat-tools">
+        <button class="chipf" data-kind="today" onclick="mxStatQuick('today')">오늘</button>
+        <button class="chipf" data-kind="week" onclick="mxStatQuick('week')">이번 주</button>
+        <button class="chipf" data-kind="month" onclick="mxStatQuick('month')">이번 달</button>
+        <input type="date" id="mxStatFrom" onchange="mxStatRange()" title="시작"><span class="hint">~</span><input type="date" id="mxStatTo" onchange="mxStatRange()" title="끝">
+        <span class="hint" id="mxStatHint"></span>
+      </div>
+      <div id="mxStatBody"><div class="hint">불러오는 중…</div></div>
+    </div>
+    <div class="foot" style="display:flex;justify-content:flex-end;padding:0 16px 14px"><button class="btn sm" onclick="closeResvStats()">닫기</button></div>
+  </div>
 </div>
 <!-- 비트 진료 예약 화면 — 4층 비급여 치료(시트)와 별개. DB 에이전트가 올린 bitResv/{날짜} 를 실시간으로 보여 준다 (별도 모니터: ?bitresv) -->
 <div id="bitResvScreen" class="resv-screen">
@@ -1854,6 +1896,12 @@ let routeDraft = [];          // 모달에서 작성 중인 동선
 let noteRoomSel = "";         // 전달사항 작성 시 선택된 방
 let draggedPid = null, draggedRoom = null;  // 카드 드래그 상태
 let draggedColRoom = null;                   // 컬럼(방) 드래그 상태 — 내 방 순서 변경용
+/* 방(컬럼) 접기 상태 — 이 기기(브라우저)에만 저장. {방이름:true} */
+let COL_FOLD=(function(){try{const o=JSON.parse(localStorage.getItem('patientBoard_colfold'));return (o&&typeof o==='object')?o:{};}catch(e){return {};}})();
+function saveColFold(){try{localStorage.setItem('patientBoard_colfold',JSON.stringify(COL_FOLD));}catch(e){}}
+window.toggleColFold=function(room){if(COL_FOLD[room])delete COL_FOLD[room];else COL_FOLD[room]=true;saveColFold();render();};
+window.foldAll=function(on){COL_FOLD={};if(on)ROOMS.forEach(r=>{COL_FOLD[r]=true;});saveColFold();render();};
+window.foldEmpty=function(){COL_FOLD={};ROOMS.forEach(r=>{if(!data.some(p=>!p.discharged&&curRoom(p)===r))COL_FOLD[r]=true;});saveColFold();render();};   // 지금 비어 있는 방만 접기(환자가 있는 방은 펼침)
 let currentGroup = localStorage.getItem("patientBoard_group")||"3층";    // 보드 그룹(층) 탭 — 기기별 마지막 선택 기억
 let seenAlarms = new Set(loadSeen());  // 이미 알린 항목(기기별) — 중복 알람 방지
 let alarmsSeeded = false;     // 첫 스냅샷은 시드(기존 항목 알람 안 함)
@@ -2166,14 +2214,33 @@ function openBitResvDetail(k){
     <div class="rvd-sect"><h4>특이사항 <span class="hint">환자 명단(영구 메모)</span></h4>${memo?`<div class="rvd-pre">${esc(memo)}</div>`:'<div class="hint">없음</div>'}</div>
     ${fam?`<div class="rvd-sect"><h4>가족관계</h4><div>${esc(fam)}</div></div>`:''}
     ${(reg&&(reg.birth||reg.sex))?`<div class="rvd-sect"><h4>명단</h4>${row('생년월일',esc(reg.birth||'')+(reg.sex?' · '+esc(reg.sex):''))}</div>`:''}
-    ${visits.length?`<div class="rvd-sect"><h4>최근 내원</h4>${visits.map(v=>`<div class="rvd-row"><span class="rvd-l">${esc(localYMD(new Date(v.dischargedAt||v.enteredAt||0)))}</span><span class="rvd-v">${esc((v.route||[]).join(' → '))}</span></div>`).join('')}</div>`:''}
+    ${visits.length?`<div class="rvd-sect"><h4>최근 내원</h4>${visits.map(v=>`<div class="rvd-row"><span class="rvd-l">${esc(localYMD(new Date(v.dischargedAt||v.enteredAt||0)))}</span><span class="rvd-v">${esc((v.routeFull||(v.rooms||[]).map(r=>r.room)).join(' → '))}</span></div>`).join('')}</div>`:''}
     ${p?`<div class="rvd-sect"><h4>오늘 카드</h4>${row('현재',esc(curRoom(p))+' · '+esc(p.status||'')+(p.receiveAt?' · 접수 '+esc(p.receiveAt):''))}</div>`:''}`;
-  const cb=document.getElementById('bitResvMCard');if(cb)cb.style.display=p?'':'none';
+  /* 오늘 카드: 있으면 열기, 없으면(아직 안 온 환자) 3층 대기실에 접수하고 열기 — 비트 없이도 예약에서 바로 접수할 수 있게 (2026-09-17). 취소된 예약은 제외 */
+  const cb=document.getElementById('bitResvMCard');if(cb){cb.style.display=(p||!canc)?'':'none';cb.innerHTML=p?'<i data-lucide="id-card"></i> 오늘 카드 열기':'<i data-lucide="user-plus"></i> 3층 대기실 접수 → 카드 열기';cb.title=p?'':'이 환자를 3층 대기실에 접수(카드 생성)하고 환자 정보 창을 엽니다';}
   document.getElementById('bitResvModal').classList.add('show');
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
 function closeBitResvDetail(){document.getElementById('bitResvModal').classList.remove('show');BIT_RESV_SEL=null;}
-function bitResvOpenCard(){const x=BIT_RESV_SEL;if(!x)return;const mrn=String(x.mrn||'').trim();const p=data.find(q=>!q.discharged&&(q.mrn||'').trim()===mrn);if(!p)return;closeBitResvDetail();try{openEdit(p.id);}catch(e){console.warn(e);}}
+function bitResvOpenCard(){
+  const x=BIT_RESV_SEL;if(!x)return;const mrn=String(x.mrn||'').trim();
+  let p=data.find(q=>!q.discharged&&(q.mrn||'').trim()===mrn)||(x.k?data.find(q=>!q.discharged&&q.bit&&String(q.bit.ocmNum||'')===String(x.k)):null);
+  if(!p){   // 아직 안 온 환자 → 3층 대기실에 접수(카드 생성). 접수번호(ocmNum)를 카드에 남겨 두어 뒤에 비트 접수 문서가 와도 같은 카드로 이어진다(bitOnBoard)
+    if(!currentUser||!cloud.ready.pts){alert('아직 연결 준비 중입니다. 잠시 후 다시 눌러 주세요.');return;}
+    if(x.sts==='OC'||x.ostt==='CN'){alert('취소된 예약입니다.');return;}
+    const name=String(x.name||'').trim();if(!name){alert('이름이 없어 접수할 수 없습니다.');return;}
+    if(!confirm(`'${name}'${mrn?' ('+mrn+')':''} 님을 3층 대기실에 접수할까요?\n(비트에는 반영되지 않습니다 — 동선관리 카드만 만듭니다)`))return;
+    const sex=x.sex==='M'?'남':(x.sex==='F'?'여':'');
+    const reg=Object.assign({},regFind(mrn)||{},{name,birth:x.birth||(regFind(mrn)||{}).birth||'',sex:sex||(regFind(mrn)||{}).sex||''});
+    const D=bitResvDate||localYMD(new Date());
+    const r={src:'resv',registered:true,command:2,ocmNum:String(x.k||''),name,mrn,doctor:x.dr||'',tel:x.tel||'',seenAt:new Date().toISOString(),pc:'예약',
+             nextResv:(x.t?D+' '+x.t:''),memoToday:(x.memo||'').replace(/^\[신규예약\]\s*/,'')};
+    try{p=bitCreatePatient(r,name,reg);}catch(e){console.warn('resv create',e);}
+    if(!p){alert('카드를 만들지 못했습니다(이미 보드에 있거나 명단과 이름이 다를 수 있음).');return;}
+    try{audit('환자추가(예약에서 접수)',name+(mrn?' ('+mrn+')':'')+' · '+D+' '+(x.t||''));}catch(e){}
+  }
+  closeBitResvDetail();try{openEdit(p.id);}catch(e){console.warn(e);}
+}
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 let RESV_MODE=false, resvOpen=false;   // ?resv 전용 창(직원용 예약관리 모니터) / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
@@ -2489,6 +2556,12 @@ function bitBackfillMemo(){
       if(!p.ins&&r.ins){const si=document.getElementById('f_ins');if(si&&[...si.options].some(o=>o.value===r.ins)){p.ins=r.ins;save(p);render();}}
       /* 전화: 카드에 없고 문서(DB 에이전트)에 있으면 채운다 — 문자 발송용. 직원이 손으로 넣은 번호는 유지 */
       if(!(p.tel||'').trim()&&r.tel){const t=normTel(r.tel);if(t){p.tel=t;save(p);render();}}
+      /* 내원 횟수·최초/직전 내원일(비트 DB 기준): 카드에 없으면 채운다 */
+      if(p.bit&&(r.visits||r.prevVisit||r.firstVisit)){let ch=false;
+        if(!p.bit.visits&&r.visits){p.bit.visits=Number(r.visits)||0;ch=true;}
+        if(!p.bit.prevVisit&&r.prevVisit){p.bit.prevVisit=r.prevVisit;ch=true;}
+        if(!p.bit.firstVisit&&r.firstVisit){p.bit.firstVisit=r.firstVisit;ch=true;}
+        if(ch)save(p);}
     }
     /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
        카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
@@ -2717,7 +2790,7 @@ function bitCreatePatient(r,name,reg){
   const _now=new Date().toISOString();
   const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:normTel(r.tel||''),smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
   p.memoToday=r.memoToday||r.castMemo||'';
-  p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true,
+  p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',visits:Number(r.visits||0),prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true,
          ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn,memoSrc:p.memoToday||''};
   if(mrn){
     regUpsert(mrn,name,birth,sex);
@@ -4501,10 +4574,12 @@ function render(){
     }).join(""):'<span class="hint" style="font-size:11px">담당자 없음</span>';
 
     const col=document.createElement("div");
-    col.className="col"+(mineOwner?" owned":"");col.dataset.room=room;
-    col.dataset.room=room;
+    const folded=!!COL_FOLD[room];
+    col.className="col"+(mineOwner?" owned":"")+(folded?" folded":"");col.dataset.room=room;
+    if(folded)col.title=room+' — 누르면 펼치기 · 카드를 여기 놓으면 이 방으로 이동';
     col.innerHTML=`
       <div class="col-head">
+        <button class="col-fold-btn" title="${folded?'펼치기':'접기 (내 화면에만)'}" onclick="event.stopPropagation();toggleColFold('${esc(room)}')">${folded?'▸':'▾'}</button>
         <span class="col-grip" draggable="true" title="드래그: 내 화면의 방 순서 바꾸기 (내 계정에만 적용)">⠿</span>
         ${SHOW_OWNERS?`<label class="owner-chk" title="이 방 담당하기"><input type="checkbox" ${mineOwner?'checked':''} onclick="event.stopPropagation();toggleOwner('${esc(room)}')">담당</label>`:''}
         <span class="col-title">${esc(room)}</span>
@@ -4537,6 +4612,14 @@ function render(){
       const pid=draggedPid||e.dataTransfer.getData("text/plain");if(!pid)return;
       if(draggedRoom===room)moveToEnd(pid); else moveTo(pid,room);
       draggedPid=null;draggedRoom=null;});
+    if(folded){   // 접힌 방: 본문이 숨겨져 있으므로 컬럼 자체가 놓기 대상. 클릭하면 펼침
+      col.addEventListener("dragover",e=>{if(draggedColRoom)return;e.preventDefault();col.classList.add("drag-over")});
+      col.addEventListener("dragleave",()=>col.classList.remove("drag-over"));
+      col.addEventListener("drop",e=>{if(draggedColRoom)return;e.preventDefault();col.classList.remove("drag-over");
+        const pid=draggedPid||e.dataTransfer.getData("text/plain");if(!pid)return;
+        if(draggedRoom!==room)moveTo(pid,room);draggedPid=null;draggedRoom=null;});
+      col.addEventListener("click",e=>{if(e.target.closest('button,input,label'))return;toggleColFold(room);});
+    }
 
     // 컬럼(방) 드래그 = 내 방 순서 변경(개인)
     const grip=col.querySelector('.col-grip');
@@ -5034,7 +5117,7 @@ function bkMerged(D){
   const live=items.filter(x=>!x.removed);
   const ths=(bk.therapists||[]).slice();live.forEach(x=>{if(x.th&&!ths.includes(x.th))ths.push(x.th);});
   const manual=[];
-  (bk.manual||[]).forEach(m=>{const k=bkManualKey(m);const e=eMan[k];if(e&&e.removed)return;const x=Object.assign({},m,{key:k});if(e){['no','mrn','name','th','note','color'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;}manual.push(x);});
+  (bk.manual||[]).forEach(m=>{const k=bkManualKey(m);const e=eMan[k];if(e&&e.removed)return;const x=Object.assign({},m,{key:k});if(e){['no','mrn','name','th','note','color','status'].forEach(f=>{if(e[f]!==undefined)x[f]=e[f];});x.edited=true;}manual.push(x);});
   (ed.manualAdded||[]).forEach(a=>manual.push(Object.assign({},a,{key:a.id,added:true})));
   return {hasSheet:!!bookingsFor(D),items:live,blocks:bk.blocks||[],cancels,manual,therapists:ths,updatedAt:bk.updatedAt||'',file:bk.file||'',stats:Array.isArray(bk.stats)?bk.stats:[]};
 }
@@ -5107,6 +5190,7 @@ function renderResvScreen(){
       <div class="rs-card"><b>${st.cancels}</b><span>취소·변경</span></div>
       <div class="rs-card"><b>${st.manual}</b><span>도수 예약</span></div>
       <div class="rs-card"><b>${Math.round(st.minutes/6)/10}h</b><span>예약 치료시간 합</span></div>
+      <button class="rs-card rs-btn" onclick="openResvStats()" title="치료실별 이용(충격파·신장분사) · 치료사별 도수(SASO·자동차도수) — 오늘/이번 주/이번 달/기간"><b><i data-lucide="bar-chart-3"></i></b><span>통계</span></button>
       ${st.sheet.map(x=>`<div class="rs-card sheet"><b>${esc(String(x.value))}</b><span>${esc(x.label)} · 시트</span></div>`).join('')}
     </div>
     ${(Object.keys(st.byTh).length||Object.keys(st.byCode).length)?`<div class="resv-chips">${chips(st.byTh)}${Object.keys(st.byCode).length?'<i></i>'+chips(st.byCode):''}</div>`:''}
@@ -5149,6 +5233,8 @@ function openBkEdit(D,key,opt){
       <span></span><span class="hint" id="bke_mrnHint"></span>
       <label>성함</label><input id="bke_name" value="${v('name')}" oninput="this.dataset.auto=''">
       <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="임현주 …"><datalist id="bke_ths">${BK_MANUAL_THS.concat(ths.filter(t=>!BK_MANUAL_THS.includes(t))).map(t=>`<option value="${esc(t)}">`).join('')}</datalist>
+      <label>상태</label><select id="bke_status">${[['','예약'],['진행중','진행중'],['완료','완료']].map(([val,lab])=>`<option value="${val}"${(cur&&cur.status?cur.status:'')===val?' selected':''}>${lab}</option>`).join('')}</select>
+      <span></span><span class="hint">보드에 이 환자 카드가 SASO·자동차도수에 있으면 자동으로 진행중, 다른 방으로 옮기면 완료로 표시됩니다</span>
       <label>메모</label><textarea id="bke_note" rows="2" oninput="autoGrowTa(this)">${v('note')}</textarea>
       <label>배경색</label>${bkColorPickerHtml(cur?cur.color:'')}</div>`;
   }else{
@@ -5223,7 +5309,7 @@ function bkEditSave(){
   if(!BK_EDIT)return;const {D,key,manual,isNew,cur}=BK_EDIT;const g=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
   const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
   if(manual){
-    const f={no:g('bke_no'),mrn:g('bke_mrn'),name:g('bke_name'),th:g('bke_th'),note:g('bke_note'),color:g('bke_color')};
+    const f={no:g('bke_no'),mrn:g('bke_mrn'),name:g('bke_name'),th:g('bke_th'),note:g('bke_note'),color:g('bke_color'),status:g('bke_status')};   // status: ''(예약)·진행중·완료 — 직원이 고른 상태(보드 카드가 있으면 카드 위치가 우선)
     if(!f.mrn&&!f.name){alert('환자번호나 성함 중 하나는 넣어 주세요.');return;}
     if(isNew)doc.manualAdded.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
     else if(cur.added){doc.manualAdded=doc.manualAdded.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
@@ -5292,12 +5378,37 @@ window.printSheet=function(key){
 };
 /* 도수(Manual Tx) 명단 — 시트(BK~BN)와 같은 한 장의 표: 번호 · 환자번호 · 성함 · 치료사 (+상태: 시트 연노랑 = 내원). 시트 순서 그대로, 10명 넘으면 두 표.
    직원용은 줄을 누르면 수정. pf=true(환자용): 이름 가림·환자번호 열 없음 */
-function manualBoardHtml(pf,manual,D){
-  const rows=manual.map(m=>Object.assign({},m,{st:String(m.color||'').toLowerCase()==='#ffe599'?'arr':''}));
-  const label={arr:'내원',"":'예약'};
-  const tr=r=>`<tr class="mx-row ${r.st}"${(r.color&&String(r.color).toLowerCase()!=='#ffffff')?` style="background:color-mix(in srgb, ${esc(String(r.color))} 45%, white)"`:''}${(!pf&&D)?` onclick="openBkEdit('${esc(D)}','${esc(r.key||'')}',{manual:true})" title="${esc(r.note||'')}${r.note?' — ':''}누르면 수정"`:((!pf&&r.note)?` title="${esc(r.note)}"`:'')}>
+/* 도수 표의 상태 (2026-09-17):
+   · 보드 카드가 SASO·자동차도수 방에 있으면 → 진행중(live), 오늘 그 방을 거쳐 다른 방으로 갔거나 내보내졌으면 → 완료(done)  (카드 위치가 최우선)
+   · 직원이 수정 창에서 고른 상태(진행중/완료) → 그다음
+   · 시트 연노랑 → 내원(arr), 나머지 → 예약
+   시트에 없는데 카드가 그 방에 온 환자(다른 사유로 온 환자)도 표에 줄로 추가한다(번호 없음, '카드' 표시, 누르면 환자 정보 창) */
+/* 도수 표의 줄 계산(표시·통계 공용): 시트 도수 명단 + 그날 보드 카드(오늘만) + 그날 내원 기록(VISITS, 어느 날짜든). 상태 st: live(진행중)·done(완료)·arr(내원)·''(예약) */
+function mxRows(manual,D,rooms){
+  rooms=rooms||['SASO','자동차도수'];const today=localYMD(new Date());D=D||today;const isToday=D===today;
+  const inRooms=r=>rooms.includes(r);
+  const cardState=p=>{if(!p||p.discharged)return '';if(inRooms(curRoom(p)))return 'live';if((p.visits||[]).some(v=>inRooms(v.room)))return 'done';return '';};
+  const cardTh=p=>{const rm=inRooms(curRoom(p))?curRoom(p):((p.visits||[]).slice().reverse().find(v=>inRooms(v.room))||{}).room;return (p.roomDocs&&rm&&p.roomDocs[rm])||'';};
+  const cards=isToday?data.filter(p=>!p.discharged&&cardState(p)):[];   // 보드는 오늘만
+  const visitRoom=v=>(v.rooms||[]).find(r=>inRooms(r.room))||null;   // 내원 기록에서 그 방 방문(치료사 = 그 방 담당)
+  const doneVisits=VISITS.filter(v=>localYMD(new Date(v.dischargedAt||0))===D&&(visitRoom(v)||(v.routeFull||[]).some(inRooms)));
+  const byMrn=m=>String(m||'').trim();
+  const rows=manual.map(m=>{const x=Object.assign({},m);const mrn=byMrn(m.mrn);
+    const p=mrn?cards.find(c=>byMrn(c.mrn)===mrn):null;const dv=(!p&&mrn)?doneVisits.find(v=>byMrn(v.mrn)===mrn):null;
+    x.st=p?cardState(p):(dv?'done':(m.status==='진행중'?'live':(m.status==='완료'?'done':(String(m.color||'').toLowerCase()==='#ffe599'?'arr':''))));
+    if(p&&!x.th)x.th=cardTh(p);if(dv&&!x.th){const vr=visitRoom(dv);if(vr&&vr.doctor)x.th=vr.doctor;}if(p)x.pid=p.id;return x;});
+  const seen=new Set(rows.map(r=>byMrn(r.mrn)).filter(Boolean));
+  cards.forEach(p=>{const mrn=byMrn(p.mrn);if(mrn&&seen.has(mrn))return;seen.add(mrn||('id:'+p.id));
+    rows.push({key:'',mrn:p.mrn||'',name:p.name,th:cardTh(p),st:cardState(p),fromCard:true,pid:p.id,note:'보드 카드('+curRoom(p)+')'});});
+  doneVisits.forEach(v=>{const mrn=byMrn(v.mrn);if(!mrn||seen.has(mrn))return;seen.add(mrn);const vr=visitRoom(v);rows.push({key:'',mrn:v.mrn,name:v.name,th:(vr&&vr.doctor)||'',st:'done',fromCard:true,note:'내원 기록'});});
+  return rows;
+}
+function manualBoardHtml(pf,manual,D,rooms){
+  const rows=mxRows(manual,D,rooms);
+  const label={arr:'내원',"":'예약',live:'진행중',done:'완료'};
+  const tr=r=>`<tr class="mx-row ${r.st}"${(r.color&&String(r.color).toLowerCase()!=='#ffffff')?` style="background:color-mix(in srgb, ${esc(String(r.color))} 45%, white)"`:''}${(!pf&&D&&!r.fromCard)?` onclick="openBkEdit('${esc(D)}','${esc(r.key||'')}',{manual:true})" title="${esc(r.note||'')}${r.note?' — ':''}누르면 수정"`:((!pf&&r.fromCard&&r.pid)?` onclick="openEdit('${esc(r.pid)}')" title="${esc(r.note||'')} — 누르면 환자 정보"`:((!pf&&r.note)?` title="${esc(r.note)}"`:''))}>
       <td class="mx-no">${r.no?esc(String(r.no)):''}</td>${pf?'':`<td class="mx-mrn">${esc(r.mrn||'')}</td>`}
-      <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}${pf?'':(r.added?' <span class="bk-tag add">추가</span>':(r.edited?' <span class="bk-tag">수정</span>':''))}</td>
+      <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}${pf?'':(r.fromCard?' <span class="bk-tag">카드</span>':(r.added?' <span class="bk-tag add">추가</span>':(r.edited?' <span class="bk-tag">수정</span>':'')))}</td>
       <td class="mx-th">${esc(r.th||'')}</td>
       <td class="mx-st"><span class="mx-tag ${r.st}">${label[r.st]}</span></td></tr>`;
   if(!rows.length)return `<div class="resv-empty">이 날짜의 도수 예약이 없습니다${pf?'':' — 위의 <b>＋ 도수 추가</b>로 직접 넣을 수 있습니다'}.</div>`;
@@ -5307,13 +5418,83 @@ function manualBoardHtml(pf,manual,D){
   return `<div class="mx-tblwrap${chunks.length>1?' two':''}">${chunks.map(ch=>`<table class="mx-tbl">${head}<tbody>${ch.map(tr).join('')}</tbody></table>`).join('')}</div>
 `;
 }
+/* ── 치료사별 도수 통계 (2026-09-17): 기간(오늘/이번 주/이번 달/직접) 안의 날짜마다 mxRows 를 만들어 치료사별 예약·진행중·완료·합계를 센다.
+   날짜별 시트 문서(bookings/{D}, bookingEdits/{D})가 없으면 한 번씩 읽어 온다(BOOKINGS 캐시). 내원 기록(VISITS)은 로그인 때 받은 것 기준 */
+let MX_STAT={kind:'today',from:'',to:''},MX_STAT_LOADING=false;
+function mxStatDays(){const t=new Date();const y=d=>localYMD(d);let a,b;
+  if(MX_STAT.kind==='today'){a=b=y(t);}
+  else if(MX_STAT.kind==='week'){const d=new Date(t);d.setDate(d.getDate()-((d.getDay()+6)%7));a=y(d);b=y(t);}
+  else if(MX_STAT.kind==='month'){a=y(new Date(t.getFullYear(),t.getMonth(),1));b=y(t);}
+  else{a=MX_STAT.from||y(t);b=MX_STAT.to||a;if(b<a){const s=a;a=b;b=s;}}
+  const days=[];const d=new Date(a+'T12:00:00');const end=new Date(b+'T12:00:00');let n=0;
+  while(d<=end&&n<62){days.push(y(d));d.setDate(d.getDate()+1);n++;}   // 최대 62일
+  return days;
+}
+window.mxStatQuick=function(kind){MX_STAT={kind,from:'',to:''};const f=document.getElementById('mxStatFrom'),g=document.getElementById('mxStatTo');if(f)f.value='';if(g)g.value='';renderMxStats();};
+window.mxStatRange=function(){const f=document.getElementById('mxStatFrom'),g=document.getElementById('mxStatTo');MX_STAT={kind:'range',from:(f&&f.value)||'',to:(g&&g.value)||''};if(!MX_STAT.from&&!MX_STAT.to)MX_STAT.kind='today';renderMxStats();};
+async function bkEnsureDay(D){   // 그 날짜의 시트 문서·수정본이 아직 없으면 한 번 읽는다(있으면 캐시)
+  if(!cloud.bookingsCol)return;
+  if(BOOKINGS[D]===undefined){BOOKINGS[D]=null;try{const sn=await cloud.bookingsCol.doc(D).get();if(sn.exists)BOOKINGS[D]=sn.data();}catch(e){console.warn('bookings get',e);}}
+  if(BK_EDITS[D]===undefined&&cloud.bookingEditsCol){BK_EDITS[D]=null;try{const sn=await cloud.bookingEditsCol.doc(D).get();if(sn.exists)BK_EDITS[D]=sn.data();}catch(e){console.warn('bookingEdits get',e);}}
+}
+function mxStatsCompute(days,rooms){
+  const by={};let tot={resv:0,live:0,done:0,total:0};
+  days.forEach(D=>{const M=bkMerged(D);const rows=mxRows(M.manual,D,rooms);
+    rows.forEach(r=>{const th=(r.th||'').trim()||'(미지정)';const o=by[th]||(by[th]={th,resv:0,live:0,done:0,total:0});
+      const k=r.st==='done'?'done':(r.st==='live'?'live':'resv');o[k]++;o.total++;tot[k]++;tot.total++;});});
+  const list=Object.values(by).sort((a,b)=>b.done-a.done||b.total-a.total||a.th.localeCompare(b.th));
+  return {list,tot};
+}
+/* 치료실별 이용(충격파·신장분사): 시트 항목의 room(차트번호 뒤 괄호 숫자) 별로, 날짜마다 환자(차트번호)를 한 번씩 센다. 내원 = 시트 연노랑 또는(오늘) 보드에 카드가 있음 */
+function roomStatsCompute(days,groupRooms){
+  const by={};let tot={resv:0,arr:0,total:0};const today=localYMD(new Date());
+  days.forEach(D=>{const M=bkMerged(D);const seen={};
+    const onBoard=(D===today)?new Set(data.filter(p=>!p.discharged&&(groupRooms.includes(curRoom(p))||(p.visits||[]).some(v=>groupRooms.includes(v.room)))).map(p=>String(p.mrn||'').trim()).filter(Boolean)):new Set();
+    M.items.forEach(it=>{if(it.kind&&it.kind!=='pt')return;const room=String(it.room||'').trim()||'(없음)';const who=String(it.mrn||'').trim()||('n:'+String(it.name||'').trim());
+      const k=room+'|'+who;if(seen[k])return;seen[k]=1;
+      const arrived=String(it.color||'').toLowerCase()==='#ffe599'||onBoard.has(String(it.mrn||'').trim());
+      const o=by[room]||(by[room]={room,resv:0,arr:0,total:0});if(arrived){o.arr++;tot.arr++;}else{o.resv++;tot.resv++;}o.total++;tot.total++;});});
+  const list=Object.values(by).sort((a,b)=>{const na=parseInt(a.room,10),nb=parseInt(b.room,10);if(!isNaN(na)&&!isNaN(nb))return na-nb;if(!isNaN(na))return -1;if(!isNaN(nb))return 1;return a.room.localeCompare(b.room);});
+  return {list,tot};
+}
+window.openResvStats=function(){const m=document.getElementById('resvStatModal');if(!m)return;m.classList.add('show');renderMxStats();};
+window.closeResvStats=function(){const m=document.getElementById('resvStatModal');if(m)m.classList.remove('show');};
+async function renderMxStats(){
+  const box=document.getElementById('mxStatBody');if(!box)return;
+  document.querySelectorAll('#resvStatModal .chipf').forEach(b=>b.classList.toggle('on',b.dataset.kind===MX_STAT.kind));
+  const days=mxStatDays();const hint=document.getElementById('mxStatHint');if(hint)hint.textContent=days.length?`${days[0]} ~ ${days[days.length-1]} · ${days.length}일`:'';
+  const missing=days.filter(D=>BOOKINGS[D]===undefined||(cloud.bookingEditsCol&&BK_EDITS[D]===undefined));
+  if(missing.length){if(MX_STAT_LOADING)return;MX_STAT_LOADING=true;box.innerHTML=`<div class="hint">시트 자료 ${missing.length}일치 불러오는 중…</div>`;
+    try{for(const D of missing)await bkEnsureDay(D);}finally{MX_STAT_LOADING=false;}
+    if(!document.getElementById('mxStatBody'))return;}
+  const g1=SHEET_GROUPS.find(g=>g.bk==='items')||SHEET_GROUPS[0], g2=SHEET_GROUPS.find(g=>g.bk==='manual')||{rooms:['SASO','자동차도수']};
+  const R=roomStatsCompute(days,g1.rooms);const T=mxStatsCompute(days,g2.rooms);
+  const roomTbl=R.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료실</th><th>예약</th><th>내원</th><th>합계</th></tr></thead><tbody>
+      ${R.list.map(o=>`<tr><td class="mx-name">${/^\d+$/.test(o.room)?o.room+'번 치료실':esc(o.room)}</td><td>${o.resv||''}</td><td><b>${o.arr||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
+      <tr class="mx-total"><td class="mx-name">합계</td><td>${R.tot.resv}</td><td><b>${R.tot.arr}</b></td><td><b>${R.tot.total}</b></td></tr></tbody></table></div>
+      <div class="hint" style="margin-top:6px">시트의 '차트번호(치료실)' 괄호 숫자 기준 · 한 환자는 하루·치료실당 한 번 · 내원 = 시트 연노랑 또는 오늘 보드에 카드 있음</div>`:'<div class="hint">이 기간에 충격파·신장분사 예약이 없습니다.</div>';
+  const thTbl=T.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료사</th><th>예약·내원</th><th>진행중</th><th>완료</th><th>합계</th></tr></thead><tbody>
+      ${T.list.map(o=>`<tr><td class="mx-name">${esc(o.th)}</td><td>${o.resv||''}</td><td>${o.live||''}</td><td><b>${o.done||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
+      <tr class="mx-total"><td class="mx-name">합계</td><td>${T.tot.resv}</td><td>${T.tot.live}</td><td><b>${T.tot.done}</b></td><td><b>${T.tot.total}</b></td></tr></tbody></table></div>
+      <div class="hint" style="margin-top:6px">완료 = 그 방을 거쳐 나간 환자(보드 카드·내원 기록) 또는 수정 창에서 완료로 표시한 줄 · 한 환자는 하루에 한 번</div>`:'<div class="hint">이 기간에 도수 기록이 없습니다.</div>';
+  /* 시트 숫자칸(Apps Script 가 라벨로 찾아 올림): CME = 도수+충격파, CRY = 신장분사+Hilt — 기간의 날짜별 값 합 */
+  const sheetSum={CME:0,CRY:0},sheetDays={CME:0,CRY:0};
+  days.forEach(D=>{const bk=BOOKINGS[D];if(!bk||!Array.isArray(bk.stats))return;bk.stats.forEach(s=>{const k=s.key||(/^도수\s*\+\s*충격파$/.test(s.label||'')?'CME':(/^신장분사\s*\+\s*Hilt$/i.test(s.label||'')?'CRY':''));if(!k)return;const v=parseFloat(String(s.value).replace(/[^0-9.\-]/g,''));if(isNaN(v))return;sheetSum[k]+=v;sheetDays[k]++;});});
+  const sheetCards=(sheetDays.CME||sheetDays.CRY)?`<div class="resv-stats" style="margin-bottom:12px">
+      <div class="rs-card sheet"><b>${sheetSum.CME}</b><span>CME · 도수+충격파 · 시트</span></div>
+      <div class="rs-card sheet"><b>${sheetSum.CRY}</b><span>CRY · 신장분사+Hilt · 시트</span></div>
+      ${days.length>1?`<div class="rs-card"><b>${Math.max(sheetDays.CME,sheetDays.CRY)}</b><span>시트 자료 있는 날</span></div>`:''}
+    </div>`:`<div class="hint" style="margin-bottom:10px">시트 숫자칸(도수+충격파 · 신장분사+Hilt)이 아직 올라오지 않았습니다 — Apps Script(sheet_bookings.gs) 갱신 후 다음 동기화부터 표시됩니다.</div>`;
+  box.innerHTML=sheetCards+`<div class="rvd-sect"><h4>치료실별 이용 <span class="hint">${esc(g1.title||'충격파 · 신장분사')}</span></h4>${roomTbl}</div>
+    <div class="rvd-sect"><h4>치료사별 도수 <span class="hint">${esc(g2.title||'SASO · 자동차도수')}</span></h4>${thTbl}</div>`;
+}
 /* 4층 비급여 치료 시간표 — 예약(시트+수정본)만. 열 = 그날 예약·차단·취소가 있는 치료사(시트 순서), 행 = 30분. 보드 카드는 보지 않는다.
    pf=true(환자용): 이름 가림, 차트번호·메모·취소·차단 문구 없음(지금은 직원 화면·인쇄에서만 쓰인다) */
 function treatSheetTableHtml(pf,dateYmd,rooms){
   rooms=rooms||SHEET_GROUPS[0].rooms;const D=dateYmd||localYMD(new Date());
   const sg=SHEET_GROUPS.find(g=>g.rooms.join('|')===rooms.join('|'))||SHEET_GROUPS[0];
   const M=bkMerged(D);
-  if(sg.bk==='manual')return manualBoardHtml(pf,M.manual,D);
+  if(sg.bk==='manual')return manualBoardHtml(pf,M.manual,D,sg.rooms);
   const items=M.items.filter(x=>x.t&&bkSlot(x.t)!==null),blocks=M.blocks.filter(x=>x.t&&bkSlot(x.t)!==null),cancels=pf?[]:M.cancels.filter(x=>x.t&&bkSlot(x.t)!==null);
   if(!items.length&&!blocks.length&&!cancels.length)return `<div class="resv-empty">${M.hasSheet?'이 날짜에 예약이 없습니다':'이 날짜의 시트 자료가 없습니다'}${pf?'':' — 위의 <b>＋ 예약 추가</b>로 직접 넣을 수 있습니다'}.</div>`;
   const docs=M.therapists.filter(n=>items.some(x=>x.th===n)||blocks.some(x=>x.th===n)||cancels.some(x=>x.th===n));
@@ -6662,6 +6843,9 @@ function fillEditChart(p){
       <div class="cv-date" onclick="togglePastItem(this.parentNode)" title="누르면 내용이 펼쳐집니다"><i data-lucide="calendar"></i> ${ymd(v.dischargedAt).slice(0,10)}${v.doctor?` <span class="hint"><i data-lucide="stethoscope"></i> ${esc(v.doctor)}</span>`:''}<i data-lucide="chevron-down" class="cv-caret"></i></div>
       <textarea class="cv-ta" oninput="cvGrow(this)" onchange="saveChart('v:${esc(v.id)}',this.value)">${esc(v.chart||'')}</textarea>
     </div>`).join('') : (past.length ? '' : '<div class="hint">지난 내원 기록이 없습니다.</div>');
+  /* 내원 횟수 요약(2026-09-17): 비트 DB 기준(개원 이후 접수 계열 전체, 오늘 포함) + 동선관리 기록 수. 비트 값은 DB 에이전트가 접수 때 카드에 넣는다(p.bit.visits) */
+  {const b=p.bit||{};const n=Number(b.visits||0)||past.length+1;   // 비트 값이 없으면(옛 카드) 동선관리 기록 + 오늘
+   box.insertAdjacentHTML('afterbegin',`<div class="hint visit-sum" style="margin-bottom:6px" title="${b.visits?'비트 DB 기준(개원 이후, 오늘 포함)':'동선관리 기록 기준'}${b.firstVisit?' · 최초 '+esc(String(b.firstVisit).slice(0,10)):''}${b.prevVisit?' · 직전 '+esc(String(b.prevVisit).slice(0,10)):''}"><i data-lucide="history"></i> 내원기록 <b>${n}회차</b></div>`);}
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
   const sms=[...(Array.isArray(p.smsHistory)?p.smsHistory:[]), ...past.flatMap(v=>Array.isArray(v.smsHistory)?v.smsHistory:[])];
   const sec=document.getElementById('editSmsSection'), sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');

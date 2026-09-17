@@ -159,6 +159,18 @@ function SqlRows($sql) {   # 폴링마다 열고 닫음(연결 유지 안 함). 
     $c.CommandText = $sql; $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close(); return ,$t
   } finally { $cn.Close() }
 }
+# 내원 횟수(2026-09-17): 이 차트번호의 접수 계열 행 수·최초·직전 내원일 — 등록 전송 때 1회(하루 ~100번, OcmChtNum 인덱스로 30ms). 차트번호는 매개변수로 넘긴다(가짜 차트 'Res_…' 등 문자 포함)
+function VisitStats($mrnRaw, $todayYmd) {
+  $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$SqlPassword;Connect Timeout=8;ApplicationIntent=ReadOnly")
+  try {
+    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = 10
+    $c.CommandText = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET LOCK_TIMEOUT 3000"; [void]$c.ExecuteNonQuery()
+    $c.CommandText = "SELECT COUNT(*) AS n, MIN(OcmAcpDtm) AS f, MAX(CASE WHEN LEFT(OcmAcpDtm,8) < @d THEN OcmAcpDtm END) AS p FROM OcmInf WITH (NOLOCK) WHERE OcmChtNum = @m AND OcmComStt IN ('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','WH','TN','FN','TC','FC','TT','PN','PC','PT')"
+    [void]$c.Parameters.AddWithValue('@m', [string]$mrnRaw); [void]$c.Parameters.AddWithValue('@d', [string]$todayYmd)
+    $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close()
+    $row = $t.Rows[0]; return @{ n = [int]$row.n; first = (DateOf $row.f); prev = (DateOf $row.p) }
+  } finally { $cn.Close() }
+}
 # 오늘 접수분 전체(하루 수십~수백 행). OcmNum 은 char(10) 앞 공백 패딩 → 숫자만 남김. 예약 환자는 예약 시점에 이미 행이 있고(WR) 도착하면 같은 행이 WN 으로 바뀌며 OcmAcpDtm 이 실제 도착 시각으로 갱신된다.
 $QUERY = @"
 SELECT RTRIM(o.OcmNum) AS k, RTRIM(o.OcmComStt) AS stt, RTRIM(p.PbsPatNam) AS name, RTRIM(o.OcmChtNum) AS mrn,
@@ -263,6 +275,7 @@ function Poll($st, $first) {
         $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
         $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }   # 휴대폰(없으면 전화) 숫자만 — 카드의 전화 칸(문자 발송용). 2026-09-17 사용자 결정으로 추가
         $fv = DateOf $r.newdte; if ($fv) { $f.firstVisit = $fv }
+        try { $vs = VisitStats ([string]$r.mrn).Trim() $today8; $f.visits = [int]$vs.n; if ($vs.prev) { $f.prevVisit = $vs.prev }; if ($vs.first -and -not $f.firstVisit) { $f.firstVisit = $vs.first } } catch { Log "내원 횟수 조회 오류 ocm${k}: $($_.Exception.Message)" }   # 오늘 포함 N회째, 직전 내원일
         $rv = DtmOf $r.rsvdtm; if ($rv -and $rv.StartsWith((Today))) { $f.nextResv = $rv }
         if ($f.rrn7 -eq '') { $f.Remove('rrn7') }
         try { Send "$(Today)_ocm$k" $f "$($CMD_NAMES[$cmd]) $tag"; $st.sent[$k] = $cmd } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }

@@ -94,6 +94,24 @@ function parseDaySheet(grid, L) {
     var sv = val(r5, 2); if (sv === '' || sv === null || sv === undefined) continue;
     stats.push({ label: lab, value: (typeof sv === 'number') ? Math.round(sv * 100) / 100 : String(sv).trim() });
   }
+  /* 표 아래 어디에 있든 라벨로 찾는 숫자칸(2026-09-17): '도수+충격파'(→ 동선관리 CME), '신장분사+Hilt'(→ CRY). 라벨 오른쪽 3칸 안의 첫 숫자를 값으로.
+     칸 위치가 바뀌어도 라벨만 그대로면 찾는다. 필요하면 STAT_LABELS 에 추가 */
+  var STAT_LABELS = [
+    { re: /^도수\s*\+\s*충격파$/, key: 'CME' },
+    { re: /^신장분사\s*\+\s*Hilt$/i, key: 'CRY' }
+  ];
+  var maxR = grid.top + grid.values.length - 1, maxC = grid.left + (grid.values[0] || []).length - 1;
+  for (var r6 = L.lastRow + 1; r6 <= maxR; r6++) {
+    for (var c6 = 1; c6 <= maxC; c6++) {
+      var lab6 = String(val(r6, c6)).replace(/\s+/g, ' ').trim(); if (!lab6) continue;
+      for (var si = 0; si < STAT_LABELS.length; si++) {
+        if (!STAT_LABELS[si].re.test(lab6)) continue;
+        var v6 = ''; for (var dc = 1; dc <= 3 && c6 + dc <= maxC; dc++) { var cand = val(r6, c6 + dc); if (cand !== '' && cand !== null && cand !== undefined) { v6 = cand; break; } }
+        if (v6 === '') continue;
+        stats.push({ label: lab6, key: STAT_LABELS[si].key, value: (typeof v6 === 'number') ? Math.round(v6 * 100) / 100 : String(v6).trim() });
+      }
+    }
+  }
   return { therapists: therapists, items: items, blocks: blocks, cancels: cancels, manual: manual, stats: stats };
 }
 /* '32750(1) 함수진1' · '16315(6) \n조기원15' · '9330(7)\n차중현97' → {mrn, room, name, visit} (안 맞으면 null) */
@@ -132,7 +150,7 @@ function findFile_(d) {
 }
 /* 탭 하나 → grid */
 function readGrid_(sheet) {
-  var L = LAYOUT, top = L.headerRow, left = 1, nRows = L.lastRow + 20 - top + 1, nCols = L.manualTo;
+  var L = LAYOUT, top = L.headerRow, left = 1, nRows = L.lastRow + 30 - top + 1, nCols = L.manualTo + 6;   // 표 아래 30행·BN 오른쪽 6열까지(라벨로 찾는 숫자칸용, 2026-09-17)
   var rg = sheet.getRange(top, left, nRows, nCols);
   var merges = rg.getMergedRanges().map(function (m) { return { r1: m.getRow(), c1: m.getColumn(), r2: m.getLastRow(), c2: m.getLastColumn() }; });
   return { top: top, left: left, values: rg.getValues(), backgrounds: rg.getBackgrounds(), notes: rg.getNotes(), merges: merges };
