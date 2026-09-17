@@ -1604,7 +1604,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
           <input id="parkingMinInp" type="number" min="0" max="720" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:7px" onchange="setParkingMin(this.value)">
           <span class="hint">분이 지난 환자가 <b>수납</b>으로 이동하면 카드에 '주차권 안내'가 표시됩니다 (0 = 사용 안 함)</span>
         </div>
-        <p class="hint">카드의 [지급 완료]를 누르면 표시가 사라지고 지급자·시각이 기록됩니다. 운영해 보며 시간을 조정하세요.</p>
+        <p class="hint">카드의 [지급]을 누르면 '주차권 지급완료'로 바뀌고 지급자·시각이 기록됩니다. 운영해 보며 시간을 조정하세요.</p>
       </div>
       <div class="fld acc-sect" style="padding-top:12px">
         <label><i data-lucide="moon"></i> 자동 마감 시각</label>
@@ -5174,8 +5174,8 @@ function cardEl(p){
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.reserveAt?`<div class="card-time"><span class="t-res"><i data-lucide="calendar"></i> 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
     ${p.out?`<div class="out-banner"><i data-lucide="footprints"></i> 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
-    ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" onclick="event.stopPropagation();toggleParking('${p.id}')">지급 완료</button></div>`:''}
-    ${p.parking?`<div class="park-done" title="클릭: 지급 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
+    ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" onclick="event.stopPropagation();toggleParking('${p.id}')">지급</button></div>`:''}
+    ${p.parking?`<div class="park-done" title="클릭: 지급완료 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급완료${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
     <div class="total-row"><div class="total" data-pid="${p.id}">${totalLabel(p)}</div>${(function(){const np=nudgePos(p);if(!np||np.n<2)return '';
         return `<span class="nudge-grp" title="대기실 순서 바꾸기 (위/아래 한 칸)"><button class="icon-btn nudge" ${np.i===0?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',-1)">▲</button><button class="icon-btn nudge" ${np.i===np.n-1?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',1)">▼</button></span>`;})()}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
@@ -5466,7 +5466,7 @@ function toggleParking(pid){const p=data.find(x=>x.id===pid);if(!p)return;
 function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if((p.extraFee||0)>0&&!p.paid){alert(`아직 수납이 완료되지 않았습니다.\n미수납 ${won(p.extraFee)}원 — 카드의 '수납완료' 버튼을 눌러 주세요.`);return;}
   if(parkingDue(p)&&!p.parking){   // 주차권 안내 대상인데 아직 미지급 → 내보내기 전 확인
-    if(!confirm(`🅿️ '${p.name}'님은 주차권 안내 대상입니다 (접수 후 ${parkingThresholdText()} 경과).\n아직 '지급 완료' 표시가 없습니다.\n\n주차권을 지급하셨다면 [확인] — 지급 기록 후 내보내기를 계속합니다.\n아직이라면 [취소]를 누르고 주차권을 챙겨주세요.`))return;
+    if(!confirm(`🅿️ '${p.name}'님은 주차권 안내 대상입니다 (접수 후 ${parkingThresholdText()} 경과).\n아직 '지급완료' 표시가 없습니다.\n\n주차권을 지급하셨다면 [확인] — 지급완료 기록 후 내보내기를 계속합니다.\n아직이라면 [취소]를 누르고 주차권을 챙겨주세요.`))return;
     const val={at:Date.now(),by:(currentUser&&currentUser.name)||''};
     applyParking(p,val);saveLocal();cloudPatientTxn(pid,d=>applyParking(d,val));
     try{audit('주차권지급',p.name+(p.mrn?' ('+p.mrn+')':'')+' (내보내기 확인)');}catch(e){}
