@@ -5190,18 +5190,20 @@ window.printSheet=function(key){
   const sg=sheetGroupOf(key)||SHEET_GROUPS[0];
   const d=sheetDate||localYMD(new Date());
   const w=window.open("","_blank");if(!w){alert("팝업이 차단되었습니다.");return;}
-  const style=`<style>body{font-family:'Malgun Gothic',sans-serif;padding:16px}h2{font-size:17px;margin:0 0 10px}
-    table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #666;padding:5px 7px;text-align:center}
-    thead th{background:#eef1f6}.sheet-time{width:60px;background:#eef1f6}
+  /* A4 가로 한 장에 맞춤(2026-09-17): 치료사 열이 5~7개라 세로로는 오른쪽이 잘렸다. 열은 균등(table-layout:fixed), 글자는 줄바꿈, 배경색은 인쇄에도 나오게 */
+  const style=`<style>@page{size:A4 landscape;margin:8mm}html,body{margin:0;padding:0}
+    body{font-family:'Malgun Gothic',sans-serif;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}h2{font-size:15px;margin:0 0 6px}
+    table{border-collapse:collapse;width:100%;font-size:11px;table-layout:fixed}th,td{border:1px solid #666;padding:3px 4px;text-align:center;overflow:hidden;word-break:keep-all;overflow-wrap:anywhere;vertical-align:middle}
+    tr{page-break-inside:avoid}thead th{background:#eef1f6}.sheet-time{width:44px;background:#eef1f6}
     .sp-room{display:inline-block;width:16px;border-radius:4px;color:#fff;font-weight:700;font-size:10px}
     .sp-room.sk{background:#f59e0b}.sp-room.sj{background:#8b5cf6}.sp-room.ss{background:#0ea5e9}.sp-room.sd{background:#10b981}
     .bk-code{display:inline-block;font-size:9.5px;font-weight:700;padding:0 4px;border-radius:4px;background:#e5e7eb;margin-right:3px}.bk-flag{display:inline-block;width:8px;height:8px;border:1px solid #999;margin-right:3px}
     .bk-sub{font-size:9.5px;color:#777;margin-left:3px}td.arrcell{background:#dbeafe}td.livecell{background:#bfdbfe}td.blk{background:#d7dbe3}.sheet-blk{color:#4b5563}.sheet-cxl{text-decoration:line-through;color:#999}
     .mx-tbl{border-collapse:collapse;width:100%;font-size:12px}.mx-tbl th,.mx-tbl td{border:1px solid #666;padding:4px 7px;text-align:center}.mx-tbl td.mx-name{text-align:left}.mx-tbl tr.arr td{background:#dbeafe}.mx-tbl tr.live td{background:#bfdbfe}
     .bk-manual{margin:0 0 8px}.bk-manual-t{font-weight:700;margin-bottom:3px}.bk-man{display:inline-block;border:1px solid #999;border-radius:6px;padding:1px 6px;margin:0 6px 4px 0}.bk-man.arr,.bk-man.live{background:#dbeafe}.bk-man i{font-style:normal;color:#666;margin-left:3px}
-    .sheet-p{white-space:nowrap}.sp-mrn{color:#777;font-size:10px}
+    .sheet-p{white-space:normal;line-height:1.25}.sp-mrn{color:#777;font-size:9.5px}
     .sheet-p.has-note::after{content:" ✱";color:#e5484d}
-    .sheet-legend{font-size:11px;color:#666;margin-top:8px}</style>`;
+    .sheet-legend{font-size:10px;color:#666;margin-top:6px}</style>`;
   w.document.write(`<html><head><title>치료시트_${d}</title>${style}</head><body>
     <h2>${esc(sg.title)} 치료 시트 — ${d}</h2>${treatSheetTableHtml(false,sheetDate,sg.rooms)}
     <script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
