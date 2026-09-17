@@ -608,6 +608,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .rv-row.late{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.45)}
   .rv-row.late .rv-st{color:var(--red);background:rgba(239,68,68,.12)}
   .rv-row.canc{opacity:.55}
+  .rv-row.block{background:var(--panel2);border-style:dashed;opacity:.7;cursor:default}
+  .rv-row.block .rv-name{color:var(--muted);font-weight:700}
+  .rv-row.block .rv-st{color:var(--muted);background:var(--line)}
   .rv-row.canc .rv-name,.rv-row.canc .rv-t{text-decoration:line-through}
   .rv-row.canc .rv-st{color:var(--muted);background:var(--line)}
   .rv-badge{font-size:11px;font-weight:900;border-radius:5px;padding:0 5px;flex:none}
@@ -2047,11 +2050,12 @@ function bitResvSub(D){   // 보고 있는 날짜의 예약 문서 하나만 실
 const BIT_RSV_ARRIVED=s=>!!s&&s!=='WR'&&s!=='CN'&&!/^[OV]/.test(s)&&!/R$/.test(s);   // OcmInf 상태가 접수 계열이면 도착
 function bitResvStats(D){
   const doc=BIT_RESV[D];const items=doc&&Array.isArray(doc.items)?doc.items:[];
-  const live=items.filter(x=>x.sts!=='OC');const today=localYMD(new Date());const nowM=new Date().getHours()*60+new Date().getMinutes();
+  const real=items.filter(x=>!x.block);   // '예약금지'(접수 PC 가 시간대를 막은 가짜 환자, 차트 Res_NNNN)는 건수에서 뺀다
+  const live=real.filter(x=>x.sts!=='OC');const today=localYMD(new Date());const nowM=new Date().getHours()*60+new Date().getMinutes();
   const tMin=t=>{const m=/^(\d{2}):(\d{2})/.exec(t||'');return m?(+m[1])*60+(+m[2]):null;};
   const arrived=live.filter(x=>BIT_RSV_ARRIVED(x.ostt)||x.acp).length;
   const late=(D===today)?live.filter(x=>!(BIT_RSV_ARRIVED(x.ostt)||x.acp)&&tMin(x.t)!==null&&nowM-tMin(x.t)>10).length:0;
-  return {has:!!doc,items,live:live.length,canc:items.length-live.length,arrived,late,naver:live.filter(x=>x.naver).length,updatedAt:doc?doc.updatedAt:'',tMin,nowM,today};
+  return {has:!!doc,items,live:live.length,canc:real.length-live.length,arrived,late,naver:live.filter(x=>x.naver).length,blocks:items.length-real.length,updatedAt:doc?doc.updatedAt:'',tMin,nowM,today};
 }
 function renderBitResvSection(D){
   const st=bitResvStats(D);const days=(BIT_RESV_SUM&&BIT_RESV_SUM.days)||{};
@@ -2059,6 +2063,7 @@ function renderBitResvSection(D){
   const strip=[];for(let i=0;i<8;i++){const d=new Date();d.setDate(d.getDate()+i);const ymd=localYMD(d);const s=days[ymd];const we=d.getDay()===0||d.getDay()===6;
     strip.push(`<div class="rv-day${ymd===D?' on':''}${we?' we':''}" onclick="setBitResvDate('${ymd}')" title="${ymd}${s?` · 예약 ${s.n}건, 취소 ${s.canc}건${s.naver?', 네이버 '+s.naver:''}`:''}"><span class="rv-dow">${i===0?'오늘':(i===1?'내일':ymd.slice(5))} ${dow[d.getDay()]}</span><b>${s?s.n:'-'}</b></div>`);}
   const rows=st.items.slice().sort((a,b)=>String(a.t).localeCompare(String(b.t))||String(a.room).localeCompare(String(b.room))).map(x=>{
+    if(x.block)return `<div class="rv-row block" title="접수 PC 가 비트 예약관리에서 막아 둔 시간대(가짜 환자 '예약금지')"><span class="rv-t">${esc(x.t||'')}</span><span class="rv-room">${esc(x.room||'')}</span><span class="rv-name">예약금지</span><span class="rv-memo">${esc((x.memo||'').replace(/^\[신규예약\]/,'').replace(/^-+|-+$/g,'').trim())}</span><span class="rv-st">막음</span></div>`;
     const arrived=BIT_RSV_ARRIVED(x.ostt)||!!x.acp;const canc=x.sts==='OC'||x.ostt==='CN';
     const tm=st.tMin(x.t);const late=!canc&&!arrived&&D===st.today&&tm!==null&&st.nowM-tm>10;
     const cls=canc?'canc':(arrived?'arrived':(late?'late':''));

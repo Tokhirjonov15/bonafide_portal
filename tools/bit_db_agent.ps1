@@ -359,10 +359,16 @@ function PollResv() {
     $dtm = [string]$r.dtm; if ($dtm.Length -lt 12) { continue }
     $day = $dtm.Substring(0, 4) + '-' + $dtm.Substring(4, 2) + '-' + $dtm.Substring(6, 2); if (-not $byDay.ContainsKey($day)) { continue }
     $memo = ([string]$r.memo).Trim(); $dep = ([string]$r.dep).Trim()
+    $mrnRaw = ([string]$r.mrn).Trim(); $mrn = $mrnRaw   # 공백만 떼고 그대로 — 'Res_3457' 같은 가짜 차트에서 숫자만 남기면 실제 환자 번호와 겹친다(2026-09-17)
+    $nm = ([string]$r.name).Trim(); $sts = ([string]$r.sts).Trim(); $ostt = ([string]$r.ostt).Trim()
+    # 접수 PC 가 시간대를 막을 때 쓰는 가짜 환자 '예약금지'(차트 Res_NNNN): 살아 있는 것만 block 으로 보내고(마감·휴진 표시), 취소된 것은 풀린 자리라 보내지 않는다
+    $isBlock = ($nm -eq '예약금지' -or $mrnRaw -like 'Res_*')
+    if ($isBlock -and ($sts -eq 'OC' -or $ostt -eq 'CN')) { continue }
     $it = [ordered]@{ k = ([string]$r.k -replace '\D', ''); t = $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2); room = $(if ($script:DepName.ContainsKey($dep)) { $script:DepName[$dep] } else { $dep })
-                      dr = ([string]$r.dr).Trim(); mrn = (([string]$r.mrn) -replace '\D', ''); name = ([string]$r.name).Trim(); birth = (DateOf $r.bir); sex = ([string]$r.sex).Trim()
-                      div = ([string]$r.div).Trim(); sts = ([string]$r.sts).Trim(); ostt = ([string]$r.ostt).Trim(); acp = ''; memo = $memo; by = ([string]$r.uid).Trim()
-                      naver = ($memo -match '네이버|naver') }
+                      dr = ([string]$r.dr).Trim(); mrn = $mrn; name = $nm; birth = (DateOf $r.bir); sex = ([string]$r.sex).Trim()
+                      div = ([string]$r.div).Trim(); sts = $sts; ostt = $ostt; acp = ''; memo = $memo; by = ([string]$r.uid).Trim()
+                      naver = ($memo -match '네이버|naver'); block = [bool]$isBlock }
+    if ($isBlock) { $it.name = '예약금지'; $it.birth = ''; $it.sex = '' }
     $a = [string]$r.acp; if ($it.ostt -and $it.ostt -ne 'WR' -and $it.ostt -ne 'CN' -and $a.Length -ge 12 -and $a.Substring(0, 8) -eq $dtm.Substring(0, 8)) { $it.acp = $a.Substring(8, 2) + ':' + $a.Substring(10, 2) }
     [void]$byDay[$day].Add($it)
   }
@@ -379,7 +385,7 @@ function PollResv() {
     } catch { Log "예약 문서 전송 오류 ${day}: $($_.Exception.Message)" }
   }
   if ($changed.Count -and -not $DryRun -and ($script:IsLeader -or $ResvAlways)) {   # 날짜별 요약(건수만) — 화면 상단 7일 띠용, 문서 1개
-    $days = @{}; foreach ($day in $byDay.Keys) { $L = $byDay[$day]; $days[$day] = @{ n = [int]@($L | Where-Object { $_.sts -ne 'OC' }).Count; canc = [int]@($L | Where-Object { $_.sts -eq 'OC' }).Count; arrived = [int]@($L | Where-Object { $_.acp }).Count; naver = [int]@($L | Where-Object { $_.naver -and $_.sts -ne 'OC' }).Count } }
+    $days = @{}; foreach ($day in $byDay.Keys) { $L = @($byDay[$day] | Where-Object { -not $_.block }); $days[$day] = @{ n = [int]@($L | Where-Object { $_.sts -ne 'OC' }).Count; canc = [int]@($L | Where-Object { $_.sts -eq 'OC' }).Count; arrived = [int]@($L | Where-Object { $_.acp }).Count; naver = [int]@($L | Where-Object { $_.naver -and $_.sts -ne 'OC' }).Count } }   # 예약금지(block)는 건수에서 뺀다
     try { FsPatch "bitResv/_summary" @{ updatedAt = (NowIso); pc = $Pc; days = $days } } catch { Log "예약 요약 전송 오류: $($_.Exception.Message)" }
   }
 }
