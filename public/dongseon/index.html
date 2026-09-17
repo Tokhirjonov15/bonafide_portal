@@ -2060,9 +2060,12 @@ function bitVisible(){
   const now=Date.now();
   return BIT_INTAKE.filter(r=>{
     if((r.status&&!bitRevived(r))||r.cancelled)return false;
-    if(r.command===8)return false;   // 마지막 캐스트가 수납완료 → 이미 나간 환자, 대기실 카드를 새로 만들지 않음 (수납대기는 아직 원내 → 그대로 만든다)
+    /* DB 에이전트 문서(src='db')는 상태를 에이전트가 계속 맞춰 주므로 30분 TTL 을 두지 않고, 수납완료(8)라도 카드를 만든다(3층 수납 + '비트 수납완료' 표시).
+       → 동선관리를 늦게 열어도 그날 온 환자 전원이 #번호를 받아 통계에 잡힌다 (2026-09-17). 캐스트만 있는 옛 문서는 종전대로 */
+    if(r.command===8&&r.src!=='db')return false;   // 캐스트: 마지막이 수납완료 → 이미 나간 환자, 카드를 새로 만들지 않음
     const t=Math.max(new Date(r.seenAt||0).getTime()||0,new Date(r.lastSeenAt||0).getTime()||0);   // 마지막 활동(캐스트) 기준 — 뒤늦게 살아난 문서도 최근 캐스트가 있으면 유효
-    if(!t||now-t>BIT_TTL_MIN*60000)return false;
+    if(!t)return false;
+    if(r.src!=='db'&&now-t>BIT_TTL_MIN*60000)return false;
     if(bitOnBoard(r))return false;   // 이미 보드에 있음
     return true;
   }).sort((a,b)=>new Date(b.seenAt)-new Date(a.seenAt));
@@ -2283,23 +2286,31 @@ const BIT_AUTO=true;
 const BIT_CLAIMING={};
 /* 접수 확정 판정: ① 캐스트(환자접수 버튼) 이벤트 registered=true  ② (구방식) 인적정보의 전진료일이 오늘 */
 function bitIsRegisteredToday(r){return !!(r&&(r.registered===true||(r.prevVisit&&r.prevVisit.slice(0,10)===localYMD(new Date()))));}
-let _bitRetryT=null;
-function bitAutoProcess(){
+let _bitRetryT=null,BIT_AUTO_BUSY=false;
+/* 접수 시각(hourMin) 순으로 한 건씩 차례로 만든다 — 화면을 늦게 열어 여러 명을 한꺼번에 만들 때도 #번호가 도착 순서를 따르도록(병렬로 만들면 순서가 뒤섞임) */
+function bitArrivalMin(r){if(typeof r.hourMin==='number'&&r.hourMin>=0)return r.hourMin;const t=new Date(r.seenAt||0);return isNaN(t)?9999:t.getHours()*60+t.getMinutes();}
+async function bitAutoProcess(){
   if(!BIT_AUTO||!currentUser||!cloud.ready.pts||!cloud.intakeCol)return;
-  bitVisible().forEach(r=>{
-    if(!bitIsRegisteredToday(r)||BIT_CLAIMING[r.docId])return;
-    const mrn=String(r.mrn||'').trim();
-    if(!mrn){
-      if(!r.registered)return;   // 구방식 문서는 차트번호 필수
-      /* 캐스트 이벤트에 차트번호가 아직 없음(인적정보 캐시가 곧 merge 될 수 있음) → 4초만 기다렸다가 이름만으로 생성 */
-      const age=Date.now()-new Date(r.registeredAt||r.seenAt||0).getTime();
-      if(age<4000){clearTimeout(_bitRetryT);_bitRetryT=setTimeout(bitAutoProcess,4500);return;}
+  if(BIT_AUTO_BUSY){clearTimeout(_bitRetryT);_bitRetryT=setTimeout(bitAutoProcess,1500);return;}   // 진행 중이면 잠시 뒤 다시(새 문서를 놓치지 않도록)
+  BIT_AUTO_BUSY=true;
+  try{
+    const list=bitVisible().sort((a,b)=>bitArrivalMin(a)-bitArrivalMin(b)||String(a.ocmNum||'').localeCompare(String(b.ocmNum||'')));
+    for(const r of list){
+      if(!bitIsRegisteredToday(r)||BIT_CLAIMING[r.docId])continue;
+      const mrn=String(r.mrn||'').trim();
+      if(!mrn){
+        if(!r.registered)continue;   // 구방식 문서는 차트번호 필수
+        /* 캐스트 이벤트에 차트번호가 아직 없음(인적정보 캐시가 곧 merge 될 수 있음) → 4초만 기다렸다가 이름만으로 생성 */
+        const age=Date.now()-new Date(r.registeredAt||r.seenAt||0).getTime();
+        if(age<4000){clearTimeout(_bitRetryT);_bitRetryT=setTimeout(bitAutoProcess,4500);continue;}
+      }
+      const reg=mrn?regFind(mrn):null;if(reg&&reg.name&&r.name&&reg.name!==r.name)continue;   // 명단과 이름 불일치 → 수동
+      const name=r.name||(reg&&reg.name)||'';if(!name)continue;
+      if(mrn&&mrnConflict(mrn,name))continue;
+      await bitClaimAndCreate(r,name,reg);
     }
-    const reg=mrn?regFind(mrn):null;if(reg&&reg.name&&r.name&&reg.name!==r.name)return;   // 명단과 이름 불일치 → 수동
-    const name=r.name||(reg&&reg.name)||'';if(!name)return;
-    if(mrn&&mrnConflict(mrn,name))return;
-    bitClaimAndCreate(r,name,reg);
-  });
+  }catch(e){console.warn('bitAutoProcess',e);}
+  finally{BIT_AUTO_BUSY=false;}
 }
 /* 비트에서 접수취소(캐스트 Command 3) → 아직 첫 방에서 대기 중이고 손대지 않은 카드는 자동 제거, 그 외엔 알림만
    · 비트는 접수 수정·보류 때 '접수취소 → 접수'를 1초 안에 연달아 보낸다 → 취소를 처음 본 뒤 6초(이 화면 시계 기준) 기다렸다가,
@@ -2353,11 +2364,12 @@ function bitApplyReceiveEnd(){
         const q=data.find(x=>x.id===p.id);if(!q||q.discharged)return;
         const pay=ROOMS.includes('3층 수납')?'3층 수납':(ROOMS.find(isPayRoom)||'');
         if(pay&&!isPayRoom(curRoom(q))){completeVisit(q,'이동');const i=q.route.indexOf(pay);if(i>=0)q.step=i;else{q.route.push(pay);q.step=q.route.length-1;}enterCurrentRoom(q);try{enteredRoom(q,pay);}catch(e){}}
+        const wasPaid=!!q.bitPaid;   // 늦게 연 화면이 이미 '수납완료' 카드로 만든 경우 — 표시만 유지하고 알림은 다시 띄우지 않음
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
         save(q);render();
-        audit('비트 수납완료(수납 이동)',q.name+(q.mrn?' ('+q.mrn+')':'')+' → '+curRoom(q));
+        if(!wasPaid)audit('비트 수납완료(수납 이동)',q.name+(q.mrn?' ('+q.mrn+')':'')+' → '+curRoom(q));
         if((q.extraFee||0)>0&&!q.paid){try{notify('💳','비트 수납완료',esc(dispName(q.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(q.extraFee)+'원이 미수납입니다.');}catch(e){}}
-        try{toast('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (확인 후 내보내기)');}catch(e){}
+        if(!wasPaid){try{toast('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (확인 후 내보내기)');}catch(e){}}
       })
       .catch(e=>console.warn('bit receiveEnd',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
   });
@@ -2466,7 +2478,11 @@ function bitCreatePatient(r,name,reg){
   let ins='';{const si=document.getElementById('f_ins');if(si&&r.ins&&[...si.options].some(o=>o.value===r.ins))ins=r.ins;}
   /* 첫 방: 보통 3층 대기실. 마지막 캐스트가 수납대기(7)면 환자가 이미 수납 창구에 있으므로 3층 수납에서 시작 (뒤늦게 살아난 문서·화면이 꺼져 있던 경우) */
   let first=ROOMS.includes('3층 대기실')?'3층 대기실':(ROOMS[0]||'3층 대기실');
-  if(r.command===7&&ROOMS.includes('3층 수납'))first='3층 수납';
+  const payRoom=ROOMS.includes('3층 수납')?'3층 수납':(ROOMS.find(isPayRoom)||'');
+  if(r.command===7&&payRoom)first=payRoom;
+  /* 수납완료(8, DB 에이전트 문서)인데 카드가 없음 = 화면을 늦게 열어 그 사이에 왔다 간 환자 → 3층 수납에 '비트 수납완료' 표시로 만들고 직원이 [내보내기]로 정리. #번호·통계에 포함된다 */
+  const alreadyPaid=(r.command===8&&r.src==='db');
+  if(alreadyPaid&&payRoom)first=payRoom;
   const _now=new Date().toISOString();
   const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:'',smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
   p.memoToday=r.memoToday||r.castMemo||'';
@@ -2484,7 +2500,8 @@ function bitCreatePatient(r,name,reg){
   data.push(p);save(p);cloudSaveConfig();render();
   try{enteredRoom(p,curRoom(p));}catch(e){}
   if(r.nameDup)p.bit.nameDup=true;
-  try{toast('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':(r.nameDup?' (동명이인 — 차트번호를 직접 확인해 주세요)':' (차트번호는 잠시 후 자동 보충)')));}catch(e){}
+  if(alreadyPaid){p.bitPaid={at:r.eventAt||r.lastSeenAt||_now,ocm:String(r.ocmNum||''),pc:r.pc||''};save(p);}
+  try{toast(alreadyPaid?('비트 수납완료(이미 다녀감) → '+dispName(name)+' 님 '+first+' (확인 후 내보내기)'):('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':(r.nameDup?' (동명이인 — 차트번호를 직접 확인해 주세요)':' (차트번호는 잠시 후 자동 보충)'))));}catch(e){}
   if(r.nameDup){try{notify('⚠️','동명이인 확인',esc(dispName(name))+' 님 — 비트에 같은 이름의 환자가 여럿 조회되어 차트번호를 붙이지 않았습니다. [수정]에서 차트번호를 확인해 주세요.');}catch(e){}}
   return p;
 }

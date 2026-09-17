@@ -38,6 +38,13 @@
 문서 필드는 `bitplus_watcher.ps1` 과 같은 이름을 씁니다: `name mrn rrn7 doctor hourMin command commandName registered registeredAt cancelled seenAt lastSeenAt event eventAt` + DB 전용 `src='db' stt dep firstVisit nextResv`.
 `rrn7` 은 주민번호 앞 7자리(`YYMMDD-S`)만 만들고, 뒷자리·전화·주소는 읽지 않습니다. 로그에는 차트번호만 남고 이름은 기록하지 않습니다.
 
+## 동선관리 쪽 처리 (2026-09-17)
+
+- `src='db'` 문서는 30분 TTL 없이 그날 문서 전부를 카드 대상으로 본다(상태는 에이전트가 계속 맞춰 줌). 화면을 늦게 열어도 그날 온 환자 전원이 카드와 `#번호`를 받아 통계에 잡힌다.
+- 이미 `수납완료(8)` 인 환자(화면이 닫혀 있는 사이 왔다 간 환자)는 3층 수납에 '비트 수납완료' 초록 카드로 만들어지고, 직원이 [내보내기]로 정리한다.
+- 여러 명을 한꺼번에 만들 때는 접수 시각(`hourMin`) 순으로 한 건씩 만들어 `#번호`가 도착 순서를 따른다.
+- 그래도 아침에는 동선관리를 한 화면에 열어 두는 것이 가장 정확하다(번호가 실시간으로 붙고, 진료실 처방·슬립도 바로 보임).
+
 ## 새 접수 판정 (파트너 문서 6절과 동일)
 
 - 상태 파일 `%LOCALAPPDATA%\bit_db_agent\state.json` = `{ date, seen: {접수번호: 상태}, sent: {접수번호: 마지막 command} }`.
