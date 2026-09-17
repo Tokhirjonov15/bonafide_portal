@@ -31,6 +31,7 @@ param(
   [int]$PollSec = 4,                        # DB 조회 주기(초)
   [int]$HeartbeatSec = 300,                 # 하트비트 주기(초) — 동선관리 BIT_STALE_SEC=750 과 짝
   [int]$LeadMin = 5,                        # 접수 시각이 지금보다 이만큼 뒤면 아직 보내지 않음(사전 등록분)
+  [int]$RecentMin = 30,                     # 시작 스냅샷이라도 이 시간 안에 접수된 환자는 보낸다(아침에 PC 가 켜지기 전 접수된 환자가 빠지지 않도록, 2026-09-17). 0 = 끔
   [switch]$DryRun,                          # Firestore 에 쓰지 않고 로그만
   [switch]$SendExistingOnStart,             # 시작 시 오늘 접수분을 전부 보냄(기본: 스냅샷만 찍고 보내지 않음)
   [int]$Cycles = 0,                         # 0 = 무한, N = N번 조회 뒤 종료(시험용)
@@ -229,8 +230,11 @@ function Poll($st, $first) {
       $script:UnknownStt[$stt] = 1; Log "알 수 없는 상태 코드 '$stt' (ocm$k) — 보내지 않음. 필요하면 `$ACTIVE/`$SKIP 에 추가"   # 한 코드당 한 번만
     }
     if ($first -and -not $SendExistingOnStart) {   # 시작 스냅샷: 이미 접수된 건은 보낸 것으로 간주(재시작 때 오늘 접수분을 다시 올리지 않기 위해)
-      if ($isActive) { $st.sent[$k] = (CmdOf $stt $null) }
-      $st.seen[$k] = $stt; continue
+      # 예외: 최근 $RecentMin 분 안에 접수됐고 아직 수납 전이면 보낸다 — 아침에 에이전트가 켜지기 전 접수된 환자가 빠지지 않도록. 같은 문서 id 로 merge 되므로 이미 카드가 있으면 동선관리가 무시한다
+      $hm0 = HourMinOf $r.recv
+      $recent = ($RecentMin -gt 0 -and $isActive -and $hm0 -ge 0 -and ($nowMin - $hm0) -ge (-$LeadMin) -and ($nowMin - $hm0) -le $RecentMin -and -not ($PAID -contains $stt))
+      if (-not $recent) { if ($isActive) { $st.sent[$k] = (CmdOf $stt $null) }; $st.seen[$k] = $stt; continue }
+      $script:SnapRecent++
     }
     $mrn = ([string]$r.mrn -replace '\D', ''); if (-not $mrn) { $mrn = ([string]$r.mrn).Trim() }
     $name = ([string]$r.name).Trim()
@@ -281,7 +285,7 @@ function Heartbeat($sqlOk) {
 #  · 이 에이전트는 TCP $HealthPort 에 "OK <우선순위> <PC> <leader|standby>" 한 줄로 답한다 — 단, 최근 30초 안에 DB 를 성공적으로 읽었을 때만. 아니면 "DOWN".
 #  · 감시 스크립트(bitplus_watcher.ps1)는 캐스트가 오면 이 포트에 물어 보고, 정상인 에이전트가 있으면 bitIntake 에 쓰지 않는다.
 #  · 여러 PC 에 에이전트가 있으면(bitplus_peers.txt) 매 주기 서로 물어 보고, 우선순위가 가장 높은 정상 에이전트만 전송한다. 그 PC 가 꺼지면 4~8초 안에 다음 순위가 이어받는다.
-$script:LastDbOk = [DateTime]::MinValue; $script:IsLeader = $true; $script:LeaderInfo = ''
+$script:LastDbOk = [DateTime]::MinValue; $script:IsLeader = $true; $script:LeaderInfo = ''; $script:SnapRecent = 0
 $MyIps = @(); try { $MyIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }) } catch {}
 $Peers = @()
 if (Test-Path $PeersFile) { $Peers = @(Get-Content $PeersFile -Encoding UTF8 | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' -and ($PeerPort -ne $HealthPort -or (($MyIps -notcontains $_) -and $_ -ne '127.0.0.1')) } | Select-Object -Unique) }   # 자기 자신은 뺀다(시험용 PeerPort 가 다르면 포함)
@@ -340,7 +344,7 @@ while ($true) {
   try {
     $n = Poll $st $first
     $script:LastDbOk = Get-Date
-    if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { ' (보내지 않음)' })"; $first = $false }
+    if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st
     if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }
   } catch {
