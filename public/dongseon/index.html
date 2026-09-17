@@ -285,9 +285,17 @@
   .mx-tag.live{background:#2563eb;color:#fff}
   .mx-tag.done{background:#d1fae5;color:#065f46}
   .mx-stat-tools{margin-bottom:10px}
-  .rs-card.rs-btn{cursor:pointer;font-family:inherit;color:var(--text);text-align:left;border-color:var(--blue)}
-  .rs-card.rs-btn:hover{background:var(--panel2)}
-  .rs-card.rs-btn b svg{width:18px;height:18px;color:var(--blue)}
+  /* 통계 창: 내용이 적든 많든 크기 고정, 안쪽만 스크롤 */
+  .rs-modal{width:min(94vw,800px);height:min(90vh,720px);max-height:90vh;display:flex;flex-direction:column}
+  .rs-modal>h3{flex:none}
+  .rs-modal-body{flex:1;min-height:0;overflow:auto}
+  .rs-modal .foot{flex:none}
+  .rs-sect{border:1px solid var(--line);border-radius:12px;padding:10px 12px 12px;margin:0 0 12px}
+  .rs-sect h4{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .rs-sect h4 .spacer{flex:1}
+  .rs-btn{align-self:center;display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1px solid var(--blue);border-radius:12px;background:var(--panel);color:var(--blue);font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap}
+  .rs-btn:hover{background:var(--blue);color:#fff}
+  .rs-btn svg{width:20px;height:20px}
   .mx-stat th,.mx-stat td{text-align:center}
   .mx-stat td.mx-name,.mx-stat th.mx-name{text-align:left}
   .mx-stat tr.mx-total td{border-top:2px solid var(--line);background:var(--panel2)}
@@ -1356,17 +1364,31 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 </div>
 <!-- 4층 비급여 치료 통계 창: 치료실별 이용(충격파·신장분사, 시트의 '차트번호(치료실)' 괄호 숫자) + 치료사별 도수(SASO·자동차도수). 기간 필터 공용 -->
 <div class="modal-bg" id="resvStatModal" style="z-index:400" onclick="if(event.target===this)closeResvStats()">
-  <div class="modal" style="width:min(94vw,760px)">
+  <div class="modal rs-modal">
     <h3><i data-lucide="bar-chart-3"></i> 4층 비급여 치료 통계</h3>
-    <div class="body">
-      <div class="hist-filter mx-stat-tools">
-        <button class="chipf" data-kind="today" onclick="mxStatQuick('today')">오늘</button>
-        <button class="chipf" data-kind="week" onclick="mxStatQuick('week')">이번 주</button>
-        <button class="chipf" data-kind="month" onclick="mxStatQuick('month')">이번 달</button>
-        <input type="date" id="mxStatFrom" onchange="mxStatRange()" title="시작"><span class="hint">~</span><input type="date" id="mxStatTo" onchange="mxStatRange()" title="끝">
-        <span class="hint" id="mxStatHint"></span>
+    <div class="body rs-modal-body">
+      <div class="rvd-sect rs-sect" id="rsSect_room">
+        <h4>치료실별 이용 <span class="hint">충격파 · 신장분사</span><span class="spacer"></span><button class="btn sm" onclick="printRsStat('room')" title="A4 인쇄"><i data-lucide="printer"></i> 인쇄</button></h4>
+        <div class="hist-filter mx-stat-tools">
+          <button class="chipf" data-kind="today" onclick="rsStatQuick('room','today')">오늘</button>
+          <button class="chipf" data-kind="week" onclick="rsStatQuick('room','week')">이번 주</button>
+          <button class="chipf" data-kind="month" onclick="rsStatQuick('room','month')">이번 달</button>
+          <input type="date" id="rsFrom_room" onchange="rsStatRange('room')" title="시작"><span class="hint">~</span><input type="date" id="rsTo_room" onchange="rsStatRange('room')" title="끝">
+          <span class="hint" id="rsHint_room"></span>
+        </div>
+        <div id="rsBody_room"><div class="hint">불러오는 중…</div></div>
       </div>
-      <div id="mxStatBody"><div class="hint">불러오는 중…</div></div>
+      <div class="rvd-sect rs-sect" id="rsSect_th">
+        <h4>치료사별 도수 <span class="hint">SASO · 자동차도수</span><span class="spacer"></span><button class="btn sm" onclick="printRsStat('th')" title="A4 인쇄"><i data-lucide="printer"></i> 인쇄</button></h4>
+        <div class="hist-filter mx-stat-tools">
+          <button class="chipf" data-kind="today" onclick="rsStatQuick('th','today')">오늘</button>
+          <button class="chipf" data-kind="week" onclick="rsStatQuick('th','week')">이번 주</button>
+          <button class="chipf" data-kind="month" onclick="rsStatQuick('th','month')">이번 달</button>
+          <input type="date" id="rsFrom_th" onchange="rsStatRange('th')" title="시작"><span class="hint">~</span><input type="date" id="rsTo_th" onchange="rsStatRange('th')" title="끝">
+          <span class="hint" id="rsHint_th"></span>
+        </div>
+        <div id="rsBody_th"><div class="hint">불러오는 중…</div></div>
+      </div>
     </div>
     <div class="foot" style="display:flex;justify-content:flex-end;padding:0 16px 14px"><button class="btn sm" onclick="closeResvStats()">닫기</button></div>
   </div>
@@ -5193,7 +5215,7 @@ function renderResvScreen(){
       <div class="rs-card"><b>${st.cancels}</b><span>취소·변경</span></div>
       <div class="rs-card"><b>${st.manual}</b><span>도수 예약</span></div>
       <div class="rs-card"><b>${Math.round(st.minutes/6)/10}h</b><span>예약 치료시간 합</span></div>
-      <button class="rs-card rs-btn" onclick="openResvStats()" title="치료실별 이용(충격파·신장분사) · 치료사별 도수(SASO·자동차도수) — 오늘/이번 주/이번 달/기간"><b><i data-lucide="bar-chart-3"></i></b><span>통계</span></button>
+      <button class="rs-btn" onclick="openResvStats()" title="치료실별 이용(충격파·신장분사) · 치료사별 도수(SASO·자동차도수) — 오늘/이번 주/이번 달/기간"><i data-lucide="bar-chart-3"></i> 통계</button>
       ${st.sheet.map(x=>`<div class="rs-card sheet"><b>${esc(String(x.value))}</b><span>${esc(x.label)} · 시트</span></div>`).join('')}
     </div>
     ${(Object.keys(st.byTh).length||Object.keys(st.byCode).length)?`<div class="resv-chips">${chips(st.byTh)}${Object.keys(st.byCode).length?'<i></i>'+chips(st.byCode):''}</div>`:''}
@@ -5426,18 +5448,20 @@ function manualBoardHtml(pf,manual,D,rooms){
 }
 /* ── 치료사별 도수 통계 (2026-09-17): 기간(오늘/이번 주/이번 달/직접) 안의 날짜마다 mxRows 를 만들어 치료사별 예약·진행중·완료·합계를 센다.
    날짜별 시트 문서(bookings/{D}, bookingEdits/{D})가 없으면 한 번씩 읽어 온다(BOOKINGS 캐시). 내원 기록(VISITS)은 로그인 때 받은 것 기준 */
-let MX_STAT={kind:'today',from:'',to:''},MX_STAT_LOADING=false;
-function mxStatDays(){const t=new Date();const y=d=>localYMD(d);let a,b;
-  if(MX_STAT.kind==='today'){a=b=y(t);}
-  else if(MX_STAT.kind==='week'){const d=new Date(t);d.setDate(d.getDate()-((d.getDay()+6)%7));a=y(d);b=y(t);}
-  else if(MX_STAT.kind==='month'){a=y(new Date(t.getFullYear(),t.getMonth(),1));b=y(t);}
-  else{a=MX_STAT.from||y(t);b=MX_STAT.to||a;if(b<a){const s=a;a=b;b=s;}}
+/* ── 4층 비급여 치료 통계 창 (2026-09-17): 두 절(room = 치료실별 이용, th = 치료사별 도수)이 각각 기간 필터(오늘/이번 주/이번 달/직접)와 인쇄(A4)를 가진다.
+   날짜별 시트 문서(bookings/{D}, bookingEdits/{D})가 없으면 한 번씩 읽어 캐시(BOOKINGS). 내원 기록(VISITS)은 로그인 때 받은 것 기준 */
+const RS_STAT={room:{kind:'today',from:'',to:''},th:{kind:'today',from:'',to:''}};const RS_LOADING={};
+function rsStatDays(sec){const S=RS_STAT[sec]||RS_STAT.room;const t=new Date();const y=d=>localYMD(d);let a,b;
+  if(S.kind==='today'){a=b=y(t);}
+  else if(S.kind==='week'){const d=new Date(t);d.setDate(d.getDate()-((d.getDay()+6)%7));a=y(d);b=y(t);}
+  else if(S.kind==='month'){a=y(new Date(t.getFullYear(),t.getMonth(),1));b=y(t);}
+  else{a=S.from||y(t);b=S.to||a;if(b<a){const s=a;a=b;b=s;}}
   const days=[];const d=new Date(a+'T12:00:00');const end=new Date(b+'T12:00:00');let n=0;
   while(d<=end&&n<62){days.push(y(d));d.setDate(d.getDate()+1);n++;}   // 최대 62일
   return days;
 }
-window.mxStatQuick=function(kind){MX_STAT={kind,from:'',to:''};const f=document.getElementById('mxStatFrom'),g=document.getElementById('mxStatTo');if(f)f.value='';if(g)g.value='';renderMxStats();};
-window.mxStatRange=function(){const f=document.getElementById('mxStatFrom'),g=document.getElementById('mxStatTo');MX_STAT={kind:'range',from:(f&&f.value)||'',to:(g&&g.value)||''};if(!MX_STAT.from&&!MX_STAT.to)MX_STAT.kind='today';renderMxStats();};
+window.rsStatQuick=function(sec,kind){RS_STAT[sec]={kind,from:'',to:''};const f=document.getElementById('rsFrom_'+sec),g=document.getElementById('rsTo_'+sec);if(f)f.value='';if(g)g.value='';renderRsStat(sec);};
+window.rsStatRange=function(sec){const f=document.getElementById('rsFrom_'+sec),g=document.getElementById('rsTo_'+sec);RS_STAT[sec]={kind:'range',from:(f&&f.value)||'',to:(g&&g.value)||''};if(!RS_STAT[sec].from&&!RS_STAT[sec].to)RS_STAT[sec].kind='today';renderRsStat(sec);};
 async function bkEnsureDay(D){   // 그 날짜의 시트 문서·수정본이 아직 없으면 한 번 읽는다(있으면 캐시)
   if(!cloud.bookingsCol)return;
   if(BOOKINGS[D]===undefined){BOOKINGS[D]=null;try{const sn=await cloud.bookingsCol.doc(D).get();if(sn.exists)BOOKINGS[D]=sn.data();}catch(e){console.warn('bookings get',e);}}
@@ -5463,37 +5487,53 @@ function roomStatsCompute(days,groupRooms){
   const list=Object.values(by).sort((a,b)=>{const na=parseInt(a.room,10),nb=parseInt(b.room,10);if(!isNaN(na)&&!isNaN(nb))return na-nb;if(!isNaN(na))return -1;if(!isNaN(nb))return 1;return a.room.localeCompare(b.room);});
   return {list,tot};
 }
-window.openResvStats=function(){const m=document.getElementById('resvStatModal');if(!m)return;m.classList.add('show');renderMxStats();};
-window.closeResvStats=function(){const m=document.getElementById('resvStatModal');if(m)m.classList.remove('show');};
-async function renderMxStats(){
-  const box=document.getElementById('mxStatBody');if(!box)return;
-  document.querySelectorAll('#resvStatModal .chipf').forEach(b=>b.classList.toggle('on',b.dataset.kind===MX_STAT.kind));
-  const days=mxStatDays();const hint=document.getElementById('mxStatHint');if(hint)hint.textContent=days.length?`${days[0]} ~ ${days[days.length-1]} · ${days.length}일`:'';
-  const missing=days.filter(D=>BOOKINGS[D]===undefined||(cloud.bookingEditsCol&&BK_EDITS[D]===undefined));
-  if(missing.length){if(MX_STAT_LOADING)return;MX_STAT_LOADING=true;box.innerHTML=`<div class="hint">시트 자료 ${missing.length}일치 불러오는 중…</div>`;
-    try{for(const D of missing)await bkEnsureDay(D);}finally{MX_STAT_LOADING=false;}
-    if(!document.getElementById('mxStatBody'))return;}
-  const g1=SHEET_GROUPS.find(g=>g.bk==='items')||SHEET_GROUPS[0], g2=SHEET_GROUPS.find(g=>g.bk==='manual')||{rooms:['SASO','자동차도수']};
-  const R=roomStatsCompute(days,g1.rooms);const T=mxStatsCompute(days,g2.rooms);
-  const roomTbl=R.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료실</th><th>예약</th><th>내원</th><th>합계</th></tr></thead><tbody>
+/* 시트 숫자칸(Apps Script 가 라벨로 찾아 올림): CME = 도수+충격파, CRY = 신장분사+Hilt — 기간의 날짜별 값 합 */
+function rsSheetSum(days){const sum={CME:0,CRY:0},n={CME:0,CRY:0};
+  days.forEach(D=>{const bk=BOOKINGS[D];if(!bk||!Array.isArray(bk.stats))return;bk.stats.forEach(s=>{const k=s.key||(/^도수\s*\+\s*충격파$/.test(s.label||'')?'CME':(/^신장분사\s*\+\s*Hilt$/i.test(s.label||'')?'CRY':''));if(!k)return;const v=parseFloat(String(s.value).replace(/[^0-9.\-]/g,''));if(isNaN(v))return;sum[k]+=v;n[k]++;});});
+  return {sum,n};}
+function rsRoomHtml(days){
+  const g1=SHEET_GROUPS.find(g=>g.bk==='items')||SHEET_GROUPS[0];const R=roomStatsCompute(days,g1.rooms);const sh=rsSheetSum(days);
+  const cards=(sh.n.CME||sh.n.CRY)?`<div class="resv-stats" style="margin-bottom:12px">
+      <div class="rs-card sheet"><b>${sh.sum.CME}</b><span>CME · 도수+충격파 · 시트</span></div>
+      <div class="rs-card sheet"><b>${sh.sum.CRY}</b><span>CRY · 신장분사+Hilt · 시트</span></div>
+      ${days.length>1?`<div class="rs-card"><b>${Math.max(sh.n.CME,sh.n.CRY)}</b><span>시트 자료 있는 날</span></div>`:''}</div>`:'';
+  const tbl=R.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료실</th><th>예약</th><th>내원</th><th>합계</th></tr></thead><tbody>
       ${R.list.map(o=>`<tr><td class="mx-name">${/^\d+$/.test(o.room)?o.room+'번 치료실':esc(o.room)}</td><td>${o.resv||''}</td><td><b>${o.arr||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
-      <tr class="mx-total"><td class="mx-name">합계</td><td>${R.tot.resv}</td><td><b>${R.tot.arr}</b></td><td><b>${R.tot.total}</b></td></tr></tbody></table></div>
-      <div class="hint" style="margin-top:6px">시트의 '차트번호(치료실)' 괄호 숫자 기준 · 한 환자는 하루·치료실당 한 번 · 내원 = 시트 연노랑 또는 오늘 보드에 카드 있음</div>`:'<div class="hint">이 기간에 충격파·신장분사 예약이 없습니다.</div>';
-  const thTbl=T.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료사</th><th>예약·내원</th><th>진행중</th><th>완료</th><th>합계</th></tr></thead><tbody>
-      ${T.list.map(o=>`<tr><td class="mx-name">${esc(o.th)}</td><td>${o.resv||''}</td><td>${o.live||''}</td><td><b>${o.done||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
-      <tr class="mx-total"><td class="mx-name">합계</td><td>${T.tot.resv}</td><td>${T.tot.live}</td><td><b>${T.tot.done}</b></td><td><b>${T.tot.total}</b></td></tr></tbody></table></div>
-      <div class="hint" style="margin-top:6px">완료 = 그 방을 거쳐 나간 환자(보드 카드·내원 기록) 또는 수정 창에서 완료로 표시한 줄 · 한 환자는 하루에 한 번</div>`:'<div class="hint">이 기간에 도수 기록이 없습니다.</div>';
-  /* 시트 숫자칸(Apps Script 가 라벨로 찾아 올림): CME = 도수+충격파, CRY = 신장분사+Hilt — 기간의 날짜별 값 합 */
-  const sheetSum={CME:0,CRY:0},sheetDays={CME:0,CRY:0};
-  days.forEach(D=>{const bk=BOOKINGS[D];if(!bk||!Array.isArray(bk.stats))return;bk.stats.forEach(s=>{const k=s.key||(/^도수\s*\+\s*충격파$/.test(s.label||'')?'CME':(/^신장분사\s*\+\s*Hilt$/i.test(s.label||'')?'CRY':''));if(!k)return;const v=parseFloat(String(s.value).replace(/[^0-9.\-]/g,''));if(isNaN(v))return;sheetSum[k]+=v;sheetDays[k]++;});});
-  const sheetCards=(sheetDays.CME||sheetDays.CRY)?`<div class="resv-stats" style="margin-bottom:12px">
-      <div class="rs-card sheet"><b>${sheetSum.CME}</b><span>CME · 도수+충격파 · 시트</span></div>
-      <div class="rs-card sheet"><b>${sheetSum.CRY}</b><span>CRY · 신장분사+Hilt · 시트</span></div>
-      ${days.length>1?`<div class="rs-card"><b>${Math.max(sheetDays.CME,sheetDays.CRY)}</b><span>시트 자료 있는 날</span></div>`:''}
-    </div>`:`<div class="hint" style="margin-bottom:10px">시트 숫자칸(도수+충격파 · 신장분사+Hilt)이 아직 올라오지 않았습니다 — Apps Script(sheet_bookings.gs) 갱신 후 다음 동기화부터 표시됩니다.</div>`;
-  box.innerHTML=sheetCards+`<div class="rvd-sect"><h4>치료실별 이용 <span class="hint">${esc(g1.title||'충격파 · 신장분사')}</span></h4>${roomTbl}</div>
-    <div class="rvd-sect"><h4>치료사별 도수 <span class="hint">${esc(g2.title||'SASO · 자동차도수')}</span></h4>${thTbl}</div>`;
+      <tr class="mx-total"><td class="mx-name">합계</td><td>${R.tot.resv}</td><td><b>${R.tot.arr}</b></td><td><b>${R.tot.total}</b></td></tr></tbody></table></div>`:'<div class="hint">이 기간에 충격파·신장분사 예약이 없습니다.</div>';
+  return cards+tbl;
 }
+function rsThHtml(days){
+  const g2=SHEET_GROUPS.find(g=>g.bk==='manual')||{rooms:['SASO','자동차도수']};const T=mxStatsCompute(days,g2.rooms);
+  return T.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료사</th><th>예약·내원</th><th>진행중</th><th>완료</th><th>합계</th></tr></thead><tbody>
+      ${T.list.map(o=>`<tr><td class="mx-name">${esc(o.th)}</td><td>${o.resv||''}</td><td>${o.live||''}</td><td><b>${o.done||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
+      <tr class="mx-total"><td class="mx-name">합계</td><td>${T.tot.resv}</td><td>${T.tot.live}</td><td><b>${T.tot.done}</b></td><td><b>${T.tot.total}</b></td></tr></tbody></table></div>`:'<div class="hint">이 기간에 도수 기록이 없습니다.</div>';
+}
+function rsPeriodText(days){return days.length?`${days[0]} ~ ${days[days.length-1]} · ${days.length}일`:'';}
+async function renderRsStat(sec){
+  const box=document.getElementById('rsBody_'+sec);if(!box)return;
+  document.querySelectorAll('#rsSect_'+sec+' .chipf').forEach(b=>b.classList.toggle('on',b.dataset.kind===RS_STAT[sec].kind));
+  const days=rsStatDays(sec);const hint=document.getElementById('rsHint_'+sec);if(hint)hint.textContent=rsPeriodText(days);
+  const missing=days.filter(D=>BOOKINGS[D]===undefined||(cloud.bookingEditsCol&&BK_EDITS[D]===undefined));
+  if(missing.length){if(RS_LOADING[sec])return;RS_LOADING[sec]=true;box.innerHTML='<div class="hint">불러오는 중…</div>';
+    try{for(const D of missing)await bkEnsureDay(D);}finally{RS_LOADING[sec]=false;}
+    if(!document.getElementById('rsBody_'+sec))return;}
+  box.innerHTML=sec==='room'?rsRoomHtml(days):rsThHtml(days);
+}
+function renderMxStats(){renderRsStat('room');renderRsStat('th');}
+window.openResvStats=function(){const m=document.getElementById('resvStatModal');if(!m)return;m.classList.add('show');renderMxStats();if(window.lucide)try{lucide.createIcons();}catch(e){}};
+window.closeResvStats=function(){const m=document.getElementById('resvStatModal');if(m)m.classList.remove('show');};
+/* 인쇄(A4 세로): 절 하나씩 — 제목·기간·표 */
+window.printRsStat=function(sec){
+  const days=rsStatDays(sec);const title=sec==='room'?'치료실별 이용 (충격파 · 신장분사)':'치료사별 도수 (SASO · 자동차도수)';
+  const html=sec==='room'?rsRoomHtml(days):rsThHtml(days);
+  const w=window.open('','_blank');if(!w){alert('팝업이 차단되었습니다.');return;}
+  const style=`<style>@page{size:A4 portrait;margin:14mm}html,body{margin:0;padding:0}body{font-family:'Malgun Gothic',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    h2{font-size:18px;margin:0 0 4px}.sub{color:#666;font-size:12px;margin:0 0 12px}
+    .resv-stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.rs-card{border:1px solid #999;border-radius:10px;padding:8px 14px;min-width:110px}.rs-card b{display:block;font-size:20px}.rs-card span{font-size:11px;color:#666}
+    .mx-tblwrap{margin:0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #666;padding:6px 8px;text-align:center}th{background:#eef1f6}td.mx-name,th.mx-name{text-align:left}tr.mx-total td{background:#f3f4f6;font-weight:800}.hint{color:#666;font-size:12px}</style>`;
+  w.document.write(`<html><head><title>${esc(title)}_${days[0]||''}</title>${style}</head><body><h2>${esc(title)}</h2><p class="sub">${esc(rsPeriodText(days))} · 출력 ${localYMD(new Date())} ${nowHM()}</p>${html}<script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
+  w.document.close();
+};
 /* 4층 비급여 치료 시간표 — 예약(시트+수정본)만. 열 = 그날 예약·차단·취소가 있는 치료사(시트 순서), 행 = 30분. 보드 카드는 보지 않는다.
    pf=true(환자용): 이름 가림, 차트번호·메모·취소·차단 문구 없음(지금은 직원 화면·인쇄에서만 쓰인다) */
 function treatSheetTableHtml(pf,dateYmd,rooms){
