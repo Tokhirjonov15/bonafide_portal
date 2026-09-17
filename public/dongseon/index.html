@@ -1084,6 +1084,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
     <button class="btn" id="resvBtn" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
+    <button class="btn" id="bitResvBtn" onclick="openBitResvScreen()" title="비트 진료 예약(1진료실·16진료실) — 오늘부터 7일, 접수 PC 가 비트에서 바꾸면 몇 초 안에 반영 (별도 모니터: 주소 뒤에 ?bitresv)"><i data-lucide="calendar-clock"></i> 진료 예약</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
@@ -1273,6 +1274,18 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn sm" id="resvCloseBtn" onclick="closeResvScreen()"><i data-lucide="x"></i> 닫기</button>
   </div>
   <div class="resv-body" id="resvBody"></div>
+</div>
+<!-- 비트 진료 예약 화면 — 4층 비급여 치료(시트)와 별개. DB 에이전트가 올린 bitResv/{날짜} 를 실시간으로 보여 준다 (별도 모니터: ?bitresv) -->
+<div id="bitResvScreen" class="resv-screen">
+  <div class="slip-top">
+    <b><i data-lucide="calendar-clock"></i> 진료 예약</b><span class="hint">비트 예약관리(1진료실·16진료실) · 직원용</span>
+    <input type="date" id="bitResvDate" class="sheet-date-inp dark" onchange="setBitResvDate(this.value)" title="오늘부터 7일치가 준비됨">
+    <span class="hint" id="bitResvSync"></span>
+    <div class="spacer"></div>
+    <a class="btn sm" href="?bitresv" target="_blank" rel="noopener" title="별도 모니터·창용 주소"><i data-lucide="external-link"></i> 새 창</a>
+    <button class="btn sm" id="bitResvCloseBtn" onclick="closeBitResvScreen()"><i data-lucide="x"></i> 닫기</button>
+  </div>
+  <div class="resv-body" id="bitResvBody"></div>
 </div>
 <!-- 예약 수정 창(4층 비급여 치료) -->
 <div class="modal-bg" id="bkEditModal" style="z-index:400">
@@ -1986,7 +1999,7 @@ async function doLogin(){
     // 이후는 onAuthStateChanged → establishSession 이 처리
   }catch(e){loginMsg(authErrMsg(e));}
 }
-function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();}
+function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();if(BITRESV_MODE)openBitResvScreen();}
 /* ───── 비트플러스 접수 연동 ─────
    접수 PC의 감시 스크립트(tools/bitplus_watcher.ps1)가 비트 '접수' 창의 인적정보 패널을 읽어
    bitIntake/{날짜_병록번호} 문서로 올린다. 여기서는 오늘 문서만 구독해 보드 위에 '비트 접수 대기' 줄로 보여주고,
@@ -1997,12 +2010,13 @@ let BIT_LOOKUP=[];                                       // 오늘 접수 창 �
 /* ── 비트 진료 예약(bitResv) — DB 에이전트가 RsvInf 를 8초마다 읽어 바뀐 날짜만 다시 쓴다(접수 PC 가 비트에서 시각을 옮기면 몇 초 안에 반영) ──
    BIT_RESV[날짜] = {date, updatedAt, count, items:[{k,t,room,dr,mrn,name,birth,sex,div,sts,ostt,acp,memo,by,naver}]}, BIT_RESV_SUM = {days:{날짜:{n,canc,arrived,naver}}} */
 let BIT_RESV={}, BIT_RESV_SUM={}, BIT_RESV_DATE='';
+let BITRESV_MODE=false, bitResvOpen=false, bitResvDate=null;   // ?bitresv 전용 창 / 진료 예약 화면 상태 / 보는 날짜(null=오늘)
 const BIT_RSV_DIV={R:'',X:'X',Z:'Z'};   // 비트 예약 구분 코드 → 표시(R 은 기본이라 표시 안 함). 뜻이 확인되면 여기만 고친다
 function bitResvSub(D){   // 보고 있는 날짜의 예약 문서 하나만 실시간 구독(날짜를 바꾸면 이전 구독 해제)
   if(!cloud.resvCol||!currentUser)return;const role=bitClientRole();if(role!=='staff'&&role!=='resv')return;
   if(BIT_RESV_DATE===D&&cloud.unsubResv)return;
   try{if(cloud.unsubResv)cloud.unsubResv();}catch(e){}cloud.unsubResv=null;BIT_RESV_DATE=D;
-  cloud.unsubResv=cloud.resvCol.doc(D).onSnapshot(s=>{BIT_RESV[D]=s.exists?(s.data()||null):null;if(resvOpen)renderResvScreen();},err=>console.warn('bitResv',err));
+  cloud.unsubResv=cloud.resvCol.doc(D).onSnapshot(s=>{BIT_RESV[D]=s.exists?(s.data()||null):null;if(bitResvOpen)renderBitResvScreen();},err=>console.warn('bitResv',err));
 }
 const BIT_RSV_ARRIVED=s=>!!s&&s!=='WR'&&s!=='CN'&&!/^[OV]/.test(s)&&!/R$/.test(s);   // OcmInf 상태가 접수 계열이면 도착
 function bitResvStats(D){
@@ -2017,7 +2031,7 @@ function renderBitResvSection(D){
   const st=bitResvStats(D);const days=(BIT_RESV_SUM&&BIT_RESV_SUM.days)||{};
   const dow=['일','월','화','수','목','금','토'];
   const strip=[];for(let i=0;i<8;i++){const d=new Date();d.setDate(d.getDate()+i);const ymd=localYMD(d);const s=days[ymd];const we=d.getDay()===0||d.getDay()===6;
-    strip.push(`<div class="rv-day${ymd===D?' on':''}${we?' we':''}" onclick="setSheetDate('${ymd}')" title="${ymd}${s?` · 예약 ${s.n}건, 취소 ${s.canc}건${s.naver?', 네이버 '+s.naver:''}`:''}"><span class="rv-dow">${i===0?'오늘':(i===1?'내일':ymd.slice(5))} ${dow[d.getDay()]}</span><b>${s?s.n:'-'}</b></div>`);}
+    strip.push(`<div class="rv-day${ymd===D?' on':''}${we?' we':''}" onclick="setBitResvDate('${ymd}')" title="${ymd}${s?` · 예약 ${s.n}건, 취소 ${s.canc}건${s.naver?', 네이버 '+s.naver:''}`:''}"><span class="rv-dow">${i===0?'오늘':(i===1?'내일':ymd.slice(5))} ${dow[d.getDay()]}</span><b>${s?s.n:'-'}</b></div>`);}
   const rows=st.items.slice().sort((a,b)=>String(a.t).localeCompare(String(b.t))||String(a.room).localeCompare(String(b.room))).map(x=>{
     const arrived=BIT_RSV_ARRIVED(x.ostt)||!!x.acp;const canc=x.sts==='OC'||x.ostt==='CN';
     const tm=st.tMin(x.t);const late=!canc&&!arrived&&D===st.today&&tm!==null&&st.nowM-tm>10;
@@ -2036,6 +2050,27 @@ function renderBitResvSection(D){
     ${rows?`<div class="rv-list">${rows}</div>`:'<div class="hint">예약 없음</div>'}
   </div>`;
 }
+/* ── 진료 예약 화면(별도 페이지, 4층 비급여 치료와 분리) ── */
+function openBitResvScreen(){bitResvOpen=true;const el=document.getElementById('bitResvScreen');if(el)el.classList.add('show');
+  const cb=document.getElementById('bitResvCloseBtn');if(cb)cb.style.display=BITRESV_MODE?'none':'';
+  try{bitResvSub(bitResvDate||localYMD(new Date()));}catch(e){console.warn(e);}renderBitResvScreen();}
+function closeBitResvScreen(){bitResvOpen=false;const el=document.getElementById('bitResvScreen');if(el)el.classList.remove('show');}
+window.setBitResvDate=function(v){const today=localYMD(new Date());bitResvDate=(!v||v===today)?null:v;try{bitResvSub(bitResvDate||today);}catch(e){console.warn(e);}renderBitResvScreen();};
+function renderBitResvScreen(){
+  if(!bitResvOpen)return;const body=document.getElementById('bitResvBody');if(!body)return;
+  const D=bitResvDate||localYMD(new Date());const di=document.getElementById('bitResvDate');if(di&&di.value!==D)di.value=D;
+  const st=bitResvStats(D);
+  const sy=document.getElementById('bitResvSync');if(sy)sy.textContent=st.has?('갱신 '+hhmm(st.updatedAt)):'이 날짜의 예약 자료 없음';
+  body.innerHTML=`<div class="resv-stats">
+      <div class="rs-card"><b>${st.live}</b><span>진료 예약</span></div>
+      <div class="rs-card"><b>${st.arrived}</b><span>도착</span></div>
+      ${D===st.today?`<div class="rs-card"><b style="color:var(--red)">${st.late}</b><span>미도착(시각 경과)</span></div>`:''}
+      <div class="rs-card"><b>${st.canc}</b><span>취소</span></div>
+      <div class="rs-card"><b>${st.naver}</b><span>네이버</span></div>
+    </div>
+    ${(()=>{try{return renderBitResvSection(D);}catch(e){console.warn('bitResv render',e);return '';}})()}`;
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
+}
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 let RESV_MODE=false, resvOpen=false;   // ?resv 전용 창(직원용 예약관리 모니터) / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
@@ -2044,7 +2079,7 @@ const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3
 /* 이 화면의 역할 — 'staff'(직원 보드) · 'slip'(?slip 태블릿) · 'tv'(대기화면이 떠 있는 화면).
    Firestore 읽기는 "바뀐 문서 수 × 그 문서를 듣고 있는 화면 수"로 세므로 TV·태블릿은 필요 없는 컬렉션을 듣지 않는다.
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
-function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
+function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
 function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
 /* ── 감시 PC 하트비트 읽기 ── 실시간(onSnapshot)으로 들으면 "하트비트 1건 = 듣는 화면 수만큼 읽기"라 PC 24대 × 5분 × 화면 10개 = 하루 7만 회에 달했다(2026-09-14·15 무료 한도 초과).
@@ -2080,8 +2115,8 @@ function subscribeBitIntake(){
     },err=>console.warn('bitIntake',err));
   } else {BIT_INTAKE=[];renderBitBar();}
   if((role==='staff'||role==='resv')&&cloud.resvCol){   // 비트 진료 예약: 날짜별 건수 요약(문서 1개) — 4층 화면 상단 7일 띠. 날짜별 문서는 화면을 열 때 bitResvSub 로
-    cloud.unsubResvSum=cloud.resvCol.doc('_summary').onSnapshot(s=>{BIT_RESV_SUM=s.exists?(s.data()||{}):{};if(resvOpen)renderResvScreen();},err=>console.warn('bitResv summary',err));
-    try{bitResvSub(sheetDate||today);}catch(e){console.warn(e);}
+    cloud.unsubResvSum=cloud.resvCol.doc('_summary').onSnapshot(s=>{BIT_RESV_SUM=s.exists?(s.data()||{}):{};if(bitResvOpen)renderBitResvScreen();},err=>console.warn('bitResv summary',err));
+    try{bitResvSub(bitResvDate||today);}catch(e){console.warn(e);}
   }
   if((role==='staff'||role==='slip')&&cloud.lookupCol){   // 접수 창 조회 기록(오늘) — 캐스트 카드 보완 + 슬립 머리글(이름·생년월일) 보완
     cloud.unsubLookup=cloud.lookupCol.where('date','==',today).onSnapshot(s=>{
@@ -2177,7 +2212,7 @@ function renderBitPill(){
       st.lastErr?`마지막 오류: ${st.lastErr}`:'',st.cycMaxMs>3000?`최장 주기 ${Math.round(st.cycMaxMs/1000)}초`:'',st.logTail?'--- 로그 ---\n'+st.logTail:''].filter(Boolean).join('\n');
     return `<span class="bp ${cls}" title="${esc(tip)}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();if(bitResvOpen)renderBitResvScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 /* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
    문서 하나 = 오늘 그 환자(차트번호). 카드와는 차트번호로 연결(카드가 없어도 목록은 보임). ?slip 주소로 열면 로그인 뒤 이 화면만 뜬다(태블릿용), &room=물리치료 로 그 방 동선의 환자만. */
 /* 진료실 처방 블록 해석 — 감시 스크립트는 'med' 줄부터 원문만 보낸다. 원내 표기 규칙(2026-09-13 공지):
@@ -2323,9 +2358,17 @@ function bitMergeMemo(mrn,name,parts){
   if(!mrn||!parts.length||!name)return false;
   let cm=regMemo(mrn),changed=false;
   if(/^[\s+\-_.·ㆍ,~*]*$/.test(cm)){cm='';changed=!!regMemo(mrn);}   // 예전에 '-' 만 들어간 특이사항은 비운 뒤 채움
-  parts.forEach(t=>{if(cm.includes(t))return;cm=cm?cm+'\n'+t:t;changed=true;});
-  return changed&&setRegMemo(mrn,name,cm);
+  /* 줄 단위로 비교 — '- ' 머리표·앞뒤 공백·끝의 '/' 차이는 같은 문장으로 본다. 접수메모(연속)는 '- ' 로, 원외처방·외래진료실 특이사항은 머리표 없이
+     같은 내용을 보내므로 블록 통째로 비교하면 두 번 붙었다(2026-09-17). 이미 두 번 들어간 기존 특이사항도 이때 정리한다 */
+  const lines=cm?cm.split(/\r?\n/):[];const keys=new Set();const out=[];
+  lines.forEach(l=>{const k=bitMemoLineKey(l);if(!k)return;if(keys.has(k)){changed=true;return;}keys.add(k);out.push(l);});
+  if(out.length!==lines.length)changed=true;
+  parts.forEach(t=>t.split(/\r?\n/).forEach(l=>{const k=bitMemoLineKey(l);if(!k||keys.has(k))return;keys.add(k);out.push(l.trim());changed=true;}));
+  const next=out.join('\n');
+  if(!changed||next===cm)return false;
+  return setRegMemo(mrn,name,next);
 }
+function bitMemoLineKey(s){return String(s||'').replace(/^[\s\-–—•·ㆍ*+.]+/,'').replace(/[\s\/]+$/,'').replace(/\s+/g,' ').trim();}   // 비교용 정규화(표시 문장은 그대로 둔다)
 function bitMemoCombined(r){const a=bitMemoClean(r.memoCont),b=bitMemoClean(r.memoRx);if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
 function bitBackfillMemo(){
@@ -3464,7 +3507,7 @@ function showSelfTestReport(R,pass,fail){
   document.body.appendChild(ov);
 }
 function boot(){
-  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();RESV_MODE=!SLIP_MODE&&sp.has('resv');}catch(e){}   // ?slip[&room=…] → 슬립 화면만(태블릿) / ?resv → 직원용 예약관리만
+  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}   // ?slip[&room=…] → 슬립 화면만(태블릿) / ?resv → 직원용 예약관리만
   if(location.hash.indexOf('labelstation')>=0){   // 라벨 전용 창(무음 인쇄) 표지 — EMR 등 다른 용도 사용 방지
     const b=document.createElement('div');
     b.textContent='🖨 라벨 전용 창 — 모든 인쇄가 인쇄창 없이 라벨 프린터로 나갑니다. EMR·업무는 일반 크롬에서 여세요.';
@@ -4929,7 +4972,7 @@ let sheetDate=null;              // null=오늘
 let SHEET_NOTES_HIST={};         // {날짜: {키:{text,by,at}}}
 /* ── 직원용 예약관리 화면 ── 예약리스트(bookings/{날짜}) + 보드 기록을 직원용 표(이름 그대로·차트번호·취소·메모)로. ?resv 로 열면 이 화면만(전용 모니터) */
 function openResvScreen(){resvOpen=true;const el=document.getElementById('resvScreen');if(el)el.classList.add('show');
-  const cb=document.getElementById('resvCloseBtn');if(cb)cb.style.display=RESV_MODE?'none':'';if(sheetDate)bkLoad(sheetDate);try{bitResvSub(sheetDate||localYMD(new Date()));}catch(e){console.warn(e);}renderResvScreen();}
+  const cb=document.getElementById('resvCloseBtn');if(cb)cb.style.display=RESV_MODE?'none':'';if(sheetDate)bkLoad(sheetDate);renderResvScreen();}
 function closeResvScreen(){resvOpen=false;const el=document.getElementById('resvScreen');if(el)el.classList.remove('show');}
 /* 하루 통계 — 예약(시트+수정본)만: 예약·내원(시트 연노랑)·취소·도수·치료시간 합, 치료사별·코드별, 시트 아래쪽 숫자 */
 function resvStats(dateYmd){
@@ -4949,12 +4992,10 @@ function renderResvScreen(){
       <div class="rs-card"><b>${st.arrived}</b><span>내원(시트 표시)</span></div>
       <div class="rs-card"><b>${st.cancels}</b><span>취소·변경</span></div>
       <div class="rs-card"><b>${st.manual}</b><span>도수 예약</span></div>
-      ${(()=>{try{const rv=bitResvStats(D);if(!rv.has)return '';return `<div class="rs-card"><b>${rv.live}</b><span>진료 예약 · 비트</span></div><div class="rs-card"><b>${rv.arrived}</b><span>도착 · 비트</span></div>${rv.late?`<div class="rs-card"><b style="color:var(--red)">${rv.late}</b><span>미도착 · 비트</span></div>`:''}`;}catch(e){return '';}})()}
       <div class="rs-card"><b>${Math.round(st.minutes/6)/10}h</b><span>예약 치료시간 합</span></div>
       ${st.sheet.map(x=>`<div class="rs-card sheet"><b>${esc(String(x.value))}</b><span>${esc(x.label)} · 시트</span></div>`).join('')}
     </div>
     ${(Object.keys(st.byTh).length||Object.keys(st.byCode).length)?`<div class="resv-chips">${chips(st.byTh)}${Object.keys(st.byCode).length?'<i></i>'+chips(st.byCode):''}</div>`:''}
-    ${(()=>{try{return renderBitResvSection(D);}catch(e){console.warn('bitResv render',e);return '';}})()}
     ${SHEET_GROUPS.map(sg=>`<div class="resv-sect"><h3>${esc(sg.title)}<span class="hint">${sheetCount(sheetDate,sg)}건</span><span class="spacer"></span><button class="btn sm primary" onclick="openBkEdit('${esc(D)}',null,{manual:${sg.bk==='manual'}})">＋ ${sg.bk==='manual'?'도수':'예약'} 추가</button><button class="btn sm" onclick="printSheet('${sg.key}')"><i data-lucide="printer"></i> 인쇄</button></h3>${treatSheetTableHtml(false,sheetDate,sg.rooms)}</div>`).join('')}`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
@@ -5072,7 +5113,6 @@ window.setSheetDate=function(v){
   const today=localYMD(new Date());
   sheetDate=(!v||v===today)?null:v;
   if(sheetDate)bkLoad(sheetDate);
-  try{bitResvSub(sheetDate||today);}catch(e){console.warn(e);}   // 비트 진료 예약 문서도 그 날짜로
   if(sheetDate&&!SHEET_NOTES_HIST[sheetDate])loadSheetNotesHist(sheetDate);
   render();
 };
