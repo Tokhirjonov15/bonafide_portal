@@ -5483,7 +5483,7 @@ async function bkEnsureDay(D){   // 그 날짜의 시트 문서·수정본이 �
 function mxStatsCompute(days,rooms){
   const by={};let tot={resv:0,live:0,done:0,total:0};
   days.forEach(D=>{const M=bkMerged(D);const rows=mxRows(M.manual,D,rooms);
-    rows.forEach(r=>{const th=(r.th||'').trim()||'(미지정)';const o=by[th]||(by[th]={th,resv:0,live:0,done:0,total:0});
+    rows.forEach(r=>{let th=String(r.th==null?'':r.th).trim();if(!th||th==='null'||th==='undefined')th='(미지정)';const o=by[th]||(by[th]={th,resv:0,live:0,done:0,total:0});   // 시트에 치료사가 비면 'null' 문자열로 오기도 함
       const k=r.st==='done'?'done':(r.st==='live'?'live':'resv');o[k]++;o.total++;tot[k]++;tot.total++;});});
   const list=Object.values(by).sort((a,b)=>b.done-a.done||b.total-a.total||a.th.localeCompare(b.th));
   return {list,tot};
@@ -5517,9 +5517,9 @@ function rsRoomHtml(days){
 }
 function rsThHtml(days){
   const g2=SHEET_GROUPS.find(g=>g.bk==='manual')||{rooms:['SASO','자동차도수']};const T=mxStatsCompute(days,g2.rooms);
-  return T.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료사</th><th>예약·내원</th><th>진행중</th><th>완료</th><th>합계</th></tr></thead><tbody>
-      ${T.list.map(o=>`<tr><td class="mx-name">${esc(o.th)}</td><td>${o.resv||''}</td><td>${o.live||''}</td><td><b>${o.done||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
-      <tr class="mx-total"><td class="mx-name">합계</td><td>${T.tot.resv}</td><td>${T.tot.live}</td><td><b>${T.tot.done}</b></td><td><b>${T.tot.total}</b></td></tr></tbody></table></div>`:'<div class="hint">이 기간에 도수 기록이 없습니다.</div>';
+  return T.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료사</th><th>합계</th></tr></thead><tbody>
+      ${T.list.map(o=>`<tr><td class="mx-name">${esc(o.th)}</td><td><b>${o.total}</b></td></tr>`).join('')}
+      <tr class="mx-total"><td class="mx-name">합계</td><td><b>${T.tot.total}</b></td></tr></tbody></table></div>`:'<div class="hint">이 기간에 도수 기록이 없습니다.</div>';
 }
 function rsPeriodText(days){return days.length?`${days[0]} ~ ${days[days.length-1]} · ${days.length}일`:'';}
 async function renderRsStat(sec){
