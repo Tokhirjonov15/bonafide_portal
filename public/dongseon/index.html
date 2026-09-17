@@ -293,6 +293,12 @@
   .rs-sect{border:1px solid var(--line);border-radius:12px;padding:10px 12px 12px;margin:0 0 12px}
   .rs-sect h4{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
   .rs-sect h4 .spacer{flex:1}
+  /* 치료사 열 머리글의 ◀ ▶ (열 순서 바꾸기) — 마우스를 올리면 보임 */
+  .sth-wrap{display:inline-flex;align-items:center;gap:4px}
+  .sth-mv{border:1px solid rgba(0,0,0,.15);background:rgba(255,255,255,.7);color:#334155;border-radius:6px;width:22px;height:22px;font-size:10px;cursor:pointer;padding:0;opacity:0;transition:opacity .12s}
+  th:hover .sth-mv{opacity:1}
+  .sth-mv:disabled{opacity:0!important;cursor:default}
+  .sth-mv:hover{background:#fff;border-color:#64748b}
   .rs-btn{align-self:stretch;display:inline-flex;align-items:center;gap:8px;padding:0 22px;border:1px solid var(--blue);border-radius:12px;background:var(--panel);color:var(--blue);font-family:inherit;font-size:17px;font-weight:800;cursor:pointer;white-space:nowrap}   /* 옆 통계 카드와 같은 높이(stretch) */
   .rs-btn:hover{background:var(--blue);color:#fff}
   .rs-btn svg{width:24px;height:24px}
@@ -5396,7 +5402,7 @@ window.printSheet=function(key){
     .bk-sub{font-size:9.5px;color:#777;margin-left:3px}td.arrcell{background:#dbeafe}td.livecell{background:#bfdbfe}td.blk{background:#d7dbe3}.sheet-blk{color:#4b5563}.sheet-cxl{text-decoration:line-through;color:#999}
     .mx-tbl{border-collapse:collapse;width:100%;font-size:12px}.mx-tbl th,.mx-tbl td{border:1px solid #666;padding:4px 7px;text-align:center}.mx-tbl td.mx-name{text-align:left}.mx-tbl tr.arr td{background:#dbeafe}.mx-tbl tr.live td{background:#bfdbfe}
     .bk-manual{margin:0 0 8px}.bk-manual-t{font-weight:700;margin-bottom:3px}.bk-man{display:inline-block;border:1px solid #999;border-radius:6px;padding:1px 6px;margin:0 6px 4px 0}.bk-man.arr,.bk-man.live{background:#dbeafe}.bk-man i{font-style:normal;color:#666;margin-left:3px}
-    .sheet-p{white-space:normal;line-height:1.25}.sp-mrn{color:#777;font-size:9.5px}
+    .sheet-p{white-space:normal;line-height:1.25}.sp-mrn{color:#777;font-size:9.5px}.sth-mv{display:none}
     .sheet-p.has-note::after{content:" ✱";color:#e5484d}
     .sheet-legend{font-size:10px;color:#666;margin-top:6px}</style>`;
   w.document.write(`<html><head><title>치료시트_${d}</title>${style}</head><body>
@@ -5534,6 +5540,14 @@ window.printRsStat=function(sec){
   w.document.write(`<html><head><title>${esc(title)}_${days[0]||''}</title>${style}</head><body><h2>${esc(title)}</h2><p class="sub">${esc(rsPeriodText(days))} · 출력 ${localYMD(new Date())} ${nowHM()}</p>${html}<script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
   w.document.close();
 };
+/* 치료사 열 순서(충격파·신장분사 표) — 이 기기(브라우저)에만 저장. 머리글의 ◀ ▶ 로 옮긴다. 저장된 순서에 없는 이름은 시트 순서대로 뒤에 (2026-09-17) */
+let SHEET_TH_ORDER=(function(){try{const a=JSON.parse(localStorage.getItem('patientBoard_sheetThOrder'));return Array.isArray(a)?a:[];}catch(e){return [];}})(),SHEET_TH_LAST=[];
+function sheetThOrdered(list){if(!SHEET_TH_ORDER.length)return list.slice();const idx=n=>{const i=SHEET_TH_ORDER.indexOf(n);return i<0?1e6:i;};return list.slice().sort((a,b)=>idx(a)-idx(b)||list.indexOf(a)-list.indexOf(b));}
+window.sheetThMove=function(name,dir){const cur=SHEET_TH_LAST.slice();const i=cur.indexOf(name);const j=i+dir;if(i<0||j<0||j>=cur.length)return;
+  cur.splice(i,1);cur.splice(j,0,name);
+  const rest=SHEET_TH_ORDER.filter(n=>!cur.includes(n));SHEET_TH_ORDER=cur.concat(rest);   // 지금 보이는 열의 새 순서 + 안 보이는 이름은 뒤에 유지
+  try{localStorage.setItem('patientBoard_sheetThOrder',JSON.stringify(SHEET_TH_ORDER));}catch(e){}
+  if(resvOpen)renderResvScreen();};
 /* 4층 비급여 치료 시간표 — 예약(시트+수정본)만. 열 = 그날 예약·차단·취소가 있는 치료사(시트 순서), 행 = 30분. 보드 카드는 보지 않는다.
    pf=true(환자용): 이름 가림, 차트번호·메모·취소·차단 문구 없음(지금은 직원 화면·인쇄에서만 쓰인다) */
 function treatSheetTableHtml(pf,dateYmd,rooms){
@@ -5543,7 +5557,8 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
   if(sg.bk==='manual')return manualBoardHtml(pf,M.manual,D,sg.rooms);
   const items=M.items.filter(x=>x.t&&bkSlot(x.t)!==null),blocks=M.blocks.filter(x=>x.t&&bkSlot(x.t)!==null),cancels=pf?[]:M.cancels.filter(x=>x.t&&bkSlot(x.t)!==null);
   if(!items.length&&!blocks.length&&!cancels.length)return `<div class="resv-empty">${M.hasSheet?'이 날짜에 예약이 없습니다':'이 날짜의 시트 자료가 없습니다'}${pf?'':' — 위의 <b>＋ 예약 추가</b>로 직접 넣을 수 있습니다'}.</div>`;
-  const docs=M.therapists.filter(n=>items.some(x=>x.th===n)||blocks.some(x=>x.th===n)||cancels.some(x=>x.th===n));
+  const docs=sheetThOrdered(M.therapists.filter(n=>items.some(x=>x.th===n)||blocks.some(x=>x.th===n)||cancels.some(x=>x.th===n)));   // 이 화면에서 정한 치료사 열 순서(기기별)
+  SHEET_TH_LAST=docs.slice();
   let s0=18,s1=isWeekendOrHoliday(new Date(D+"T12:00:00"))?35:41;   // 9:00 ~ 평일 20:30 / 토·일·공휴일 17:30, 밖의 예약이 있으면 확장
   items.concat(blocks).forEach(x=>{const a=bkSlot(x.t),e=a+Math.max(1,Math.ceil((x.dur||30)/30))-1;if(a<s0)s0=a;if(e>s1)s1=e;});
   cancels.forEach(x=>{const a=bkSlot(x.t);if(a<s0)s0=a;if(a>s1)s1=a;});
@@ -5565,7 +5580,7 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
     rows+=`<tr><th class="sheet-time">${hh}:${mm}</th>${cells}</tr>`;
   }
   return `<div class="sheet-wrap"><table class="sheet-tbl">
-    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
+    <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${pf?esc(n):`<span class="sth-wrap"><button class="sth-mv" title="왼쪽으로" ${i===0?'disabled':''} onclick="event.stopPropagation();sheetThMove('${esc(n)}',-1)">◀</button><span class="sth-name">${esc(n)}</span><button class="sth-mv" title="오른쪽으로" ${i===docs.length-1?'disabled':''} onclick="event.stopPropagation();sheetThMove('${esc(n)}',1)">▶</button></span>`}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
 `;
 }
