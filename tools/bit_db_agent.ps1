@@ -163,11 +163,13 @@ function SqlRows($sql) {   # 폴링마다 열고 닫음(연결 유지 안 함). 
 $QUERY = @"
 SELECT RTRIM(o.OcmNum) AS k, RTRIM(o.OcmComStt) AS stt, RTRIM(p.PbsPatNam) AS name, RTRIM(o.OcmChtNum) AS mrn,
        RTRIM(p.PbsResNum) AS rrn, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex, RTRIM(p.PbsNewDte) AS newdte,
-       RTRIM(o.OcmAcpDtm) AS recv, RTRIM(u.UidNam) AS dr, RTRIM(o.OcmDepCod) AS dep, RTRIM(r.RsvDtm) AS rsvdtm
+       RTRIM(o.OcmAcpDtm) AS recv, RTRIM(u.UidNam) AS dr, RTRIM(o.OcmDepCod) AS dep, RTRIM(r.RsvDtm) AS rsvdtm,
+       RTRIM(o.OcmRefCmt) AS memo1, RTRIM(p.PbsRefCmt) AS memo2, CAST(m.PbsSpcCmt AS nvarchar(max)) AS memo3, o.OcmInsCod AS ins, o.OcmInsSeq AS insseq
 FROM OcmInf o WITH (NOLOCK)
 LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = o.OcmChtNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OcmDtrCod
 LEFT JOIN RsvInf r WITH (NOLOCK) ON r.RsvOcmNum = o.OcmNum
+LEFT JOIN PbsCmtInf m WITH (NOLOCK) ON m.PbsChtNum = o.OcmChtNum
 WHERE LEFT(o.OcmAcpDtm, 8) = '{0}'
 ORDER BY o.OcmAcpDtm, o.OcmNum
 "@
@@ -198,6 +200,11 @@ function Rrn7($rrn, $bir, $sex) {   # 주민번호 13자리 → 'YYMMDD-S' (앞 
   }
   return ''
 }
+# 메모·보험 (2026-09-17): 접수메모(당일)=OcmInf.OcmRefCmt, 접수메모(연속)=PbsInf.PbsRefCmt, 특이사항=PbsCmtInf.PbsSpcCmt — 감시 스크립트가 접수 창 인적정보에서 읽던 것과 같은 항목.
+# 비트의 빈 칸 표시('-', '.', '+')는 메모가 아니다. OcmBilCmt 는 의사 처방 메모라 보내지 않는다.
+function CleanMemo($t) { $s = ([string]$t).Trim(); if ($s -match '^[\s+\-_.·ㆍ,~*]*$') { return '' }; return $s }
+$INS_NAME = @{ 11 = '일반'; 21 = '자보-청구분'; 31 = '국민건강보험'; 38 = '공상'; 41 = '산재-공단분'; 51 = '보호1종'; 52 = '보호2종'; 54 = '행여' }   # DtlMst INSINF 코드 → 동선관리 보험 선택지(f_ins) 이름
+function InsName($cod) { $n = 0; if ([int]::TryParse([string]$cod, [ref]$n) -and $INS_NAME.ContainsKey($n)) { return $INS_NAME[$n] }; return '' }
 function HourMinOf($dtm) { $s = [string]$dtm; if ($s.Length -ge 12) { return [int]$s.Substring(8, 2) * 60 + [int]$s.Substring(10, 2) }; return -1 }
 function DtmOf($dtm) { $s = [string]$dtm; if ($s.Length -ge 12) { return $s.Substring(0, 4) + '-' + $s.Substring(4, 2) + '-' + $s.Substring(6, 2) + ' ' + $s.Substring(8, 2) + ':' + $s.Substring(10, 2) }; return '' }
 function DateOf($d) { $s = [string]$d; if ($s.Length -ge 8) { return $s.Substring(0, 4) + '-' + $s.Substring(4, 2) + '-' + $s.Substring(6, 2) }; return '' }
@@ -251,6 +258,8 @@ function Poll($st, $first) {
         $cmd = CmdOf $stt $null
         $f = $base + @{ name = $name; mrn = $mrn; rrn7 = (Rrn7 $r.rrn $r.bir $r.sex); doctor = ([string]$r.dr).Trim(); dep = ([string]$r.dep).Trim(); hourMin = $hm
                         command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; registered = $true; registeredAt = (NowIso); cancelled = $false; seenAt = (NowIso) }
+        $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }
+        $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
         $fv = DateOf $r.newdte; if ($fv) { $f.firstVisit = $fv }
         $rv = DtmOf $r.rsvdtm; if ($rv -and $rv.StartsWith((Today))) { $f.nextResv = $rv }
         if ($f.rrn7 -eq '') { $f.Remove('rrn7') }
@@ -260,6 +269,8 @@ function Poll($st, $first) {
         $cmd = CmdOf $stt $prev
         if ($cmd -ne $st.sent[$k] -or ($CANCEL -contains $prev)) {
           $f = $base + @{ command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; event = $CMD_NAMES[$cmd]; eventAt = (NowIso); cancelled = $false }
+          $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }   # 접수 뒤에 적힌 메모도 상태가 바뀔 때 따라간다
+          $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
           if ($CANCEL -contains $prev) { $f.registered = $true; $f.registeredAt = (NowIso); $f.seenAt = (NowIso) }   # 취소 뒤 재접수 → 동선관리가 다시 자동 생성
           try { Send "$(Today)_ocm$k" $f "$($CMD_NAMES[$cmd]) $tag"; $st.sent[$k] = $cmd } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
         }

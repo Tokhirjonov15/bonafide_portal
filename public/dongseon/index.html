@@ -708,6 +708,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .fld label{font-size:12px;color:var(--muted);font-weight:600}
   .fld input,.fld select{padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;outline:0}
   .fld input:focus,.fld select:focus{border-color:var(--blue)}
+  /* 주민번호 앞 7자리 입력 + 뒷자리 ****** 표시: 값이 있을 때만(placeholder 가 안 보일 때) 마스크가 보인다. 13자리 형식 '901231-1******' (2026-09-17) */
+  .rrn-wrap{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;padding:0 11px;background:var(--panel)}
+  .rrn-wrap:focus-within{border-color:var(--blue)}
+  .fld .rrn-wrap input{border:0;outline:0;padding:9px 0;width:9ch;min-width:9ch;flex:none;background:transparent;border-radius:0}
+  .rrn-mask{display:none;color:var(--muted);letter-spacing:2px;font-size:14px;user-select:none}
+  .rrn-wrap input:not(:placeholder-shown)+.rrn-mask{display:inline}
   .row2{display:flex;gap:10px}
   .row2>*{flex:1}
   .modal .foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
@@ -1467,7 +1473,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="fld"><label>병록번호 <span class="hint">(번호만 입력하면 명단에서 자동 완성)</span></label><input id="f_mrn" placeholder="6016697" inputmode="numeric" oninput="onMrnInput()"></div>
         <div class="fld"><label>이름</label><input id="f_name" placeholder="홍길동"></div>
       </div>
-      <div class="fld"><label>주민번호 앞 7자리 (생년월일-성별)</label><input id="f_rrn" inputmode="numeric" placeholder="예: 901231-1" maxlength="8" oninput="onRRNInput()"><p class="hint" id="rrnHint"></p></div>
+      <div class="fld"><label>주민번호 앞 7자리 (생년월일-성별)</label><div class="rrn-wrap"><input id="f_rrn" inputmode="numeric" placeholder="예: 901231-1" maxlength="8" oninput="onRRNInput()"><span class="rrn-mask" aria-hidden="true" title="뒷자리는 저장하지 않습니다">******</span></div><p class="hint" id="rrnHint"></p></div>
       <div class="fld"><label><i data-lucide="smartphone"></i> 휴대폰 번호 <span class="hint">(대기 호출 문자 발송용)</span></label>
         <input id="f_tel" inputmode="numeric" placeholder="010-1234-5678" maxlength="14">
         <label class="hint" id="smsOptWrap" style="display:flex;align-items:center;gap:6px;margin-top:5px;cursor:pointer"><input type="checkbox" id="f_smsopt" style="width:auto">문자 받지 않음(호출 문자 제외)</label>
@@ -2132,8 +2138,8 @@ function openBitResvDetail(k){
       ${row('일시',esc(D)+' '+esc(x.t||'')+(x.room?' · '+esc(x.room):'')+(x.dr?' · '+esc(x.dr):''))}
       ${row('구분',esc(x.div||'')+(x.naver?' <span class="rv-badge nv">네이버</span>':'')+(/신규/.test(x.memo||'')?' <span class="rv-badge new">신규</span>':''))}
       ${row('입력',esc(x.by||''))}
-      ${row('메모',x.memo?`<span class="rvd-pre">${esc(x.memo)}</span>`:'<span class="hint">없음</span>')}
     </div>
+    <div class="rvd-sect"><h4>메모 <span class="hint">비트 예약 메모</span></h4>${x.memo?`<div class="rvd-pre">${esc(x.memo)}</div>`:'<div class="hint">없음</div>'}</div>
     <div class="rvd-sect"><h4>특이사항 <span class="hint">환자 명단(영구 메모)</span></h4>${memo?`<div class="rvd-pre">${esc(memo)}</div>`:'<div class="hint">없음</div>'}</div>
     ${fam?`<div class="rvd-sect"><h4>가족관계</h4><div>${esc(fam)}</div></div>`:''}
     ${(reg&&(reg.birth||reg.sex))?`<div class="rvd-sect"><h4>명단</h4>${row('생년월일',esc(reg.birth||'')+(reg.sex?' · '+esc(reg.sex):''))}</div>`:''}
@@ -2456,6 +2462,8 @@ function bitBackfillMemo(){
       /* 카드 메모가 비트에서 자동으로 넣은 것(p.bit.memoSrc)이거나 잘린 캐스트 메모(8자 이하)면 비트 전체 문장으로 바꾼다. 직원이 손으로 바꾼 메모는 유지 */
       const autoMemo=!cur||cur===cut||nt.startsWith(cur)||(p.bit&&(cur===(p.bit.memoSrc||'')||(p.bit.auto&&cur.length<=8)));
       if(nt&&nt!==cur&&autoMemo){p.memoToday=nt;if(p.bit)p.bit.memoSrc=nt;save(p);}
+      /* 보험: 카드에 없고 문서(DB 에이전트 또는 조회 기록)에 있으면 채운다 — 차트번호가 처음부터 있는 DB 카드는 bitBackfillMrn 을 거치지 않아 빠져 있었다 (2026-09-17) */
+      if(!p.ins&&r.ins){const si=document.getElementById('f_ins');if(si&&[...si.options].some(o=>o.value===r.ins)){p.ins=r.ins;save(p);render();}}
     }
     /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
        카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
@@ -2617,7 +2625,14 @@ function bitApplyLookups(){
   const L=BIT_LOOKUP.concat(BIT_NOTES.filter(n=>String(n.mrn||'').trim()&&String(n.name||'').trim()).map(n=>({name:n.name,mrn:n.mrn,rrn7:n.rrn7||'',pc:n.pc||'',at:n.updatedAt||''})));
   if(!L.length)return false;let changed=false;
   BIT_INTAKE.forEach(r=>{
-    if(String(r.mrn||'').trim()||r.nameDup)return;
+    const rm=String(r.mrn||'').trim();
+    if(rm){   // 차트번호가 이미 있는 문서(DB 에이전트가 만든 것): 같은 차트번호의 조회 기록에서 보험·접수메모·가족관계 등 빠진 항목만 보충 (2026-09-17)
+      const cands=L.filter(l=>String(l.mrn||'').trim()===rm);if(!cands.length)return;
+      const l=cands.sort((a,b)=>new Date(b.at||0)-new Date(a.at||0))[0];
+      BIT_LOOKUP_KEYS.forEach(k=>{if(k!=='mrn'&&l[k]&&!r[k]){r[k]=l[k];changed=true;}});
+      return;
+    }
+    if(r.nameDup)return;
     const name=String(r.name||'').trim();if(!name)return;
     const cands=L.filter(l=>String(l.name||'').trim()===name&&String(l.mrn||'').trim());
     const mrns=[...new Set(cands.map(l=>String(l.mrn).trim()))];
@@ -5153,7 +5168,7 @@ function comboify(inp){
     list.classList.add('show');const on=list.querySelector('.combo-item.on');if(on)on.scrollIntoView({block:'nearest'});};
   list.addEventListener('mousedown',e=>{e.preventDefault();const it=e.target.closest('.combo-item');if(it)pick(it.dataset.v);});
   btn.addEventListener('mousedown',e=>{e.preventDefault();if(list.classList.contains('show'))close();else{idx=-1;all=true;render();inp.focus();}});
-  inp.addEventListener('input',()=>{idx=-1;all=false;render();});
+  inp.addEventListener('input',e=>{if(e.isTrusted===false)return;idx=-1;all=false;render();});   // pick() 이 보내는 합성 input 이벤트(다른 코드용)로는 목록을 다시 열지 않는다
   inp.addEventListener('keydown',e=>{
     if(e.key==='ArrowDown'){e.preventDefault();if(!list.classList.contains('show')){all=true;idx=-1;}idx=Math.min(shown().length-1,idx+1);render();}
     else if(e.key==='ArrowUp'){e.preventDefault();idx=Math.max(0,idx-1);render();}
@@ -5265,7 +5280,7 @@ function manualBoardHtml(pf,manual,D){
   const chunks=[];for(let i=0;i<rows.length;i+=per)chunks.push(rows.slice(i,i+per));
   const head=`<thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th><th class="mx-st">상태</th></tr></thead>`;
   return `<div class="mx-tblwrap${chunks.length>1?' two':''}">${chunks.map(ch=>`<table class="mx-tbl">${head}<tbody>${ch.map(tr).join('')}</tbody></table>`).join('')}</div>
-    <div class="sheet-legend">순서 = 예약 시트의 번호 &nbsp;·&nbsp; <span class="mx-tag arr">내원</span> 시트에서 내원 표시${pf?'':' &nbsp;·&nbsp; 줄을 누르면 수정 · 수정/추가 표시 = 동선관리에서 바꾼 것(시트에는 반영되지 않음)'}</div>`;
+`;
 }
 /* 4층 비급여 치료 시간표 — 예약(시트+수정본)만. 열 = 그날 예약·차단·취소가 있는 치료사(시트 순서), 행 = 30분. 보드 카드는 보지 않는다.
    pf=true(환자용): 이름 가림, 차트번호·메모·취소·차단 문구 없음(지금은 직원 화면·인쇄에서만 쓰인다) */
@@ -5300,7 +5315,7 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
   return `<div class="sheet-wrap"><table class="sheet-tbl">
     <thead><tr><th class="sheet-time">시간</th>${docs.map((n,i)=>`<th style="background:${SHEET_COLORS[i%SHEET_COLORS.length]}">${esc(n)}</th>`).join("")}</tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <div class="sheet-legend">연파랑 칸 = 시트에서 내원 표시 &nbsp;·&nbsp; 회색 칸 = 근무 외/차단${pf?'':' &nbsp;·&nbsp; 취소선 = 취소·변경 &nbsp;·&nbsp; 색 점 = 시트 표시(마우스를 올리면 뜻) &nbsp;·&nbsp; <b>칸을 누르면 수정</b>, 빈 칸을 누르면 추가 &nbsp;·&nbsp; 수정/추가 표시 = 동선관리에서 바꾼 것(시트에는 반영되지 않음)'}</div>`;
+`;
 }
 
 // 카드 📱 호출 버튼/뱃지 — 상태: 실패>호출됨>기본

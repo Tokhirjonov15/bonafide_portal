@@ -36,6 +36,7 @@
 | `O* V*` | 입원 | 보내지 않음 |
 
 문서 필드는 `bitplus_watcher.ps1` 과 같은 이름을 씁니다: `name mrn rrn7 doctor hourMin command commandName registered registeredAt cancelled seenAt lastSeenAt event eventAt` + DB 전용 `src='db' stt dep firstVisit nextResv`.
+메모·보험(2026-09-17, 감시 스크립트가 접수 창 인적정보에서 읽던 항목과 같음): `memoToday`=`OcmInf.OcmRefCmt`(접수메모 당일), `memoCont`=`PbsInf.PbsRefCmt`(접수메모 연속), `memoRx`=`PbsCmtInf.PbsSpcCmt`(특이사항), `ins`=`OcmInf.OcmInsCod`→동선관리 보험 이름(11 일반·21 자보-청구분·31 국민건강보험·38 공상·41 산재-공단분·51 보호1종·52 보호2종·54 행여). 빈 칸 표시(`-`·`.`)는 보내지 않고, 상태가 바뀔 때마다 다시 실어 보내 접수 뒤에 적힌 메모도 따라간다. `OcmBilCmt` 는 의사 처방 메모라 제외.
 `rrn7` 은 주민번호 앞 7자리(`YYMMDD-S`)만 만들고, 뒷자리·전화·주소는 읽지 않습니다. 로그에는 차트번호만 남고 이름은 기록하지 않습니다.
 
 ## 동선관리 쪽 처리 (2026-09-17)
