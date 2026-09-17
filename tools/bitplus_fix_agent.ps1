@@ -29,7 +29,7 @@ $peers = @($MAP.Keys | Where-Object { $_ -ne $myIp } | Sort-Object)
 Say "== 이 PC: $($me.pc) ($myIp)  우선순위 $($me.prio)  동료 $($peers -join ', ') ==" Cyan
 if ($Test) { Say "(-Test: 여기까지, 아무것도 바꾸지 않음)"; exit 0 }
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) { Say "관리자 PowerShell 이 아닙니다 — 작업·프로세스를 다루지 못할 수 있음. 관리자로 다시 실행하세요." Yellow }
+if (-not $isAdmin) { Say "관리자 PowerShell 이 아닙니다 — 작업을 다시 만들 수 없어 여기서 멈춥니다(아무것도 바꾸지 않음). 시작 → PowerShell 오른쪽 클릭 → '관리자 권한으로 실행' 후 다시." Red; exit 1 }   # 2026-09-17: 비관리자로 계속 진행하면 옛 프로세스만 죽이고 작업은 못 만들어 에이전트가 빈 채로 남는다
 
 # ── 2. 파일 ──
 New-Item -ItemType Directory -Force $Dest | Out-Null
@@ -86,7 +86,8 @@ $ans = ''; $deadline = (Get-Date).AddSeconds(25)
 while ((Get-Date) -lt $deadline) {
   Start-Sleep 2
   $cli = New-Object Net.Sockets.TcpClient
-  try { $ar = $cli.BeginConnect('127.0.0.1', 9001, $null, $null); if ($ar.AsyncWaitHandle.WaitOne(500)) { $cli.EndConnect($ar); $cli.ReceiveTimeout = 1500; $ans = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if ($ans) { break } } } catch {} finally { try { $cli.Close() } catch {} }
+  try { $ar = $cli.BeginConnect('127.0.0.1', 9001, $null, $null); if ($ar.AsyncWaitHandle.WaitOne(500)) { $cli.EndConnect($ar); $cli.ReceiveTimeout = 1500; $ans = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if ($ans -and $ans.StartsWith('OK')) { break } } } catch {} finally { try { $cli.Close() } catch {} }
+  # 'DOWN' 은 아직 첫 DB 조회가 끝나지 않은 것일 수 있으므로 시간 안에는 계속 다시 묻는다
 }
 $expect = "OK $($me.prio) DB-$($me.pc) "
 $log = Join-Path $env:LOCALAPPDATA 'bit_db_agent\agent.log'
