@@ -326,8 +326,11 @@
   .col-count{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;min-width:30px;padding:2px 10px;border-radius:999px;color:var(--sub);background:var(--panel);border:1px solid var(--line);font-weight:800;font-size:12px;font-variant-numeric:tabular-nums}
   .col-count.has{color:#fff;background:var(--blue);border-color:transparent}
   /* 방(컬럼) 접기 — 내 화면에만(기기별 저장). 접힌 방은 세로 띠(이름·인원)로만 보이고, 카드를 그 위에 놓으면 그 방으로 이동 (2026-09-17) */
-  .col-fold-btn{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;flex-shrink:0;padding:0}
-  .col-fold-btn:hover{color:var(--text);background:var(--panel2)}
+  .col-fold-btn{border:1px solid var(--line);background:var(--panel);color:var(--sub);border-radius:8px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;padding:0}
+  .col-fold-btn svg{width:18px;height:18px;stroke-width:2.5}
+  .col-fold-btn:hover{color:var(--text);background:var(--panel2);border-color:var(--sub)}
+  .col.folded .col-fold-btn{width:34px;height:34px}
+  .col.folded .col-fold-btn svg{width:20px;height:20px}
   .col.folded{flex:0 0 46px;max-width:46px;padding:8px 4px 6px;cursor:pointer}
   .col.folded .col-head{flex-direction:column;gap:8px;padding:0;align-items:center}
   .col.folded .col-title{writing-mode:vertical-rl;text-orientation:mixed;font-size:14px;letter-spacing:1px;max-height:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -4579,7 +4582,7 @@ function render(){
     if(folded)col.title=room+' — 누르면 펼치기 · 카드를 여기 놓으면 이 방으로 이동';
     col.innerHTML=`
       <div class="col-head">
-        <button class="col-fold-btn" title="${folded?'펼치기':'접기 (내 화면에만)'}" onclick="event.stopPropagation();toggleColFold('${esc(room)}')">${folded?'▸':'▾'}</button>
+        <button class="col-fold-btn" title="${folded?'펼치기':'접기 (내 화면에만)'}" onclick="event.stopPropagation();toggleColFold('${esc(room)}')"><i data-lucide="${folded?'chevron-right':'chevron-down'}"></i></button>
         <span class="col-grip" draggable="true" title="드래그: 내 화면의 방 순서 바꾸기 (내 계정에만 적용)">⠿</span>
         ${SHOW_OWNERS?`<label class="owner-chk" title="이 방 담당하기"><input type="checkbox" ${mineOwner?'checked':''} onclick="event.stopPropagation();toggleOwner('${esc(room)}')">담당</label>`:''}
         <span class="col-title">${esc(room)}</span>
@@ -5289,6 +5292,9 @@ function comboify(inp){
 }
 function comboifyAll(root){(root||document).querySelectorAll('input[list]').forEach(el=>{if(el.id==='f_reload')return;comboify(el);});}   // f_reload 는 검색창(입력으로 거르는 게 목적) → 그대로
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{try{comboifyAll(document);}catch(e){console.warn('combo',e);}});else{try{comboifyAll(document);}catch(e){console.warn('combo',e);}}
+/* 상단 바: 사용자 pill · 로그아웃 단추를 '내원' 탭 옆(첫 줄)으로 옮긴다 — 도구 단추가 많아져 둘째 줄 끝으로 밀려 있었음 (2026-09-17) */
+(function moveUserPill(){const run=()=>{try{const t=document.getElementById('dischTab'),u=document.getElementById('userPill'),l=document.getElementById('logoutBtn');if(t&&u&&l)t.after(u,l);}catch(e){console.warn('userPill move',e);}};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();})();
 /* 배경색 선택: 시트 범례색 + 자주 쓰는 색 + 임의색(컬러 피커). 값은 #bke_color 에 */
 const BK_SWATCHES=[['','없음'],['#ffe599','내원'],['#ffff00','임시치료실'],['#ff0000','치료실 없음'],['#00ff00','시트·비트확인'],['#00ffff','실손 청구여부 확인'],['#9900ff','카톡친추 확인'],['#8e7cc3','보라'],['#b7e1cd','연두'],['#f4cccc','연분홍'],['#cfe2f3','연파랑']];
 function bkColorPickerHtml(cur){cur=String(cur||'').toLowerCase();if(cur==='#ffffff')cur='';
