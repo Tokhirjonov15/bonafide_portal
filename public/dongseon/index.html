@@ -1277,10 +1277,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <input type="date" id="histFrom" onchange="histDateChanged()" title="내원일 시작">
         <span class="hint">~</span>
         <input type="date" id="histTo" onchange="histDateChanged()" title="내원일 끝">
-        <button class="chipf" onclick="histQuick('today')">오늘</button>
-        <button class="chipf" onclick="histQuick('week')">이번 주</button>
-        <button class="chipf" onclick="histQuick('month')">이번 달</button>
-        <button class="chipf" onclick="histQuick('all')">전체</button>
+        <button class="chipf" data-kind="today" onclick="histQuick('today')">오늘</button>
+        <button class="chipf" data-kind="week" onclick="histQuick('week')">이번 주</button>
+        <button class="chipf" data-kind="month" onclick="histQuick('month')">이번 달</button>
+        <button class="chipf on" data-kind="all" onclick="histQuick('all')">전체</button>
       </div>
       <div id="histList" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
@@ -6306,20 +6306,21 @@ function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else expo
 let histKey=null;  // null=리스트, 값=특정 환자 상세
 let histPage=0, histQ='';   // 환자 목록 페이지(0부터)·마지막 검색어 — 검색어가 바뀌면 1페이지로
 /* 내원 기간 필터(환자 관리 목록): 그 기간에 한 번이라도 내원(내보내기 완료)한 환자만. 비어 있으면 전체 */
-let histFrom='', histTo='';
-function histDateChanged(){histFrom=(document.getElementById('histFrom')||{}).value||'';histTo=(document.getElementById('histTo')||{}).value||'';histPage=0;renderHistory();}
+let histFrom='', histTo='', histQuickKind='all';   // histQuickKind: 눌린 빠른 선택(today/week/month/all), 날짜를 손으로 고치면 '' (아무 칩도 켜지지 않음)
+function histChipSync(){document.querySelectorAll('#histFilter .chipf').forEach(b=>b.classList.toggle('on',b.dataset.kind===histQuickKind));}
+function histDateChanged(){histFrom=(document.getElementById('histFrom')||{}).value||'';histTo=(document.getElementById('histTo')||{}).value||'';histQuickKind=(!histFrom&&!histTo)?'all':'';histPage=0;histChipSync();renderHistory();}
 window.histQuick=function(kind){const t=new Date();const ymd0=d=>localYMD(d);let a='',b='';
   if(kind==='today'){a=b=ymd0(t);}
   else if(kind==='week'){const d=new Date(t);const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);a=ymd0(d);b=ymd0(t);}   // 월요일부터 오늘
   else if(kind==='month'){a=ymd0(new Date(t.getFullYear(),t.getMonth(),1));b=ymd0(t);}
-  const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value=a;if(g)g.value=b;histDateChanged();};
+  const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value=a;if(g)g.value=b;histDateChanged();histQuickKind=kind;histChipSync();};
 function histVisitInRange(v){if(!histFrom&&!histTo)return true;const d=localYMD(new Date(v.dischargedAt||v.enteredAt||0));if(d==='Invalid Date')return false;return (!histFrom||d>=histFrom)&&(!histTo||d<=histTo);}
 const HIST_PAGE=50;         // 한 페이지 환자 수
 function histGo(d){histPage=Math.max(0,histPage+d);renderHistory();const b=document.querySelector('#historyModal .body');if(b)b.scrollTop=0;}
 let histView='all';        // all=내원기록 전체, consult=상담만
 let histConsultRoom='전체'; // 상담만 모드에서 방 필터
 function histAdminHint(){const b=document.getElementById("histAdminHint");if(b)b.style.display=isAdmin()?"":"none";}
-function openHistory(){histKey=null;histView='all';histConsultRoom='전체';histPage=0;histQ='';document.getElementById("histSearch").value="";histFrom='';histTo='';{const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value='';if(g)g.value='';}histAdminHint();renderHistory();document.getElementById("historyModal").classList.add("show");}
+function openHistory(){histKey=null;histView='all';histConsultRoom='전체';histPage=0;histQ='';document.getElementById("histSearch").value="";histFrom='';histTo='';histQuickKind='all';{const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value='';if(g)g.value='';}try{histChipSync();}catch(e){}histAdminHint();renderHistory();document.getElementById("historyModal").classList.add("show");}
 function closeHistory(){document.getElementById("historyModal").classList.remove("show");}
 /* 보드 카드 → 그 환자의 과거 기록 바로 열기 */
 function openHistForPid(pid){const p=data.find(x=>x.id===pid);if(!p)return;
