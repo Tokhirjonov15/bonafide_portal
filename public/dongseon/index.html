@@ -293,12 +293,26 @@
   .rs-sect{border:1px solid var(--line);border-radius:12px;padding:10px 12px 12px;margin:0 0 12px}
   .rs-sect h4{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px}
   .rs-sect h4 .spacer{flex:1}
+  /* 층별 내원 횟수(환자 정보 창): 숫자를 누르면 고침 */
+  .visit-sum .vf-edit{cursor:pointer;border-bottom:1px dashed var(--blue);color:var(--blue);padding:0 2px}
+  .visit-sum .vf-edit:hover{background:rgba(59,130,246,.12);border-radius:4px}
+  .visit-sum .vf-adj{font-size:10px;color:var(--orange);margin-left:1px}
+  /* 환자 정보 창 '다음 예약' 블록 */
+  .next-bk{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);display:flex;flex-direction:column;gap:8px}
+  .next-bk .sect-t{margin:0}
+  .next-bk .nb-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .next-bk input,.next-bk select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text);font-family:inherit}
+  .next-bk input[type=date]{width:150px}.next-bk #nb_t,.next-bk #nb_dur{width:auto}
+  .next-bk .combo{flex:1;min-width:120px}
   /* 치료사 열 머리글의 ◀ ▶ (열 순서 바꾸기) — 마우스를 올리면 보임 */
   .sth-wrap{display:inline-flex;align-items:center;gap:4px}
   .sth-mv{border:1px solid rgba(0,0,0,.15);background:rgba(255,255,255,.7);color:#334155;border-radius:6px;width:22px;height:22px;font-size:10px;cursor:pointer;padding:0;opacity:0;transition:opacity .12s}
   th:hover .sth-mv{opacity:1}
   .sth-mv:disabled{opacity:0!important;cursor:default}
   .sth-mv:hover{background:#fff;border-color:#64748b}
+  /* 복사/잘라내기 원본 칸 표시 */
+  .sheet-p.clip-copy{outline:2px dashed var(--blue);outline-offset:-2px}
+  .sheet-p.clip-cut{outline:2px dashed var(--orange);outline-offset:-2px;opacity:.55}
   /* 열 너비 끌기: 머리글 오른쪽 가장자리 8px 띠 */
   .sheet-tbl thead th{position:relative}
   .sth-rz{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:3;background:transparent}
@@ -312,6 +326,10 @@
   .mx-stat th,.mx-stat td{text-align:center}
   .mx-stat td.mx-name,.mx-stat th.mx-name{text-align:left}
   .mx-stat tr.mx-total td{border-top:2px solid var(--line);background:var(--panel2)}
+  .mx-stat tr.mx-un{cursor:pointer}
+  .mx-stat tr.mx-un:hover td{background:var(--panel2)}
+  .mx-stat tr.mx-un-item td{font-size:12.5px;color:var(--sub);background:rgba(59,130,246,.04)}
+  .rs-thsel{border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-size:12.5px;background:var(--panel);color:var(--text);font-family:inherit}
   .mx-row.done td{color:var(--muted)}
   .bk-manual{margin:2px 0 10px;font-size:clamp(12px,1.1vw,16px)}
   .bk-manual-t{font-weight:800;color:#1f2a37;margin-bottom:5px}
@@ -745,6 +763,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* ── 모달 ── */
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
   .modal-bg.show{display:flex}
+  #modal.over-resv{z-index:500}   /* 4층 비급여 치료 화면(300) 위에서 열릴 때 */
+  .modal-back{margin-right:6px;flex-shrink:0}
+  .sheet-tbl td.hascard{cursor:pointer}
+  .sheet-tbl td.hascard:hover{box-shadow:inset 0 0 0 2px var(--blue)}
   .modal{background:var(--panel);border-radius:14px;width:460px;max-width:92vw;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.6)}
   .modal h3{margin:0;padding:18px 20px;border-bottom:1px solid var(--line);font-size:16px}
   .modal .body{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
@@ -1375,13 +1397,13 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   </div>
   <div class="resv-body" id="resvBody"></div>
 </div>
-<!-- 4층 비급여 치료 통계 창: 치료실별 이용(충격파·신장분사, 시트의 '차트번호(치료실)' 괄호 숫자) + 치료사별 도수(SASO·자동차도수). 기간 필터 공용 -->
+<!-- 4층 비급여 치료 통계 창: 진료실별 이용(충격파·신장분사, 시트의 '차트번호(진료실)' 괄호 숫자) + 치료사별 도수(SASO·자동차도수). 기간 필터 공용 -->
 <div class="modal-bg" id="resvStatModal" style="z-index:400" onclick="if(event.target===this)closeResvStats()">
   <div class="modal rs-modal">
     <h3><i data-lucide="bar-chart-3"></i> 4층 비급여 치료 통계</h3>
     <div class="body rs-modal-body">
       <div class="rvd-sect rs-sect" id="rsSect_room">
-        <h4>치료실별 이용 <span class="hint">충격파 · 신장분사</span><span class="spacer"></span><button class="btn sm" onclick="printRsStat('room')" title="A4 인쇄"><i data-lucide="printer"></i> 인쇄</button></h4>
+        <h4>진료실별 이용 <span class="hint">충격파 · 신장분사</span><span class="spacer"></span><button class="btn sm" onclick="printRsStat('room')" title="A4 인쇄"><i data-lucide="printer"></i> 인쇄</button></h4>
         <div class="hist-filter mx-stat-tools">
           <button class="chipf" data-kind="today" onclick="rsStatQuick('room','today')">오늘</button>
           <button class="chipf" data-kind="week" onclick="rsStatQuick('room','week')">이번 주</button>
@@ -1437,6 +1459,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="foot" style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" id="bkEditDel" onclick="bkEditDelete()">취소 처리</button>
       <button class="btn" id="bkEditRevert" onclick="bkEditRevert()" title="동선관리에서 고친 내용을 지우고 시트 원본대로">시트대로 되돌리기</button>
+      <button class="btn" id="bkEditCopy" style="display:none" onclick="bkCopyClip('copy')" title="Ctrl+C — 이 예약을 복사해 두고 빈 칸(다른 날짜도)에 붙여넣기"><i data-lucide="copy"></i> 복사</button>
+      <button class="btn" id="bkEditCut" style="display:none" onclick="bkCopyClip('cut')" title="Ctrl+X — 붙여넣어 저장하면 이 예약은 취소 처리"><i data-lucide="scissors"></i> 잘라내기</button>
+      <button class="btn primary" id="bkEditPaste" style="display:none" onclick="bkPasteClip()" title="Ctrl+V — 복사해 둔 예약 내용을 이 칸에 채우기"><i data-lucide="clipboard-paste"></i> 붙여넣기</button>
       <span style="flex:1"></span>
       <button class="btn" onclick="closeBkEdit()">닫기</button>
       <button class="btn primary" onclick="bkEditSave()">저장</button>
@@ -1531,6 +1556,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="modal">
     <div class="modal-head">
       <button type="button" class="modal-x" onclick="closeModal()" title="닫기" aria-label="닫기">✕</button>
+      <button type="button" class="btn sm modal-back" id="modalBack" style="display:none" onclick="closeModal()" title="4층 비급여 치료 화면으로 돌아가기"><i data-lucide="arrow-left"></i> 4층 비급여 치료</button>
       <h3 id="modalTitle">환자 추가</h3>
       <span id="mhPatient" class="mh-patient"></span>
       <div id="editStatusRow" style="display:none"></div>
@@ -1727,6 +1753,21 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div>
       <div id="editChartPast" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
       <div id="editResearchPast" style="display:none;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
+      <!-- 다음 예약(충격파·신장분사 시트에 추가) — 환자 정보 창에서 바로 다음 방문을 잡는다. 동선관리 수정본(bookingEdits)에 저장, 시트에는 반영되지 않음 (2026-09-20) -->
+      <div class="next-bk" id="nextBk">
+        <div class="sect-t" style="display:flex;align-items:center;gap:8px"><i data-lucide="calendar-plus"></i> 다음 예약 <span class="hint">충격파 · 신장분사</span></div>
+        <div class="nb-row">
+          <input type="date" id="nb_date" title="날짜">
+          <select id="nb_t" title="시간"></select>
+          <select id="nb_dur" title="치료시간"><option value="30">30분</option><option value="60">60분</option><option value="90">90분</option><option value="15">15분</option><option value="45">45분</option><option value="120">120분</option></select>
+        </div>
+        <div class="nb-row">
+          <input id="nb_th" list="nb_ths" placeholder="치료사" autocomplete="off"><datalist id="nb_ths"></datalist>
+          <input id="nb_code" list="nb_codes" placeholder="코드 (CME15 …)" autocomplete="off"><datalist id="nb_codes"></datalist>
+          <button type="button" class="btn sm primary" onclick="nbAdd()"><i data-lucide="plus"></i> 예약 추가</button>
+        </div>
+        <div class="hint" id="nb_list"></div>
+      </div>
       </div><!-- /pastSection -->
       </div><!-- /pcol 우(차트 전용) -->
     </div>
@@ -4023,6 +4064,8 @@ async function startHosted(){
         const m={};
         s.docs.forEach(d=>{const v=d.data()||{};const mrn=String(v.mrn||d.id||'').trim();if(!mrn)return;
           const rec={};if(v.memo)rec.memo=v.memo;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
+          if(v.floorBase&&typeof v.floorBase==='object'&&Object.keys(v.floorBase).length)rec.floorBase=v.floorBase;   // 층별 내원 보정
+          if(Number(v.visitAdj))rec.visitAdj=Number(v.visitAdj);   // 내원 횟수 보정(손으로 넣은 예약)
           m[mrn]=rec;});
         PMEMO=m;localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
       },err=>console.error('pmemo snap',err));
@@ -4130,11 +4173,11 @@ function pmKey(mrn){return String(mrn||'').trim().replace(/[^\w-]/g,'_')||'_';} 
 function pmRec(mrn){mrn=(mrn||'').trim();return mrn?(PMEMO[mrn]||null):null;}
 /* 한 환자 문서만 저장(전체 설정이 아니라) → 문서당 ~2KB, 1MB 한도 접근 불가 */
 function pmemoSave(mrn){mrn=(mrn||'').trim();if(!mrn)return;
-  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length));
+  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length)||(rec.floorBase&&Object.keys(rec.floorBase).length)||rec.visitAdj);   // floorBase(층별 내원 보정)·visitAdj(내원 횟수 보정)만 있어도 기록 유지
   if(!has)delete PMEMO[mrn];
   localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));
   if(cloud.active&&cloud.pmemoCol){
-    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
+    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
     else cloud.pmemoCol.doc(pmKey(mrn)).delete().catch(()=>{});   // 내용이 비면 문서 삭제
   }
 }
@@ -4166,6 +4209,22 @@ function setRegMemo(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||
   return true;}
 /* 가족관계(보호자 등) — 환자별 문서(pmemo.family). 직접 입력이 없으면 비트 명단의 보호자명을 표시 */
 function regFamily(mrn){const r=pmRec(mrn);if(r&&r.family)return r.family;const e=regFind(mrn);return (e&&e.guardian)||'';}
+/* 층별 내원 횟수 손질(2026-09-20): 직원이 적은 숫자와 자동 계산값의 차이(base)를 명단 기록에 둔다 → 표시 = 자동 계산 + base, 이후 내원은 자동으로 늘어난다 */
+function regFloorBase(mrn){const r=pmRec(mrn);return (r&&r.floorBase&&typeof r.floorBase==='object')?r.floorBase:{};}
+function setRegFloorBase(mrn,name,floor,base){mrn=(mrn||'').trim();if(!mrn)return false;
+  const cur=PMEMO[mrn]||{};const fb=Object.assign({},cur.floorBase||{});
+  if(base)fb[floor]=base;else delete fb[floor];
+  if(Object.keys(fb).length)cur.floorBase=fb;else delete cur.floorBase;
+  if(name)cur.name=name;PMEMO[mrn]=cur;pmemoSave(mrn);
+  try{audit('층별내원수정',(name||cur.name||'')+' ('+mrn+') '+floor+' 보정 '+(base>0?'+':'')+base);}catch(e){}
+  return true;}
+window.editFloorVisits=function(pid,floor){const p=data.find(x=>x.id===pid);if(!p)return;const mrn=(p.mrn||'').trim();if(!mrn){alert('병록번호가 있어야 층별 내원 횟수를 고칠 수 있습니다.');return;}
+  const el=document.querySelector(`.visit-sum [data-floor="${floor}"]`);const shown=el?parseInt(el.dataset.shown||'0',10):0;const auto=el?parseInt(el.dataset.auto||'0',10):0;
+  const v=prompt(`${dispName(p.name)} 님 ${floor} 내원 횟수 (자동 계산 ${auto}회)\n숫자를 넣으면 그 값으로 맞추고, 이후 내원은 자동으로 늘어납니다. 비우면 자동 계산으로 되돌립니다.`,String(shown));
+  if(v===null)return;const t=v.trim();
+  if(t===''){setRegFloorBase(mrn,p.name,floor,0);}
+  else{const n=parseInt(t,10);if(isNaN(n)||n<0){alert('0 이상의 숫자를 넣어 주세요.');return;}setRegFloorBase(mrn,p.name,floor,n-auto);}
+  try{fillEditChart(p);}catch(e){console.warn(e);}};
 function setRegFamily(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||'').trim();
   const cur=PMEMO[mrn]||{};
   if((cur.family||'')===v)return false;
@@ -5171,8 +5230,9 @@ function bkCellHtml(b,pf,D){
   const nm=pf?maskName(b.name):dispName(b.name);
   const flag=(!pf&&col&&!arr)?`<span class="bk-flag" style="background:${esc(col)}" title="${esc(BK_LEGEND[col]||col)}"></span>`:'';
   const tag=pf?'':(b.added?'<span class="bk-tag add">추가</span>':(b.edited?`<span class="bk-tag" title="원래: ${esc((b.orig&&b.orig.th)||'')} ${esc((b.orig&&b.orig.t)||'')} ${esc(String((b.orig&&b.orig.dur)||''))}분">수정</span>`:''));
-  const click=(!pf&&D)?` onclick="openBkEdit('${esc(D)}','${esc(b.key||'')}')" title="${esc(b.note||'')}${b.note?' — ':''}누르면 수정"`:((!pf&&b.note)?` title="${esc(b.note)}"`:'');
-  return `<div class="sheet-p bk ${arr?'arr':''}${(!pf&&b.note)?' has-note':''}"${click}>${b.code?`<span class="bk-code"${b.codeColor?` style="background:${esc(b.codeColor)}"`:''}>${esc(b.code)}</span>`:''}${flag}<span class="bk-name">${esc(nm)}</span>${(!pf&&b.mrn)?`<span class="sp-mrn">${esc(b.mrn)}</span>`:''}${(!pf&&b.visit)?`<span class="bk-sub">${b.visit}회</span>`:''}${(b.dur&&b.dur!==30)?`<span class="bk-sub">${b.dur}분</span>`:''}${tag}</div>`;}
+  const click=(!pf&&D)?` onclick="event.stopPropagation();openBkEdit('${esc(D)}','${esc(b.key||'')}')" title="${esc(b.note||'')}${b.note?' — ':''}누르면 수정"`:((!pf&&b.note)?` title="${esc(b.note)}"`:'');   // 칸(td)의 카드 열기와 구분
+  const clip=(!pf&&SHEET_CLIP&&!SHEET_CLIP.manual&&SHEET_CLIP.D===D&&SHEET_CLIP.key===b.key)?(SHEET_CLIP.mode==='cut'?' clip-cut':' clip-copy'):'';   // 복사/잘라내기 원본 표시
+  return `<div class="sheet-p bk ${arr?'arr':''}${(!pf&&b.note)?' has-note':''}${clip}"${click}>${b.code?`<span class="bk-code"${b.codeColor?` style="background:${esc(b.codeColor)}"`:''}>${esc(b.code)}</span>`:''}${flag}<span class="bk-name">${esc(nm)}</span>${(!pf&&b.mrn)?`<span class="sp-mrn">${esc(b.mrn)}</span>`:''}${(!pf&&b.visit)?`<span class="bk-sub">${b.visit}회</span>`:''}${(b.dur&&b.dur!==30)?`<span class="bk-sub">${b.dur}분</span>`:''}${tag}</div>`;}
 /* 묶음의 건수 배지 — 예약(시트+수정본)만 */
 function sheetCount(dateYmd,sg){const D=dateYmd||localYMD(new Date());const M=bkMerged(D);return sg.bk==='manual'?M.manual.length:M.items.length;}
 function sheetRecords(dateYmd,rooms){
@@ -5228,7 +5288,7 @@ function renderResvScreen(){
       <div class="rs-card"><b>${st.cancels}</b><span>취소·변경</span></div>
       <div class="rs-card"><b>${st.manual}</b><span>도수 예약</span></div>
       <div class="rs-card"><b>${Math.round(st.minutes/6)/10}h</b><span>예약 치료시간 합</span></div>
-      <button class="rs-btn" onclick="openResvStats()" title="치료실별 이용(충격파·신장분사) · 치료사별 도수(SASO·자동차도수) — 오늘/이번 주/이번 달/기간"><i data-lucide="bar-chart-3"></i> 통계</button>
+      <button class="rs-btn" onclick="openResvStats()" title="진료실별 이용(충격파·신장분사) · 치료사별 도수(SASO·자동차도수) — 오늘/이번 주/이번 달/기간"><i data-lucide="bar-chart-3"></i> 통계</button>
       ${st.sheet.map(x=>`<div class="rs-card sheet"><b>${esc(String(x.value))}</b><span>${esc(x.label)} · 시트</span></div>`).join('')}
     </div>
     ${(Object.keys(st.byTh).length||Object.keys(st.byCode).length)?`<div class="resv-chips">${chips(st.byTh)}${Object.keys(st.byCode).length?'<i></i>'+chips(st.byCode):''}</div>`:''}
@@ -5278,6 +5338,7 @@ function openBkEdit(D,key,opt){
   }else{
     const t=cur?cur.t:(opt.t||'10:00');
     body.innerHTML=`<div class="bkf">
+      ${isNew?`<label>날짜</label><input type="date" id="bke_date" value="${esc(D)}" onchange="document.getElementById('bkEditTitle').textContent='예약 추가 — '+this.value" title="다른 날짜를 고르면 그 날짜에 추가됩니다">`:''}
       <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="Jennie …"><datalist id="bke_ths">${ths.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
       <label>시간</label><select id="bke_t">${BK_SLOTS.map(s=>`<option value="${s}"${s===t?' selected':''}>${s}</option>`).join('')}</select>
       <label>치료시간</label><select id="bke_dur">${[15,30,45,60,90,120].map(d=>`<option value="${d}"${String(d)===String(cur?cur.dur:(opt.dur||30))?' selected':''}>${d}분</option>`).join('')}</select>
@@ -5292,6 +5353,10 @@ function openBkEdit(D,key,opt){
   document.getElementById('bkEditTitle').textContent=(isNew?'예약 추가':'예약 수정')+(opt.manual?' (도수)':'')+' — '+D;
   const del=document.getElementById('bkEditDel'),rv=document.getElementById('bkEditRevert');
   if(del)del.style.display=isNew?'none':'';if(rv)rv.style.display=(cur&&cur.edited&&!cur.added)?'':'none';
+  {const cp=document.getElementById('bkEditCopy'),cx=document.getElementById('bkEditCut'),ps=document.getElementById('bkEditPaste');   // 복사·잘라내기는 기존 예약(시트 표)에서, 붙여넣기는 빈 칸(추가)에서
+   const canClip=!opt.manual&&!isNew;if(cp)cp.style.display=canClip?'':'none';if(cx)cx.style.display=canClip?'':'none';
+   const canPaste=!opt.manual&&isNew&&SHEET_CLIP&&!SHEET_CLIP.manual;if(ps){ps.style.display=canPaste?'':'none';if(canPaste)ps.title=`Ctrl+V — ${SHEET_CLIP.cur.name||SHEET_CLIP.cur.mrn||''} (${SHEET_CLIP.D} ${SHEET_CLIP.cur.t||''} ${SHEET_CLIP.cur.th||''})${SHEET_CLIP.mode==='cut'?' — 저장하면 원본은 취소 처리':''}`;}
+   BK_EDIT.pasted=false;}
   document.getElementById('bkEditModal').classList.add('show');
   try{comboifyAll(body);}catch(e){console.warn('combo',e);}   // 치료사·코드: ▼ 로 전체 목록
   setTimeout(()=>{const f=document.getElementById(opt.manual?'bke_name':'bke_th');if(f)f.focus();const ta=document.getElementById('bke_note');if(ta)autoGrowTa(ta);},50);
@@ -5339,7 +5404,7 @@ function bkPickColor(c){c=String(c||'').toLowerCase();const h=document.getElemen
   document.querySelectorAll('#bkEditBody .bk-sw > span:not(.hint)').forEach(sp=>sp.classList.toggle('on',(sp.getAttribute('onclick')||'').includes("'"+c+"'")));
   const l=document.getElementById('bke_colorLbl');if(l)l.textContent=(BK_SWATCHES.find(x=>x[0]===c)||[,c||'없음'])[1];}
 function closeBkEdit(){document.getElementById('bkEditModal').classList.remove('show');BK_EDIT=null;}
-function bkEditsDoc(D){const d=BK_EDITS[D]&&typeof BK_EDITS[D]==='object'?BK_EDITS[D]:{};return {items:Object.assign({},d.items||{}),added:(d.added||[]).slice(),manual:Object.assign({},d.manual||{}),manualAdded:(d.manualAdded||[]).slice()};}
+function bkEditsDoc(D){const d=BK_EDITS[D]&&typeof BK_EDITS[D]==='object'?BK_EDITS[D]:{};return {items:Object.assign({},d.items||{}),added:(d.added||[]).slice(),manual:Object.assign({},d.manual||{}),manualAdded:(d.manualAdded||[]).slice(),thFix:Object.assign({},d.thFix||{})};}   // thFix: {차트번호: 치료사} — 도수 표에서 치료사가 빈 줄(카드·내원 기록·시트 공란)에 직원이 지정한 치료사(2026-09-20)
 function bkEditsSave(D,doc,what){
   BK_EDITS[D]=doc;
   try{if(cloud.bookingEditsCol&&cloud.active)cloud.bookingEditsCol.doc(D).set(Object.assign({},doc,{date:D,updatedAt:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}));}catch(e){console.warn('bookingEdits set',e);}
@@ -5359,14 +5424,84 @@ function bkEditSave(){
   }else{
     const f={th:g('bke_th'),t:g('bke_t'),dur:parseInt(g('bke_dur'),10)||30,mrn:g('bke_mrn'),name:g('bke_name'),code:g('bke_code'),note:g('bke_note'),color:g('bke_color')};
     if(!f.th){alert('치료사를 넣어 주세요.');return;}if(!f.mrn&&!f.name){alert('차트번호나 성함 중 하나는 넣어 주세요.');return;}
-    if(isNew)doc.added.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
+    /* 추가는 창에서 고른 날짜(bke_date)에 — 다른 날짜면 그 날짜 문서에 넣는다 */
+    const D2=(isNew&&g('bke_date'))||D;const docT=(D2===D)?doc:bkEditsDoc(D2);
+    if(isNew)docT.added.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
     else if(cur.added){doc.added=doc.added.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
     else{const o=cur.orig||{};const same=['th','t','mrn','name','code','note'].every(k=>String(o[k]||'')===String(f[k]||''))&&(+o.dur||30)===f.dur&&String(o.color||'').toLowerCase()===String(f.color||'').toLowerCase();
       if(same)delete doc.items[key];else doc.items[key]=Object.assign({},f,{by,at});}
-    bkEditsSave(D,doc,`예약 ${isNew?'추가':'수정'} ${f.name||f.mrn} ${f.th} ${f.t}`);
+    /* 잘라내기 → 붙여넣기 저장: 원본 예약을 취소 처리(같은 날이면 같은 문서에, 다른 날이면 그 날 문서에). 복사는 원본을 그대로 두고 클립도 유지 */
+    let cutMsg='';const isMove=isNew&&BK_EDIT.pasted&&SHEET_CLIP&&SHEET_CLIP.mode==='cut';
+    if(isMove){const c=SHEET_CLIP;const rm=d2=>{if(c.added)d2.added=(d2.added||[]).filter(a=>a.id!==c.key);else d2.items[c.key]={removed:true,by,at};};
+      if(c.D===D2)rm(docT);else{const d2=bkEditsDoc(c.D);rm(d2);bkEditsSave(c.D,d2,`예약 이동(원본 취소) ${c.cur.name||c.cur.mrn||''} ${c.D} ${c.cur.t||''}`);}
+      cutMsg=` (이동: ${c.D} ${c.cur.t||''} 에서)`;SHEET_CLIP=null;}
+    bkEditsSave(D2,docT,`예약 ${isNew?'추가':'수정'} ${f.name||f.mrn} ${D2} ${f.th} ${f.t}${cutMsg}`);
+    if(isNew&&!isMove&&f.mrn)bumpVisitAdj(f.mrn,f.name,1);   // 손으로 넣은 예약 = 내원 1회 예정 → 내원기록·4층 횟수 +1 (이동/복사 붙여넣기는 제외)
+    if(D2!==D)try{bkLoad(D2);}catch(e){}
   }
   closeBkEdit();
 }
+/* ── 예약 추가 공용 + 내원 횟수 보정 (2026-09-20) ──
+   bkAddBooking: 어느 날짜든 충격파·신장분사 예약을 동선관리 수정본(bookingEdits/{D}.added)에 넣는다(시트에는 반영되지 않음).
+   직원이 손으로 예약을 넣으면 그 환자의 내원 횟수(내원기록 N회차·4층)를 1 올리고, 그 예약을 지우면 1 내린다(명단 기록 visitAdj/floorBase) */
+function bkAddBooking(D,f,what){const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
+  const rec=Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at});doc.added.push(rec);bkEditsSave(D,doc,what||`예약 추가 ${f.name||f.mrn} ${D} ${f.t}`);return rec;}
+function bumpVisitAdj(mrn,name,delta){mrn=String(mrn||'').trim();if(!mrn||!delta)return;const cur=PMEMO[mrn]||{};
+  cur.visitAdj=(Number(cur.visitAdj)||0)+delta;if(!cur.visitAdj)delete cur.visitAdj;
+  const fb=Object.assign({},cur.floorBase||{});fb['4층']=(Number(fb['4층'])||0)+delta;if(!fb['4층'])delete fb['4층'];if(Object.keys(fb).length)cur.floorBase=fb;else delete cur.floorBase;
+  if(name)cur.name=name;PMEMO[mrn]=cur;pmemoSave(mrn);
+  try{const p=data.find(x=>!x.discharged&&(x.mrn||'').trim()===mrn);const m=document.getElementById('modal');if(p&&m&&m.classList.contains('show'))fillEditChart(p);}catch(e){}}
+/* 환자 정보 창의 '다음 예약' 블록 */
+function fillNextBk(p){
+  const box=document.getElementById('nextBk');if(!box)return;const mrn=(p.mrn||'').trim();box.style.display=(cloud.bookingsCol&&(mrn||p.name))?'':'none';if(box.style.display==='none')return;
+  box.dataset.pid=p.id;const today=localYMD(new Date());
+  const dt=document.getElementById('nb_date');if(dt&&!dt.value){const d=new Date();d.setDate(d.getDate()+7);dt.value=localYMD(d);}   // 기본 일주일 뒤
+  const ts=document.getElementById('nb_t');if(ts&&!ts.options.length)ts.innerHTML=BK_SLOTS.map(s=>`<option value="${s}"${s==='10:00'?' selected':''}>${s}</option>`).join('');
+  const M=bkMerged(today);const ths=(M.therapists||[]).slice();(M.items||[]).forEach(x=>{if(x.th&&!ths.includes(x.th))ths.push(x.th);});
+  const dl=document.getElementById('nb_ths');if(dl)dl.innerHTML=ths.map(t=>`<option value="${esc(t)}">`).join('');
+  const dc=document.getElementById('nb_codes');if(dc)dc.innerHTML=BK_CODES.map(c=>`<option value="${esc(c)}">`).join('');
+  try{comboifyAll(box);}catch(e){}
+  nbRenderList(p);
+}
+function nbRenderList(p){const el=document.getElementById('nb_list');if(!el)return;const mrn=(p.mrn||'').trim();const today=localYMD(new Date());const out=[];
+  Object.keys(BOOKINGS).concat(Object.keys(BK_EDITS)).filter((d,i,a)=>a.indexOf(d)===i&&d>=today).sort().forEach(D=>{try{bkMerged(D).items.forEach(x=>{if((mrn&&String(x.mrn||'').trim()===mrn)||(!mrn&&x.name===p.name))out.push(`${D} ${x.t} ${x.th}${x.code?' '+x.code:''}${x.added?' (동선관리 추가)':''}`);});}catch(e){}});
+  el.innerHTML=out.length?('예정: '+out.map(esc).join(' · ')):'예정된 예약 없음(불러온 날짜 기준)';}
+window.nbAdd=function(){const box=document.getElementById('nextBk');const p=data.find(x=>x.id===(box&&box.dataset.pid));if(!p)return;
+  const g=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};const D=g('nb_date'),t=g('nb_t'),th=g('nb_th'),code=g('nb_code'),dur=parseInt(g('nb_dur'),10)||30;
+  if(!D){alert('날짜를 고르세요.');return;}if(!th){alert('치료사를 넣으세요.');return;}
+  const f={th,t,dur,mrn:(p.mrn||'').trim(),name:p.name,code,note:'환자 정보 창에서 추가',color:''};
+  bkAddBooking(D,f,`예약 추가(환자 정보) ${p.name} ${D} ${t} ${th}`);
+  if(f.mrn)bumpVisitAdj(f.mrn,p.name,1);
+  try{toast(`${dispName(p.name)} 님 ${D} ${t} ${th} 예약 추가`);}catch(e){}
+  try{bkLoad(D);}catch(e){}nbRenderList(p);};
+/* ── 예약 복사/잘라내기/붙여넣기 (충격파·신장분사 표, 2026-09-20) ──
+   예약 칸을 열어 Ctrl+C(복사) 또는 Ctrl+X(잘라내기) → 빈 칸(다른 날짜도 됨)을 눌러 Ctrl+V 또는 [붙여넣기] → 내용이 채워지고 [저장]. 잘라내기였으면 저장할 때 원본이 취소 처리된다.
+   시트에는 반영되지 않는다(동선관리 수정본). 클립은 이 화면(세션)에만 */
+let SHEET_CLIP=null;   // {mode:'copy'|'cut', D, key, added, cur:{th,t,dur,mrn,name,code,note,color}}
+window.bkCopyClip=function(mode){
+  if(!BK_EDIT||BK_EDIT.isNew||BK_EDIT.manual||!BK_EDIT.cur)return;const {D,key,cur}=BK_EDIT;const g=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
+  SHEET_CLIP={mode,D,key,added:!!cur.added,cur:{th:g('bke_th')||cur.th||'',t:g('bke_t')||cur.t||'',dur:parseInt(g('bke_dur'),10)||cur.dur||30,mrn:g('bke_mrn')||cur.mrn||'',name:g('bke_name')||cur.name||'',code:g('bke_code')||cur.code||'',note:g('bke_note')||cur.note||'',color:g('bke_color')||cur.color||''}};
+  try{toast((mode==='cut'?'잘라내기: ':'복사: ')+dispName(SHEET_CLIP.cur.name||SHEET_CLIP.cur.mrn)+' — 빈 칸을 눌러 붙여넣기(Ctrl+V)');}catch(e){}
+  closeBkEdit();if(resvOpen)renderResvScreen();
+};
+window.bkPasteClip=function(){
+  if(!BK_EDIT||!BK_EDIT.isNew||BK_EDIT.manual||!SHEET_CLIP||SHEET_CLIP.manual)return;const c=SHEET_CLIP.cur;const s=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  s('bke_mrn',c.mrn);s('bke_name',c.name);s('bke_code',c.code);s('bke_note',c.note);
+  {const th=document.getElementById('bke_th');if(th&&!th.value.trim())th.value=c.th;}
+  {const d=document.getElementById('bke_dur');if(d&&[...d.options].some(o=>o.value===String(c.dur)))d.value=String(c.dur);}
+  try{bkPickColor(c.color||'');}catch(e){}
+  BK_EDIT.pasted=true;try{const ta=document.getElementById('bke_note');if(ta)autoGrowTa(ta);}catch(e){}
+  try{toast('붙여넣음 — [저장]을 누르면 '+(SHEET_CLIP.mode==='cut'?'원본은 취소 처리됩니다':'예약이 추가됩니다'));}catch(e){}
+};
+document.addEventListener('keydown',e=>{   // 예약 수정/추가 창이 열려 있을 때만. 입력칸에서 글자를 선택해 복사하는 경우는 브라우저에 맡긴다
+  if(!(e.ctrlKey||e.metaKey)||e.altKey)return;const m=document.getElementById('bkEditModal');if(!m||!m.classList.contains('show')||!BK_EDIT||BK_EDIT.manual)return;
+  const k=e.key.toLowerCase();if(k!=='c'&&k!=='x'&&k!=='v')return;
+  const a=document.activeElement;const inText=a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA');
+  if(inText&&k!=='v'&&a.selectionStart!==a.selectionEnd)return;   // 글자 선택 중 → 일반 복사
+  if(k==='v'&&inText&&!SHEET_CLIP)return;   // 붙여넣을 예약이 없으면 일반 붙여넣기
+  if(k==='c'||k==='x'){if(BK_EDIT.isNew)return;e.preventDefault();bkCopyClip(k==='x'?'cut':'copy');}
+  else{if(!BK_EDIT.isNew)return;e.preventDefault();bkPasteClip();}
+});
 function bkEditDelete(){
   if(!BK_EDIT||BK_EDIT.isNew)return;const {D,key,manual,cur}=BK_EDIT;
   if(!confirm(manual?'이 도수 예약을 목록에서 지울까요?':'이 예약을 취소 처리할까요? (시트에는 반영되지 않고, 이 화면에서 취소선으로 표시됩니다)'))return;
@@ -5374,6 +5509,7 @@ function bkEditDelete(){
   if(manual){if(cur.added)doc.manualAdded=doc.manualAdded.filter(a=>a.id!==key);else doc.manual[key]={removed:true,by,at};}
   else{if(cur.added)doc.added=doc.added.filter(a=>a.id!==key);else doc.items[key]={removed:true,by,at};}
   bkEditsSave(D,doc,`예약 취소 ${cur.name||cur.mrn||''}`);closeBkEdit();
+  if(!manual&&cur.added&&String(cur.mrn||'').trim())bumpVisitAdj(cur.mrn,cur.name,-1);   // 손으로 넣었던 예약을 지우면 올렸던 내원 횟수도 되돌림
 }
 function bkEditRevert(){
   if(!BK_EDIT||BK_EDIT.isNew)return;const {D,key,manual}=BK_EDIT;const doc=bkEditsDoc(D);
@@ -5442,6 +5578,9 @@ function mxRows(manual,D,rooms){
   cards.forEach(p=>{const mrn=byMrn(p.mrn);if(mrn&&seen.has(mrn))return;seen.add(mrn||('id:'+p.id));
     rows.push({key:'',mrn:p.mrn||'',name:p.name,th:cardTh(p),st:cardState(p),fromCard:true,pid:p.id,note:'보드 카드('+curRoom(p)+')'});});
   doneVisits.forEach(v=>{const mrn=byMrn(v.mrn);if(!mrn||seen.has(mrn))return;seen.add(mrn);const vr=visitRoom(v);rows.push({key:'',mrn:v.mrn,name:v.name,th:(vr&&vr.doctor)||'',st:'done',fromCard:true,note:'내원 기록'});});
+  /* 직원이 통계 창에서 지정한 치료사(bookingEdits/{D}.thFix) — 치료사가 빈 줄에만 적용(시트에 치료사가 있으면 시트 우선) */
+  const fix=((BK_EDITS[D]||{}).thFix)||{};
+  rows.forEach(r=>{const t=String(r.th==null?'':r.th).trim();if((!t||t==='null'||t==='undefined')){const m=byMrn(r.mrn);if(m&&fix[m]){r.th=fix[m];r.thFixed=true;}}});
   return rows;
 }
 function manualBoardHtml(pf,manual,D,rooms){
@@ -5450,18 +5589,17 @@ function manualBoardHtml(pf,manual,D,rooms){
   const tr=r=>`<tr class="mx-row ${r.st}"${(r.color&&String(r.color).toLowerCase()!=='#ffffff')?` style="background:color-mix(in srgb, ${esc(String(r.color))} 45%, white)"`:''}${(!pf&&D&&!r.fromCard)?` onclick="openBkEdit('${esc(D)}','${esc(r.key||'')}',{manual:true})" title="${esc(r.note||'')}${r.note?' — ':''}누르면 수정"`:((!pf&&r.fromCard&&r.pid)?` onclick="openEdit('${esc(r.pid)}')" title="${esc(r.note||'')} — 누르면 환자 정보"`:((!pf&&r.note)?` title="${esc(r.note)}"`:''))}>
       <td class="mx-no">${r.no?esc(String(r.no)):''}</td>${pf?'':`<td class="mx-mrn">${esc(r.mrn||'')}</td>`}
       <td class="mx-name">${r.name?esc(pf?maskName(r.name):dispName(r.name)):'<span class="hint">(이름 미입력)</span>'}${pf?'':(r.fromCard?' <span class="bk-tag">카드</span>':(r.added?' <span class="bk-tag add">추가</span>':(r.edited?' <span class="bk-tag">수정</span>':'')))}</td>
-      <td class="mx-th">${esc(r.th||'')}</td>
-      <td class="mx-st"><span class="mx-tag ${r.st}">${label[r.st]}</span></td></tr>`;
+      <td class="mx-th">${esc(r.th||'')}</td></tr>`;   // 상태 열은 뺐다(2026-09-20) — 상태는 줄 색(내원·진행중·완료)으로만
   if(!rows.length)return `<div class="resv-empty">이 날짜의 도수 예약이 없습니다${pf?'':' — 위의 <b>＋ 도수 추가</b>로 직접 넣을 수 있습니다'}.</div>`;
   const per=rows.length>10?Math.ceil(rows.length/2):rows.length;   // 10명 넘으면 두 표로 나눠 나란히
   const chunks=[];for(let i=0;i<rows.length;i+=per)chunks.push(rows.slice(i,i+per));
-  const head=`<thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th><th class="mx-st">상태</th></tr></thead>`;
+  const head=`<thead><tr><th class="mx-no">번호</th>${pf?'':'<th class="mx-mrn">환자번호</th>'}<th class="mx-name">성함</th><th class="mx-th">치료사</th></tr></thead>`;
   return `<div class="mx-tblwrap${chunks.length>1?' two':''}">${chunks.map(ch=>`<table class="mx-tbl">${head}<tbody>${ch.map(tr).join('')}</tbody></table>`).join('')}</div>
 `;
 }
 /* ── 치료사별 도수 통계 (2026-09-17): 기간(오늘/이번 주/이번 달/직접) 안의 날짜마다 mxRows 를 만들어 치료사별 예약·진행중·완료·합계를 센다.
    날짜별 시트 문서(bookings/{D}, bookingEdits/{D})가 없으면 한 번씩 읽어 온다(BOOKINGS 캐시). 내원 기록(VISITS)은 로그인 때 받은 것 기준 */
-/* ── 4층 비급여 치료 통계 창 (2026-09-17): 두 절(room = 치료실별 이용, th = 치료사별 도수)이 각각 기간 필터(오늘/이번 주/이번 달/직접)와 인쇄(A4)를 가진다.
+/* ── 4층 비급여 치료 통계 창 (2026-09-17): 두 절(room = 진료실별 이용, th = 치료사별 도수)이 각각 기간 필터(오늘/이번 주/이번 달/직접)와 인쇄(A4)를 가진다.
    날짜별 시트 문서(bookings/{D}, bookingEdits/{D})가 없으면 한 번씩 읽어 캐시(BOOKINGS). 내원 기록(VISITS)은 로그인 때 받은 것 기준 */
 const RS_STAT={room:{kind:'today',from:'',to:''},th:{kind:'today',from:'',to:''}};const RS_LOADING={};
 function rsStatDays(sec){const S=RS_STAT[sec]||RS_STAT.room;const t=new Date();const y=d=>localYMD(d);let a,b;
@@ -5483,12 +5621,13 @@ async function bkEnsureDay(D){   // 그 날짜의 시트 문서·수정본이 �
 function mxStatsCompute(days,rooms){
   const by={};let tot={resv:0,live:0,done:0,total:0};
   days.forEach(D=>{const M=bkMerged(D);const rows=mxRows(M.manual,D,rooms);
-    rows.forEach(r=>{let th=String(r.th==null?'':r.th).trim();if(!th||th==='null'||th==='undefined')th='(미지정)';const o=by[th]||(by[th]={th,resv:0,live:0,done:0,total:0});   // 시트에 치료사가 비면 'null' 문자열로 오기도 함
+    rows.forEach(r=>{let th=String(r.th==null?'':r.th).trim();if(!th||th==='null'||th==='undefined')th='(미지정)';const o=by[th]||(by[th]={th,resv:0,live:0,done:0,total:0,rows:[]});   // 시트에 치료사가 비면 'null' 문자열로 오기도 함
+      if(th==='(미지정)')o.rows.push({D,mrn:String(r.mrn||'').trim(),name:r.name||''});   // 통계 창에서 치료사를 지정할 수 있게 목록을 남긴다
       const k=r.st==='done'?'done':(r.st==='live'?'live':'resv');o[k]++;o.total++;tot[k]++;tot.total++;});});
   const list=Object.values(by).sort((a,b)=>b.done-a.done||b.total-a.total||a.th.localeCompare(b.th));
   return {list,tot};
 }
-/* 치료실별 이용(충격파·신장분사): 시트 항목의 room(차트번호 뒤 괄호 숫자) 별로, 날짜마다 환자(차트번호)를 한 번씩 센다. 내원 = 시트 연노랑 또는(오늘) 보드에 카드가 있음 */
+/* 진료실별 이용(충격파·신장분사): 시트 항목의 room(차트번호 뒤 괄호 숫자) 별로, 날짜마다 환자(차트번호)를 한 번씩 센다. 내원 = 시트 연노랑 또는(오늘) 보드에 카드가 있음 */
 function roomStatsCompute(days,groupRooms){
   const by={};let tot={resv:0,arr:0,total:0};const today=localYMD(new Date());
   days.forEach(D=>{const M=bkMerged(D);const seen={};
@@ -5510,17 +5649,26 @@ function rsRoomHtml(days){
       <div class="rs-card sheet"><b>${sh.sum.CME}</b><span>CME · 도수+충격파 · 시트</span></div>
       <div class="rs-card sheet"><b>${sh.sum.CRY}</b><span>CRY · 신장분사+Hilt · 시트</span></div>
       ${days.length>1?`<div class="rs-card"><b>${Math.max(sh.n.CME,sh.n.CRY)}</b><span>시트 자료 있는 날</span></div>`:''}</div>`:'';
-  const tbl=R.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료실</th><th>예약</th><th>내원</th><th>합계</th></tr></thead><tbody>
-      ${R.list.map(o=>`<tr><td class="mx-name">${/^\d+$/.test(o.room)?o.room+'번 치료실':esc(o.room)}</td><td>${o.resv||''}</td><td><b>${o.arr||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
+  const tbl=R.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">진료실</th><th>예약</th><th>내원</th><th>합계</th></tr></thead><tbody>
+      ${R.list.map(o=>`<tr><td class="mx-name">${/^\d+$/.test(o.room)?o.room+'번 진료실':esc(o.room)}</td><td>${o.resv||''}</td><td><b>${o.arr||''}</b></td><td><b>${o.total}</b></td></tr>`).join('')}
       <tr class="mx-total"><td class="mx-name">합계</td><td>${R.tot.resv}</td><td><b>${R.tot.arr}</b></td><td><b>${R.tot.total}</b></td></tr></tbody></table></div>`:'<div class="hint">이 기간에 충격파·신장분사 예약이 없습니다.</div>';
   return cards+tbl;
 }
 function rsThHtml(days){
   const g2=SHEET_GROUPS.find(g=>g.bk==='manual')||{rooms:['SASO','자동차도수']};const T=mxStatsCompute(days,g2.rooms);
+  /* (미지정) 줄은 누르면 그 환자들이 펼쳐지고, 각 줄에서 치료사를 고르면 bookingEdits/{날짜}.thFix 에 저장 → 표·통계에 바로 반영 */
+  const thOpts=BK_MANUAL_THS.concat(T.list.map(o=>o.th).filter(t=>t&&t!=='(미지정)'&&!BK_MANUAL_THS.includes(t)));
+  const unRow=o=>{const open=RS_UNASSIGNED_OPEN;return `<tr class="mx-un" onclick="RS_UNASSIGNED_OPEN=!RS_UNASSIGNED_OPEN;renderRsStat('th')" title="누르면 환자별로 치료사를 지정할 수 있습니다"><td class="mx-name">${open?'▾':'▸'} ${esc(o.th)} <span class="hint">치료사 지정</span></td><td><b>${o.total}</b></td></tr>`+
+    (open?o.rows.map(r=>`<tr class="mx-un-item"><td class="mx-name" style="padding-left:22px">${esc(r.D)} · ${esc(r.mrn||'')} ${esc(dispName(r.name||''))}</td><td><select class="rs-thsel" onclick="event.stopPropagation()" onchange="rsFixTh('${esc(r.D)}','${esc(r.mrn)}',this.value)"${r.mrn?'':' disabled title="차트번호가 없어 지정할 수 없습니다"'}><option value="">치료사 선택…</option>${thOpts.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select></td></tr>`).join(''):'');};
   return T.list.length?`<div class="mx-tblwrap"><table class="mx-tbl mx-stat"><thead><tr><th class="mx-name">치료사</th><th>합계</th></tr></thead><tbody>
-      ${T.list.map(o=>`<tr><td class="mx-name">${esc(o.th)}</td><td><b>${o.total}</b></td></tr>`).join('')}
+      ${T.list.map(o=>o.th==='(미지정)'&&o.rows.length?unRow(o):`<tr><td class="mx-name">${esc(o.th)}</td><td><b>${o.total}</b></td></tr>`).join('')}
       <tr class="mx-total"><td class="mx-name">합계</td><td><b>${T.tot.total}</b></td></tr></tbody></table></div>`:'<div class="hint">이 기간에 도수 기록이 없습니다.</div>';
 }
+let RS_UNASSIGNED_OPEN=false;   // 통계 창 (미지정) 줄 펼침 상태
+window.rsFixTh=function(D,mrn,th){mrn=String(mrn||'').trim();if(!D||!mrn)return;const doc=bkEditsDoc(D);
+  if(th)doc.thFix[mrn]=th;else delete doc.thFix[mrn];
+  bkEditsSave(D,doc,`도수 치료사 지정 ${D} ${mrn} → ${th||'(해제)'}`);   // 저장 + 4층 화면 다시 그림
+  RS_UNASSIGNED_OPEN=true;renderRsStat('th');};
 function rsPeriodText(days){return days.length?`${days[0]} ~ ${days[days.length-1]} · ${days.length}일`:'';}
 async function renderRsStat(sec){
   const box=document.getElementById('rsBody_'+sec);if(!box)return;
@@ -5537,7 +5685,7 @@ window.openResvStats=function(){const m=document.getElementById('resvStatModal')
 window.closeResvStats=function(){const m=document.getElementById('resvStatModal');if(m)m.classList.remove('show');};
 /* 인쇄(A4 세로): 절 하나씩 — 제목·기간·표 */
 window.printRsStat=function(sec){
-  const days=rsStatDays(sec);const title=sec==='room'?'치료실별 이용 (충격파 · 신장분사)':'치료사별 도수 (SASO · 자동차도수)';
+  const days=rsStatDays(sec);const title=sec==='room'?'진료실별 이용 (충격파 · 신장분사)':'치료사별 도수 (SASO · 자동차도수)';
   const html=sec==='room'?rsRoomHtml(days):rsThHtml(days);
   const w=window.open('','_blank');if(!w){alert('팝업이 차단되었습니다.');return;}
   const style=`<style>@page{size:A4 portrait;margin:14mm}html,body{margin:0;padding:0}body{font-family:'Malgun Gothic',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -5602,7 +5750,9 @@ function treatSheetTableHtml(pf,dateYmd,rooms){
         const span=Math.min(s1-s2+1,Math.max(1,...bks.concat(bls).map(x=>Math.ceil((x.dur||30)/30))));occ[doc]=s2+span;
         const arr=bks.some(b=>String(b.color||'').toLowerCase()==='#ffe599');
         const c0=bks.map(b=>String(b.color||'').toLowerCase()).find(c=>c&&c!=='#ffffff')||'';   // 시트(또는 수정본)에서 칠한 색 → 칸 배경(흰색과 섞어 글자가 읽히게)
-        return `<td class="filled ${bks.length?'bkcell':'blk'}${arr?' arrcell':''}" rowspan="${span}"${c0?` style="background:color-mix(in srgb, ${esc(c0)} 45%, white)"`:''}>${bks.map(b=>bkCellHtml(b,pf,D)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxl}</td>`;}
+        /* 칸의 빈 곳(예약 글씨 밖)을 누르면 그 환자의 오늘 카드(환자 정보 창) — 보드에 카드가 있을 때만. 예약 글씨는 종전대로 수정 창 */
+        const cardP=(!pf&&D===localYMD(new Date()))?bks.map(b=>String(b.mrn||'').trim()).filter(Boolean).map(m=>data.find(p=>!p.discharged&&(p.mrn||'').trim()===m)).find(Boolean):null;
+        return `<td class="filled ${bks.length?'bkcell':'blk'}${arr?' arrcell':''}${cardP?' hascard':''}" rowspan="${span}"${c0?` style="background:color-mix(in srgb, ${esc(c0)} 45%, white)"`:''}${cardP?` onclick="openEditFromResv('${esc(cardP.id)}')" title="빈 곳을 누르면 ${esc(dispName(cardP.name))} 님 환자 정보"`:''}>${bks.map(b=>bkCellHtml(b,pf,D)).join('')}${bls.map(b=>`<div class="sheet-blk">${pf?'':esc(b.text)}</div>`).join('')}${cxl}</td>`;}
       if(cns.length)return `<td class="filled">${cxl}</td>`;
       return pf?'<td></td>':`<td class="bk-free" onclick="openBkEdit('${esc(D)}',null,{th:'${esc(doc)}',t:'${hm}'})" title="빈 칸: 누르면 ${esc(doc)} ${hm} 예약 추가"></td>`;
     }).join("");
@@ -6939,8 +7089,18 @@ function fillEditChart(p){
       <textarea class="cv-ta" oninput="cvGrow(this)" onchange="saveChart('v:${esc(v.id)}',this.value)">${esc(v.chart||'')}</textarea>
     </div>`).join('') : (past.length ? '' : '<div class="hint">지난 내원 기록이 없습니다.</div>');
   /* 내원 횟수 요약(2026-09-17): 비트 DB 기준(개원 이후 접수 계열 전체, 오늘 포함) + 동선관리 기록 수. 비트 값은 DB 에이전트가 접수 때 카드에 넣는다(p.bit.visits) */
-  {const b=p.bit||{};const n=Number(b.visits||0)||past.length+1;   // 비트 값이 없으면(옛 카드) 동선관리 기록 + 오늘
-   box.insertAdjacentHTML('afterbegin',`<div class="hint visit-sum" style="margin-bottom:6px" title="${b.visits?'비트 DB 기준(개원 이후, 오늘 포함)':'동선관리 기록 기준'}${b.firstVisit?' · 최초 '+esc(String(b.firstVisit).slice(0,10)):''}${b.prevVisit?' · 직전 '+esc(String(b.prevVisit).slice(0,10)):''}"><i data-lucide="history"></i> 내원기록 <b>${n}회차</b></div>`);}
+  {const b=p.bit||{};const adj=p.mrn?(Number((pmRec(p.mrn)||{}).visitAdj)||0):0;const n=Math.max(0,(Number(b.visits||0)||past.length+1)+adj);   // 비트 값이 없으면(옛 카드) 동선관리 기록 + 오늘. adj = 손으로 넣은 예약(+1)·지움(-1)
+   /* 층별 내원 횟수(2026-09-20): 동선관리 내원 기록 기준 — 그 내원에서 3층 방을 거쳤으면 3층, 4층 방(충격파·SASO 등)을 거쳤으면 4층(둘 다면 둘 다). 오늘 카드도 지금까지 거친 방으로 포함.
+      비트 횟수는 층을 모른다(진료실만 있음) → 전체는 비트, 층별은 동선관리 */
+   const floorOf=r=>{const g=(meta(r).group||'');if(g==='3층'||g==='4층')return g;if(/4층/.test(r||''))return '4층';if(/3층/.test(r||''))return '3층';return SHEET_GROUPS.some(sg=>sg.rooms.includes(r))?'4층':'';};
+   const visitFloors=rooms=>{const s=new Set();rooms.forEach(r=>{const fl=floorOf(r);if(fl)s.add(fl);});return s;};
+   const cnt={'3층':0,'4층':0};
+   past.forEach(v=>visitFloors((v.rooms||[]).map(x=>x.room).concat(v.routeFull||[])).forEach(fl=>cnt[fl]++));
+   visitFloors((p.visits||[]).map(x=>x.room).concat([curRoom(p)]).filter(Boolean)).forEach(fl=>cnt[fl]++);   // 오늘
+   const fb=p.mrn?regFloorBase(p.mrn):{};   // 직원이 손질한 보정값(명단 기록) — 표시 = 자동 + 보정. 숫자를 누르면 고친다
+   const fcell=fl=>{const auto=cnt[fl],base=Number(fb[fl]||0),shown=Math.max(0,auto+base);return `<b class="vf-edit" data-floor="${fl}" data-auto="${auto}" data-shown="${shown}" title="누르면 ${fl} 내원 횟수 고치기${base?` (자동 ${auto} + 보정 ${base>0?'+':''}${base})`:''}" onclick="editFloorVisits('${esc(p.id)}','${fl}')">${shown}</b>${base?'<span class="vf-adj">✎</span>':''}`;};
+   box.insertAdjacentHTML('afterbegin',`<div class="hint visit-sum" style="margin-bottom:6px" title="${b.visits?'전체는 비트 DB 기준(개원 이후, 오늘 포함)':'전체는 동선관리 기록 기준'} · 층별은 동선관리 내원 기록 기준(오늘 포함) — 숫자를 누르면 고칠 수 있음${b.firstVisit?' · 최초 '+esc(String(b.firstVisit).slice(0,10)):''}${b.prevVisit?' · 직전 '+esc(String(b.prevVisit).slice(0,10)):''}"><i data-lucide="history"></i> 내원기록 <b>${n}회차</b> <span class="visit-floors">· 3층 ${fcell('3층')}회 · 4층 ${fcell('4층')}회</span></div>`);}
+  try{fillNextBk(p);}catch(e){console.warn('nextBk',e);}   // 다음 예약 블록
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
   const sms=[...(Array.isArray(p.smsHistory)?p.smsHistory:[]), ...past.flatMap(v=>Array.isArray(v.smsHistory)?v.smsHistory:[])];
   const sec=document.getElementById('editSmsSection'), sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');
@@ -7610,7 +7770,13 @@ function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard
 applyCompact();
 try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의 명단을 EMR 확장에 1회 전달(로그인 전 캐시)
 function showModal(){document.getElementById("modal").classList.add("show")}
-function closeModal(){document.getElementById("modal").classList.remove("show");BIT_PREFILL=null;}
+function closeModal(){const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
+/* 4층 비급여 치료 표의 칸(빈 곳)에서 환자 정보 창 열기: 화면(z-index 300) 위에 뜨도록 하고, 머리에 '← 4층 비급여 치료' 단추 — 닫으면 표가 그대로 남아 있다 (2026-09-20) */
+window.openEditFromResv=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  try{openEdit(pid);}catch(e){console.warn(e);return;}
+  const m=document.getElementById('modal');if(m)m.classList.add('over-resv');
+  const bb=document.getElementById('modalBack');if(bb)bb.style.display='';
+  if(window.lucide)try{lucide.createIcons();}catch(e){}};
 // 저장 단축키 — 환자 정보 창이 열려 있을 때 ⌘S / Ctrl+S / ⌘Enter 로 저장
 document.addEventListener('keydown',function(e){
   if(!document.getElementById('modal').classList.contains('show'))return;
