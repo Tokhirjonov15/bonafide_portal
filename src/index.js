@@ -1006,12 +1006,101 @@ async function handleApi(request, env, url, ident, ctx) {
   return json({ error: "알 수 없는 요청: " + path }, 404);
 }
 
+/* ═══════ 동선관리 계정 관리 API (/api/dongseon/admin/*) — Firebase Auth 관리자 작업 ═══════
+   웹의 Firebase 클라이언트 SDK 는 다른 사람의 비밀번호를 바꾸거나 계정을 지울 수 없어, 여기서 Firebase 서비스 계정으로 대신 한다.
+   · 호출자: 동선관리에 로그인한 관리자. Authorization: Bearer <Firebase ID 토큰> 을 Google 에 확인한 뒤,
+     Firestore acl/main 의 adminEmails / superEmails 에 그 이메일이 있어야 한다.
+   · 대상: 동선관리가 만든 계정(…@bonafide.app)만. 최고관리자·본인은 거부.
+   · 비밀: FIREBASE_SA = Firebase 서비스 계정 키 JSON 전체
+     (Firebase 콘솔 → 프로젝트 설정 → 서비스 계정 → 새 비공개 키 생성 → 파일 내용을
+      Cloudflare Worker → Settings → Variables and Secrets 에 Secret 으로 등록)
+   · 재고관리의 직원 토큰/Access 인증과는 무관 — fetch() 에서 먼저 분기한다.  (2026-09-21) */
+const FB_API_KEY = "AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w";   // 동선관리 웹 설정과 같은 공개 키(토큰 확인용)
+const FB_AUTH_SUFFIX = "@bonafide.app";
+let saCache = { tok: "", exp: 0 };
+const b64u = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+async function saAccessToken(env) {
+  if (saCache.tok && Date.now() < saCache.exp - 60000) return saCache.tok;
+  if (!env.FIREBASE_SA) throw new Error("서버에 FIREBASE_SA(서비스 계정 키)가 등록되지 않았습니다. Cloudflare → Worker → Settings → Variables and Secrets 에 추가하세요.");
+  let sa; try { sa = JSON.parse(env.FIREBASE_SA); } catch (e) { throw new Error("FIREBASE_SA 가 올바른 JSON 이 아닙니다."); }
+  const pem = String(sa.private_key || "").replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const now = Math.floor(Date.now() / 1000);
+  const enc = new TextEncoder();
+  const hdr = b64u(enc.encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
+  const clm = b64u(enc.encode(JSON.stringify({ iss: sa.client_email, scope: "https://www.googleapis.com/auth/cloud-platform", aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 })));
+  const sig = b64u(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, enc.encode(hdr + "." + clm)));
+  const r = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=" + hdr + "." + clm + "." + sig });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error("서비스 계정 토큰 발급 실패: " + (j.error_description || j.error || r.status));
+  saCache = { tok: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000, pid: sa.project_id };
+  return j.access_token;
+}
+async function fbAdminPost(env, path, body) {   // identitytoolkit v1 projects/{pid}/accounts:xxx
+  const tok = await saAccessToken(env);
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${saCache.pid}/${path}`, { method: "POST",
+    headers: { authorization: "Bearer " + tok, "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error("Firebase 인증 서버 오류: " + ((j.error && j.error.message) || r.status));
+  return j;
+}
+/* 호출자 확인: ID 토큰 → 이메일(Google 이 검증) → acl/main 의 관리자 목록 대조 */
+async function dsCaller(request, env) {
+  const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) throw Object.assign(new Error("로그인이 필요합니다."), { status: 401 });
+  const r = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + FB_API_KEY, { method: "POST",
+    headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken: m[1] }) });
+  const j = await r.json().catch(() => ({}));
+  const email = (j.users && j.users[0] && j.users[0].email) || "";
+  if (!r.ok || !email) throw Object.assign(new Error("로그인 정보가 만료되었습니다. 다시 로그인하세요."), { status: 401 });
+  const tok = await saAccessToken(env);
+  const a = await fetch(`https://firestore.googleapis.com/v1/projects/${saCache.pid}/databases/(default)/documents/acl/main`, { headers: { authorization: "Bearer " + tok } });
+  const acl = await a.json().catch(() => ({}));
+  const arr = (k) => (((acl.fields || {})[k] || {}).arrayValue || {}).values || [];
+  const admins = arr("adminEmails").map((v) => v.stringValue), supers = arr("superEmails").map((v) => v.stringValue);
+  if (!admins.includes(email) && !supers.includes(email)) throw Object.assign(new Error("관리자만 할 수 있습니다."), { status: 403 });
+  return { email, super: supers.includes(email), supers };
+}
+async function dongseonApi(request, env, url) {
+  try {
+    if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
+    const path = url.pathname.replace(/^\/api\/dongseon\/admin\//, "");
+    const body = await request.json().catch(() => ({}));
+    const me = await dsCaller(request, env);
+    const target = s(body.email).toLowerCase();
+    if (!target.endsWith(FB_AUTH_SUFFIX)) return json({ error: "동선관리 계정만 처리할 수 있습니다." }, 400);
+    if (target === me.email) return json({ error: "본인 계정은 여기서 처리할 수 없습니다." }, 400);
+    if (me.supers.includes(target)) return json({ error: "최고관리자 계정은 처리할 수 없습니다." }, 400);
+    const found = await fbAdminPost(env, "accounts:lookup", { email: [target] });
+    const uid = found.users && found.users[0] && found.users[0].localId;
+    if (path === "reset-password") {
+      const pw = String(body.password || "");
+      if (pw.length < 8) return json({ error: "비밀번호는 8자 이상이어야 합니다." }, 400);
+      if (!uid) return json({ error: "로그인 계정이 없는 직원입니다(계정 추가로 먼저 발급)." }, 404);
+      await fbAdminPost(env, "accounts:update", { localId: uid, password: pw, validSince: String(Math.floor(Date.now() / 1000)) });   // 기존 로그인 세션도 끊김
+      return json({ ok: true });
+    }
+    if (path === "delete-user") {
+      if (uid) await fbAdminPost(env, "accounts:delete", { localId: uid });
+      return json({ ok: true, existed: !!uid });
+    }
+    return json({ error: "알 수 없는 요청: " + path }, 404);
+  } catch (err) {
+    return json({ error: err && err.message ? err.message : String(err) }, (err && err.status) || 500);
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (!url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request);
+    }
+    if (url.pathname.startsWith("/api/dongseon/admin/")) {   // 동선관리 계정 관리 — Firebase 로그인으로 따로 인증
+      return dongseonApi(request, env, url);
     }
 
     try {

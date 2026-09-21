@@ -51,6 +51,19 @@ Worker → **Settings → Variables and Secrets → Add** 에 `APP_KEY` 를 등�
 그 암호를 입력한 사람만 재고 데이터를 쓸 수 있습니다.
 Access를 켠 뒤에는 무시되므로 그대로 두거나 삭제해도 됩니다.
 
+### 동선관리 계정 관리 (비밀번호 재설정·계정 삭제) — `FIREBASE_SA`
+
+동선관리의 관리자 메뉴(내 계정 → 계정 관리)에서 직원 비밀번호를 재설정하거나 퇴사자 계정을 삭제하려면
+Worker 가 Firebase 서비스 계정으로 동작해야 합니다. 한 번만 설정:
+
+1. Firebase 콘솔 → 프로젝트 `bonafide-dongseon-108e2` → ⚙ 프로젝트 설정 → **서비스 계정** 탭 → **새 비공개 키 생성** → JSON 파일 다운로드
+2. Cloudflare → Workers → `bonafide-portal` → **Settings → Variables and Secrets → Add** →
+   Type **Secret**, Name `FIREBASE_SA`, Value 에 JSON 파일 내용 전체를 붙여넣기 → Deploy
+3. 다운로드한 JSON 은 저장소에 넣지 말고(비밀키) 삭제하거나 안전한 곳에 보관
+
+호출 경로: `POST /api/dongseon/admin/reset-password` · `POST /api/dongseon/admin/delete-user`
+(헤더 `Authorization: Bearer <Firebase ID 토큰>`, 호출자는 `acl/main` 의 관리자여야 함)
+
 ### API 엔드포인트
 
 | 주소 | 용도 |
