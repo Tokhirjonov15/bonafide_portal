@@ -614,6 +614,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .step.done{background:var(--green-bg);color:var(--green)}
   .step.cur{background:var(--blue);color:#fff;font-weight:700}
   .arrow{color:var(--sub);font-size:11px;padding:0 1px}
+  /* 방별 시간표(동선 펼침·환자 정보 창): 방 · 도착→이동 시각 · 대기/준비/진행 */
+  .rt-tl{width:100%;display:flex;flex-direction:column;gap:3px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line2)}
+  .rt-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:1px 8px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.35}
+  .rt-row .rt-room{font-weight:700;color:var(--text);min-width:64px}
+  .rt-row.cur .rt-room{color:var(--blue)}
+  .rt-row .rt-t{white-space:nowrap}
+  .rt-row .rt-d{white-space:nowrap;color:var(--t-amber);font-weight:600}
+  #modal .rt-tl{border-top-color:var(--line);margin-top:2px}
   /* 카드 전달사항 */
   .notes{padding:2px 12px 8px;display:flex;flex-direction:column;gap:5px}
   .note{font-size:12px;background:var(--note-bg);border:1px solid var(--note-line);border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px}
@@ -1194,7 +1202,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     </span>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
-    <button class="btn" id="resvBtn" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
+    <!-- 4층 비급여 치료: 2026-09-21 회의 결정으로 당분간 숨김(SHOW_RESV=false). 다시 쓰려면 SHOW_RESV 를 true 로 -->
+    <button class="btn" id="resvBtn" style="display:none" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
     <button class="btn" id="bitResvBtn" onclick="openBitResvScreen()" title="비트 진료 예약(1진료실·16진료실) — 오늘부터 7일, 접수 PC 가 비트에서 바꾸면 몇 초 안에 반영 (별도 모니터: 주소 뒤에 ?bitresv)"><i data-lucide="calendar-clock"></i> 진료 예약</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
@@ -2199,6 +2208,7 @@ let BIT_LOOKUP=[];                                       // 오늘 접수 창 �
 /* ── 비트 진료 예약(bitResv) — DB 에이전트가 RsvInf 를 8초마다 읽어 바뀐 날짜만 다시 쓴다(접수 PC 가 비트에서 시각을 옮기면 몇 초 안에 반영) ──
    BIT_RESV[날짜] = {date, updatedAt, count, items:[{k,t,room,dr,mrn,name,birth,sex,div,sts,ostt,acp,memo,by,naver}]}, BIT_RESV_SUM = {days:{날짜:{n,canc,arrived,naver}}} */
 let BIT_RESV={}, BIT_RESV_SUM={}, BIT_RESV_DATE='';
+const SHOW_RESV=false;   // 4층 비급여 치료(시트 예약·통계·다음 예약) 화면 표시 여부 — 2026-09-21 회의로 당분간 숨김. 코드는 그대로, true 로 바꾸면 버튼·다음 예약 블록이 다시 보인다 (?resv 주소는 계속 동작)
 let BITRESV_MODE=false, bitResvOpen=false, bitResvDate=null;   // ?bitresv 전용 창 / 진료 예약 화면 상태 / 보는 날짜(null=오늘)
 let BIT_RESV_ITEMS={}, BIT_RESV_SEL=null;   // 접수번호 → 화면에 그린 예약 항목(상세 창용) / 상세 창에 열린 항목
 const BIT_RSV_DIV={R:'',X:'X',Z:'Z'};   // 비트 예약 구분 코드 → 표시(R 은 기본이라 표시 안 함). 뜻이 확인되면 여기만 고친다
@@ -3773,7 +3783,8 @@ function showSelfTestReport(R,pass,fail){
   document.body.appendChild(ov);
 }
 function boot(){
-  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}   // ?slip[&room=…] → 슬립 화면만(태블릿) / ?resv → 직원용 예약관리만
+  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}
+  if(SHOW_RESV){const rb=document.getElementById('resvBtn');if(rb)rb.style.display='';}   // ?slip[&room=…] → 슬립 화면만(태블릿) / ?resv → 직원용 예약관리만
   if(location.hash.indexOf('labelstation')>=0){   // 라벨 전용 창(무음 인쇄) 표지 — EMR 등 다른 용도 사용 방지
     const b=document.createElement('div');
     b.textContent='🖨 라벨 전용 창 — 모든 인쇄가 인쇄창 없이 라벨 프린터로 나갑니다. EMR·업무는 일반 크롬에서 여세요.';
@@ -5453,7 +5464,7 @@ function bumpVisitAdj(mrn,name,delta){mrn=String(mrn||'').trim();if(!mrn||!delta
   try{const p=data.find(x=>!x.discharged&&(x.mrn||'').trim()===mrn);const m=document.getElementById('modal');if(p&&m&&m.classList.contains('show'))fillEditChart(p);}catch(e){}}
 /* 환자 정보 창의 '다음 예약' 블록 */
 function fillNextBk(p){
-  const box=document.getElementById('nextBk');if(!box)return;const mrn=(p.mrn||'').trim();box.style.display=(cloud.bookingsCol&&(mrn||p.name))?'':'none';if(box.style.display==='none')return;
+  const box=document.getElementById('nextBk');if(!box)return;const mrn=(p.mrn||'').trim();box.style.display=(SHOW_RESV&&cloud.bookingsCol&&(mrn||p.name))?'':'none';if(box.style.display==='none')return;
   box.dataset.pid=p.id;const today=localYMD(new Date());
   const dt=document.getElementById('nb_date');if(dt&&!dt.value){const d=new Date();d.setDate(d.getDate()+7);dt.value=localYMD(d);}   // 기본 일주일 뒤
   const ts=document.getElementById('nb_t');if(ts&&!ts.options.length)ts.innerHTML=BK_SLOTS.map(s=>`<option value="${s}"${s==='10:00'?' selected':''}>${s}</option>`).join('');
@@ -5872,7 +5883,7 @@ function cardEl(p){
     ${p.ins?`<div class="ins-tag" title="공공보험"><i data-lucide="landmark"></i> ${esc(p.ins)}</div>`:''}
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
-    <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps:''}</div>
+    <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘)"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
@@ -6033,6 +6044,21 @@ function dwellLabel(p){
   const progSeg=rm.noProg?"":` <span class="t-act ${p.status==='진행'?'on':''}">▶진행 ${a}</span>`;
   return `<span class="t-wait ${p.status==='대기'?'on':''}">⏳대기 ${w}</span>${prepSeg}${progSeg}`;
 }
+/* 방별 시간표 (2026-09-21 회의): 오늘 지나온 방(p.visits) + 현재 방 — 도착 시각 → 다음 방으로 옮긴 시각, 그 방에서의 대기·준비·진행 시간.
+   예) 3층 대기실 09:02 → 09:31 · 대기 29분 / 1진료실 09:31 → (현재) · 대기 4분 · 진행 2분. 카드 동선 펼침·환자 정보 창에 표시 */
+function routeTimelineHtml(p){
+  const today=localYMD(new Date());
+  const recs=(p.visits||[]).filter(v=>v&&v.room&&v.enteredAt&&localYMD(new Date(v.enteredAt))===today);
+  const rows=recs.map(v=>{const segs=[`대기 ${fmtDur(v.waitMs||0)}`];if((v.prepMs||0)>0)segs.push(`준비 ${fmtDur(v.prepMs)}`);if((v.activeMs||0)>0)segs.push(`진행 ${fmtDur(v.activeMs)}`);
+    return `<div class="rt-row done" title="도착 ${clockHM(v.enteredAt)} · 이동 ${clockHM(v.leftAt)}"><span class="rt-room">${esc(v.room)}</span><span class="rt-t">${clockHM(v.enteredAt)} → ${clockHM(v.leftAt)}</span><span class="rt-d">${segs.join(' · ')}</span></div>`;});
+  const cur=curRoom(p);
+  if(cur&&p.enteredAt)rows.push(`<div class="rt-row cur" title="도착 ${clockHM(p.enteredAt)} · 현재 방"><span class="rt-room">${esc(cur)}</span><span class="rt-t">${clockHM(p.enteredAt)} → 현재</span><span class="rt-d rt-live" data-pid="${p.id}">${routeLiveLabel(p)}</span></div>`);
+  return rows.length?`<div class="rt-tl">${rows.join('')}</div>`:'';
+}
+function routeLiveLabel(p){const rm=meta(curRoom(p));const segs=[`대기 ${fmtDur(waitMsNow(p))}`];
+  if(!rm.noProg&&(rm.prep||(p.prepMs||0)>0||p.status==='준비'))segs.push(`준비 ${fmtDur(prepMsNow(p))}`);
+  if(!rm.noProg&&((p.activeMs||0)>0||p.status==='진행'))segs.push(`진행 ${fmtDur(activeMsNow(p))}`);
+  return segs.join(' · ');}
 // 현재 상태 구간을 누적기에 더하고 statusSince를 now로 리셋 (외출 중이면 더하지 않음)
 function accrue(p){const el=p.out?0:Math.max(0,sinceMs(p));
   if(p.status==='진행')p.activeMs=(p.activeMs||0)+el;
@@ -7713,6 +7739,7 @@ function renderEditStatus(){
         <span class="es-sep"></span>
         <button type="button" class="st-btn ${last?'exit':'fin'}" title="${last?'종결 후 보드에서 내보내기':'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?'내보내기':'종결'} <span class="es-kbd">${MOD}→</span></button>
       </div>
+      ${routeTimelineHtml(p)}
     </div>`;
 }
 /* 단계 이동 단축키용: 대기→[준비]→진행→종결 순서로 이동 */
@@ -8313,6 +8340,7 @@ document.addEventListener("keydown",e=>{
 function tickTimers(){if(!currentUser)return;
   let hasIcon=false;
   document.querySelectorAll('.dwell[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.innerHTML=dwellLabel(p);});
+  document.querySelectorAll('.rt-live[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.textContent=routeLiveLabel(p);});
   document.querySelectorAll('.total[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p){el.innerHTML=totalLabel(p);hasIcon=true;}});
   /* 새로 넣은 <i data-lucide>를 같은 프레임에 즉시 SVG로 변환 — 옵저버 지연(30ms)로 인한 깜빡임 방지 */
   if(hasIcon&&window.lucide)try{lucide.createIcons();}catch(e){}}
