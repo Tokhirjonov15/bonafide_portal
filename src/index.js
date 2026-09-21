@@ -1017,6 +1017,7 @@ async function handleApi(request, env, url, ident, ctx) {
    · 재고관리의 직원 토큰/Access 인증과는 무관 — fetch() 에서 먼저 분기한다.  (2026-09-21) */
 const FB_API_KEY = "AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w";   // 동선관리 웹 설정과 같은 공개 키(토큰 확인용)
 const FB_AUTH_SUFFIX = "@bonafide.app";
+const FB_PROTECTED = ["uc8feac453b1a01cc028b072a@bonafide.app", "ua18f959e9cb13bc2208d8af4@bonafide.app"];   // bitbot·sheetbot(연동용) — 재설정·삭제 불가
 let saCache = { tok: "", exp: 0 };
 const b64u = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 async function saAccessToken(env) {
@@ -1073,6 +1074,7 @@ async function dongseonApi(request, env, url) {
     if (!target.endsWith(FB_AUTH_SUFFIX)) return json({ error: "동선관리 계정만 처리할 수 있습니다." }, 400);
     if (target === me.email) return json({ error: "본인 계정은 여기서 처리할 수 없습니다." }, 400);
     if (me.supers.includes(target)) return json({ error: "최고관리자 계정은 처리할 수 없습니다." }, 400);
+    if (FB_PROTECTED.includes(target)) return json({ error: "연동용 봇 계정은 처리할 수 없습니다." }, 400);
     const found = await fbAdminPost(env, "accounts:lookup", { email: [target] });
     const uid = found.users && found.users[0] && found.users[0].localId;
     if (path === "reset-password") {

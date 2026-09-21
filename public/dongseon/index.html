@@ -3047,7 +3047,7 @@ function renderAccount(){
 }
 function renderStaffList(){
   const box=document.getElementById('staffList');if(!box)return;
-  const list=MEMBERS.filter(m=>m&&m.email&&!m.super).sort((a,b)=>(a.role==='admin'?0:1)-(b.role==='admin'?0:1)||String(a.name||'').localeCompare(String(b.name||'')));
+  const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>(a.role==='admin'?0:1)-(b.role==='admin'?0:1)||String(a.name||'').localeCompare(String(b.name||'')));
   if(!list.length){box.innerHTML=`<div class="route-empty">등록된 계정이 없습니다.</div>`;return;}
   const meEm=(currentUser&&currentUser.email)||'';
   box.innerHTML=list.map(m=>`
@@ -3063,6 +3063,10 @@ function renderStaffList(){
     </div>`).join("");
   try{if(window.lucide)lucide.createIcons();}catch(e){}
 }
+/* 봇 계정(프로그램용): 계정 관리 목록에 보이지 않고 비밀번호 재설정·삭제도 막는다 — 관리자 비밀번호가 새어도 연동이 끊기지 않게.
+   bitbot = 비트 DB 에이전트·감시 스크립트(bitIntake/bitStatus/bitResv), sheetbot = Google Sheet 예약(bookings). 서버(src/index.js)에도 같은 목록 */
+const BOT_EMAILS=['uc8feac453b1a01cc028b072a@bonafide.app','ua18f959e9cb13bc2208d8af4@bonafide.app'];
+function isBotMember(m){return !!m&&(BOT_EMAILS.includes(m.email)||/^(bitbot|sheetbot)$/i.test(String(m.name||'').trim()));}
 /* 관리자 작업 서버 호출(/api/dongseon/admin/*): 내 Firebase ID 토큰을 붙여 보낸다. 서버는 토큰을 Google 에 확인하고 acl/main 의 관리자인지 대조한 뒤 서비스 계정으로 처리 */
 async function adminAuthPost(path,body){
   const u=window.firebase&&firebase.auth&&firebase.auth().currentUser;
@@ -3079,6 +3083,7 @@ async function adminResetPw(em){
   if(!isAdmin()){alert('관리자만 가능합니다.');return;}
   const m=memByEmail(em);if(!m){alert('대상을 찾을 수 없습니다.');return;}
   if(m.super){alert('최고관리자 비밀번호는 여기서 바꿀 수 없습니다.');return;}
+  if(isBotMember(m)){alert('연동용 봇 계정은 여기서 바꿀 수 없습니다.');return;}
   const pw=prompt(`'${m.name}' 의 새 비밀번호를 정해 주세요.\n${PW_RULE_MSG}\n\n직원에게 알려 주고, 로그인 후 '내 비밀번호 변경'에서 바꾸게 하세요.`);
   if(pw===null)return;
   if(pwTooWeak(pw)){alert(PW_RULE_MSG);return;}
@@ -3170,6 +3175,7 @@ async function deleteStaff(sid){
   if(!isAdmin()){alert('계정 삭제는 관리자만 가능합니다.');return;}
   const m=memByEmail(sid);if(!m)return;
   if(m.super){alert('최고관리자는 삭제할 수 없습니다.');return;}
+  if(isBotMember(m)){alert('연동용 봇 계정(bitbot·sheetbot)은 삭제할 수 없습니다.');return;}
   if(currentUser&&sid===currentUser.email){alert('현재 로그인한 본인 계정은 삭제할 수 없습니다.');return;}
   if(!confirm(`'${m.name}' 계정을 삭제할까요?\n모든 앱에서 로그인할 수 없게 됩니다.`))return;
   try{await adminAuthPost('delete-user',{email:sid});}   // Firebase 로그인 계정 삭제(서버) — 계정이 없으면 명단만 정리
