@@ -995,6 +995,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .role-tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px}
   .role-tag.admin{background:var(--amber-bg);color:var(--orange)}
   .role-tag.staff{background:var(--teal-bg);color:var(--teal)}
+  .role-tag.chief{background:var(--blue-bg,#e8f0fe);color:var(--blue)}
   .team-tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;background:var(--blue-bg);color:var(--t-bluesoft)}
   /* 계정 모달 */
   .staff-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
@@ -1548,7 +1549,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <textarea id="bk_names" rows="9" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;outline:0;resize:vertical"></textarea></div>
       <div class="row2">
         <div class="fld"><label>공통 비밀번호</label><input id="bk_pw" type="text" placeholder="8자 이상, 영문+숫자" autocomplete="off"></div>
-        <div class="fld"><label>권한</label><select id="bk_role"><option value="staff">직원</option><option value="admin">관리자</option></select></div>
+        <div class="fld"><label>권한</label><select id="bk_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="admin">관리자</option></select></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn sm" type="button" onclick="bulkFillDoctors()" title="방 설정·진료의 목록에서 아직 계정이 없는 이름을 채웁니다"><i data-lucide="stethoscope"></i> 진료의 이름 불러오기</button>
@@ -1569,7 +1570,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="body">
       <div class="fld"><label>아이디 (이름)</label><input id="s_name" placeholder="이름"></div>
       <div class="row2">
-        <div class="fld"><label>권한</label><select id="s_role"><option value="staff">직원</option><option value="admin">관리자</option></select></div>
+        <div class="fld"><label>권한</label><select id="s_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="admin">관리자</option></select></div>
         <div class="fld"><label>팀 (선택)</label><input id="s_team" list="teamOpts" placeholder="예: 간호팀"><datalist id="teamOpts"></datalist></div>
       </div>
       <div class="fld"><label id="s_pwlabel">비밀번호</label><input id="s_pw" type="password" placeholder="비밀번호"></div>
@@ -2066,6 +2067,11 @@ async function pwHash(s){const b=await crypto.subtle.digest('SHA-256',new TextEn
 async function pwVerify(plain,rec){if(!rec||!plain)return false;if(rec.pw)return rec.pw===await pwHash(plain);return false;}
 function findUserByName(nm){nm=(nm||'').trim().toLowerCase();if(!nm)return null;if(SUPER_ADMIN.name.toLowerCase()===nm)return SUPER_ADMIN;return STAFF.find(u=>(u.name||'').trim().toLowerCase()===nm)||null;}
 function isAdmin(){return !!(currentUser&&currentUser.role==='admin');}
+/* 주임(chief): 관리자 아님 — 직원 권한 + 통계 열람(내보내기 포함, 초기화는 관리자만). 계정 관리·방 설정 등은 못 함 (2026-09-21) */
+function isChief(){return !!(currentUser&&currentUser.role==='chief');}
+function canStats(){return isAdmin()||isChief();}
+function roleLabel(m){return !m?'':(m.super?'최고관리자':m.role==='admin'?'관리자':m.role==='chief'?'주임':'직원');}
+function roleCls(m){return !m?'staff':(m.role==='admin'?'admin':m.role==='chief'?'chief':'staff');}
 function isSuper(){return !!(currentUser&&currentUser.super);}
 function ensureSuper(){let s=STAFF.find(x=>x.id==='super');if(!s){STAFF.push({id:'super',name:SUPER_ADMIN.name,role:'admin',super:true,pw:SUPER_ADMIN.pw});}else{s.name=SUPER_ADMIN.name;s.role='admin';s.super=true;if(!s.pw)s.pw=SUPER_ADMIN.pw;}saveStaffStore();}
 
@@ -2941,16 +2947,16 @@ function updateUserPill(){
   const sb=document.getElementById('statsBtn'),rb=document.getElementById('roomsBtn');
   const rtb0=document.getElementById('routinesBtn');
   if(!currentUser){pill.style.display='none';if(lb)lb.style.display='none';if(sb)sb.style.display='none';if(rb)rb.style.display='none';if(rtb0)rtb0.style.display='none';return;}
-  if(sb)sb.style.display=isAdmin()?'':'none';
+  if(sb)sb.style.display=canStats()?'':'none';
   if(rb)rb.style.display=isAdmin()?'':'none';
   const rtb=document.getElementById('routinesBtn');if(rtb)rtb.style.display=isAdmin()?'':'none';
   pill.style.display=''; if(lb)lb.style.display='';
   document.getElementById('userAv').textContent=(currentUser.name||'?').slice(0,1);
   document.getElementById('userName').textContent=currentUser.name;
   const sub=document.getElementById('userSub'); if(sub){ const parts=[currentUser.team,currentUser.position].filter(Boolean); sub.textContent=parts.join(' · '); sub.style.display=parts.length?'block':'none'; }
-  const rt=document.getElementById('userRole'); const mgr=currentUser.role==='admin'||currentUser.super;
-  rt.textContent=currentUser.super?'최고관리자':'관리자';
-  rt.className='role-tag admin'; rt.style.display=mgr?'':'none'; // 직원은 배지 숨김
+  const rt=document.getElementById('userRole'); const mgr=currentUser.role==='admin'||currentUser.super||currentUser.role==='chief';
+  rt.textContent=roleLabel(currentUser);
+  rt.className='role-tag '+roleCls(currentUser); rt.style.display=mgr?'':'none'; // 직원은 배지 숨김
 }
 
 /* 계정 모달 */
@@ -2963,7 +2969,7 @@ function renderAccount(){
     <div style="display:flex;align-items:center;gap:10px">
       <span class="av" style="width:34px;height:34px;border-radius:50%;background:var(--blue);color:#fff;display:grid;place-items:center;font-weight:700">${esc((currentUser.name||'?').slice(0,1))}</span>
       <div><div style="font-weight:700">${esc(currentUser.name)}</div>
-      <span class="role-tag ${currentUser.role==='admin'?'admin':'staff'}">${currentUser.role==='admin'?(currentUser.super?'최고관리자':'관리자'):'직원'}</span>
+      <span class="role-tag ${roleCls(currentUser)}">${roleLabel(currentUser)}</span>
       ${currentUser.team?`<span class="team-tag">${esc(currentUser.team)}</span>`:''}</div>
     </div>
     <div class="acc-sect">
@@ -3071,13 +3077,14 @@ function renderAccount(){
 }
 function renderStaffList(){
   const box=document.getElementById('staffList');if(!box)return;
-  const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>(a.role==='admin'?0:1)-(b.role==='admin'?0:1)||String(a.name||'').localeCompare(String(b.name||'')));
+  const rk=m=>m.role==='admin'?0:m.role==='chief'?1:2;
+  const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>rk(a)-rk(b)||String(a.name||'').localeCompare(String(b.name||'')));
   if(!list.length){box.innerHTML=`<div class="route-empty">등록된 계정이 없습니다.</div>`;return;}
   const meEm=(currentUser&&currentUser.email)||'';
   box.innerHTML=list.map(m=>`
     <div class="staff-row">
       <span class="sn">${esc(m.name||'')}</span>
-      <span class="role-tag ${m.role==='admin'?'admin':'staff'}">${m.role==='admin'?'관리자':'직원'}</span>
+      <span class="role-tag ${roleCls(m)}">${roleLabel(m)}</span>
       ${m.team?`<span class="team-tag">${esc(m.team)}</span>`:''}
       ${m.email===meEm?`<span class="hint">(나)</span>`:`<span class="tools">
         <button class="btn sm" type="button" onclick="openStaffEdit('${esc(m.email)}')" title="권한·팀 수정"><i data-lucide="pencil"></i></button>
@@ -3173,14 +3180,14 @@ async function bulkAddRun(){
   if(!isAdmin()){alert('관리자만 가능합니다.');return;}
   const lines=document.getElementById('bk_names').value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const common=document.getElementById('bk_pw').value.trim();
-  const role=document.getElementById('bk_role').value==='admin'?'admin':'staff';
+  const rv=document.getElementById('bk_role').value;const role=rv==='admin'?'admin':rv==='chief'?'chief':'staff';
   if(!lines.length){alert('이름을 한 줄에 하나씩 입력하세요.');return;}
   const rows=[];const bad=[];
   for(const l of lines){const p=l.split(/[,\t]/).map(x=>x.trim());const name=p[0]||'';const pw=p[1]||common;const team=p[2]||'';
     if(!name)continue;if(!pw){bad.push(name+': 비밀번호 없음');continue;}if(pwTooWeak(pw)){bad.push(name+': '+PW_RULE_MSG);continue;}rows.push({name,pw,team});}
   if(bad.length){alert('다음 줄을 고쳐 주세요:\n'+bad.join('\n'));return;}
   if(!rows.length)return;
-  if(!confirm(`${rows.length}명의 계정을 만듭니다 (권한: ${role==='admin'?'관리자':'직원'}). 이미 있는 이름은 건너뜁니다. 계속할까요?`))return;
+  if(!confirm(`${rows.length}명의 계정을 만듭니다 (권한: ${roleLabel({role})}). 이미 있는 이름은 건너뜁니다. 계속할까요?`))return;
   const made=[],skipped=[],failed=[];
   const sec=firebase.initializeApp(HOST_FIREBASE_CONFIG,'bulkn'+Date.now());
   try{
@@ -4031,7 +4038,7 @@ function audit(action,target){
     const e={id:'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
       ts:Date.now(), ymd:localYMD(now), hm:p2(now.getHours())+':'+p2(now.getMinutes())+':'+p2(now.getSeconds()),
       by:(currentUser&&currentUser.name)||'', byEmail:cloud.email||'',
-      role:(currentUser?(currentUser.super?'최고관리자':currentUser.role==='admin'?'관리자':'직원'):''),
+      role:roleLabel(currentUser),
       action:action||'', target:(target||'').slice(0,200)};
     cloud.auditCol.doc(e.id).set(jclone(e)).catch(err=>console.error('audit',err));
   }catch(err){console.error('audit',err);}
@@ -4893,7 +4900,7 @@ function render(){
   board.querySelectorAll('.col-body[data-room]').forEach(b=>{const t=_scr[b.dataset.room];if(t)b.scrollTop=t;});
   if(_bx)board.scrollLeft=_bx; if(_by)board.scrollTop=_by;
   if(_wy&&Math.abs((window.scrollY||0)-_wy)>2)try{window.scrollTo(window.scrollX||0,_wy);}catch(e){}
-  const sb=document.getElementById("statsBtn");if(sb)sb.style.display=isAdmin()?"":"none";
+  const sb=document.getElementById("statsBtn");if(sb)sb.style.display=canStats()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
   const ob=document.getElementById("offBtn");if(ob)ob.style.display=isAdmin()?"":"none";
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
@@ -6830,7 +6837,7 @@ function toggleStatRoom(room){
     row.insertAdjacentHTML('afterend',statRoomDetailHtml(room,recs,anyPrep));
   }
 }
-function openStats(){if(!isAdmin())return;statsTab='time';statsOpenRoom='';consultRoom='전체';renderStats();document.getElementById("statsModal").classList.add("show");}
+function openStats(){if(!canStats())return;statsTab='time';statsOpenRoom='';consultRoom='전체';renderStats();document.getElementById("statsModal").classList.add("show");}
 function closeStats(){document.getElementById("statsModal").classList.remove("show");}
 function renderStats(){
   const body=document.getElementById("statsBody");if(!body)return;
@@ -6861,6 +6868,7 @@ function renderStats(){
     </div></div><div id="statsContent"></div>`;
     head=document.getElementById('statsHead'); content=document.getElementById('statsContent');
   }
+  {const rb=document.getElementById('statsResetBtn');if(rb)rb.style.display=isAdmin()?'':'none';}   // 초기화는 관리자만(주임은 열람·다운로드)
   document.getElementById('stChipAll').classList.toggle('on',!statsDate);
   document.getElementById('stChipToday').classList.toggle('on',statsDate===today);
   {const di=document.getElementById('stDateInp');if(di.value!==(statsDate||''))di.value=statsDate||'';}
@@ -6890,7 +6898,7 @@ function downloadCSV(filename,rows){
   const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
 function exportStats(){
-  if(!isAdmin())return;
+  if(!canStats())return;
   let rows=statsRecs();
   if(statsOpenRoom)rows=rows.filter(r=>r.room===statsOpenRoom);
   rows=rows.slice().sort((a,b)=>new Date(a.leftAt||a.enteredAt||a.at)-new Date(b.leftAt||b.enteredAt||b.at));
