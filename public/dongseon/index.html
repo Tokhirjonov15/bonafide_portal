@@ -5892,7 +5892,7 @@ function cardEl(p){
       <button class="st-btn wait ${st==='대기'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','대기')">대기</button>
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
-      <button class="st-btn ${last?'exit':'fin'}" title="${last?'종결 후 보드에서 내보내기':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?'내보내기':'종결'}</button>
+      <button class="st-btn ${last?(needsPay(p)?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
@@ -6179,7 +6179,21 @@ function toggleParking(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     applyParking(p,val);saveLocal();render();cloudPatientTxn(pid,d=>applyParking(d,val));
     try{audit('주차권지급',p.name+(p.mrn?' ('+p.mrn+')':''));}catch(e){}
   }}
+/* 마지막 방이라도 수납 창구가 아니면 내보내기 대신 수납으로 보낸다 — 계산 없이 나갈 수 없음 (2026-09-21 결정).
+   수납 창구는 현재 방의 층(4층 방 → 4층 수납, 그 외 → 3층 수납)으로 고르고, 없으면 아무 수납 창구. 3층·4층 수납에 있는 카드만 [내보내기]로 종결 */
+function payRoomFor(room){
+  const g=meta(room).group||'';const f4=g==='4층'||/4층/.test(room||'');
+  const want=f4?'4층 수납':'3층 수납';
+  if(ROOMS.includes(want))return want;
+  return ROOMS.find(r=>isPayRoom(r)&&r!==room)||'';}
+function needsPay(p){const r=curRoom(p);return !isPayRoom(r)&&!!payRoomFor(r);}
+function exitLabel(p){return needsPay(p)?'수납으로':'내보내기';}
+function exitTitle(p){return needsPay(p)?'현재 방 종결 후 수납 창구로 이동 (계산 후 수납에서 내보내기)':'종결 후 보드에서 내보내기';}
 function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  if(needsPay(p)){const pay=payRoomFor(curRoom(p));const from=curRoom(p);moveTo(pid,pay);
+    try{audit('수납 이동',p.name+(p.mrn?' ('+p.mrn+')':'')+' '+from+' → '+pay);}catch(e){}
+    try{toast(dispName(p.name)+' 님 → '+pay+' (계산 후 내보내기)');}catch(e){}
+    return;}
   if((p.extraFee||0)>0&&!p.paid){alert(`아직 수납이 완료되지 않았습니다.\n미수납 ${won(p.extraFee)}원 — 카드의 '수납완료' 버튼을 눌러 주세요.`);return;}
   if(parkingDue(p)&&!p.parking){   // 주차권 안내 대상인데 아직 미지급 → 내보내기 전 확인
     if(!confirm(`🅿️ '${p.name}'님은 주차권 안내 대상입니다 (접수 후 ${parkingThresholdText()} 경과).\n아직 '지급완료' 표시가 없습니다.\n\n주차권을 지급하셨다면 [확인] — 지급완료 기록 후 내보내기를 계속합니다.\n아직이라면 [취소]를 누르고 주차권을 챙겨주세요.`))return;
@@ -7737,7 +7751,7 @@ function renderEditStatus(){
         ${(!_rm.noProg&&_rm.prep)?`<button type="button" class="st-btn prep ${st==='준비'?'on':''}" onclick="editSetStatus('준비')">준비</button>`:''}
         ${!_rm.noProg?`<button type="button" class="st-btn prog ${st==='진행'?'on':''}" onclick="editSetStatus('진행')">진행</button>`:''}
         <span class="es-sep"></span>
-        <button type="button" class="st-btn ${last?'exit':'fin'}" title="${last?'종결 후 보드에서 내보내기':'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?'내보내기':'종결'} <span class="es-kbd">${MOD}→</span></button>
+        <button type="button" class="st-btn ${last?(needsPay(p)?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?exitLabel(p):'종결'} <span class="es-kbd">${MOD}→</span></button>
       </div>
       ${routeTimelineHtml(p)}
     </div>`;
@@ -7763,7 +7777,9 @@ function editNextStep(){
   }
   const fp=data.find(x=>x.id===pid); if(!fp){closeModal();return;}
   const isLast=fp.step>=fp.route.length-1;
-  if(isLast){
+  if(isLast&&needsPay(fp)){
+    finishPatient(pid);   // 수납 창구로 이동 (내보내기 아님)
+  } else if(isLast){
     finishPatient(pid);
     if(data.find(x=>x.id===pid)){ renderEditStatus(); renderModalRail(); return; }   // 내보내기 취소/미수납 → 그대로
   } else {
