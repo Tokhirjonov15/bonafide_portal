@@ -1023,7 +1023,13 @@ const b64u = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).repl
 async function saAccessToken(env) {
   if (saCache.tok && Date.now() < saCache.exp - 60000) return saCache.tok;
   if (!env.FIREBASE_SA) throw new Error("서버에 FIREBASE_SA(서비스 계정 키)가 등록되지 않았습니다. Cloudflare → Worker → Settings → Variables and Secrets 에 추가하세요.");
-  let sa; try { sa = JSON.parse(env.FIREBASE_SA); } catch (e) { throw new Error("FIREBASE_SA 가 올바른 JSON 이 아닙니다."); }
+  /* 값은 JSON 원문 또는 그 base64(한 줄) — 대시보드에 붙여넣다 줄바꿈·따옴표가 섞여도 최대한 살린다 */
+  let raw = String(env.FIREBASE_SA).replace(/^\uFEFF/, "").trim();
+  if (/^["'][\s\S]*["']$/.test(raw) && !raw.startsWith("{")) raw = raw.slice(1, -1);
+  let sa = null;
+  try { sa = JSON.parse(raw); } catch (e) {}
+  if (!sa) { try { sa = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw.replace(/\s+/g, "")), (c) => c.charCodeAt(0)))); } catch (e) {} }
+  if (!sa || !sa.private_key || !sa.client_email) throw new Error(`FIREBASE_SA 가 올바른 JSON 이 아닙니다 (길이 ${raw.length}, 시작 문자 '${raw.slice(0, 1)}'). 서비스 계정 키 파일 내용 전체({ 부터 } 까지) 또는 그 base64 를 넣으세요.`);
   const pem = String(sa.private_key || "").replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
   const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
   const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
