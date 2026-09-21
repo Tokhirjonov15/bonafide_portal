@@ -167,12 +167,20 @@ service cloud.firestore {
       allow create, update: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
       allow delete: if request.auth != null;
     }
+    // 계정 명단(acl/main: members·adminEmails·superEmails): 읽기는 로그인한 직원, 쓰기는 관리자·최고관리자만.
+    // 직원이 스스로 관리자로 올리거나 다른 계정을 지우는 것을 막는다 (2026-09-21 — 그 전엔 누구나 쓸 수 있었음)
+    match /acl/{doc} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && (request.auth.token.email in resource.data.adminEmails
+            || request.auth.token.email in resource.data.superEmails);
+    }
     // 그 외(환자·설정 등): 로그인한 직원만.
-    // ※ 여기서 봇 컬렉션을 반드시 제외해야 한다 — Firestore 는 겹치는 match 중 하나라도 허용하면 허용이므로,
-    //    /{document=**} 로 두면 위의 bitbot/sheetbot 제한이 모두 무력화된다(2026-09-14 확인).
+    // ※ 여기서 봇 컬렉션과 acl 을 반드시 제외해야 한다 — Firestore 는 겹치는 match 중 하나라도 허용하면 허용이므로,
+    //    /{document=**} 로 두면 위의 bitbot/sheetbot/관리자 제한이 모두 무력화된다(2026-09-14 확인).
     match /{collection}/{document=**} {
       allow read, write: if request.auth != null
-        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings','bitResv']);
+        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings','bitResv','acl']);
     }
   }
 }
