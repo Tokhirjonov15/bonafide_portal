@@ -530,7 +530,7 @@
   .desig-btn{margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--sub);border-radius:7px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0}
   .desig-btn.on{background:#f5b301;border-color:#f5b301;color:#3a2e00}
   .card.designated{box-shadow:inset 4px 0 0 #f5b301}
-  /* 비트 수납완료 — 카드는 3층 수납에 남고 초록 테두리·배지. 직원이 확인 후 [내보내기] */
+  /* 비트 수납완료 — 카드는 수납대기에 남고 초록 테두리·배지. 직원이 계산 확인 후 [수납완료] → [내보내기] */
   .card.bitpaid{background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.6);box-shadow:inset 0 0 0 2px rgba(34,197,94,.35),var(--shadow)}
   .card.bitpaid.designated{box-shadow:inset 4px 0 0 #f5b301,inset 0 0 0 2px rgba(34,197,94,.35),var(--shadow)}
   .bitpaid-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--t-green);background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.45);border-radius:6px;padding:1px 6px;white-space:nowrap}
@@ -574,7 +574,7 @@
   .proc-mat .pm-print:hover{color:var(--text)}
   .rx-btn{display:inline-flex;align-items:center;gap:4px;margin:7px 0 0;border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:4px 11px;font-size:12px;font-weight:700;cursor:pointer}
   .rx-btn:hover{color:var(--text);border-color:#6366f1}
-  .rx-sum{margin:7px 0 0;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.35);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:var(--t-indigosoft);line-height:1.4;cursor:pointer}
+  .rx-sum{margin:7px 12px 0; background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.35);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:var(--t-indigosoft);line-height:1.4;cursor:pointer}
   .rx-sum b{color:var(--t-indigosoft)}
   html[data-theme="light"] .rx-sum{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.25);color:#4338ca}
   html[data-theme="light"] .rx-sum b{color:#3730a3}
@@ -595,7 +595,7 @@
 .card-doc{margin:3px 0 1px;font-size:12px;color:var(--sub);font-weight:600;display:flex;align-items:center;gap:3px}
 .card-doc .doc-sel{background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:2px 5px;font-size:12px;font-weight:700;max-width:120px}
 .card-doc .doc-set{color:var(--muted);cursor:pointer;text-decoration:underline dotted}
-.queue-info{display:inline-flex;align-items:center;gap:6px;margin:6px 0 2px;padding:3px 10px;font-size:11.5px;color:var(--sub);font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:999px;white-space:nowrap;line-height:1.6}
+.queue-info{display:inline-flex;align-items:center;gap:6px;margin:6px 12px 2px;padding:3px 10px;font-size:11.5px;color:var(--sub);font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:999px;white-space:nowrap;line-height:1.6}
 .queue-info b{color:var(--text);font-weight:800}
 html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgba(180,120,0,.18)}
 .rmsms{flex:1 1 100%;display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-top:6px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
@@ -759,7 +759,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
   .sd-btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.sd-btns .btn{font-size:16px;padding:10px 18px}
   .slip-empty{padding:24px;color:var(--muted);font-size:15px}
-  .slip-sum{margin:7px 0 0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:#047857;line-height:1.4;cursor:pointer}
+  .slip-sum{margin:7px 12px 0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:#047857;line-height:1.4;cursor:pointer}
   .slip-sum .warn{color:var(--orange)}
   .sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
   .sd-badge{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:700}
@@ -1028,6 +1028,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   body.compact .total{padding-top:2px}
   body.compact .route{padding:4px 11px}
   body.compact .status-row{padding:0 11px 8px}
+  body.compact .card .ins-tag,body.compact .card .silbi-tag,body.compact .card .treat-count,
+  body.compact .card .prog-log,body.compact .card .memo-today,body.compact .card .rx-sum,
+  body.compact .card .slip-sum,body.compact .card .queue-info{margin-left:11px;margin-right:11px}
   body.compact .col-body{gap:7px}
   .st-btn{flex:1;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:6px;font-size:12px;font-weight:700;cursor:pointer}
   .st-btn:hover{background:var(--panel2)}
@@ -1926,14 +1929,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 /* ───── 기본값 / 저장 ───── */
 /* 방 목록 (2026-09 지점 확정) — 3층 + 4층, 수납은 공용(그룹 없음 → 모든 층 탭에 표시) */
 const DEFAULT_ROOMS = [
-  "3층 대기실","x-ray실","CT실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실","3층 수납",
-  "4층 대기실","기본물리치료","SASO","충격파","신장분사","자동차도수","4층 진료실","4층 수납"
+  "3층 대기실","x-ray실","CT실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실",
+  "4층 대기실","기본물리치료","SASO","충격파","신장분사","자동차도수","4층 진료실",
+  "수납대기","수납완료"
 ];
 const DEFAULT_ROOM_GROUPS = {
   "3층 대기실":"3층","x-ray실":"3층","CT실":"3층","진료실1":"3층","진료 상담":"3층",
-  "C-Arm":"3층","Sono":"3층","근전도검사":"3층","물리치료":"3층","처치실":"3층","3층 수납":"3층",
+  "C-Arm":"3층","Sono":"3층","근전도검사":"3층","물리치료":"3층","처치실":"3층",
   "4층 대기실":"4층","기본물리치료":"4층","SASO":"4층","충격파":"4층",
-  "신장분사":"4층","자동차도수":"4층","4층 진료실":"4층","4층 수납":"4층"
+  "신장분사":"4층","자동차도수":"4층","4층 진료실":"4층"
+  /* 수납대기·수납완료 는 그룹 없음 → 3층·4층 탭에 똑같이 보인다 */
 };
 /* 거울 표시 규칙: 실제 위치(from)의 환자를 to 방에도 함께 표시
    when 조건이 있으면 그 조건일 때만 (없는 방 이름은 그냥 무시 → 이름 변경에도 안전) */
@@ -1948,12 +1953,18 @@ const MIRROR_RULES = [
 ];
 function mirroredHere(p, room){
   const cr=curRoom(p);
-  if(isPayRoom(room)&&isPayRoom(cr)&&cr!==room)return true;   // 수납 창구끼리는 항상 서로 거울
+  if(isFloorPayRoom(room)&&isFloorPayRoom(cr)&&cr!==room)return true;   // 옛 층별 수납 창구(3층 수납·4층 수납)끼리만 서로 거울
   return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
 }
-/* 수납 창구는 서로 동격: 이름에 '수납'이 들어간 방들끼리는 어느 층에서 결제해도 되므로
-   서로 거울로 보이고, 각 창구에서 [여기 도착]으로 실제 위치를 확정한다 */
 const isPayRoom = r => /수납/.test(r||'');
+/* ── 수납 2단계 (2026-09-22 결정) ──
+   비트에서 '수납완료'가 와도 카드는 <수납대기>로 보내고, 직원이 실제로 계산을 받은 뒤 <수납완료>로 옮긴다.
+   두 방은 그룹(층)을 비워 두어 3층·4층 탭에 똑같이 보인다. 방 이름을 바꾸면 아래 두 상수만 고치면 된다.
+   옛 이름(3층 수납·4층 수납)만 있는 동안에도 그대로 동작하도록 폴백을 둔다. */
+const PAY_WAIT_NAME='수납대기', PAY_DONE_NAME='수납완료';
+const isFloorPayRoom = r => isPayRoom(r) && /층/.test(r||'');   // 옛 층별 창구
+function payWaitRoom(){return ROOMS.includes(PAY_WAIT_NAME)?PAY_WAIT_NAME:(ROOMS.find(r=>isPayRoom(r)&&r!==PAY_DONE_NAME)||'');}
+function payDoneRoom(){return ROOMS.includes(PAY_DONE_NAME)?PAY_DONE_NAME:'';}
 /* 방 담당자(주/부) UI 표시 여부 — 혼동을 줄이기 위해 임시 숨김(기능 코드는 유지, true로 바꾸면 복원) */
 const SHOW_OWNERS = false;
 /* ── 직원 휴무·근무시간: {이름:{weekly:[요일 0~6], dates:['YYYY-MM-DD'],
@@ -1986,10 +1997,10 @@ function offLabel(name){const d=new Date();const ymd=localYMD(d);if(isOffOn(name
   if(hm<h.from)return "출근 예정";if(hm>=h.to)return "퇴근";return "";}
 /* ── 데모 기본값: 지점 확정 전 임시 자료 — '(예시)' 표시된 항목은 관리자 메뉴에서 수정/삭제 ── */
 const DEFAULT_ROUTINES = ()=>[
-  {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','3층 수납']},
-  {id:'rt_re',    name:'재진 (예시)',     rooms:['3층 대기실','진료실1','물리치료','3층 수납']},
-  {id:'rt_inj',   name:'주사 환자 (예시)', rooms:['3층 대기실','진료실1','C-Arm','처치실','3층 수납']},
-  {id:'rt_4f',    name:'4층 물리치료 (예시)', rooms:['4층 대기실','기본물리치료','충격파','4층 수납']}
+  {id:'rt_first', name:'초진 (예시)',     rooms:['3층 대기실','x-ray실','진료실1','진료 상담','수납대기']},
+  {id:'rt_re',    name:'재진 (예시)',     rooms:['3층 대기실','진료실1','물리치료','수납대기']},
+  {id:'rt_inj',   name:'주사 환자 (예시)', rooms:['3층 대기실','진료실1','C-Arm','처치실','수납대기']},
+  {id:'rt_4f',    name:'4층 물리치료 (예시)', rooms:['4층 대기실','기본물리치료','충격파','수납대기']}
 ];
 const DEFAULT_PROC_SET   = ['C-Arm 주사 (예시)','신경차단술 (예시)','도수치료 (예시)'];
 const DEFAULT_PREP_ITEMS = ['바늘 (예시)','조영제 (예시)','시린지 (예시)'];
@@ -2775,11 +2786,11 @@ function bitApplyCancels(){
     }
   });
 }
-/* 비트 수납완료(캐스트 Command 8) → 환자가 계산하고 나갔으므로 카드를 3층 수납 경유로 자동 내보내기(내원 기록 보관).
+/* 비트 수납완료(캐스트 Command 8) → 환자가 계산하고 나갔으므로 카드를 수납대기 경유로 자동 내보내기(내원 기록 보관).
    · 수납대기(7)는 아직 원내(추가 치료가 생길 수 있음) → 카드를 그대로 둔다.
    · 여러 화면이 열려 있어도 한 번만 처리하도록 문서 status 를 '수납완료'로 트랜잭션 선점.
    · 동선관리 쪽 추가 비용이 미수납이면 자동으로 내보내지 않고 알림만. */
-/* 비트 수납완료(8) → 카드를 내보내지 않는다. 3층 수납(수납 방)으로 옮기고 카드에 '비트 수납완료' 표시(초록)만 남긴다 (2026-09-16).
+/* 비트 수납완료(8) → 카드를 내보내지 않는다. 수납대기로 옮기고 카드에 '비트 수납완료' 표시(초록)만 남긴다 (2026-09-16).
    직원이 비트에서 수납완료를 잘못 누르는 일이 있어, 종결은 사람이 카드의 [내보내기]로 확인한다.
    그 뒤 수납취소(10)·수납대기(7)가 오면 표시를 지운다(bitApplyRestore). 이미 내보낸 카드의 복귀는 그대로 bitApplyRestore 가 한다 */
 function bitApplyReceiveEnd(){
@@ -2796,14 +2807,14 @@ function bitApplyReceiveEnd(){
       .then(won=>{
         if(!won)return;
         const q=data.find(x=>x.id===p.id);if(!q||q.discharged)return;
-        const pay=ROOMS.includes('3층 수납')?'3층 수납':(ROOMS.find(isPayRoom)||'');
+        const pay=payWaitRoom();   // 비트가 수납완료라 해도 카드는 '수납대기'로 — 직원이 확인 후 수납완료로 옮긴다
         if(pay&&!isPayRoom(curRoom(q))){completeVisit(q,'이동');const i=q.route.indexOf(pay);if(i>=0)q.step=i;else{q.route.push(pay);q.step=q.route.length-1;}enterCurrentRoom(q);try{enteredRoom(q,pay);}catch(e){}}
         const wasPaid=!!q.bitPaid;   // 늦게 연 화면이 이미 '수납완료' 카드로 만든 경우 — 표시만 유지하고 알림은 다시 띄우지 않음
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
         save(q);render();
         if(!wasPaid)audit('비트 수납완료(수납 이동)',q.name+(q.mrn?' ('+q.mrn+')':'')+' → '+curRoom(q));
         if((q.extraFee||0)>0&&!q.paid){try{notify('💳','비트 수납완료',esc(dispName(q.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(q.extraFee)+'원이 미수납입니다.');}catch(e){}}
-        if(!wasPaid){try{toast('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (확인 후 내보내기)');}catch(e){}}
+        if(!wasPaid){try{toast('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (계산 확인 후 [수납완료])');}catch(e){}}
       })
       .catch(e=>console.warn('bit receiveEnd',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
   });
@@ -2917,11 +2928,11 @@ function bitCreatePatient(r,name,reg){
   let reserveAt='';if(r.nextResv&&r.nextResv.slice(0,10)===today){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)reserveAt=m[1];}
   const doctor=(r.doctor||'').trim();if(doctor&&!DOCTORS.includes(doctor)){DOCTORS.push(doctor);saveDoctorsCfg();}
   let ins='';{const si=document.getElementById('f_ins');if(si&&r.ins&&[...si.options].some(o=>o.value===r.ins))ins=r.ins;}
-  /* 첫 방: 보통 3층 대기실. 마지막 캐스트가 수납대기(7)면 환자가 이미 수납 창구에 있으므로 3층 수납에서 시작 (뒤늦게 살아난 문서·화면이 꺼져 있던 경우) */
+  /* 첫 방: 보통 3층 대기실. 마지막 캐스트가 수납대기(7)면 환자가 이미 수납 창구에 있으므로 수납대기에서 시작 (뒤늦게 살아난 문서·화면이 꺼져 있던 경우) */
   let first=ROOMS.includes('3층 대기실')?'3층 대기실':(ROOMS[0]||'3층 대기실');
-  const payRoom=ROOMS.includes('3층 수납')?'3층 수납':(ROOMS.find(isPayRoom)||'');
+  const payRoom=payWaitRoom();
   if(r.command===7&&payRoom)first=payRoom;
-  /* 수납완료(8, DB 에이전트 문서)인데 카드가 없음 = 화면을 늦게 열어 그 사이에 왔다 간 환자 → 3층 수납에 '비트 수납완료' 표시로 만들고 직원이 [내보내기]로 정리. #번호·통계에 포함된다 */
+  /* 수납완료(8, DB 에이전트 문서)인데 카드가 없음 = 화면을 늦게 열어 그 사이에 왔다 간 환자 → 수납대기에 '비트 수납완료' 표시로 만들고 직원이 [내보내기]로 정리. #번호·통계에 포함된다 */
   const alreadyPaid=(r.command===8&&r.src==='db');
   if(alreadyPaid&&payRoom)first=payRoom;
   const _now=new Date().toISOString();
@@ -2942,7 +2953,7 @@ function bitCreatePatient(r,name,reg){
   try{enteredRoom(p,curRoom(p));}catch(e){}
   if(r.nameDup)p.bit.nameDup=true;
   if(alreadyPaid){p.bitPaid={at:r.eventAt||r.lastSeenAt||_now,ocm:String(r.ocmNum||''),pc:r.pc||''};save(p);}
-  try{toast(alreadyPaid?('비트 수납완료(이미 다녀감) → '+dispName(name)+' 님 '+first+' (확인 후 내보내기)'):('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':(r.nameDup?' (동명이인 — 차트번호를 직접 확인해 주세요)':' (차트번호는 잠시 후 자동 보충)'))));}catch(e){}
+  try{toast(alreadyPaid?('비트 수납완료(이미 다녀감) → '+dispName(name)+' 님 '+first+' (계산 확인 후 [수납완료])'):('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':(r.nameDup?' (동명이인 — 차트번호를 직접 확인해 주세요)':' (차트번호는 잠시 후 자동 보충)'))));}catch(e){}
   if(r.nameDup){try{notify('⚠️','동명이인 확인',esc(dispName(name))+' 님 — 비트에 같은 이름의 환자가 여럿 조회되어 차트번호를 붙이지 않았습니다. [수정]에서 차트번호를 확인해 주세요.');}catch(e){}}
   return p;
 }
@@ -6033,8 +6044,8 @@ function cardEl(p){
       ${p.seq?`<span class="seqno" title="오늘 등록 순서">#${p.seq}</span>`:''}
       <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
-      ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 확인 후 [내보내기]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
-      <span class="card-doc card-doc-top">${doctorChipHtml(p)}</span>
+      ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
+      ${isConsultRoom(_cur)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p)}</span>`}
       ${nurseChipHtml(p)?`<span class="card-doc card-doc-top">${nurseChipHtml(p)}</span>`:''}
       ${radChipHtml(p)?`<span class="card-doc card-doc-top">${radChipHtml(p)}</span>`:''}
     </div>
@@ -6058,7 +6069,7 @@ function cardEl(p){
       <button class="st-btn wait ${st==='대기'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','대기')">대기</button>
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
-      <button class="st-btn ${last?(needsPay(p)?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
+      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
@@ -6279,10 +6290,13 @@ function autoAssignRoomStaff(p){
   if(xs.length===1){p.roomRads=p.roomRads||{};if(!p.roomRads[r])p.roomRads[r]=xs[0];}
 }
 function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;if(p.status===st){return;}
-  /* 진료의 미지정이면 진행 시작 불가 — 누가 치료하는지 반드시 지정 후 진행 */
-  if(st==='진행'&&!docFor(p,curRoom(p))){
-    alert(`'${p.name}'님의 진료의가 지정되지 않았습니다.\n카드의 🩺 선택에서 이 방(${curRoom(p)||''})의 진료의를 먼저 지정한 뒤 [진행]을 눌러주세요.`);
-    return;}
+  /* 진료의 미지정이면 진행 시작 불가 — 누가 치료하는지 반드시 지정 후 진행.
+     상담 방은 카드 위 선택칸을 없앴으므로(2026-09-22) 아래 '담당자'로 판단한다 */
+  {const _r=curRoom(p), _cs=isConsultRoom(_r);
+   const has=_cs?!!consultWho(p,_r,(p.consults&&p.consults[_r])||null):!!docFor(p,_r);
+   if(st==='진행'&&!has){
+     alert(`'${p.name}'님의 ${_cs?'담당자':'진료의'}가 지정되지 않았습니다.\n${_cs?"카드 아래 '담당자'를":'카드의 🩺 선택에서 이 방('+(_r||'')+')의 진료의를'} 먼저 지정한 뒤 [진행]을 눌러주세요.`);
+     return;}}
   applyStatus(p,st);saveLocal();render();
   cloudPatientTxn(pid,d=>applyStatus(d,st));}
 function moveToEnd(pid){const p=data.find(x=>x.id===pid);if(!p)return;p.ord=nextOrd();save(p);render();}
@@ -6346,20 +6360,28 @@ function toggleParking(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     applyParking(p,val);saveLocal();render();cloudPatientTxn(pid,d=>applyParking(d,val));
     try{audit('주차권지급',p.name+(p.mrn?' ('+p.mrn+')':''));}catch(e){}
   }}
-/* 마지막 방이라도 수납 창구가 아니면 내보내기 대신 수납으로 보낸다 — 계산 없이 나갈 수 없음 (2026-09-21 결정).
-   수납 창구는 현재 방의 층(4층 방 → 4층 수납, 그 외 → 3층 수납)으로 고르고, 없으면 아무 수납 창구. 3층·4층 수납에 있는 카드만 [내보내기]로 종결 */
+/* 마지막 방이라도 수납을 거치지 않으면 내보내기 대신 수납으로 보낸다 — 계산 없이 나갈 수 없음 (2026-09-21 결정).
+   2026-09-22부터 수납은 2단계: 치료 끝 → [수납으로] → 수납대기 → (계산 확인) → [수납완료] → 수납완료 → [내보내기].
+   수납대기/수납완료 가 없는 옛 설정에서는 예전처럼 층별 창구(3층 수납·4층 수납)로 보낸다 */
 function payRoomFor(room){
+  if(ROOMS.includes(PAY_WAIT_NAME))return room===PAY_WAIT_NAME?'':PAY_WAIT_NAME;
   const g=meta(room).group||'';const f4=g==='4층'||/4층/.test(room||'');
   const want=f4?'4층 수납':'3층 수납';
   if(ROOMS.includes(want))return want;
   return ROOMS.find(r=>isPayRoom(r)&&r!==room)||'';}
 function needsPay(p){const r=curRoom(p);return !isPayRoom(r)&&!!payRoomFor(r);}
-function exitLabel(p){return needsPay(p)?'수납으로':'내보내기';}
-function exitTitle(p){return needsPay(p)?'현재 방 종결 후 수납 창구로 이동 (계산 후 수납에서 내보내기)':'종결 후 보드에서 내보내기';}
+function needsPayDone(p){const r=curRoom(p);return isPayRoom(r)&&r!==PAY_DONE_NAME&&!!payDoneRoom();}   // 수납대기에 있으면 다음은 수납완료
+function exitLabel(p){return needsPay(p)?'수납으로':(needsPayDone(p)?'수납완료':'내보내기');}
+function exitTitle(p){return needsPay(p)?'현재 방 종결 후 수납 창구로 이동 (계산 후 내보내기)'
+  :(needsPayDone(p)?'계산이 끝났으면 수납완료로 이동 (그 뒤 내보내기)':'종결 후 보드에서 내보내기');}
 function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if(needsPay(p)){const pay=payRoomFor(curRoom(p));const from=curRoom(p);moveTo(pid,pay);
     try{audit('수납 이동',p.name+(p.mrn?' ('+p.mrn+')':'')+' '+from+' → '+pay);}catch(e){}
-    try{toast(dispName(p.name)+' 님 → '+pay+' (계산 후 내보내기)');}catch(e){}
+    try{toast(dispName(p.name)+' 님 → '+pay+' (계산 후 수납완료)');}catch(e){}
+    return;}
+  if(needsPayDone(p)){const done=payDoneRoom();const from=curRoom(p);moveTo(pid,done);
+    try{audit('수납완료 이동',p.name+(p.mrn?' ('+p.mrn+')':'')+' '+from+' → '+done);}catch(e){}
+    try{toast(dispName(p.name)+' 님 → '+done);}catch(e){}
     return;}
   if((p.extraFee||0)>0&&!p.paid){alert(`아직 수납이 완료되지 않았습니다.\n미수납 ${won(p.extraFee)}원 — 카드의 '수납완료' 버튼을 눌러 주세요.`);return;}
   if(parkingDue(p)&&!p.parking){   // 주차권 안내 대상인데 아직 미지급 → 내보내기 전 확인
@@ -7986,7 +8008,7 @@ function renderEditStatus(){
         ${(!_rm.noProg&&_rm.prep)?`<button type="button" class="st-btn prep ${st==='준비'?'on':''}" onclick="editSetStatus('준비')">준비</button>`:''}
         ${!_rm.noProg?`<button type="button" class="st-btn prog ${st==='진행'?'on':''}" onclick="editSetStatus('진행')">진행</button>`:''}
         <span class="es-sep"></span>
-        <button type="button" class="st-btn ${last?(needsPay(p)?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?exitLabel(p):'종결'} <span class="es-kbd">${MOD}→</span></button>
+        <button type="button" class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?exitLabel(p):'종결'} <span class="es-kbd">${MOD}→</span></button>
       </div>
     </div>${routeTimelineHtml(p)}`;
 }
@@ -8687,17 +8709,17 @@ boot();
   .mirror-tag{font-size:10.5px;font-weight:700;color:var(--t-sky);background:var(--blue-bg);border-radius:6px;padding:2px 8px;margin-bottom:6px;display:inline-block}
   .mirror-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 치료 횟수 표시 (충격파·신장분사·자동차도수) */
-  .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 0 2px;display:inline-block}
+  .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
   .treat-count b{font-size:12.5px}
   .treat-count svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 공공보험 표시 */
-  .ins-tag{font-size:11.5px;font-weight:700;color:var(--t-amber);background:var(--amber-bg);border-radius:6px;padding:3px 9px;margin:4px 4px 2px 0;display:inline-block}
+  .ins-tag{font-size:11.5px;font-weight:700;color:var(--t-amber);background:var(--amber-bg);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
   .ins-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 실비보험 표시 */
-  .silbi-tag{font-size:11.5px;font-weight:700;color:var(--t-green);background:var(--green-bg);border-radius:6px;padding:3px 9px;margin:4px 0 2px;display:inline-block}
+  .silbi-tag{font-size:11.5px;font-weight:700;color:var(--t-green);background:var(--green-bg);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
   .silbi-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 진행(치료) 기록 — 이전 방에서 누가 치료했는지 */
-  .prog-log{font-size:11px;color:var(--muted);background:var(--chip);border-radius:6px;padding:3px 9px;margin:3px 0 2px;display:inline-block}
+  .prog-log{font-size:11px;color:var(--muted);background:var(--chip);border-radius:6px;padding:3px 9px;margin:3px 12px 2px;display:inline-block}
   .prog-log b{color:var(--teal)}
   .prog-log svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 카드 접기 화살표 */
@@ -8730,7 +8752,7 @@ boot();
   .offhour.editing{outline:2px solid var(--blue);outline-offset:1px}
   .offhour.today{text-decoration:underline}
   /* 비트플러스 연동 */
-  .memo-today{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;color:#7c4a03;background:#fff7e6;border:1px solid #fde4b5;border-radius:7px;padding:3px 7px;margin-top:4px;line-height:1.3;word-break:break-all}
+  .memo-today{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;color:#7c4a03;background:#fff7e6;border:1px solid #fde4b5;border-radius:7px;padding:3px 7px;margin:4px 12px 0;line-height:1.3;word-break:break-all}
   .memo-today svg.lucide{width:12px;height:12px;flex-shrink:0;margin-top:1px}
   .bit-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;color:var(--sub);flex-wrap:wrap;max-width:100%;min-width:0}   /* PC 20대: 넘치면 줄바꿈(페이지 폭을 넓히지 않음) */
   .bit-pill .bp{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;background:var(--panel2)}
