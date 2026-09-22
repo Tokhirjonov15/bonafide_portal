@@ -2374,7 +2374,9 @@ function bitResvOpenCard(){
     if(!p){alert('카드를 만들지 못했습니다(이미 보드에 있거나 명단과 이름이 다를 수 있음).');return;}
     try{audit('환자추가(예약에서 접수)',name+(mrn?' ('+mrn+')':'')+' · '+D+' '+(x.t||''));}catch(e){}
   }
-  closeBitResvDetail();try{openEdit(p.id);}catch(e){console.warn(e);}
+  closeBitResvDetail();
+  if(bitResvOpen||BITRESV_MODE)openEditFromResv(p.id,'진료 예약');   // 진료 예약 화면(300) 위에 바로 띄움 — 화면을 닫지 않아도 카드가 보인다 (2026-09-22)
+  else{try{openEdit(p.id);}catch(e){console.warn(e);}}
 }
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
 let RESV_MODE=false, resvOpen=false;   // ?resv 전용 창(직원용 예약관리 모니터) / 화면 상태
@@ -6258,6 +6260,7 @@ function completeVisit(p,finalStatus){
     durationMs:waitMs+prepMs+activeMs,waitMs,prepMs,activeMs,proc:procSel(p,room).join(', '),finalStatus:finalStatus||'종결'};
   if(!p.visits)p.visits=[];p.visits.push(rec);STATS.push(rec);if(STATS.length>5000)STATS=STATS.slice(-5000);
   cloudAddStat(rec);
+  if(!p.autoClosed)roomNotify(p,room,'out',{waitMs,prepMs,activeMs,finalStatus:rec.finalStatus});   // 자동 마감(밤 정리)은 알리지 않음
 }
 function enterCurrentRoom(p){p.status='대기';const now=new Date().toISOString();p.enteredAt=now;p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
@@ -6506,7 +6509,17 @@ function renderSoundRooms(){
   const mine=mySoundRooms();
   box.innerHTML=ROOMS.map(r=>`<label class="owner-chk" style="border:1px solid var(--line);border-radius:8px;padding:5px 10px;${mine.includes(r)?'background:var(--blue-bg);border-color:var(--blue)':''}"><input type="checkbox" ${mine.includes(r)?'checked':''} onchange="toggleSoundRoom('${esc(r)}',this.checked)"> ${esc(r)}</label>`).join('');
 }
+/* 방 도착·퇴실 텔레그램 알림 (2026-09-22): 카드를 옮긴(행동한) 화면만 서버(/api/dongseon/notify)에 알린다 → 여러 화면이 열려 있어도 중복 없음.
+   서버는 그 방을 구독한 텔레그램(봇에게 "/room 방이름")에만 보낸다. 구독자가 없으면 아무 일도 없음. 실패해도 보드 동작에는 영향 없음 */
+function roomNotify(p,room,kind,extra){
+  try{
+    if(!p||!room||!(window.firebase&&firebase.auth)||!firebase.auth().currentUser)return;
+    const body=Object.assign({room,kind,seq:p.seq||null,name:p.name||'',mrn:p.mrn||''},extra||{});
+    firebase.auth().currentUser.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});
+  }catch(e){}
+}
 function enteredRoom(p,room){if(ROOM_ARR_PREV)ROOM_ARR_PREV[p.id]=room;   // 내가 직접 옮긴 카드는 스냅샷 비교에서 다시 울리지 않게(여기서 한 번만)
+  roomNotify(p,room,'in');
   if(shouldPopup(room)||mySoundRooms().includes(room))   // 담당자이거나, 내가 소리 낼 방으로 고른 방이면 — 직접 옮겼어도 한 번 울린다
   notify("🔔",`${esc(room)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,room);
   pushAlarm(ownerEmails(room),`🔔 ${room} 도착`,`${p.name||''}${p.mrn?' · '+p.mrn:''} 환자 도착`);   // 담당자 폰으로 도착 푸시(이동시킨 본인 제외)
@@ -8031,10 +8044,10 @@ try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의
 function showModal(){document.getElementById("modal").classList.add("show")}
 function closeModal(){const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
 /* 4층 비급여 치료 표의 칸(빈 곳)에서 환자 정보 창 열기: 화면(z-index 300) 위에 뜨도록 하고, 머리에 '← 4층 비급여 치료' 단추 — 닫으면 표가 그대로 남아 있다 (2026-09-20) */
-window.openEditFromResv=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+window.openEditFromResv=function(pid,backLabel){const p=data.find(x=>x.id===pid);if(!p)return;
   try{openEdit(pid);}catch(e){console.warn(e);return;}
   const m=document.getElementById('modal');if(m)m.classList.add('over-resv');
-  const bb=document.getElementById('modalBack');if(bb)bb.style.display='';
+  const bb=document.getElementById('modalBack');if(bb){bb.style.display='';const lbl=backLabel||'4층 비급여 치료';bb.innerHTML=`<i data-lucide="arrow-left"></i> ${esc(lbl)}`;bb.title=lbl+' 화면으로 돌아가기';}
   if(window.lucide)try{lucide.createIcons();}catch(e){}};
 // 저장 단축키 — 환자 정보 창이 열려 있을 때 ⌘S / Ctrl+S / ⌘Enter 로 저장
 document.addEventListener('keydown',function(e){

@@ -56,6 +56,14 @@ const DDL = [
      name   TEXT DEFAULT '',
      active INTEGER DEFAULT 1
    )`,
+  /* 동선관리 방 도착·퇴실 텔레그램 구독 (/room 방이름) — 한 채팅이 여러 방을 구독할 수 있음 */
+  `CREATE TABLE IF NOT EXISTS room_subs (
+     chat_id TEXT NOT NULL,
+     room    TEXT NOT NULL,
+     name    TEXT DEFAULT '',
+     added   INTEGER,
+     PRIMARY KEY (chat_id, room)
+   )`,
   /* 이메일로 전송된 발주서 PDF 보관함 (bytes = base64) */
   `CREATE TABLE IF NOT EXISTS order_pdfs (
      id     TEXT PRIMARY KEY,
@@ -405,11 +413,85 @@ async function pollTelegram(env) {
     } else if (text.startsWith("/stop")) {
       await env.DB.prepare(`DELETE FROM tg_subs WHERE chat_id=?`).bind(chatId).run();
       await tgSendTo(env, chatId, "구독이 해지되었습니다. 다시 받으려면 /start");
+    } else if (/^\/room\b/i.test(text)) {
+      await handleRoomCmd(env, chatId, name, text);
     }
   }
   await env.DB.prepare(
     `INSERT OR REPLACE INTO meta (key, value) VALUES ('tg_offset', ?)`
   ).bind(String(maxId)).run();
+}
+
+/* ── 동선관리 방 도착·퇴실 알림 (2026-09-22) ──
+   구독: 봇에게 "/room x-ray실 [코드]" (TELEGRAM_JOIN 이 설정돼 있고 처음 오는 채팅이면 코드 필요) · "/room" 현재 구독 · "/room off [방이름]" 해지
+   전송: 동선관리 화면이 카드를 옮길 때 POST /api/dongseon/notify {room, kind:'in'|'out', seq, name, mrn, waitMs, activeMs}
+         → 그 방을 구독한 채팅에 "🟢 x-ray실 도착 · #12 홍길동 (14764)" / "⚪ x-ray실 나감 · … · 대기 5분 · 진행 3분" */
+const normRoom = (r) => String(r || "").trim().toLowerCase().replace(/\s+/g, "");
+async function handleRoomCmd(env, chatId, name, text) {
+  const parts = text.trim().split(/\s+/).slice(1);
+  const known = await env.DB.prepare(`SELECT 1 AS x FROM room_subs WHERE chat_id=? LIMIT 1`).bind(chatId).first()
+             || await env.DB.prepare(`SELECT 1 AS x FROM tg_subs WHERE chat_id=? LIMIT 1`).bind(chatId).first();
+  if (!parts.length) {
+    const rows = (await env.DB.prepare(`SELECT room FROM room_subs WHERE chat_id=? ORDER BY room`).bind(chatId).all()).results || [];
+    await tgSendTo(env, chatId, (rows.length ? "구독 중인 방: " + rows.map((r) => r.room).join(", ") : "구독 중인 방이 없습니다.") +
+      "\n\n사용법\n/room x-ray실  → 그 방의 도착·퇴실 알림 구독\n/room off x-ray실  → 그 방 해지\n/room off  → 모두 해지");
+    return;
+  }
+  if (/^(off|stop|해지)$/i.test(parts[0])) {
+    const room = parts.slice(1).join(" ");
+    if (room) { await env.DB.prepare(`DELETE FROM room_subs WHERE chat_id=? AND room=?`).bind(chatId, room).run(); await tgSendTo(env, chatId, `'${room}' 알림을 해지했습니다.`); }
+    else { await env.DB.prepare(`DELETE FROM room_subs WHERE chat_id=?`).bind(chatId).run(); await tgSendTo(env, chatId, "방 알림을 모두 해지했습니다."); }
+    return;
+  }
+  /* 마지막 토큰이 가입 코드인지 확인 (코드가 필요한 경우) */
+  let words = parts.slice();
+  if (env.TELEGRAM_JOIN && !known) {
+    if (words.length < 2 || words[words.length - 1] !== env.TELEGRAM_JOIN) {
+      await tgSendTo(env, chatId, "처음 구독할 때는 코드를 함께 보내주세요.\n예) /room x-ray실 코드\n(코드는 관리자에게 문의)");
+      return;
+    }
+    words = words.slice(0, -1);
+  } else if (env.TELEGRAM_JOIN && words.length >= 2 && words[words.length - 1] === env.TELEGRAM_JOIN) {
+    words = words.slice(0, -1);
+  }
+  const room = words.join(" ").trim();
+  if (!room) { await tgSendTo(env, chatId, "방 이름을 적어주세요. 예) /room x-ray실"); return; }
+  await env.DB.prepare(`INSERT OR REPLACE INTO room_subs (chat_id, room, name, added) VALUES (?,?,?,?)`).bind(chatId, room, name, Date.now()).run();
+  await tgSendTo(env, chatId, `✅ '${room}' 도착·퇴실 알림을 구독했습니다.\n동선관리에서 환자 카드가 이 방에 들어오거나 나갈 때 알려 드립니다.\n해지: /room off ${room}`);
+}
+async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebase ID 토큰> → 이메일 (Google 이 검증)
+  const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) return "";
+  const r = await fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + FB_API_KEY, { method: "POST",
+    headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken: m[1] }) });
+  const j = await r.json().catch(() => ({}));
+  return (r.ok && j.users && j.users[0] && j.users[0].email) || "";
+}
+function fmtMin(ms) { ms = Math.max(0, ms || 0); if (ms < 60000) return Math.round(ms / 1000) + "초"; const m = Math.round(ms / 60000); return m < 60 ? m + "분" : Math.floor(m / 60) + "시간 " + (m % 60) + "분"; }
+async function dongseonNotify(request, env) {
+  try {
+    if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
+    const b = await request.json().catch(() => ({}));
+    const room = s(b.room), kind = s(b.kind);
+    if (!room || (kind !== "in" && kind !== "out")) return json({ error: "room/kind 필요" }, 400);
+    if (!env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
+    await ensureSchema(env);
+    const subs = ((await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || []).filter((r) => normRoom(r.room) === normRoom(room));
+    if (!subs.length) return json({ ok: true, sent: 0 });
+    const email = await fbEmailFromRequest(request);
+    if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+    const who = (b.seq ? "#" + b.seq + " " : "") + s(b.name) + (s(b.mrn) ? " (" + s(b.mrn) + ")" : "");
+    const d = new Date(Date.now() + 9 * 3600 * 1000);
+    const hm = String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+    const text = kind === "in"
+      ? `🟢 ${room} 도착 · ${who} · ${hm}`
+      : `⚪ ${room} 나감 · ${who} · ${hm}` + ((b.waitMs || b.activeMs) ? ` · 대기 ${fmtMin(b.waitMs)}${b.activeMs ? " · 진행 " + fmtMin(b.activeMs) : ""}` : "") + (s(b.next) ? ` → ${s(b.next)}` : "");
+    let sent = 0;
+    for (const sub of subs) { if (await tgSendTo(env, sub.chat_id, text)) sent++; }
+    return json({ ok: true, sent });
+  } catch (err) {
+    return json({ error: err && err.message ? err.message : String(err) }, 500);
+  }
 }
 
 async function sendOrders(env) {
@@ -1109,6 +1191,9 @@ export default {
     }
     if (url.pathname.startsWith("/api/dongseon/admin/")) {   // 동선관리 계정 관리 — Firebase 로그인으로 따로 인증
       return dongseonApi(request, env, url);
+    }
+    if (url.pathname === "/api/dongseon/notify") {   // 동선관리 방 도착·퇴실 → 텔레그램(/room 구독자)
+      return dongseonNotify(request, env);
     }
 
     try {
