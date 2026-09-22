@@ -621,7 +621,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .rt-row.cur .rt-room{color:var(--blue)}
   .rt-row .rt-t{white-space:nowrap}
   .rt-row .rt-d{white-space:nowrap;color:var(--t-amber);font-weight:600}
-  #modal .rt-tl{border-top-color:var(--line);margin-top:2px}
+  /* 환자 정보 창 머리글: 상태 알약 옆에 방별 시간표를 한 줄로(알약 안에 넣으면 버튼이 밀려 잘림) */
+  #editStatusRow{flex-wrap:wrap;gap:6px 14px}
+  #editStatusRow .rt-tl{width:auto;flex:1 1 auto;flex-direction:row;flex-wrap:wrap;gap:2px 14px;margin:0;padding:0 4px;border:0;align-items:center;min-width:0}
+  #editStatusRow .rt-row{gap:1px 6px}
   /* 카드 전달사항 */
   .notes{padding:2px 12px 8px;display:flex;flex-direction:column;gap:5px}
   .note{font-size:12px;background:var(--note-bg);border:1px solid var(--note-line);border-radius:8px;padding:6px 8px;display:flex;flex-direction:column;gap:2px}
@@ -7915,8 +7918,7 @@ function renderEditStatus(){
         <span class="es-sep"></span>
         <button type="button" class="st-btn ${last?(needsPay(p)?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?exitLabel(p):'종결'} <span class="es-kbd">${MOD}→</span></button>
       </div>
-      ${routeTimelineHtml(p)}
-    </div>`;
+    </div>${routeTimelineHtml(p)}`;
 }
 /* 단계 이동 단축키용: 대기→[준비]→진행→종결 순서로 이동 */
 function editStageList(p){const m=meta(curRoom(p));const st=['대기'];if(!m.noProg&&m.prep)st.push('준비');if(!m.noProg)st.push('진행');return st;}
