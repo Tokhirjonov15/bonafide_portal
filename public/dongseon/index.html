@@ -4649,12 +4649,17 @@ function setProc(pid,room,proc){const p=data.find(x=>x.id===pid);if(!p)return;if
 function setConsultResult(pid,room,result){const p=data.find(x=>x.id===pid);if(!p)return;const c=getConsult(p,room);
   const target=(c.result===result?"":result);const f={result:target,by:currentUser?currentUser.name:"",at:new Date().toISOString()};
   if(target==='시행')f.reason="";   // 시행이면 사유 불필요 — 이전에 고른 사유는 지움
-  if(!c.who){const w=docFor(p,room);if(w)f.who=w;}   // 상담자 미지정이면 이 방 담당 진료의를 자동 기록
+  if(!c.who){const w=consultWho(p,room,c);if(w)f.who=w;}   // 미지정이면 화면에 보이던 담당자를 그대로 기록
   if(!c.doc){const d=consultDoc(p,room,c);if(d)f.doc=d;}   // 담당의(진료실) 자동 기록
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));}
-/* 상담자: 그 상담 방에 배정된 진료의 목록에서 선택 — 기본값은 이 방의 담당 진료의(docFor). 시행/기타 어느 쪽이든 기록 */
-function consultWho(p,room,c){return (c&&c.who)||docFor(p,room)||"";}
+/* 담당자: 그 상담 방에 배정된 사람 중에서 선택. 기본값은 ① 이미 고른 사람 ② 카드에서 이 방에 지정한 사람 ③ 방 목록(칸 맨 위에 보이는 순서)의 첫 사람.
+   비트에서 온 원장님(p.doctor)은 쓰지 않는다 — 원장님은 위쪽 '원장님' 칸이 따로 담당 (2026-09-22) */
+function consultDefaultWho(room){const l=(meta(room).doctors||[]).filter(n=>!isOffToday(n));return l[0]||"";}
+function consultWho(p,room,c){
+  if(c&&c.who)return c.who;
+  const rd=(p&&p.roomDocs&&p.roomDocs[room])||"";
+  return rd||consultDefaultWho(room);}
 /* 담당의(진료실 1~4 진료의) — 상담에는 상담자 외에 담당 진료의도 함께 기록 */
 function consultDocPool(){const out=[];ROOMS.forEach(r=>{if(/^진료실\s*\d/.test(r))(meta(r).doctors||[]).forEach(n=>{if(n&&!isOffToday(n)&&!out.includes(n))out.push(n);});});return out;}
 function consultDoc(p,room,c){
@@ -4678,7 +4683,7 @@ function consultWhoHtml(p,room,c,stop){
     <select class="cs-reason cs-doc-sel"${ev} onchange="setConsultDoc('${p.id}','${esc(room)}',this.value)">
       <option value="">(미지정)</option>${dopts.map(n=>`<option value="${esc(n)}" ${n===dcur?'selected':''}>${esc(n)}</option>`).join("")}
     </select></div>
-    <div class="cs-who"><span class="hint">담당의</span>
+    <div class="cs-who"><span class="hint">담당자</span>
     <select class="cs-reason cs-who-sel"${ev} onchange="setConsultWho('${p.id}','${esc(room)}',this.value)">
       <option value="">(미지정)</option>${opts.map(n=>`<option value="${esc(n)}" ${n===cur?'selected':''}>${esc(n)}</option>`).join("")}
     </select></div>`;
@@ -6002,7 +6007,7 @@ function cardEl(p){
         <button class="cs-b other ${c.result==='기타'?'on':''}" onclick="event.stopPropagation();setConsultResult('${p.id}','${esc(room)}','기타')">시행 안 함</button>
       </div>
       ${c.result==='기타'?consultReasonHtml(p.id,room,c,true):''}
-      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.doc?`원장님: <b>${esc(c.doc)}</b> · `:''}${c.who?`담당의: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
+      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.doc?`원장님: <b>${esc(c.doc)}</b> · `:''}${c.who?`담당자: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
     </div>`;
   }
   // 처치는 '준비 지시'(전역 처치 세트)로 통합됨 — 방별 처치 칩 제거
@@ -7493,7 +7498,7 @@ function renderHistory(){
         Object.keys(byRoom).forEach(room=>{
           inner+=`<div class="hv-sec" style="color:var(--teal)"><i data-lucide="message-circle"></i> ${esc(room)} <span class="hint" style="font-weight:400">${byRoom[room].length}건</span></div>`;
           byRoom[room].forEach(c=>{const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
-            inner+=`<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당의 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
+            inner+=`<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당자 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
         });
       }
       box.innerHTML=head+inner;
@@ -7546,7 +7551,7 @@ function consultLogHtml(){
   let curDate="";
   list.forEach(c=>{const ds=dateLabel(c.at);if(ds!==curDate){curDate=ds;html+=`<div class="cl-date">${ds}</div>`;}
     const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
-    html+=`<div class="cl-rec"><span class="cl-time">${hhmm(c.at)||'-'}</span>${consultRoom==='전체'?`<span class="cl-room">${esc(c.room)}</span>`:''}<span class="cl-name">${esc(c.name)}${c.mrn?`<span class="hint" style="font-weight:400"> ${esc(c.mrn)}</span>`:''}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당의 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
+    html+=`<div class="cl-rec"><span class="cl-time">${hhmm(c.at)||'-'}</span>${consultRoom==='전체'?`<span class="cl-room">${esc(c.room)}</span>`:''}<span class="cl-name">${esc(c.name)}${c.mrn?`<span class="hint" style="font-weight:400"> ${esc(c.mrn)}</span>`:''}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당자 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}${c.live?'<span class="cl-live">진행중</span>':''}</div>`;});
   return html;
 }
 /* 상담 기록 CSV(엑셀) */
@@ -7557,7 +7562,7 @@ function exportConsults(){
   if(consultRoom!=='전체')all=all.filter(c=>c.room===consultRoom);
   all=all.slice().sort((a,b)=>(new Date(a.at)-new Date(b.at))||0);
   if(!all.length){alert("내보낼 상담 기록이 없습니다.");return;}
-  const header=["날짜","시각","방","환자명","병록번호","결과","사유","원장님","담당의","작성자","상태"];
+  const header=["날짜","시각","방","환자명","병록번호","결과","사유","원장님","담당자","작성자","상태"];
   const out=[header];
   all.forEach(c=>{const d=new Date(c.at);
     out.push([isNaN(d)?"":localYMD(d), isNaN(d)?"":String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),
@@ -7815,7 +7820,7 @@ function renderPastConsults(){
   const list=patientPastConsults(p);
   if(!list.length){box.innerHTML=`<div class="route-empty" style="padding:2px">과거 상담 기록이 없습니다.</div>`;return;}
   box.innerHTML=list.map(c=>{const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
-    return `<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span><span class="cl-room">${esc(c.room)}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당의 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}</div>`;}).join("");
+    return `<div class="cl-rec"><span class="cl-time">${c.at?ymd(c.at):'-'}</span><span class="cl-room">${esc(c.room)}</span>${badge}<span class="cl-reason">${esc(c.reason||'')}</span>${c.doc?`<span class="hint" style="color:var(--t-indigosoft);font-weight:700">원장님 ${esc(c.doc)}</span>`:''}${c.who?`<span class="hint" style="color:var(--teal);font-weight:700">담당자 ${esc(c.who)}</span>`:''}${c.by?`<span class="hint">${esc(c.by)}</span>`:''}</div>`;}).join("");
 }
 
 /* 상담 결과 편집기 (편집 모달 내) */
@@ -7842,7 +7847,7 @@ function renderConsultEditor(){
         <button type="button" class="cs-b other ${c.result==='기타'?'on':''}" onclick="setConsultResult('${p.id}','${esc(room)}','기타')">시행 안 함</button>
       </div>
       ${c.result==='기타'?consultReasonHtml(p.id,room,c,false):''}
-      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.doc?`원장님: <b>${esc(c.doc)}</b> · `:''}${c.who?`담당의: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
+      ${c.by&&(c.result||c.reason)?`<div class="cs-meta">${c.doc?`원장님: <b>${esc(c.doc)}</b> · `:''}${c.who?`담당자: <b>${esc(c.who)}</b> · `:''}기록: ${esc(c.by)} · ${hhmm(c.at)}</div>`:""}
     </div>`;}).join("");
 }
 /* 전달사항 편집기 (편집 모달 내) */
