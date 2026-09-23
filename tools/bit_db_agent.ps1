@@ -34,6 +34,8 @@ param(
   [int]$RecentMin = 30,                     # 시작 스냅샷이라도 이 시간 안에 접수된 환자는 보낸다(아침에 PC 가 켜지기 전 접수된 환자가 빠지지 않도록, 2026-09-17). 0 = 끔
   [int]$ResvDays = 7,                       # 진료 예약(RsvInf)을 오늘부터 며칠치 올릴지 → bitResv/{날짜}. 0 = 예약 연동 끔
   [int]$ResvEvery = 2,                      # 예약은 몇 주기마다 읽을지(2 = 8초). 바뀐 날짜의 문서만 다시 쓴다
+  [int]$RxEvery = 3,                        # 처방(OdrInf)을 몇 주기마다 읽을지(3 = 12초). 0 = 처방 연동 끔. 바뀐 접수건만 다시 쓴다
+  [switch]$RxAlways,                        # 대기(standby)여도 처방 문서는 쓴다 — 담당 PC 가 처방 기능이 없는 옛 버전인 동안
   [switch]$ResvAlways,                      # 대기(standby)여도 예약 문서는 쓴다 — 담당 PC 의 에이전트가 예약 기능이 없는 옛 버전인 동안 임시로(관리 PC 용)
   [switch]$DryRun,                          # Firestore 에 쓰지 않고 로그만
   [switch]$SendExistingOnStart,             # 시작 시 오늘 접수분을 전부 보냄(기본: 스냅샷만 찍고 보내지 않음)
@@ -47,7 +49,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.0'
+$VER = 'db1.1'   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
@@ -418,6 +420,55 @@ function PollResv() {
   }
 }
 
+# ── 처방(OdrInf) → bitRx/{날짜}_ocm{접수번호} (2026-09-23) ──
+#  비트 '처방내역' 창과 같은 자료: 처방코드·처방명칭·총투여량·횟수·일수·단위. 접수번호(OdrOcmNum)로 접수 문서와 이어진다.
+#  오늘 접수분만 RxEvery 주기마다 읽고, 접수건별 해시가 바뀐 건만 문서를 다시 쓴다. 지워진 줄(OdrDelFlg='C')은 빼고 보낸다. 담당(leader)만 쓴다.
+$RX_QUERY = @"
+SELECT RTRIM(o.OdrOcmNum) AS k, RTRIM(o.OdrChtNum) AS mrn, o.OdrSeq AS seq,
+       RTRIM(o.OdrCod) AS cod, RTRIM(o.OdrCodNam) AS nam,
+       o.OdrQty AS qty, o.OdrTms AS tms, o.OdrDay AS dys,
+       RTRIM(o.OdrUntCod) AS unt, RTRIM(u.UidNam) AS dr, RTRIM(o.OdrDtm) AS dtm
+FROM OdrInf o WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OdrDtrCod
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}' AND o.OdrDelFlg <> 'C'
+ORDER BY o.OdrOcmNum, o.OdrSeq
+"@
+$script:RxHash = @{}
+function NumTxt($v) { if ($null -eq $v -or $v -is [DBNull]) { return '' }
+  $d = 0.0; if (-not [double]::TryParse([string]$v, [ref]$d)) { return ([string]$v).Trim() }
+  if ($d -eq [Math]::Floor($d)) { return [string][int]$d }
+  return ($d.ToString('0.####')) }
+function PollRx() {
+  if ($RxEvery -le 0) { return }
+  $ymd = (Get-Date).ToString('yyyyMMdd'); $day = (Get-Date).ToString('yyyy-MM-dd')
+  $rows = SqlRows ($RX_QUERY -f $ymd)
+  $byOcm = @{}
+  foreach ($r in $rows.Rows) {
+    $key = ([string]$r.k -replace '\D', ''); if (-not $key) { continue }
+    if (-not $byOcm.ContainsKey($key)) { $byOcm[$key] = @{ mrn = ([string]$r.mrn).Trim(); items = (New-Object System.Collections.ArrayList) } }
+    $dtm = ([string]$r.dtm).Trim()
+    $it = [ordered]@{ cod = ([string]$r.cod).Trim(); nam = ([string]$r.nam).Trim()
+                      qty = (NumTxt $r.qty); tms = (NumTxt $r.tms); day = (NumTxt $r.dys)
+                      unt = ([string]$r.unt).Trim(); dr = ([string]$r.dr).Trim()
+                      t = $(if ($dtm.Length -ge 12) { $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2) } else { '' }) }
+    [void]$byOcm[$key].items.Add($it)
+  }
+  $sent = 0
+  foreach ($key in ($byOcm.Keys | Sort-Object)) {
+    $v = $byOcm[$key]
+    $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)" }) -join "`n")
+    if ($script:RxHash[$key] -eq $h) { continue }
+    if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }
+    if (-not $script:IsLeader -and -not $RxAlways) { $script:RxHash[$key] = $h; continue }   # 대기 중엔 해시만 따라감
+    try {
+      FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; mrn = $v.mrn; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$v.items.Count; items = @($v.items) }
+      $script:RxHash[$key] = $h; $sent++
+    } catch { Log "처방 문서 전송 오류 ${key}: $($_.Exception.Message)" }
+  }
+  if ($sent) { Log "처방 문서: $sent 건 갱신 (오늘 접수 $($byOcm.Count)건 / 줄 $($rows.Rows.Count)개)" }
+}
+
 # ── 메인 ──
 Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
 AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
@@ -434,6 +485,7 @@ while ($true) {
     $n = Poll $st $first
     $script:LastDbOk = Get-Date
     if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
+    if ($RxEvery -gt 0 -and ($RxEvery -le 1 -or ($cyc % $RxEvery) -eq 0)) { try { PollRx } catch { Log "처방 조회 오류: $($_.Exception.Message)" } }
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st
     if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }

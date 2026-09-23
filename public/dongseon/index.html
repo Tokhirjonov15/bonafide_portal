@@ -1821,6 +1821,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         </div>
         <div class="hint" id="nb_list"></div>
       </div>
+      <!-- 비트 처방내역(오늘) — DB 에이전트가 OdrInf 에서 읽어 온 그대로 (2026-09-23) -->
+      <div class="rx-box" id="rxBox" style="display:none"></div>
       <!-- 치료 회차(충격파·신장분사 / 자동차도수) — 자동 계산 + 직원이 고친 값·수정자 (2026-09-23) -->
       <div class="treat-box" id="treatBox" style="display:none"></div>
       </div><!-- /pastSection -->
@@ -2275,6 +2277,12 @@ let BIT_NOTES=[];                                        // 오늘 진료실 처
 let BIT_LOOKUP=[];                                       // 오늘 접수 창 조회 기록(bitLookup) — 차트번호 없는 캐스트 문서를 이름으로 보완
 /* ── 비트 진료 예약(bitResv) — DB 에이전트가 RsvInf 를 8초마다 읽어 바뀐 날짜만 다시 쓴다(접수 PC 가 비트에서 시각을 옮기면 몇 초 안에 반영) ──
    BIT_RESV[날짜] = {date, updatedAt, count, items:[{k,t,room,dr,mrn,name,birth,sex,div,sts,ostt,acp,memo,by,naver}]}, BIT_RESV_SUM = {days:{날짜:{n,canc,arrived,naver}}} */
+let BIT_RX={}, BIT_RX_MRN={};   // 비트 처방내역(오늘) — 접수번호별 / 병록번호별 (2026-09-23)
+/* 이 카드의 처방: 병록번호 우선, 없으면 비트 접수번호로 찾는다 */
+function bitRxFor(p){ if(!p)return null;
+  const mrn=String(p.mrn||'').trim(); if(mrn&&BIT_RX_MRN[mrn])return BIT_RX_MRN[mrn];
+  const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,''); if(ocm&&BIT_RX[ocm])return BIT_RX[ocm];
+  return null; }
 let BIT_RESV={}, BIT_RESV_SUM={}, BIT_RESV_DATE='';
 const SHOW_RESV=true;   // 4층 비급여 치료(시트 예약·통계·다음 예약) 표시 여부 — 2026-09-21 회의로 잠시 숨겼다가 2026-09-23 다시 켬. false 로 바꾸면 버튼·다음 예약 블록이 숨겨진다
 let BITRESV_MODE=false, bitResvOpen=false, bitResvDate=null;   // ?bitresv 전용 창 / 진료 예약 화면 상태 / 보는 날짜(null=오늘)
@@ -2410,7 +2418,7 @@ const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
 function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
-function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
+function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
 /* ── 감시 PC 하트비트 읽기 ── 실시간(onSnapshot)으로 들으면 "하트비트 1건 = 듣는 화면 수만큼 읽기"라 PC 24대 × 5분 × 화면 10개 = 하루 7만 회에 달했다(2026-09-14·15 무료 한도 초과).
    그래서 주기적으로 한 번씩만 읽는다: v3.4 부터 모든 PC 가 bitStatus/_all 한 문서에 모아 쓰므로 5분마다 그 1건만, 아직 v3.3 이하(PC 별 문서)인 PC 는 60분마다 컬렉션을 한 번 읽어 합친다(최근 lastSeen 우선).
    pill 을 누르면 즉시 새로고침. 화면 역할이 staff 일 때만 */
@@ -2454,7 +2462,17 @@ function subscribeBitIntake(){
       else if(SLIP_MODE)renderSlipScreen();
     },err=>console.warn('bitLookup',err));
   }
-  if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 카드 요약·슬립 화면
+  if((role==='staff'||role==='slip')&&cloud.rxCol){   // 비트 처방내역(오늘) — 카드 요약·환자 정보 창 표 (2026-09-23)
+    cloud.unsubRx=cloud.rxCol.where('date','==',today).onSnapshot(s=>{
+      BIT_RX={};BIT_RX_MRN={};
+      s.docs.forEach(d=>{const v=d.data()||{};const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
+        const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||''};
+        if(ocm)BIT_RX[ocm]=rec; if(mrn)BIT_RX_MRN[mrn]=rec;});
+      try{render();}catch(e){}
+      if(editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}
+    },err=>console.warn('bitRx',err));
+  }
+  if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
       BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));onBitNotes();
     },err=>console.warn('bitNote',err));
@@ -4225,6 +4243,7 @@ async function startHosted(){
     try{cloud.storage=firebase.storage();}catch(e){console.warn('storage init',e);}   // 환자 사진
     cloud.auditCol=cloud.ref.collection('audit');
     cloud.aclRef=cloud.db.collection('acl').doc('main');
+    cloud.rxCol=cloud.db.collection('bitRx');              // 비트 처방내역(OdrInf) — DB 에이전트가 접수건별로 쓴다 (id: YYYY-MM-DD_ocm접수번호)
     cloud.intakeCol=cloud.db.collection('bitIntake');      // 비트플러스 접수 PC 감시 스크립트가 쓰는 문서 (id: YYYY-MM-DD_병록번호)
     cloud.bitStatusCol=cloud.db.collection('bitStatus');   // 접수 PC별 하트비트
     cloud.resvCol=cloud.db.collection('bitResv');          // 비트 진료 예약(RsvInf) 하루치 — DB 에이전트(tools/bit_db_agent.ps1)가 바뀔 때마다 쓴다 (id: YYYY-MM-DD, _summary=날짜별 건수)
@@ -6103,6 +6122,10 @@ function cardEl(p){
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
+    ${(function(){const rx=bitRxFor(p);if(!rx||!rx.items.length)return '';
+      const names=rx.items.map(x=>String(x.nam||x.cod||'').trim()).filter(Boolean);
+      const head=names.length?esc(names[0].slice(0,18))+(names.length>1?` 외 ${names.length-1}`:''):'';
+      return `<div class="bitrx-sum" title="비트 처방내역 ${rx.items.length}건 — 누르면 환자 정보에서 전체를 봅니다" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="pill"></i> 처방 <b>${rx.items.length}건</b>${head?' · '+head:''}</div>`;})()}
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
@@ -7425,6 +7448,7 @@ function fillEditChart(p){
    const fcell=fl=>{const auto=cnt[fl],base=Number(fb[fl]||0),shown=Math.max(0,auto+base);return `<b class="vf-edit" data-floor="${fl}" data-auto="${auto}" data-shown="${shown}" title="누르면 ${fl} 내원 횟수 고치기${base?` (자동 ${auto} + 보정 ${base>0?'+':''}${base})`:''}" onclick="editFloorVisits('${esc(p.id)}','${fl}')">${shown}</b>${base?'<span class="vf-adj">✎</span>':''}`;};
    box.insertAdjacentHTML('afterbegin',`<div class="hint visit-sum" style="margin-bottom:6px" title="${b.visits?'전체는 비트 DB 기준(개원 이후, 오늘 포함)':'전체는 동선관리 기록 기준'} · 층별은 동선관리 내원 기록 기준(오늘 포함) — 숫자를 누르면 고칠 수 있음${b.firstVisit?' · 최초 '+esc(String(b.firstVisit).slice(0,10)):''}${b.prevVisit?' · 직전 '+esc(String(b.prevVisit).slice(0,10)):''}"><i data-lucide="history"></i> 내원기록 <b>${n}회차</b> <span class="visit-floors">· 3층 ${fcell('3층')}회 · 4층 ${fcell('4층')}회</span></div>`);}
   try{fillNextBk(p);}catch(e){console.warn('nextBk',e);}   // 다음 예약 블록
+  try{fillRxBox(p);}catch(e){console.warn('rxBox',e);}         // 비트 처방내역 표
   try{fillTreatBox(p);}catch(e){console.warn('treatBox',e);}   // 치료 회차 블록
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
   const sms=[...(Array.isArray(p.smsHistory)?p.smsHistory:[]), ...past.flatMap(v=>Array.isArray(v.smsHistory)?v.smsHistory:[])];
@@ -7644,6 +7668,22 @@ function exportConsults(){
 let routeDragIdx=null;
 function renderRoomButtons(){
   document.getElementById("routeBtns").innerHTML=ROOMS.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
+}
+/* 환자 정보 창의 비트 처방내역 표 — 비트 '처방내역' 창과 같은 항목 (2026-09-23) */
+function fillRxBox(p){
+  const box=document.getElementById('rxBox');if(!box)return;
+  const rx=bitRxFor(p);
+  if(!rx||!rx.items.length){box.innerHTML='';box.style.display='none';return;}
+  const rows=rx.items.map(x=>{
+    const qty=String(x.qty||'').trim(), tms=String(x.tms||'').trim(), day=String(x.day||'').trim(), unt=String(x.unt||'').trim();
+    return `<tr><td class="rx-cod">${esc(String(x.cod||'').trim())}</td><td class="rx-nam">${esc(String(x.nam||'').trim())}</td>
+      <td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td>${esc(tms)}</td><td>${esc(day)}</td></tr>`;}).join('');
+  const dr=(rx.items.find(x=>String(x.dr||'').trim())||{}).dr||'';
+  const t=(rx.items.find(x=>String(x.t||'').trim())||{}).t||'';
+  box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역 <span class="hint">비트 · 오늘 ${rx.items.length}건${dr?' · '+esc(dr):''}${t?' · '+esc(t):''}</span></div>
+    <div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th>처방코드</th><th>처방명칭</th><th>총투여량</th><th>횟수</th><th>일수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  box.style.display='';
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
 /* 환자 정보 창의 치료 회차 블록 — 회차를 직접 고치고, 누가 고쳤는지 함께 보여 준다 (2026-09-23) */
 function treatGroupsOf(){const seen=[],out=[];
@@ -8786,6 +8826,21 @@ boot();
   .mirror-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 치료 횟수 표시 (충격파·신장분사·자동차도수) */
   .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
+  /* 카드의 비트 처방 요약 줄 */
+  .bitrx-sum{margin:7px 12px 0;background:rgba(16,185,129,.10);border:1px solid rgba(16,185,129,.35);border-radius:8px;padding:5px 9px;font-size:11.5px;font-weight:700;color:#047857;line-height:1.35;cursor:pointer;display:flex;align-items:center;gap:5px}
+  .bitrx-sum:hover{background:rgba(16,185,129,.2)}
+  html[data-theme="dark"] .bitrx-sum{color:#5eead4}
+  body.compact .card .bitrx-sum{margin-left:11px;margin-right:11px}
+  /* 환자 정보 창의 처방내역 표 */
+  .rx-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .rx-tblwrap{max-height:320px;overflow:auto;margin-top:6px}
+  .rx-tbl{width:100%;border-collapse:collapse;font-size:12px}
+  .rx-tbl th,.rx-tbl td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
+  .rx-tbl th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-size:11.5px}
+  .rx-tbl th:nth-child(1),.rx-tbl th:nth-child(2),.rx-tbl td.rx-cod,.rx-tbl td.rx-nam{text-align:left}
+  .rx-tbl td.rx-cod{font-weight:700;color:var(--t-indigosoft)}
+  .rx-tbl td.rx-nam{white-space:normal;word-break:break-all}
+  .rx-tbl .rx-unt{margin-left:4px;font-size:10.5px;color:var(--muted);font-weight:600}
   .treat-count.click{cursor:pointer}
   /* 환자 정보 창 치료 회차 블록 */
   .treat-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}

@@ -161,6 +161,12 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.email == '<sheetbot 이메일>';
     }
+    // 비트 처방내역(tools/bit_db_agent.ps1 → bitRx/{날짜}_ocm{접수번호}): 쓰기는 bitbot 만, 직원은 읽기·삭제(오래된 문서 정리)
+    match /bitRx/{doc} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.token.email == 'uc8feac453b1a01cc028b072a@bonafide.app';
+      allow delete: if request.auth != null;
+    }
     // 비트 진료 예약 하루치(tools/bit_db_agent.ps1 → bitResv/{날짜}, _summary): 쓰기는 bitbot 만, 직원은 읽기·삭제(7일 정리)
     match /bitResv/{day} {
       allow read: if request.auth != null;
@@ -180,7 +186,7 @@ service cloud.firestore {
     //    /{document=**} 로 두면 위의 bitbot/sheetbot/관리자 제한이 모두 무력화된다(2026-09-14 확인).
     match /{collection}/{document=**} {
       allow read, write: if request.auth != null
-        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings','bitResv','acl']);
+        && !(collection in ['bitIntake','bitStatus','bitLookup','bitNote','bookings','bitResv','bitRx','acl']);
     }
   }
 }
