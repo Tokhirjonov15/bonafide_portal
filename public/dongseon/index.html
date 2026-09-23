@@ -1223,8 +1223,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     </span>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
-    <!-- 4층 비급여 치료: 2026-09-21 회의 결정으로 당분간 숨김(SHOW_RESV=false). 다시 쓰려면 SHOW_RESV 를 true 로 -->
-    <button class="btn" id="resvBtn" style="display:none" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
+    <!-- 4층 비급여 치료: SHOW_RESV 로 표시 여부를 켜고 끈다 (2026-09-21 숨김 → 2026-09-23 다시 표시) -->
+    <button class="btn" id="resvBtn" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
     <button class="btn" id="bitResvBtn" onclick="openBitResvScreen()" title="비트 진료 예약(1진료실·16진료실) — 오늘부터 7일, 접수 PC 가 비트에서 바꾸면 몇 초 안에 반영 (별도 모니터: 주소 뒤에 ?bitresv)"><i data-lucide="calendar-clock"></i> 진료 예약</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
@@ -2274,7 +2274,7 @@ let BIT_LOOKUP=[];                                       // 오늘 접수 창 �
 /* ── 비트 진료 예약(bitResv) — DB 에이전트가 RsvInf 를 8초마다 읽어 바뀐 날짜만 다시 쓴다(접수 PC 가 비트에서 시각을 옮기면 몇 초 안에 반영) ──
    BIT_RESV[날짜] = {date, updatedAt, count, items:[{k,t,room,dr,mrn,name,birth,sex,div,sts,ostt,acp,memo,by,naver}]}, BIT_RESV_SUM = {days:{날짜:{n,canc,arrived,naver}}} */
 let BIT_RESV={}, BIT_RESV_SUM={}, BIT_RESV_DATE='';
-const SHOW_RESV=false;   // 4층 비급여 치료(시트 예약·통계·다음 예약) 화면 표시 여부 — 2026-09-21 회의로 당분간 숨김. 코드는 그대로, true 로 바꾸면 버튼·다음 예약 블록이 다시 보인다 (?resv 주소는 계속 동작)
+const SHOW_RESV=true;   // 4층 비급여 치료(시트 예약·통계·다음 예약) 표시 여부 — 2026-09-21 회의로 잠시 숨겼다가 2026-09-23 다시 켬. false 로 바꾸면 버튼·다음 예약 블록이 숨겨진다
 let BITRESV_MODE=false, bitResvOpen=false, bitResvDate=null;   // ?bitresv 전용 창 / 진료 예약 화면 상태 / 보는 날짜(null=오늘)
 let BIT_RESV_ITEMS={}, BIT_RESV_SEL=null;   // 접수번호 → 화면에 그린 예약 항목(상세 창용) / 상세 창에 열린 항목
 const BIT_RSV_DIV={R:'',X:'X',Z:'Z'};   // 비트 예약 구분 코드 → 표시(R 은 기본이라 표시 안 함). 뜻이 확인되면 여기만 고친다
@@ -3965,7 +3965,7 @@ function showSelfTestReport(R,pass,fail){
 }
 function boot(){
   try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}
-  if(SHOW_RESV){const rb=document.getElementById('resvBtn');if(rb)rb.style.display='';}   // ?slip[&room=…] → 슬립 화면만(태블릿) / ?resv → 직원용 예약관리만
+  {const rb=document.getElementById('resvBtn');if(rb)rb.style.display=SHOW_RESV?'':'none';}   // 4층 비급여 치료 버튼 표시/숨김
   if(location.hash.indexOf('labelstation')>=0){   // 라벨 전용 창(무음 인쇄) 표지 — EMR 등 다른 용도 사용 방지
     const b=document.createElement('div');
     b.textContent='🖨 라벨 전용 창 — 모든 인쇄가 인쇄창 없이 라벨 프린터로 나갑니다. EMR·업무는 일반 크롬에서 여세요.';
