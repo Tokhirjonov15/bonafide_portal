@@ -6219,10 +6219,8 @@ function cardEl(p,colRoom){
   }
   const _cur=curRoom(p);
   const _rp=(p.rxProc||'').trim(), _ri=(p.rxItems||'').trim();
-  // 준비지시 버튼은 제거 — 내용이 있을 때만 요약을 표시(클릭 시 환자 정보 창), 없으면 아무것도 안 보임
-  const rxHtml=(_rp||_ri)
-    ? `<div class="rx-sum" onclick="event.stopPropagation();openRx('${p.id}')" title="준비 지시 보기/수정"><i data-lucide="syringe"></i> ${_rp?`<b>${esc(_rp)}</b>`:''}${_rp&&_ri?' · ':''}${_ri?esc(_ri):''}</div>`
-    : ``;
+  /* 준비 지시·처방은 카드에 펼치지 않는다 — 카드가 길어져서 (2026-09-23 요청). 내용은 환자 정보 창에서 본다 */
+  const rxHtml=``;   // (옛 요약 줄: 환자 정보 창 → 준비 지시)
   c.innerHTML=`
     <div class="card-top">
       ${p.seq?`<span class="seqno" title="오늘 등록 순서">#${p.seq}</span>`:''}
@@ -6246,12 +6244,7 @@ function cardEl(p,colRoom){
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
-    ${(function(){const rx=bitRxFor(p);if(!rx||!rx.items.length)return '';
-      const names=rx.items.map(x=>String(x.nam||x.cod||'').trim()).filter(Boolean);
-      const head=names.length?esc(names[0].slice(0,18))+(names.length>1?` 외 ${names.length-1}`:''):'';
-      const ts=rx.items.map(z=>String(z.t||'').trim()).filter(Boolean).sort();const last=ts.length?ts[ts.length-1]:'';
-      const fresh=last&&rxMinAgo(last)!==null&&rxMinAgo(last)<=RX_NEW_MIN;
-      return `<div class="bitrx-sum${fresh?' fresh':''}" title="비트 처방내역 ${rx.items.length}건${last?' · 마지막 '+last+(rxAgoText(last)?' ('+rxAgoText(last)+')':''):''} — 누르면 환자 정보에서 전체를 봅니다" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="pill"></i> 처방 <b>${rx.items.length}건</b>${last?' · '+esc(last):''}${fresh?'<span class="rx-tag">새로</span>':''}${head?' · '+head:''}</div>`;})()}
+    ${''/* 비트 처방내역 요약은 카드에서 빼고 환자 정보 창의 '처방내역' 표에서만 본다 (2026-09-23) */}
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
@@ -6264,7 +6257,7 @@ function cardEl(p,colRoom){
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
-      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||String(n.mrn||''))}')" title="진료실 처방 목록 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b>${rp.badges.length?' · <b>'+esc(rp.badges.join(' · '))+'</b>':''} · ${esc(ls[0])}${ls.length>1?' …':''}</div>`;})()}
+      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||String(n.mrn||''))}')" title="진료실 처방 목록 ${ls.length}줄 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b>${rp.badges.length?' · <b>'+esc(rp.badges.join(' · '))+'</b>':''}</div>`;})()}
     ${procHtml}
     ${consultHtml}
     ${notesHtml}
