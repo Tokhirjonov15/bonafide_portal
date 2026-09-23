@@ -2701,7 +2701,55 @@ window.bitIgnore=function(docId){
   audit('비트접수 무시',(r.name||'')+' ('+(r.mrn||'')+')');
 };
 /* 비트 특이사항 = 접수메모(연속) + 원외처방 창의 특이사항 (둘 다 있으면 줄바꿈으로 합침, 같으면 하나만) */
-function bitMemoClean(t){t=(t||'').trim();return /^[\s+\-_.·ㆍ,~*]*$/.test(t)?'':t;}   // 비트의 빈 칸 표시('-', '.', '+') 는 메모가 아님
+/* 비트가 특이사항을 RTF(서식 있는 글)로 저장하는 경우가 있다 — '{\rtf1…}' 원문이 그대로 보이므로 글자만 뽑아낸다 (2026-09-23).
+   · \'b9\'df 같은 16진 바이트는 머리말의 \ansicpgNNN(보통 949=한글)로 디코딩해 이어 붙인다
+   · \par \pard \line 은 줄바꿈, \tab 은 탭, \uNNNN? 은 그 글자
+   · {\fonttbl…} {\colortbl…} {\*\generator…} 같은 꾸밈 그룹은 그룹 깊이를 세어 통째로 건너뛴다 */
+function rtfToText(src){
+  let t=String(src||'');
+  if(!/^\s*\{\s*\\rtf/i.test(t))return t;                       // RTF 가 아니면 원문 그대로
+  const cpm=t.match(/\\ansicpg(\d+)/i), cp=cpm?cpm[1]:'949';
+  const enc=(cp==='949'||cp==='0')?'euc-kr':(cp==='1200'?'utf-16le':('windows-'+cp));
+  const IGNORE=/^(fonttbl|colortbl|stylesheet|listtable|listoverridetable|rsidtbl|info|generator|pntext|themedata|datastore|xmlnstbl)$/i;
+  const out=[]; let bytes=[];
+  const flush=()=>{ if(!bytes.length)return;
+    try{ out.push(new TextDecoder(enc).decode(new Uint8Array(bytes))); }
+    catch(e){ try{ out.push(new TextDecoder('euc-kr').decode(new Uint8Array(bytes))); }catch(_){ } }
+    bytes=[]; };
+  let depth=0, skipAt=-1;                                       // skipAt = 건너뛰기 시작한 그룹 깊이
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(c==='{'){ depth++; continue; }
+    if(c==='}'){ flush(); if(skipAt>=0&&depth<=skipAt)skipAt=-1; depth--; continue; }
+    if(c==='\\'){
+      const nx=t[i+1];
+      if(nx==="'"){ const b=parseInt(t.substr(i+2,2),16); if(!isNaN(b)){ if(skipAt<0)bytes.push(b); i+=3; continue; } }
+      if(nx==='\\'||nx==='{'||nx==='}'){ if(skipAt<0){ flush(); out.push(nx); } i++; continue; }
+      if(nx==='*'){ if(skipAt<0)skipAt=depth; i++; continue; }
+      const m=/^\\([a-zA-Z]+)(-?\d+)? ?/.exec(t.slice(i));
+      if(m){
+        const w=m[1], n=m[2]; let adv=m[0].length-1;
+        if(skipAt<0){
+          if(IGNORE.test(w)) skipAt=depth;
+          else if(w==='par'||w==='pard'||w==='line'){ flush(); out.push('\n'); }
+          else if(w==='tab'){ flush(); out.push('\t'); }
+          else if(w==='u'&&n!=null){ flush(); let v=parseInt(n,10); if(v<0)v+=65536; out.push(String.fromCharCode(v));
+                                     if(t[i+m[0].length]==='?')adv++; }            // \uNNNN? 의 대체 글자는 버림
+          else flush();
+        }
+        i+=adv; continue;
+      }
+      if(skipAt<0)flush();
+      continue;
+    }
+    if(skipAt<0){ flush(); out.push(c); }
+  }
+  flush();
+  return out.join('').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function bitMemoClean(t){   // RTF 면 글자만 뽑고, '+','-','.' 처럼 뜻 없는 줄은 버린다
+  const junk=/^[\s+\-_.·ㆍ,~*]*$/;
+  return rtfToText(t).split(/\r?\n/).filter(x=>!junk.test(x)).join('\n').trim();}
 /* 환자 명단의 특이사항(영구 메모)에 없는 문장만 덧붙인다 — 비트 접수메모(연속)·원외처방 특이사항·외래진료실 특이사항 공용. 바뀌었으면 true */
 function bitMergeMemo(mrn,name,parts){
   mrn=String(mrn||'').trim();parts=(parts||[]).map(bitMemoClean).filter(Boolean);
