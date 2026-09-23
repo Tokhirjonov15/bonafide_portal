@@ -2796,15 +2796,33 @@ function rtfToText(src){
   flush();
   return out.join('').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
 }
+/* 글 안 어디에 있든 '{\rtf … }' 덩어리를 찾아 글자만 남긴다 — 이미 특이사항에 저장돼 버린 옛 메모까지 정리 (2026-09-23) */
+function stripRtfBlocks(src){
+  let t=String(src||''); if(t.indexOf('{')<0)return t;
+  for(let guard=0;guard<20;guard++){
+    const i=t.search(/\{\s*\\rtf/i); if(i<0)break;
+    let d=0,end=-1;
+    for(let j=i;j<t.length;j++){
+      const c=t[j];
+      if(c==='\\'){j++;continue;}                  // \{ \} 같은 이스케이프는 건너뜀
+      if(c==='{')d++;
+      else if(c==='}'){d--;if(d===0){end=j;break;}}
+    }
+    if(end<0){ t=t.slice(0,i)+rtfToText(t.slice(i)); break; }
+    t=t.slice(0,i)+rtfToText(t.slice(i,end+1))+t.slice(end+1);
+  }
+  return t.replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
 function bitMemoClean(t){   // RTF 면 글자만 뽑고, '+','-','.' 처럼 뜻 없는 줄은 버린다
   const junk=/^[\s+\-_.·ㆍ,~*]*$/;
-  return rtfToText(t).split(/\r?\n/).filter(x=>!junk.test(x)).join('\n').trim();}
+  return stripRtfBlocks(t).split(/\r?\n/).filter(x=>!junk.test(x)).join('\n').trim();}
 /* 환자 명단의 특이사항(영구 메모)에 없는 문장만 덧붙인다 — 비트 접수메모(연속)·원외처방 특이사항·외래진료실 특이사항 공용. 바뀌었으면 true */
 function bitMergeMemo(mrn,name,parts){
   mrn=String(mrn||'').trim();parts=(parts||[]).map(bitMemoClean).filter(Boolean);
   if(!mrn||!parts.length||!name)return false;
-  let cm=regMemo(mrn),changed=false;
-  if(/^[\s+\-_.·ㆍ,~*]*$/.test(cm)){cm='';changed=!!regMemo(mrn);}   // 예전에 '-' 만 들어간 특이사항은 비운 뒤 채움
+  const raw=regMemo(mrn);
+  let cm=stripRtfBlocks(raw),changed=(cm!==raw);   // 예전에 저장된 RTF 원문은 여기서 글자만 남기고 정리한다(같은 문장이 두 번 붙는 것도 막음) 2026-09-23
+  if(/^[\s+\-_.·ㆍ,~*]*$/.test(cm)){cm='';changed=!!raw;}   // 예전에 '-' 만 들어간 특이사항은 비운 뒤 채움
   /* 줄 단위로 비교 — '- ' 머리표·앞뒤 공백·끝의 '/' 차이는 같은 문장으로 본다. 접수메모(연속)는 '- ' 로, 원외처방·외래진료실 특이사항은 머리표 없이
      같은 내용을 보내므로 블록 통째로 비교하면 두 번 붙었다(2026-09-17). 이미 두 번 들어간 기존 특이사항도 이때 정리한다 */
   const lines=cm?cm.split(/\r?\n/):[];const keys=new Set();const out=[];
@@ -2812,7 +2830,7 @@ function bitMergeMemo(mrn,name,parts){
   if(out.length!==lines.length)changed=true;
   parts.forEach(t=>t.split(/\r?\n/).forEach(l=>{const k=bitMemoLineKey(l);if(!k||keys.has(k))return;keys.add(k);out.push(l.trim());changed=true;}));
   const next=out.join('\n');
-  if(!changed||next===cm)return false;
+  if(!changed||next===raw)return false;   // 저장돼 있던 원문(raw)과 같을 때만 건너뛴다 — RTF 정리분도 저장되도록
   return setRegMemo(mrn,name,next);
 }
 function bitMemoLineKey(s){return String(s||'').replace(/^[\s\-–—•·ㆍ*+.]+/,'').replace(/[\s\/]+$/,'').replace(/\s+/g,' ').trim();}   // 비교용 정규화(표시 문장은 그대로 둔다)
@@ -8182,7 +8200,7 @@ function renderModalRail(){
 /* 특이사항 입력칸 채우기/미리보기 */
 function fillPmemo(mrn){
   const ta=document.getElementById('f_pmemo'); if(!ta)return;
-  ta.value=regMemo(mrn); updatePmemoPreview();
+  ta.value=stripRtfBlocks(regMemo(mrn)); updatePmemoPreview();   // 옛 메모에 박힌 RTF 원문은 글자만 보여 준다(저장하면 정리됨)
   requestAnimationFrame(()=>cvGrow(ta)); setTimeout(()=>cvGrow(ta),150);   // 내용 길이에 맞게 자동 확장(모달 표시 타이밍 대비 재시도)
   try{renderPhotos(mrn);}catch(e){}   // 환자 사진 갤러리 갱신(add/edit/재진 모두 이 경로)
 }
