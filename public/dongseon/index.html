@@ -1752,12 +1752,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
           <label>처치 (무엇을 할지)</label>
           <div id="rxProcChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0"></div>
           <div id="rxSlipHint" class="hint" style="display:none;margin-bottom:5px"></div>
-          <textarea id="rxProc" rows="2" placeholder="예: C-Arm 주사, 신경차단술" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
+          <textarea id="rxProc" rows="2" oninput="rxGrow(this)" placeholder="예: C-Arm 주사, 신경차단술" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
         </div>
         <div class="fld" style="margin-top:8px">
           <label>준비물</label>
           <div id="rxItemChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0"></div>
-          <textarea id="rxItems" rows="2" placeholder="예: 26G 바늘, 조영제, 리도카인, 드레싱" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
+          <textarea id="rxItems" rows="2" oninput="rxGrow(this)" placeholder="예: 26G 바늘, 조영제, 리도카인, 드레싱" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
         </div>
         <div id="rxPrevList" style="margin-top:8px"></div>
       </div>
@@ -8784,11 +8784,16 @@ function applySlipToRx(p){
 window.pullSlipToRx=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   const slip=slipLinesFor(p);if(!slip)return;
   p.rxProc=slip;p.rxAuto=slip;try{save(p);}catch(e){}
-  const ta=document.getElementById('rxProc');if(ta)ta.value=slip;
+  const ta=document.getElementById('rxProc');if(ta){ta.value=slip;rxGrow(ta);}
   try{fillRxSection(p);}catch(e){}};
+/* 처치·준비물 칸: 내용만큼 높이를 맞춘다(창이 아직 안 보이면 잠시 뒤 다시) — 슬립 처방이 길면 두 줄로는 안 보여서 (2026-09-23) */
+function rxGrow(ta,n){ if(!ta)return;
+  if(!ta.offsetParent){ if((n||0)<12)setTimeout(()=>rxGrow(ta,(n||0)+1),40); return; }
+  ta.style.height='auto'; ta.style.height=Math.min(420,Math.max(46,ta.scrollHeight+2))+'px'; }
 function fillRxSection(p){
   document.getElementById('rxProc').value=applySlipToRx(p);
   document.getElementById('rxItems').value=(p&&p.rxItems)||'';
+  rxGrow(document.getElementById('rxProc'));rxGrow(document.getElementById('rxItems'));
   const pn=[...new Set([...PROC_SET,...Object.keys(PROC_MATERIALS)])], mn=PREP_ITEMS;
   document.getElementById('rxProcChips').innerHTML=pn.length?pn.map(pr=>`<button type="button" class="chipf" onclick="addRx('proc','${esc(pr)}')">+ ${esc(pr)}</button>`).join(''):'<span class="hint">처치 세트가 없습니다(진료실 관리 → 처치 세트에서 등록)</span>';
   document.getElementById('rxItemChips').innerHTML=mn.length?mn.map(m=>`<button type="button" class="chipf" onclick="addRx('items','${esc(m)}')">+ ${esc(m)}</button>`).join(''):'<span class="hint">준비물 세트가 없습니다(진료실 관리 → 준비물 세트에서 등록)</span>';
