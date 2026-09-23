@@ -1995,10 +1995,37 @@ function isHandOffDrop(targetEl,p){   // 같은 환자 카드 위에 놓았는�
   if(draggedPid!==p.id||!targetEl||!draggedCol)return false;
   const to=targetEl.dataset.col||'';
   return !!to&&to!==draggedCol&&isSameSpace(draggedCol,to);}
+/* 어느 방까지 카드를 펼칠지 비트 처방내역으로 고른다 (2026-09-24 요청).
+   처방코드·처방명칭 두 칸을 모두 보고, 아래 낱말이 있으면 그 방으로 간다고 본다.
+     Sono      : sono
+     C-Arm     : c-arm (c arm, carm 도)
+     처치실     : 처치 · 봉합술
+     근전도검사 : 근전도
+   한 환자가 여러 방에 걸릴 수 있다(코드에도 명칭에도 있을 수 있음). 낱말을 더 넣으려면 여기만 고친다.
+   처방이 아직 없으면 펼치지 않는다 — 환자가 실제로 있는 방에만 한 장 보인다. */
+const SPACE_RX_RULES=[
+  {room:'Sono',      re:/sono/i},
+  {room:'C-Arm',     re:/c\s*-?\s*arm/i},
+  {room:'처치실',     re:/처치|봉합술/},
+  {room:'근전도검사',  re:/근전도/}
+];
+function spaceRoomsFromRx(p){
+  const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;
+  if(!rx||!rx.items||!rx.items.length)return null;          // 처방 모름 → 판단 보류
+  const out=[];
+  rx.items.forEach(it=>{
+    const hay=String(it.cod||'')+' '+String(it.nam||'');
+    SPACE_RX_RULES.forEach(r=>{ if(!out.includes(r.room)&&r.re.test(hay))out.push(r.room); });
+  });
+  return out;                                               // [] = 네 방 중 갈 곳 없음
+}
 function mirroredHere(p, room){
   const cr=curRoom(p);
   if(isFloorPayRoom(room)&&isFloorPayRoom(cr)&&cr!==room)return true;   // 옛 층별 수납 창구(3층 수납·4층 수납)끼리만 서로 거울
-  if(isSameSpace(cr,room))return !((p.spaceDone||[]).includes(room));   // 같은 공간 — 이미 인계를 마친 방은 빼고 (2026-09-23)
+  if(isSameSpace(cr,room)){                                            // 같은 공간 — 처방에 해당하는 방에만, 이미 인계한 방은 빼고
+    if((p.spaceDone||[]).includes(room))return false;
+    const need=spaceRoomsFromRx(p);
+    return (need===null)?false:need.includes(room);}   // 처방이 아직 없으면 펼치지 않는다 — 환자가 있는 방에만 한 장 (2026-09-24)
   return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
 }
 const isPayRoom = r => /수납/.test(r||'');
