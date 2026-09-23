@@ -972,7 +972,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* ── 알람 토스트 ── */
   .toasts{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;gap:8px;align-items:center}
   .toast{background:var(--panel);border:1px solid var(--line);border-left:5px solid var(--blue);box-shadow:0 10px 30px rgba(0,0,0,.5);border-radius:12px;padding:12px 16px;min-width:280px;display:flex;align-items:center;gap:12px;animation:pop .2s ease}
-  .toast .ic{font-size:22px}
+  .toast .ic{font-size:22px;display:inline-flex;align-items:center;justify-content:center;color:var(--blue);flex:0 0 auto}
+  .toast .ic svg{width:24px;height:24px;stroke-width:2.1}
+  .toast.warn{border-left-color:var(--orange)}
+  .toast.warn .ic{color:var(--orange)}
   .toast .tt{font-weight:700}
   .toast .ts{font-size:12px;color:var(--muted)}
   .toast button{margin-left:auto;border:0;background:transparent;color:var(--sub);font-size:18px;cursor:pointer}
@@ -2811,7 +2814,7 @@ function bitApplyCancels(){
       cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
       try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
     } else {
-      try{notify('⚠️','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되었습니다. 카드를 확인하세요.');}catch(e){}
+      try{notify('triangle-alert','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되었습니다. 카드를 확인하세요.');}catch(e){}
     }
   });
 }
@@ -2842,7 +2845,7 @@ function bitApplyReceiveEnd(){
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
         save(q);render();
         if(!wasPaid)audit('비트 수납완료(수납 이동)',q.name+(q.mrn?' ('+q.mrn+')':'')+' → '+curRoom(q));
-        if((q.extraFee||0)>0&&!q.paid){try{notify('💳','비트 수납완료',esc(dispName(q.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(q.extraFee)+'원이 미수납입니다.');}catch(e){}}
+        if((q.extraFee||0)>0&&!q.paid){try{notify('wallet','비트 수납완료',esc(dispName(q.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(q.extraFee)+'원이 미수납입니다.');}catch(e){}}
         if(!wasPaid){try{toast('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (계산 확인 후 [수납완료])');}catch(e){}}
       })
       .catch(e=>console.warn('bit receiveEnd',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
@@ -2983,7 +2986,7 @@ function bitCreatePatient(r,name,reg){
   if(r.nameDup)p.bit.nameDup=true;
   if(alreadyPaid){p.bitPaid={at:r.eventAt||r.lastSeenAt||_now,ocm:String(r.ocmNum||''),pc:r.pc||''};save(p);}
   try{toast(alreadyPaid?('비트 수납완료(이미 다녀감) → '+dispName(name)+' 님 '+first+' (계산 확인 후 [수납완료])'):('비트 접수 → '+dispName(name)+' 님 '+first+' 도착'+(mrn?'':(r.nameDup?' (동명이인 — 차트번호를 직접 확인해 주세요)':' (차트번호는 잠시 후 자동 보충)'))));}catch(e){}
-  if(r.nameDup){try{notify('⚠️','동명이인 확인',esc(dispName(name))+' 님 — 비트에 같은 이름의 환자가 여럿 조회되어 차트번호를 붙이지 않았습니다. [수정]에서 차트번호를 확인해 주세요.');}catch(e){}}
+  if(r.nameDup){try{notify('triangle-alert','동명이인 확인',esc(dispName(name))+' 님 — 비트에 같은 이름의 환자가 여럿 조회되어 차트번호를 붙이지 않았습니다. [수정]에서 차트번호를 확인해 주세요.');}catch(e){}}
   return p;
 }
 /* 접수 저장 후 호출 — 가족관계 저장, 비트 부가정보 보관, 대기 문서 처리 표시 */
@@ -4136,7 +4139,7 @@ async function savePushToken(token){
   if(!cloud.active||!cloud.ref)return;
   await cloud.ref.collection('pushTokens').doc(tokenDocId(token)).set({token, email:cloud.email||'', name:(currentUser&&currentUser.name)||'', app:'board', ua:(navigator.userAgent||'').slice(0,160), ts:Date.now()});
 }
-function listenForegroundPush(){ if(!fcmMessaging)return; try{fcmMessaging.onMessage(payload=>{const d=payload.data||{},n=payload.notification||{};notify('🔔',n.title||d.title||'알림',n.body||d.body||'');});}catch(e){} }
+function listenForegroundPush(){ if(!fcmMessaging)return; try{fcmMessaging.onMessage(payload=>{const d=payload.data||{},n=payload.notification||{};notify('bell',n.title||d.title||'알림',n.body||d.body||'');});}catch(e){} }
 function renderPushBox(){
   const box=document.getElementById('pushBox');if(!box)return;
   if(!pushSupported()){box.innerHTML='<p class="hint">이 기기는 푸시 알림을 지원하지 않습니다. (아이폰은 "홈 화면에 추가" 후 사용)</p>';return;}
@@ -4932,7 +4935,7 @@ function render(){
     if(shown===0){body.innerHTML=`<div class="col-empty">대기 환자가 없어요.</div>`;}
     else{
       list.forEach(p=>body.appendChild(cardEl(p)));
-      mirrors.forEach(p=>{const el=cardEl(p);el.classList.add('mirror');
+      mirrors.forEach(p=>{const el=cardEl(p,room);el.classList.add('mirror');
         const same=isSameSpace(curRoom(p),room);
         const tag=document.createElement('div');tag.className='mirror-tag'+(same?' samespace':'');
         tag.innerHTML=same?('<i data-lucide="layers"></i> 같은 공간 · 현재 '+esc(curRoom(p)))
@@ -6048,7 +6051,10 @@ function treatCount(p,room){
   const base=p.mrn?(Number(regTreatBase(p.mrn)[treatKey(room)])||0):0;
   return Math.max(1, treatCountAuto(p,room)+base);
 }
-function cardEl(p){
+/* colRoom = 이 카드를 그리는 칸의 방. 거울 카드(같은 공간·수납)는 그 칸 기준으로 진료의·간호·방사선을 따로 고른다.
+   상태 버튼·동선·치료 회차 등 나머지는 모두 환자의 실제 방(curRoom) 기준 (2026-09-23) */
+function cardEl(p,colRoom){
+  const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
   c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"");c.draggable=true;
   c.dataset.pid=p.id;   // 방별 검색 필터용
@@ -6106,9 +6112,9 @@ function cardEl(p){
       <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
-      ${isConsultRoom(_cur)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p)}</span>`}
-      ${nurseChipHtml(p)?`<span class="card-doc card-doc-top">${nurseChipHtml(p)}</span>`:''}
-      ${radChipHtml(p)?`<span class="card-doc card-doc-top">${radChipHtml(p)}</span>`:''}
+      ${isConsultRoom(_chipRoom)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p,_chipRoom)}</span>`}
+      ${nurseChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${nurseChipHtml(p,_chipRoom)}</span>`:''}
+      ${radChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${radChipHtml(p,_chipRoom)}</span>`:''}
     </div>
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.reserveAt?`<div class="card-time"><span class="t-res"><i data-lucide="calendar"></i> 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
@@ -6597,7 +6603,7 @@ function scanRoomArrivals(){
   if(!prev||!currentUser||SLIP_MODE)return;
   const rooms=mySoundRooms();if(!rooms.length)return;
   Object.keys(cur).forEach(pid=>{const r=cur[pid];if(prev[pid]===r||!rooms.includes(r))return;const p=data.find(x=>x.id===pid);if(!p)return;
-    notify("🔔",`${esc(r)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,r);});
+    notify("bell",`${esc(r)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,r);});
 }
 function renderSoundRooms(){
   const box=document.getElementById('soundRoomsList');if(!box)return;
@@ -6617,7 +6623,7 @@ function roomNotify(p,room,kind,extra){
 function enteredRoom(p,room){if(ROOM_ARR_PREV)ROOM_ARR_PREV[p.id]=room;   // 내가 직접 옮긴 카드는 스냅샷 비교에서 다시 울리지 않게(여기서 한 번만)
   roomNotify(p,room,'in');
   if(shouldPopup(room)||mySoundRooms().includes(room))   // 담당자이거나, 내가 소리 낼 방으로 고른 방이면 — 직접 옮겼어도 한 번 울린다
-  notify("🔔",`${esc(room)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,room);
+  notify("bell",`${esc(room)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,room);
   pushAlarm(ownerEmails(room),`🔔 ${room} 도착`,`${p.name||''}${p.mrn?' · '+p.mrn:''} 환자 도착`);   // 담당자 폰으로 도착 푸시(이동시킨 본인 제외)
 }
 /* 병록번호 바코드(Code 39) — 외부 라이브러리 없이 SVG 직접 생성(오프라인 인쇄 가능) */
@@ -6835,24 +6841,29 @@ function renderPrintRooms(){
 }
 
 /* ───── 알람 ───── */
+/* 토스트 아이콘: 'bell' 처럼 lucide 이름을 주면 아이콘으로, 그 밖의 글자(옛 이모지)는 그대로 (2026-09-23) */
+function notifyIconHtml(icon){const v=String(icon||'').trim();if(!v)return '';
+  return /^[a-z][a-z0-9-]*$/.test(v)?`<i data-lucide="${v}"></i>`:v;}
 function notify(icon,title,sub,room){
   const box=document.getElementById("toasts");
-  const t=document.createElement("div");t.className="toast";
-  t.innerHTML=`<span class="ic">${icon}</span>
+  const t=document.createElement("div");t.className="toast"+(icon==='triangle-alert'?' warn':'');
+  t.innerHTML=`<span class="ic">${notifyIconHtml(icon)}</span>
     <div><div class="tt">${title}</div><div class="ts">${sub}</div></div>
     <button title="닫기">×</button>`;
   t.querySelector("button").onclick=()=>t.remove();
   box.appendChild(t);
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
   setTimeout(()=>t.remove(),7000);
   beep();
   if("Notification"in window&&Notification.permission==="granted")
     try{new Notification(`${title}`,{body:sub.replace(/<[^>]*>/g,"")});}catch(e){}
 }
-function toast(msg){ try{ notify('💬','알림',esc(String(msg||''))); }catch(e){} }  // 간단 알림 래퍼(SMS·EMR연동 등에서 사용)
+function toast(msg){ try{ notify('bell','알림',esc(String(msg||''))); }catch(e){} }  // 간단 알림 래퍼(SMS·EMR연동 등에서 사용)
 function warnToast(msg){   // 비프·자동닫힘 없는 경고 토스트(시계 오차 등)
   const box=document.getElementById("toasts");if(!box)return;
-  const t=document.createElement("div");t.className="toast";t.style.borderLeftColor="var(--orange)";
-  t.innerHTML=`<span class="ic">⚠️</span><div><div class="ts" style="color:var(--text);font-weight:700;font-size:13px">${msg}</div></div><button title="닫기">×</button>`;
+  const t=document.createElement("div");t.className="toast warn";t.style.borderLeftColor="var(--orange)";
+  t.innerHTML=`<span class="ic">${notifyIconHtml('triangle-alert')}</span><div><div class="ts" style="color:var(--text);font-weight:700;font-size:13px">${msg}</div></div><button title="닫기">×</button>`;
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
   t.querySelector("button").onclick=()=>t.remove();
   box.appendChild(t);
 }
@@ -7760,8 +7771,8 @@ function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)e
 /* 방별 담당 진료의: 같은 환자라도 방마다 다른 진료의를 지정할 수 있다.
    지정이 없는 방은 기본 진료의(접수 시 입력한 p.doctor)를 따른다. */
 function docFor(p,room){return (p.roomDocs&&p.roomDocs[room])||p.doctor||'';}
-function doctorChipHtml(p){
-  const _r=curRoom(p)||'';
+function doctorChipHtml(p,room){
+  const _r=room||curRoom(p)||'';
   const cur=docFor(p,_r);
   const roomDocs=(_r?(meta(_r).doctors||[]):[]).filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
   /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
@@ -7799,8 +7810,8 @@ function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;
   audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 /* 방별 담당 간호사 — 방에 간호사 목록이 있을 때만 카드에 선택칸 표시 */
 function nurseFor(p,room){return (p.roomNurses&&p.roomNurses[room])||'';}
-function nurseChipHtml(p){
-  const _r=curRoom(p)||''; if(!_r)return '';
+function nurseChipHtml(p,room){
+  const _r=room||curRoom(p)||''; if(!_r)return '';
   const listAll=meta(_r).nurses||[]; const cur=nurseFor(p,_r);
   if(!listAll.length&&!cur)return '';
   const list=listAll.filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
@@ -7814,8 +7825,8 @@ function changeNurse(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;c
   audit('간호사변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 /* 방별 방사선(영상) 담당 — C-Arm처럼 방사선 인력이 함께 들어가는 방용. 목록이 있는 방에만 선택칸 표시 */
 function radFor(p,room){return (p.roomRads&&p.roomRads[room])||'';}
-function radChipHtml(p){
-  const _r=curRoom(p)||''; if(!_r)return '';
+function radChipHtml(p,room){
+  const _r=room||curRoom(p)||''; if(!_r)return '';
   const listAll=meta(_r).rads||[]; const cur=radFor(p,_r);
   if(!listAll.length&&!cur)return '';
   const list=listAll.filter(n=>!isOffToday(n));
