@@ -1821,6 +1821,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         </div>
         <div class="hint" id="nb_list"></div>
       </div>
+      <!-- 치료 회차(충격파·신장분사 / 자동차도수) — 자동 계산 + 직원이 고친 값·수정자 (2026-09-23) -->
+      <div class="treat-box" id="treatBox" style="display:none"></div>
       </div><!-- /pastSection -->
       </div><!-- /pcol 우(차트 전용) -->
     </div>
@@ -2817,7 +2819,7 @@ function bitApplyReceiveEnd(){
         if(!won)return;
         const q=data.find(x=>x.id===p.id);if(!q||q.discharged)return;
         const pay=payWaitRoom();   // 비트가 수납완료라 해도 카드는 '수납대기'로 — 직원이 확인 후 수납완료로 옮긴다
-        if(pay&&!isPayRoom(curRoom(q))){completeVisit(q,'이동');const i=q.route.indexOf(pay);if(i>=0)q.step=i;else{q.route.push(pay);q.step=q.route.length-1;}enterCurrentRoom(q);try{enteredRoom(q,pay);}catch(e){}}
+        if(pay&&!isPayRoom(curRoom(q))){completeVisit(q,'이동');const i=q.route.indexOf(pay);if(i>=0)q.step=i;else{q.route.push(pay);q.step=q.route.length-1;}enterCurrentRoom(q,'비트');try{enteredRoom(q,pay);}catch(e){}}
         const wasPaid=!!q.bitPaid;   // 늦게 연 화면이 이미 '수납완료' 카드로 만든 경우 — 표시만 유지하고 알림은 다시 띄우지 않음
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
         save(q);render();
@@ -4258,6 +4260,7 @@ async function startHosted(){
           const rec={};if(v.memo)rec.memo=v.memo;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
           if(v.floorBase&&typeof v.floorBase==='object'&&Object.keys(v.floorBase).length)rec.floorBase=v.floorBase;   // 층별 내원 보정
           if(v.treatBase&&typeof v.treatBase==='object'&&Object.keys(v.treatBase).length)rec.treatBase=v.treatBase;   // 치료 회차 보정(충격파·신장분사·자동차도수)
+          if(v.treatBy&&typeof v.treatBy==='object'&&Object.keys(v.treatBy).length)rec.treatBy=v.treatBy;   // 그 보정을 누가 언제 했는지
           if(Number(v.visitAdj))rec.visitAdj=Number(v.visitAdj);   // 내원 횟수 보정(손으로 넣은 예약)
           m[mrn]=rec;});
         PMEMO=m;localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
@@ -4370,7 +4373,7 @@ function pmemoSave(mrn){mrn=(mrn||'').trim();if(!mrn)return;
   if(!has)delete PMEMO[mrn];
   localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));
   if(cloud.active&&cloud.pmemoCol){
-    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),treatBase:(rec.treatBase||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
+    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),treatBase:(rec.treatBase||{}),treatBy:(rec.treatBy||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
     else cloud.pmemoCol.doc(pmKey(mrn)).delete().catch(()=>{});   // 내용이 비면 문서 삭제
   }
 }
@@ -4420,10 +4423,13 @@ window.editFloorVisits=function(pid,floor){const p=data.find(x=>x.id===pid);if(!
   try{fillEditChart(p);}catch(e){console.warn(e);}};
 /* 치료 회차 보정 — 자동 계산이 실제와 다를 때 직원이 회차를 직접 맞춘다. 키는 합산 그룹(충격파+신장분사 / 자동차도수) (2026-09-23) */
 function regTreatBase(mrn){const r=pmRec(mrn);return (r&&r.treatBase&&typeof r.treatBase==='object')?r.treatBase:{};}
-function setRegTreatBase(mrn,name,key,base){mrn=(mrn||'').trim();if(!mrn)return false;
-  const cur=PMEMO[mrn]||{};const tb=Object.assign({},cur.treatBase||{});
-  if(base)tb[key]=base;else delete tb[key];
+function regTreatBy(mrn){const r=pmRec(mrn);return (r&&r.treatBy&&typeof r.treatBy==='object')?r.treatBy:{};}
+function setRegTreatBase(mrn,name,key,base,shownN){mrn=(mrn||'').trim();if(!mrn)return false;
+  const cur=PMEMO[mrn]||{};const tb=Object.assign({},cur.treatBase||{});const by=Object.assign({},cur.treatBy||{});
+  if(base){tb[key]=base;by[key]={by:(currentUser&&currentUser.name)||'',at:new Date().toISOString(),n:(Number(shownN)||0)};}
+  else{delete tb[key];delete by[key];}
   if(Object.keys(tb).length)cur.treatBase=tb;else delete cur.treatBase;
+  if(Object.keys(by).length)cur.treatBy=by;else delete cur.treatBy;
   if(name)cur.name=name;PMEMO[mrn]=cur;pmemoSave(mrn);
   try{audit('치료회차수정',(name||cur.name||'')+' ('+mrn+') '+key+' 보정 '+(base>0?'+':'')+base);}catch(e){}
   return true;}
@@ -4433,9 +4439,9 @@ window.editTreatCount=function(pid,room){const p=data.find(x=>x.id===pid);if(!p)
   const v=prompt(`${dispName(p.name)} 님 ${room} 치료 회차 (자동 계산 ${auto}회차)
 숫자를 넣으면 그 회차로 맞추고, 다음 내원부터 자동으로 늘어납니다. 비우면 자동 계산으로 되돌립니다.`,String(shown));
   if(v===null)return;const t=v.trim();
-  if(t===''){setRegTreatBase(mrn,p.name,key,0);}
-  else{const n=parseInt(t,10);if(isNaN(n)||n<1){alert('1 이상의 숫자를 넣어 주세요.');return;}setRegTreatBase(mrn,p.name,key,n-auto);}
-  render();};
+  if(t===''){setRegTreatBase(mrn,p.name,key,0,0);}
+  else{const n=parseInt(t,10);if(isNaN(n)||n<1){alert('1 이상의 숫자를 넣어 주세요.');return;}setRegTreatBase(mrn,p.name,key,n-auto,n);}
+  render();try{fillTreatBox(p);}catch(e){}};
 function setRegFamily(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||'').trim();
   const cur=PMEMO[mrn]||{};
   if((cur.family||'')===v)return false;
@@ -6097,7 +6103,7 @@ function cardEl(p){
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
-    ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b>${(p.mrn&&regTreatBase(p.mrn)[treatKey(_cur)])?'<span class="tc-fix" title="직원이 손으로 맞춘 회차">수정됨</span>':''}</div>`:''}
+    ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
@@ -6314,7 +6320,11 @@ function completeVisit(p,finalStatus){
   cloudAddStat(rec);
   if(!p.autoClosed)roomNotify(p,room,'out',{waitMs,prepMs,activeMs,finalStatus:rec.finalStatus});   // 자동 마감(밤 정리)은 알리지 않음
 }
-function enterCurrentRoom(p){p.status='대기';const now=new Date().toISOString();p.enteredAt=now;p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
+function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOString();p.enteredAt=now;
+  p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();
+  /* 이 방으로 누가 옮겼는지 — 환자 동선 행에 표시 (2026-09-23). by 를 넘기면 그 이름(예: 비트), 없으면 로그인한 사람 */
+  {const _r=curRoom(p);if(_r){p.roomBy=p.roomBy||{};p.roomBy[_r]={by:(by!==undefined?by:((currentUser&&currentUser.name)||'')),at:now};}}
+  autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
 function autoAssignRoomStaff(p){
   const r=curRoom(p);if(!r)return;
@@ -7415,6 +7425,7 @@ function fillEditChart(p){
    const fcell=fl=>{const auto=cnt[fl],base=Number(fb[fl]||0),shown=Math.max(0,auto+base);return `<b class="vf-edit" data-floor="${fl}" data-auto="${auto}" data-shown="${shown}" title="누르면 ${fl} 내원 횟수 고치기${base?` (자동 ${auto} + 보정 ${base>0?'+':''}${base})`:''}" onclick="editFloorVisits('${esc(p.id)}','${fl}')">${shown}</b>${base?'<span class="vf-adj">✎</span>':''}`;};
    box.insertAdjacentHTML('afterbegin',`<div class="hint visit-sum" style="margin-bottom:6px" title="${b.visits?'전체는 비트 DB 기준(개원 이후, 오늘 포함)':'전체는 동선관리 기록 기준'} · 층별은 동선관리 내원 기록 기준(오늘 포함) — 숫자를 누르면 고칠 수 있음${b.firstVisit?' · 최초 '+esc(String(b.firstVisit).slice(0,10)):''}${b.prevVisit?' · 직전 '+esc(String(b.prevVisit).slice(0,10)):''}"><i data-lucide="history"></i> 내원기록 <b>${n}회차</b> <span class="visit-floors">· 3층 ${fcell('3층')}회 · 4층 ${fcell('4층')}회</span></div>`);}
   try{fillNextBk(p);}catch(e){console.warn('nextBk',e);}   // 다음 예약 블록
+  try{fillTreatBox(p);}catch(e){console.warn('treatBox',e);}   // 치료 회차 블록
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
   const sms=[...(Array.isArray(p.smsHistory)?p.smsHistory:[]), ...past.flatMap(v=>Array.isArray(v.smsHistory)?v.smsHistory:[])];
   const sec=document.getElementById('editSmsSection'), sh=document.getElementById('editSmsHist'), sb=document.getElementById('editSmsBtn');
@@ -7634,13 +7645,41 @@ let routeDragIdx=null;
 function renderRoomButtons(){
   document.getElementById("routeBtns").innerHTML=ROOMS.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
 }
+/* 환자 정보 창의 치료 회차 블록 — 회차를 직접 고치고, 누가 고쳤는지 함께 보여 준다 (2026-09-23) */
+function treatGroupsOf(){const seen=[],out=[];
+  TREAT_COUNT_ROOMS.forEach(r=>{const k=treatKey(r);if(seen.includes(k))return;seen.push(k);out.push({key:k,rooms:treatRoomsFor(r),main:r});});
+  return out;}
+function fillTreatBox(p){
+  const box=document.getElementById('treatBox');if(!box)return;
+  const mrn=(p&&p.mrn||'').trim();
+  const rows=treatGroupsOf().map(g=>{
+    const auto=treatCountAuto(p,g.main), n=treatCount(p,g.main);
+    const fixed=mrn?(Number(regTreatBase(mrn)[g.key])||0):0;
+    const who=mrn?(regTreatBy(mrn)[g.key]||null):null;
+    if(!fixed&&auto<=1)return '';   // 한 번도 안 받은 치료는 숨김
+    return `<div class="tb-row">
+      <span class="tb-name">${esc(g.rooms.join(' · '))}</span>
+      <b class="tb-n">${n}회차</b>
+      ${fixed?`<span class="tb-fix" title="자동 계산 ${auto}회차에서 직원이 고침">수정됨${who&&who.by?' · '+esc(who.by):''}${who&&who.at?' · '+hhmm(who.at):''}</span>`:`<span class="tb-auto">자동 계산</span>`}
+      <button type="button" class="btn sm" onclick="editTreatCount('${p.id}','${esc(g.main)}')"><i data-lucide="pencil"></i> 수정</button>
+    </div>`;}).join('');
+  box.innerHTML=rows?`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="zap"></i> 치료 회차</div>${rows}${mrn?'':'<div class="hint">병록번호가 없어 수정할 수 없습니다.</div>'}`:'';
+  box.style.display=rows?'':'none';
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
+}
+/* 이 방으로 누가 옮겼는지 (p.roomBy) — 환자 동선 행 옆에 작게 (2026-09-23) */
+function routeByHtml(room){
+  const p=editId?data.find(x=>x.id===editId):null;if(!p||!p.roomBy)return '';
+  const rb=p.roomBy[room];if(!rb||!rb.by)return '';
+  return `<span class="rby" title="${esc(rb.by)} 님이 ${esc(room)}(으)로 옮김${rb.at?' · '+hhmm(rb.at):''}"><i data-lucide="user-round"></i> ${esc(rb.by)}${rb.at?' <span class="rby-t">'+clockHM(rb.at)+'</span>':''}</span>`;
+}
 function renderRouteRows(){
   const box=document.getElementById("routeRows");
   if(!routeDraft.length){box.innerHTML=`<div class="route-empty">아직 동선이 없습니다. 아래 방 버튼을 누르세요.</div>`;return;}
   box.innerHTML=routeDraft.map((r,i)=>`
     <div class="rrow" draggable="true" data-i="${i}">
       <span class="grip" title="드래그로 순서 변경">⠿</span>
-      <span class="num">${i+1}</span><span class="rname">${esc(r)}</span>
+      <span class="num">${i+1}</span><span class="rname">${esc(r)}</span>${routeByHtml(r)}
       <button type="button" class="mini" onclick="moveRouteStep(${i},-1)" ${i===0?'disabled':''}>↑</button>
       <button type="button" class="mini" onclick="moveRouteStep(${i},1)" ${i===routeDraft.length-1?'disabled':''}>↓</button>
       <button type="button" class="mini" onclick="removeRouteStep(${i})" style="color:var(--red)">✕</button>
@@ -8748,6 +8787,18 @@ boot();
   /* 치료 횟수 표시 (충격파·신장분사·자동차도수) */
   .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
   .treat-count.click{cursor:pointer}
+  /* 환자 정보 창 치료 회차 블록 */
+  .treat-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+  .tb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  .tb-row .tb-name{font-weight:700}
+  .tb-row .tb-n{color:var(--t-indigosoft)}
+  .tb-row .tb-fix{font-size:11px;font-weight:700;color:var(--orange);background:var(--amber-bg);border-radius:6px;padding:1px 7px}
+  .tb-row .tb-auto{font-size:11px;color:var(--muted)}
+  .tb-row .btn{margin-left:auto}
+  /* 환자 동선 행: 누가 옮겼는지 */
+  .rrow .rby{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--muted);background:var(--chip);border-radius:20px;padding:1px 8px;margin-left:6px;white-space:nowrap}
+  .rrow .rby i{width:11px;height:11px}
+  .rrow .rby .rby-t{font-weight:600;opacity:.75}
   .treat-count.click:hover{background:rgba(99,102,241,.2)}
   .treat-count .tc-fix{margin-left:6px;font-size:10px;font-weight:700;opacity:.75;border:1px dashed currentColor;border-radius:4px;padding:0 4px}
   .treat-count b{font-size:12.5px}
