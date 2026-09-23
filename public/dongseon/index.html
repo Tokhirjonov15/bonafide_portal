@@ -4257,6 +4257,7 @@ async function startHosted(){
         s.docs.forEach(d=>{const v=d.data()||{};const mrn=String(v.mrn||d.id||'').trim();if(!mrn)return;
           const rec={};if(v.memo)rec.memo=v.memo;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
           if(v.floorBase&&typeof v.floorBase==='object'&&Object.keys(v.floorBase).length)rec.floorBase=v.floorBase;   // 층별 내원 보정
+          if(v.treatBase&&typeof v.treatBase==='object'&&Object.keys(v.treatBase).length)rec.treatBase=v.treatBase;   // 치료 회차 보정(충격파·신장분사·자동차도수)
           if(Number(v.visitAdj))rec.visitAdj=Number(v.visitAdj);   // 내원 횟수 보정(손으로 넣은 예약)
           m[mrn]=rec;});
         PMEMO=m;localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
@@ -4365,11 +4366,11 @@ function pmKey(mrn){return String(mrn||'').trim().replace(/[^\w-]/g,'_')||'_';} 
 function pmRec(mrn){mrn=(mrn||'').trim();return mrn?(PMEMO[mrn]||null):null;}
 /* 한 환자 문서만 저장(전체 설정이 아니라) → 문서당 ~2KB, 1MB 한도 접근 불가 */
 function pmemoSave(mrn){mrn=(mrn||'').trim();if(!mrn)return;
-  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length)||(rec.floorBase&&Object.keys(rec.floorBase).length)||rec.visitAdj);   // floorBase(층별 내원 보정)·visitAdj(내원 횟수 보정)만 있어도 기록 유지
+  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length)||(rec.floorBase&&Object.keys(rec.floorBase).length)||(rec.treatBase&&Object.keys(rec.treatBase).length)||rec.visitAdj);   // floorBase(층별 내원 보정)·treatBase(치료 회차 보정)·visitAdj 만 있어도 기록 유지
   if(!has)delete PMEMO[mrn];
   localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));
   if(cloud.active&&cloud.pmemoCol){
-    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
+    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),treatBase:(rec.treatBase||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
     else cloud.pmemoCol.doc(pmKey(mrn)).delete().catch(()=>{});   // 내용이 비면 문서 삭제
   }
 }
@@ -4417,6 +4418,24 @@ window.editFloorVisits=function(pid,floor){const p=data.find(x=>x.id===pid);if(!
   if(t===''){setRegFloorBase(mrn,p.name,floor,0);}
   else{const n=parseInt(t,10);if(isNaN(n)||n<0){alert('0 이상의 숫자를 넣어 주세요.');return;}setRegFloorBase(mrn,p.name,floor,n-auto);}
   try{fillEditChart(p);}catch(e){console.warn(e);}};
+/* 치료 회차 보정 — 자동 계산이 실제와 다를 때 직원이 회차를 직접 맞춘다. 키는 합산 그룹(충격파+신장분사 / 자동차도수) (2026-09-23) */
+function regTreatBase(mrn){const r=pmRec(mrn);return (r&&r.treatBase&&typeof r.treatBase==='object')?r.treatBase:{};}
+function setRegTreatBase(mrn,name,key,base){mrn=(mrn||'').trim();if(!mrn)return false;
+  const cur=PMEMO[mrn]||{};const tb=Object.assign({},cur.treatBase||{});
+  if(base)tb[key]=base;else delete tb[key];
+  if(Object.keys(tb).length)cur.treatBase=tb;else delete cur.treatBase;
+  if(name)cur.name=name;PMEMO[mrn]=cur;pmemoSave(mrn);
+  try{audit('치료회차수정',(name||cur.name||'')+' ('+mrn+') '+key+' 보정 '+(base>0?'+':'')+base);}catch(e){}
+  return true;}
+window.editTreatCount=function(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
+  const mrn=(p.mrn||'').trim();if(!mrn){alert('병록번호가 있어야 치료 회차를 고칠 수 있습니다.');return;}
+  const key=treatKey(room), auto=treatCountAuto(p,room), shown=treatCount(p,room);
+  const v=prompt(`${dispName(p.name)} 님 ${room} 치료 회차 (자동 계산 ${auto}회차)
+숫자를 넣으면 그 회차로 맞추고, 다음 내원부터 자동으로 늘어납니다. 비우면 자동 계산으로 되돌립니다.`,String(shown));
+  if(v===null)return;const t=v.trim();
+  if(t===''){setRegTreatBase(mrn,p.name,key,0);}
+  else{const n=parseInt(t,10);if(isNaN(n)||n<1){alert('1 이상의 숫자를 넣어 주세요.');return;}setRegTreatBase(mrn,p.name,key,n-auto);}
+  render();};
 function setRegFamily(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||'').trim();
   const cur=PMEMO[mrn]||{};
   if((cur.family||'')===v)return false;
@@ -5986,7 +6005,8 @@ const TREAT_COUNT_ROOMS=["충격파","신장분사","자동차도수"];
 /* 충격파·신장분사는 같은 치료로 합산 — 신장분사 1회 후 충격파에 오면 '충격파 2회차' */
 const TREAT_EQUIV={"충격파":["충격파","신장분사"],"신장분사":["충격파","신장분사"]};
 function treatRoomsFor(room){return TREAT_EQUIV[room]||[room];}
-function treatCount(p,room){
+function treatKey(room){return treatRoomsFor(room).join('+');}
+function treatCountAuto(p,room){
   const grp=treatRoomsFor(room);
   let n=0;
   if(p.mrn){
@@ -5997,6 +6017,11 @@ function treatCount(p,room){
     }
   }
   return n+1;   // + 오늘(현재 내원)
+}
+/* 화면에 보이는 회차 = 자동 계산 + 직원 보정(treatBase) */
+function treatCount(p,room){
+  const base=p.mrn?(Number(regTreatBase(p.mrn)[treatKey(room)])||0):0;
+  return Math.max(1, treatCountAuto(p,room)+base);
 }
 function cardEl(p){
   const c=document.createElement("div");
@@ -6072,7 +6097,7 @@ function cardEl(p){
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
-    ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘)"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
+    ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b>${(p.mrn&&regTreatBase(p.mrn)[treatKey(_cur)])?'<span class="tc-fix" title="직원이 손으로 맞춘 회차">수정됨</span>':''}</div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
@@ -8722,6 +8747,9 @@ boot();
   .mirror-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 치료 횟수 표시 (충격파·신장분사·자동차도수) */
   .treat-count{font-size:11.5px;font-weight:700;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.25);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
+  .treat-count.click{cursor:pointer}
+  .treat-count.click:hover{background:rgba(99,102,241,.2)}
+  .treat-count .tc-fix{margin-left:6px;font-size:10px;font-weight:700;opacity:.75;border:1px dashed currentColor;border-radius:4px;padding:0 4px}
   .treat-count b{font-size:12.5px}
   .treat-count svg.lucide{width:11px;height:11px;vertical-align:-1px}
   /* 공공보험 표시 */
