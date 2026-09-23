@@ -429,7 +429,16 @@
   .park-btn:hover{filter:brightness(1.08)}
   .park-done{margin:0 12px 7px;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--green,#1e9e5a);background:rgba(30,158,90,.1);border:1px solid rgba(30,158,90,.35);border-radius:999px;padding:3px 10px;cursor:pointer;width:fit-content}
   .park-done:hover{opacity:.8}
-  body.compact .card .park-banner{display:flex}   /* 간략히 보기에서도 주차권 안내는 유지(액션 필요 항목) */
+  /* 주차 사이트에 다녀온 뒤 묻는 줄: 지급완료? O / X */
+  .park-ask{margin:0 12px 7px;display:flex;align-items:center;gap:9px;background:linear-gradient(135deg,rgba(59,124,246,.15),rgba(59,124,246,.05));border:1px solid rgba(59,124,246,.45);border-left:4px solid var(--blue);border-radius:10px;padding:6px 9px}
+  .park-ask .park-tx{display:flex;flex-direction:column;line-height:1.25;margin-right:auto}
+  .park-ask .park-t{font-size:11.5px;font-weight:800;color:var(--blue)}
+  .park-ask .park-s{font-size:10.5px;color:var(--muted)}
+  .park-yes,.park-no{border:0;border-radius:8px;font-weight:800;font-size:13px;width:34px;height:28px;cursor:pointer}
+  .park-yes{background:var(--green,#1e9e5a);color:#fff}
+  .park-no{background:var(--chip);color:var(--red);border:1px solid var(--red-line,rgba(220,60,60,.4))}
+  .park-yes:hover{filter:brightness(1.08)}.park-no:hover{background:rgba(220,60,60,.12)}
+  body.compact .card .park-banner,body.compact .card .park-ask{display:flex}   /* 간략히 보기에서도 주차권 안내는 유지(액션 필요 항목) */
   .out-btn{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:4px}
   .out-btn svg.lucide{width:13px;height:13px;flex-shrink:0}
   .out-btn:hover{background:var(--panel2)}
@@ -688,6 +697,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .rv-row.canc .rv-name,.rv-row.canc .rv-t{text-decoration:line-through}
   .rv-row.canc .rv-st{color:var(--muted);background:var(--line)}
   .rv-badge{font-size:11px;font-weight:900;border-radius:5px;padding:0 5px;flex:none}
+  .rv-row.local{background:rgba(99,102,241,.06)}
+  .rv-badge.loc{background:rgba(99,102,241,.16);color:var(--t-indigosoft)}
   .rv-badge.nv{background:#03c75a;color:#fff}        /* 네이버 예약 */
   .rv-badge.dv{background:var(--line);color:var(--sub)}
   .rv-badge.new{background:rgba(59,130,246,.15);color:var(--blue)}
@@ -1740,6 +1751,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="fld">
           <label>처치 (무엇을 할지)</label>
           <div id="rxProcChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0"></div>
+          <div id="rxSlipHint" class="hint" style="display:none;margin-bottom:5px"></div>
           <textarea id="rxProc" rows="2" placeholder="예: C-Arm 주사, 신경차단술" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
         </div>
         <div class="fld" style="margin-top:8px">
@@ -1966,10 +1978,27 @@ const SAME_SPACE_GROUPS = [
 ];
 function sameSpaceMates(room){const g=SAME_SPACE_GROUPS.find(a=>a.includes(room));return g?g.filter(r=>r!==room):[];}
 function isSameSpace(a,b){return a!==b&&sameSpaceMates(a).includes(b);}
+/* 같은 공간 안에서 '이 방은 끝났다'고 넘기기 (2026-09-23)
+   C-Arm 칸의 카드를 Sono 칸의 같은 환자 카드 위로 끌어다 놓으면 → C-Arm 칸에서 사라지고 환자의 실제 위치는 Sono 가 된다.
+   끝낸 방은 p.spaceDone 에 쌓이고, 이 네 방을 벗어나면(다른 방으로 가면) 자동으로 지워져 다음에 다시 네 칸에 펼쳐진다 */
+function spaceHandOff(pid,fromRoom,toRoom){
+  const p=data.find(x=>x.id===pid);if(!p)return false;
+  if(!fromRoom||!toRoom||!isSameSpace(fromRoom,toRoom))return false;
+  const done=(p.spaceDone||[]).filter(r=>r!==toRoom);
+  if(!done.includes(fromRoom))done.push(fromRoom);
+  p.spaceDone=done;
+  try{audit('같은 공간 인계',p.name+' · '+fromRoom+' → '+toRoom);}catch(e){}
+  try{toast(dispName(p.name)+' 님 '+fromRoom+' 끝 → '+toRoom);}catch(e){}
+  if(curRoom(p)!==toRoom)moveTo(pid,toRoom); else {save(p);render();}
+  return true;}
+function isHandOffDrop(targetEl,p){   // 같은 환자 카드 위에 놓았는가 = 같은 공간 안의 인계
+  if(draggedPid!==p.id||!targetEl||!draggedCol)return false;
+  const to=targetEl.dataset.col||'';
+  return !!to&&to!==draggedCol&&isSameSpace(draggedCol,to);}
 function mirroredHere(p, room){
   const cr=curRoom(p);
   if(isFloorPayRoom(room)&&isFloorPayRoom(cr)&&cr!==room)return true;   // 옛 층별 수납 창구(3층 수납·4층 수납)끼리만 서로 거울
-  if(isSameSpace(cr,room))return true;                                  // 같은 공간(C-Arm·Sono·처치실·근전도검사)
+  if(isSameSpace(cr,room))return !((p.spaceDone||[]).includes(room));   // 같은 공간 — 이미 인계를 마친 방은 빼고 (2026-09-23)
   return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
 }
 const isPayRoom = r => /수납/.test(r||'');
@@ -2050,7 +2079,7 @@ let COMPACT = false;   // 간략히 보기 제거 — 항상 전체 카드 표�
 let editId = null;
 let routeDraft = [];          // 모달에서 작성 중인 동선
 let noteRoomSel = "";         // 전달사항 작성 시 선택된 방
-let draggedPid = null, draggedRoom = null;  // 카드 드래그 상태
+let draggedPid = null, draggedRoom = null, draggedCol = '';  // 카드 드래그 상태 (draggedCol = 끌기 시작한 '칸'의 방 — 같은 공간 거울 카드 구분용)
 let draggedColRoom = null;                   // 컬럼(방) 드래그 상태 — 내 방 순서 변경용
 /* 방(컬럼) 접기 상태 — 이 기기(브라우저)에만 저장. {방이름:true} */
 let COL_FOLD=(function(){try{const o=JSON.parse(localStorage.getItem('patientBoard_colfold'));return (o&&typeof o==='object')?o:{};}catch(e){return {};}})();
@@ -2298,8 +2327,18 @@ function bitResvSub(D){   // 보고 있는 날짜의 예약 문서 하나만 실
   cloud.unsubResv=cloud.resvCol.doc(D).onSnapshot(s=>{BIT_RESV[D]=s.exists?(s.data()||null):null;if(bitResvOpen)renderBitResvScreen();},err=>console.warn('bitResv',err));
 }
 const BIT_RSV_ARRIVED=s=>!!s&&s!=='WR'&&s!=='CN'&&!/^[OV]/.test(s)&&!/R$/.test(s);   // OcmInf 상태가 접수 계열이면 도착
+/* 환자 정보 창의 '다음 예약'으로 넣은 건(bookingEdits.added) — 비트에는 없고 동선관리에만 있는 예약.
+   진료 예약 목록에도 함께 보이도록 같은 모양으로 바꿔 준다. 지우면 시트 쪽에서 지워지므로 여기서도 함께 사라진다 (2026-09-23) */
+function bitResvLocalAdds(D){
+  const ed=BK_EDITS[D];const arr=(ed&&Array.isArray(ed.added))?ed.added:[];
+  return arr.map(a=>({k:'add:'+(a.id||(a.mrn||'')+a.t), t:String(a.t||''), room:'4층 치료',
+    dr:String(a.th||''), mrn:String(a.mrn||''), name:String(a.name||''), birth:'', sex:'',
+    div:'', sts:'', ostt:'', acp:'', by:String(a.by||''), naver:false, block:false, local:true,
+    memo:[a.code,a.note].filter(Boolean).join(' · ')}));
+}
 function bitResvStats(D){
-  const doc=BIT_RESV[D];const items=doc&&Array.isArray(doc.items)?doc.items:[];
+  const doc=BIT_RESV[D];const base=doc&&Array.isArray(doc.items)?doc.items:[];
+  const items=base.concat(bitResvLocalAdds(D));
   const real=items.filter(x=>!x.block);   // '예약금지'(접수 PC 가 시간대를 막은 가짜 환자, 차트 Res_NNNN)는 건수에서 뺀다
   const live=real.filter(x=>x.sts!=='OC');const today=localYMD(new Date());const nowM=new Date().getHours()*60+new Date().getMinutes();
   const tMin=t=>{const m=/^(\d{2}):(\d{2})/.exec(t||'');return m?(+m[1])*60+(+m[2]):null;};
@@ -2321,6 +2360,12 @@ function renderBitResvSection(D){
     const age=x.birth?(()=>{const b=new Date(x.birth);if(isNaN(b))return '';const n=new Date();let a=n.getFullYear()-b.getFullYear();if(n<new Date(n.getFullYear(),b.getMonth(),b.getDate()))a--;return a+'세';})():'';
     const isNew=/신규/.test(x.memo||'');
     BIT_RESV_ITEMS[String(x.k)]=x;
+    if(x.local)return `<div class="rv-row local" title="동선관리 '다음 예약'에서 넣은 건 — 비트에는 없습니다">
+      <span class="rv-t">${esc(x.t||'')}</span><span class="rv-room">${esc(x.room||'')}</span>
+      <span class="rv-name">${esc(dispName(x.name||''))}</span><span class="rv-sub">${esc(x.mrn||'')}${x.dr?' · '+esc(x.dr):''}</span>
+      <span class="rv-badge loc" title="동선관리에서 추가 — 비트에는 반영되지 않습니다">동선</span>
+      <span class="rv-memo" title="${esc(x.memo||'')}">${esc(x.memo||'')}</span><span class="rv-st">${esc(x.by||'')}</span>
+    </div>`;
     return `<div class="rv-row ${cls}" onclick="openBitResvDetail('${esc(String(x.k))}')" title="누르면 상세 — ${esc((x.dr?x.dr+' · ':'')+(x.by?'입력 '+x.by:''))}">
       <span class="rv-t">${esc(x.t||'')}</span><span class="rv-room">${esc(x.room||'')}</span>
       <span class="rv-name">${esc(dispName(x.name||''))}</span><span class="rv-sub">${esc(x.mrn||'')}${age?' · '+age:''}${x.sex?' '+esc(x.sex):''}</span>
@@ -2342,7 +2387,11 @@ function openBitResvScreen(){bitResvOpen=true;const el=document.getElementById('
   const cb=document.getElementById('bitResvCloseBtn');if(cb)cb.style.display=BITRESV_MODE?'none':'';
   try{bitResvSumSub();bitResvSub(bitResvDate||localYMD(new Date()));}catch(e){console.warn(e);}renderBitResvScreen();}
 function closeBitResvScreen(){bitResvOpen=false;const el=document.getElementById('bitResvScreen');if(el)el.classList.remove('show');if(!BITRESV_MODE)bitResvUnsub();}   // 닫으면 구독 해제 → 읽기 절약
-window.setBitResvDate=function(v){const today=localYMD(new Date());bitResvDate=(!v||v===today)?null:v;try{bitResvSub(bitResvDate||today);}catch(e){console.warn(e);}renderBitResvScreen();};
+window.setBitResvDate=function(v){const today=localYMD(new Date());bitResvDate=(!v||v===today)?null:v;
+  const D=bitResvDate||today;
+  try{bitResvSub(D);}catch(e){console.warn(e);}
+  try{bkEnsureDay(D).then(()=>{if(bitResvOpen)renderBitResvScreen();});}catch(e){}   // 동선관리에서 넣은 예약도 함께 보이도록
+  renderBitResvScreen();};
 function renderBitResvScreen(){
   if(!bitResvOpen)return;const body=document.getElementById('bitResvBody');if(!body)return;
   const D=bitResvDate||localYMD(new Date());const di=document.getElementById('bitResvDate');if(di&&di.value!==D)di.value=D;
@@ -5767,7 +5816,8 @@ window.nbAdd=function(){const box=document.getElementById('nextBk');const p=data
   bkAddBooking(D,f,`예약 추가(환자 정보) ${p.name} ${D} ${t} ${th}`);
   if(f.mrn)bumpVisitAdj(f.mrn,p.name,1);
   try{toast(`${dispName(p.name)} 님 ${D} ${t} ${th} 예약 추가`);}catch(e){}
-  try{bkLoad(D);}catch(e){}nbRenderList(p);};
+  try{bkLoad(D);}catch(e){}nbRenderList(p);
+  try{if(bitResvOpen)renderBitResvScreen();}catch(e){}};   // 진료 예약 화면이 열려 있으면 바로 반영
 /* ── 예약 복사/잘라내기/붙여넣기 (충격파·신장분사 표, 2026-09-20) ──
    예약 칸을 열어 Ctrl+C(복사) 또는 Ctrl+X(잘라내기) → 빈 칸(다른 날짜도 됨)을 눌러 Ctrl+V 또는 [붙여넣기] → 내용이 채워지고 [저장]. 잘라내기였으면 저장할 때 원본이 취소 처리된다.
    시트에는 반영되지 않는다(동선관리 수정본). 클립은 이 화면(세션)에만 */
@@ -6106,6 +6156,7 @@ function cardEl(p,colRoom){
   const c=document.createElement("div");
   c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"");c.draggable=true;
   c.dataset.pid=p.id;   // 방별 검색 필터용
+  c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
   const last=p.step>=p.route.length-1;
   // 동선 전체
@@ -6167,8 +6218,9 @@ function cardEl(p,colRoom){
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.reserveAt?`<div class="card-time"><span class="t-res"><i data-lucide="calendar"></i> 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
     ${p.out?`<div class="out-banner"><i data-lucide="footprints"></i> 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
-    ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" onclick="event.stopPropagation();toggleParking('${p.id}')">지급</button></div>`:''}
-    ${p.parking?`<div class="park-done" title="클릭: 지급완료 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급완료${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
+    ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" title="주차권 발행 사이트를 새 창으로 엽니다" onclick="event.stopPropagation();openParkingSite('${p.id}')">지급</button></div>`:''}
+    ${(p.parking&&p.parking.pending)?`<div class="park-ask"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">지급완료?</span><span class="park-s">주차 사이트에서 발행하셨나요</span></span><button class="park-yes" title="발행함 — 지급완료로 표시" onclick="event.stopPropagation();parkingAnswer('${p.id}',true)">O</button><button class="park-no" title="아직 — 안내 상태로 되돌리기" onclick="event.stopPropagation();parkingAnswer('${p.id}',false)">X</button></div>`:''}
+    ${(p.parking&&!p.parking.pending)?`<div class="park-done" title="클릭: 지급완료 표시 취소" onclick="event.stopPropagation();toggleParking('${p.id}')"><i data-lucide="square-parking"></i> 주차권 지급완료${p.parking.by?' · '+esc(p.parking.by):''} · ${hhmm(new Date(p.parking.at).toISOString())}</div>`:''}
     <div class="total-row"><div class="total" data-pid="${p.id}">${totalLabel(p)}</div>${(function(){const np=nudgePos(p);if(!np||np.n<2)return '';
         return `<span class="nudge-grp" title="대기실 순서 바꾸기 (위/아래 한 칸)"><button class="icon-btn nudge" ${np.i===0?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',-1)">▲</button><button class="icon-btn nudge" ${np.i===np.n-1?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',1)">▼</button></span>`;})()}</div>
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
@@ -6179,7 +6231,9 @@ function cardEl(p,colRoom){
     ${(function(){const rx=bitRxFor(p);if(!rx||!rx.items.length)return '';
       const names=rx.items.map(x=>String(x.nam||x.cod||'').trim()).filter(Boolean);
       const head=names.length?esc(names[0].slice(0,18))+(names.length>1?` 외 ${names.length-1}`:''):'';
-      return `<div class="bitrx-sum" title="비트 처방내역 ${rx.items.length}건 — 누르면 환자 정보에서 전체를 봅니다" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="pill"></i> 처방 <b>${rx.items.length}건</b>${head?' · '+head:''}</div>`;})()}
+      const ts=rx.items.map(z=>String(z.t||'').trim()).filter(Boolean).sort();const last=ts.length?ts[ts.length-1]:'';
+      const fresh=last&&rxMinAgo(last)!==null&&rxMinAgo(last)<=RX_NEW_MIN;
+      return `<div class="bitrx-sum${fresh?' fresh':''}" title="비트 처방내역 ${rx.items.length}건${last?' · 마지막 '+last+(rxAgoText(last)?' ('+rxAgoText(last)+')':''):''} — 누르면 환자 정보에서 전체를 봅니다" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="pill"></i> 처방 <b>${rx.items.length}건</b>${last?' · '+esc(last):''}${fresh?'<span class="rx-tag">새로</span>':''}${head?' · '+head:''}</div>`;})()}
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
@@ -6203,17 +6257,18 @@ function cardEl(p,colRoom){
       <button class="icon-btn" title="환자 정보·차팅 열기" onclick="event.stopPropagation();openEdit('${p.id}')">✎ 수정</button>
       <button class="icon-btn del" title="이 환자 삭제" onclick="event.stopPropagation();deletePatientById('${p.id}')"><i data-lucide="trash-2"></i> 삭제</button>
     </div>`;
-  c.addEventListener("dragstart",e=>{draggedPid=p.id;draggedRoom=curRoom(p);e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);c.classList.add("dragging");});
+  c.addEventListener("dragstart",e=>{draggedPid=p.id;draggedRoom=curRoom(p);draggedCol=c.dataset.col||curRoom(p);e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);c.classList.add("dragging");});
   c.addEventListener("dragend",()=>{c.classList.remove("dragging");document.querySelectorAll(".card.drop-before,.card.drop-after").forEach(x=>x.classList.remove("drop-before","drop-after"));});
-  c.addEventListener("dragover",e=>{if(!draggedPid||draggedPid===p.id)return;e.preventDefault();e.stopPropagation();
+  c.addEventListener("dragover",e=>{if(!draggedPid||(draggedPid===p.id&&!isHandOffDrop(c,p)))return;e.preventDefault();e.stopPropagation();
     const rect=c.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;
     c.classList.toggle("drop-before",before);c.classList.toggle("drop-after",!before);});
   c.addEventListener("dragleave",()=>c.classList.remove("drop-before","drop-after"));
-  c.addEventListener("drop",e=>{if(!draggedPid||draggedPid===p.id)return;e.preventDefault();e.stopPropagation();
+  c.addEventListener("drop",e=>{if(!draggedPid||(draggedPid===p.id&&!isHandOffDrop(c,p)))return;e.preventDefault();e.stopPropagation();
     const rect=c.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;
     c.classList.remove("drop-before","drop-after");
-    if(draggedRoom===curRoom(p))reorderInData(draggedPid,p.id,before); else moveTo(draggedPid,curRoom(p));
-    draggedPid=null;draggedRoom=null;});
+    if(draggedPid===p.id)spaceHandOff(draggedPid,draggedCol,c.dataset.col||'');           // 같은 환자 카드 위 = 같은 공간 인계
+    else if(draggedRoom===curRoom(p))reorderInData(draggedPid,p.id,before); else moveTo(draggedPid,curRoom(p));
+    draggedPid=null;draggedRoom=null;draggedCol='';});
   c.addEventListener("click",e=>{if(e.target.closest("button")||e.target.closest("select")||e.target.closest("input"))return;openEdit(p.id)});  // 카드 클릭=환자 정보(3열: 정보·동선·차팅)
   attachTouchDrag(c,p);   // 터치 기기: 길게 눌러 끌기
   return c;
@@ -6227,7 +6282,7 @@ const TD={pid:null,room:null,card:null,ghost:null,timer:null,x0:0,y0:0,dx:0,dy:0
 function attachTouchDrag(c,p){
   c.addEventListener('touchstart',e=>{
     if(e.touches.length!==1||e.target.closest('button,select,input,a,textarea'))return;
-    const t=e.touches[0];TD.x0=t.clientX;TD.y0=t.clientY;TD.card=c;TD.pid=p.id;TD.room=curRoom(p);
+    const t=e.touches[0];TD.x0=t.clientX;TD.y0=t.clientY;TD.card=c;TD.pid=p.id;TD.room=curRoom(p);TD.col=c.dataset.col||curRoom(p);
     const r=c.getBoundingClientRect();TD.dx=t.clientX-r.left;TD.dy=t.clientY-r.top;
     clearTimeout(TD.timer);TD.timer=setTimeout(()=>tdragStart(),350);
   },{passive:true});
@@ -6248,7 +6303,7 @@ function tdragResolve(el){
   if(TD.card&&(el===TD.card||TD.card.contains(el)))return null;   // 끌던 카드 자기 자리 위 = 아무것도 안 함(맨 뒤로 보내지 않음)
   const chip=el.closest&&el.closest('#roomJump .rj[data-room]');if(chip)return {kind:'room',room:chip.dataset.room,el:chip};
   const card=el.closest&&el.closest('#board .card');
-  if(card&&card!==TD.card&&!card.classList.contains('tdrag-ghost')){const id=card.dataset.pid||card.dataset.id||'';const pt=data.find(x=>x.id===id);if(pt)return {kind:'card',id,room:curRoom(pt),el:card};}
+  if(card&&card!==TD.card&&!card.classList.contains('tdrag-ghost')){const id=card.dataset.pid||card.dataset.id||'';const pt=data.find(x=>x.id===id);if(pt)return {kind:'card',id,room:curRoom(pt),col:card.dataset.col||'',el:card};}
   const body=el.closest&&el.closest('#board .col-body[data-room]');if(body)return {kind:'body',room:body.dataset.room,el:body};
   return null;
 }
@@ -6268,7 +6323,8 @@ function tdragMove(x,y){
 /* 놓기: PC 드래그의 drop 처리와 같은 함수 호출 */
 function tdragCommit(t){
   const pid=TD.pid,from=TD.room;if(!pid||!t)return false;
-  if(t.kind==='card'){if(t.id===pid)return false;if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveTo(pid,t.room);return true;}
+  if(t.kind==='card'){if(t.id===pid)return (TD.col&&t.col&&isSameSpace(TD.col,t.col))?spaceHandOff(pid,TD.col,t.col):false;
+    if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveTo(pid,t.room);return true;}
   if(t.kind==='body'||t.kind==='room'){if(from===t.room){if(t.kind==='body')moveToEnd(pid);}else moveTo(pid,t.room);return true;}
   return false;
 }
@@ -6277,7 +6333,7 @@ function tdragEnd(commit){
   tdragClearMarks();if(TD.ghost){TD.ghost.remove();TD.ghost=null;}if(TD.card)TD.card.classList.remove('dragging');document.body.classList.remove('tdragging');
   TD.active=false;
   try{if(commit)tdragCommit(t);}catch(e){console.warn('touch drop',e);}
-  draggedPid=null;draggedRoom=null;TD.over=null;TD.card=null;TD.pid=null;TD.room=null;
+  draggedPid=null;draggedRoom=null;draggedCol='';TD.over=null;TD.card=null;TD.pid=null;TD.room=null;TD.col='';
 }
 document.addEventListener('touchmove',e=>{if(!TD.active)return;e.preventDefault();const t=e.touches[0];tdragMove(t.clientX,t.clientY);},{passive:false});
 document.addEventListener('touchend',e=>{if(!TD.active)return;e.preventDefault();tdragEnd(true);},{passive:false});
@@ -6400,7 +6456,8 @@ function completeVisit(p,finalStatus){
 function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOString();p.enteredAt=now;
   p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();
   /* 이 방으로 누가 옮겼는지 — 환자 동선 행에 표시 (2026-09-23). by 를 넘기면 그 이름(예: 비트), 없으면 로그인한 사람 */
-  {const _r=curRoom(p);if(_r){p.roomBy=p.roomBy||{};p.roomBy[_r]={by:(by!==undefined?by:((currentUser&&currentUser.name)||'')),at:now};}}
+  {const _r=curRoom(p);if(_r){p.roomBy=p.roomBy||{};p.roomBy[_r]={by:(by!==undefined?by:((currentUser&&currentUser.name)||'')),at:now};
+    if(!sameSpaceMates(_r).length&&p.spaceDone)delete p.spaceDone;}}   // 같은 공간을 벗어나면 인계 기록 초기화
   autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
 function autoAssignRoomStaff(p){
@@ -6472,7 +6529,21 @@ function parkingDue(p){if(!(PARKING_MIN>0)||p.discharged)return false;
   const b=recvMs(p);return b>0&&(Date.now()-b)>=PARKING_MIN*60000;}
 function parkingThresholdText(){const h=Math.floor(PARKING_MIN/60),m=PARKING_MIN%60;
   return h>0?(m>0?h+'시간 '+m+'분':h+'시간'):m+'분';}
+const PARKING_URL='https://npdc-i.nicepark.co.kr/';   // 주차권 발행 사이트 — 바뀌면 여기만 고친다 (2026-09-23)
 function applyParking(d,val){if(val)d.parking=val;else delete d.parking;return d;}
+/* [지급] → 주차 사이트를 새 창으로 열고, 카드는 '지급했나요? O / X' 로 바뀐다 */
+function openParkingSite(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  try{window.open(PARKING_URL,'_blank','noopener');}catch(e){}
+  const val={pending:true,at:Date.now(),by:(currentUser&&currentUser.name)||''};
+  applyParking(p,val);saveLocal();render();cloudPatientTxn(pid,d=>applyParking(d,val));
+  try{audit('주차권사이트열기',p.name+(p.mrn?' ('+p.mrn+')':''));}catch(e){}}
+/* O = 지급완료로 확정, X = 안내 상태로 되돌림 */
+function parkingAnswer(pid,ok){const p=data.find(x=>x.id===pid);if(!p)return;
+  if(ok){const val={at:Date.now(),by:(currentUser&&currentUser.name)||''};
+    applyParking(p,val);saveLocal();render();cloudPatientTxn(pid,d=>applyParking(d,val));
+    try{audit('주차권지급',p.name+(p.mrn?' ('+p.mrn+')':''));}catch(e){}}
+  else{applyParking(p,null);saveLocal();render();cloudPatientTxn(pid,d=>applyParking(d,null));
+    try{audit('주차권취소(미지급)',p.name+(p.mrn?' ('+p.mrn+')':''));}catch(e){}}}
 function toggleParking(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if(p.parking){
     if(!confirm('주차권 지급 표시를 취소할까요?'))return;
@@ -6507,7 +6578,7 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     try{toast(dispName(p.name)+' 님 → '+done);}catch(e){}
     return;}
   if((p.extraFee||0)>0&&!p.paid){alert(`아직 수납이 완료되지 않았습니다.\n미수납 ${won(p.extraFee)}원 — 카드의 '수납완료' 버튼을 눌러 주세요.`);return;}
-  if(parkingDue(p)&&!p.parking){   // 주차권 안내 대상인데 아직 미지급 → 내보내기 전 확인
+  if(parkingDue(p)&&(!p.parking||p.parking.pending)){   // 주차권 안내 대상인데 아직 미지급(또는 확인 전) → 내보내기 전 확인
     if(!confirm(`🅿️ '${p.name}'님은 주차권 안내 대상입니다 (접수 후 ${parkingThresholdText()} 경과).\n아직 '지급완료' 표시가 없습니다.\n\n주차권을 지급하셨다면 [확인] — 지급완료 기록 후 내보내기를 계속합니다.\n아직이라면 [취소]를 누르고 주차권을 챙겨주세요.`))return;
     const val={at:Date.now(),by:(currentUser&&currentUser.name)||''};
     applyParking(p,val);saveLocal();cloudPatientTxn(pid,d=>applyParking(d,val));
@@ -7729,18 +7800,32 @@ function renderRoomButtons(){
   document.getElementById("routeBtns").innerHTML=ROOMS.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
 }
 /* 환자 정보 창의 비트 처방내역 표 — 비트 '처방내역' 창과 같은 항목 (2026-09-23) */
+/* HH:MM → 오늘 기준 '몇 분 전'. 처방이 방금 것인지 아까 것인지 구분하려고 (2026-09-23) */
+function rxMinAgo(t){const m=/^(\d{1,2}):(\d{2})/.exec(String(t||''));if(!m)return null;
+  const now=new Date();const d=new Date();d.setHours(+m[1],+m[2],0,0);
+  const diff=Math.round((now-d)/60000);return (diff<-60)?null:diff;}
+function rxAgoText(t){const a=rxMinAgo(t);if(a===null)return '';
+  if(a<1)return '방금';if(a<60)return a+'분 전';const h=Math.floor(a/60);return h+'시간 '+(a%60)+'분 전';}
+const RX_NEW_MIN=20;   // 이 시간 안에 난 처방은 '새로' 배지
 function fillRxBox(p){
   const box=document.getElementById('rxBox');if(!box)return;
   const rx=bitRxFor(p);
   if(!rx||!rx.items.length){box.innerHTML='';box.style.display='none';return;}
+  const times=rx.items.map(x=>String(x.t||'').trim()).filter(Boolean).sort();
+  const last=times.length?times[times.length-1]:'';
+  const first=times.length?times[0]:'';
   const rows=rx.items.map(x=>{
     const qty=String(x.qty||'').trim(), tms=String(x.tms||'').trim(), day=String(x.day||'').trim(), unt=String(x.unt||'').trim();
-    return `<tr><td class="rx-cod">${esc(String(x.cod||'').trim())}</td><td class="rx-nam">${esc(String(x.nam||'').trim())}</td>
+    const t=String(x.t||'').trim(), ago=rxMinAgo(t), fresh=(ago!==null&&ago<=RX_NEW_MIN);
+    return `<tr${fresh?' class="rx-new"':''}><td class="rx-t" title="${esc(t?('처방 '+t+(rxAgoText(t)?' · '+rxAgoText(t):'')):'')}">${esc(t)}${fresh?'<span class="rx-tag">새로</span>':''}</td>
+      <td class="rx-cod">${esc(String(x.cod||'').trim())}</td><td class="rx-nam">${esc(String(x.nam||'').trim())}</td>
       <td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td>${esc(tms)}</td><td>${esc(day)}</td></tr>`;}).join('');
   const dr=(rx.items.find(x=>String(x.dr||'').trim())||{}).dr||'';
-  const t=(rx.items.find(x=>String(x.t||'').trim())||{}).t||'';
-  box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역 <span class="hint">비트 · 오늘 ${rx.items.length}건${dr?' · '+esc(dr):''}${t?' · '+esc(t):''}</span></div>
-    <div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th>처방코드</th><th>처방명칭</th><th>총투여량</th><th>횟수</th><th>일수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const span=(first&&last&&first!==last)?(first+'~'+last):(last||first);
+  const agoTx=rxAgoText(last);
+  box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역
+      <span class="hint">비트 · 오늘 ${rx.items.length}건${dr?' · '+esc(dr):''}${span?' · '+esc(span):''}${agoTx?` <b style="color:var(--t-indigosoft)">마지막 ${esc(agoTx)}</b>`:''}</span></div>
+    <div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th>시각</th><th>처방코드</th><th>처방명칭</th><th>총투여량</th><th>횟수</th><th>일수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   box.style.display='';
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
@@ -8663,13 +8748,41 @@ function setProcSet(v){if(!isAdmin())return;PROC_SET=v.split(',').map(s=>s.trim(
 function setDocList(v){if(!isAdmin())return;DOCTORS=v.split(',').map(s=>s.trim()).filter(Boolean);saveDoctorsCfg();render();}
 /* ── 준비 지시(의사 입력: 처치+준비물) → 준비실 도착 시 인쇄 ── */
 function openRx(pid){openEdit(pid);}   // 준비지시는 환자 정보 창(2열)에 통합됨
+/* 진료실에서 온 처방 목록(슬립 화면과 같은 줄) — 없으면 빈 문자열 (2026-09-23) */
+function slipLinesFor(p){
+  try{const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);
+      return (rp.valid&&rp.lines.length)?rp.lines.join('\n'):'';}catch(e){return '';}
+}
+/* 슬립 목록을 '처치' 칸에 그대로 넣는다. 직원이 직접 고쳐 쓴 내용은 덮어쓰지 않는다
+   (비어 있거나, 지난번에 자동으로 넣어 둔 값 그대로일 때만 새 목록으로 바꾼다) */
+function applySlipToRx(p){
+  const slip=slipLinesFor(p);const hint=document.getElementById('rxSlipHint');
+  if(!slip){if(hint)hint.style.display='none';return (p&&p.rxProc)||'';}
+  const cur=String((p&&p.rxProc)||'').trim(), auto=String((p&&p.rxAuto)||'').trim();
+  let val=cur;
+  if(!cur||cur===auto){ val=slip; if(p&&(p.rxProc!==slip||p.rxAuto!==slip)){p.rxProc=slip;p.rxAuto=slip;try{save(p);}catch(e){}} }
+  if(hint){
+    const same=String(val).trim()===slip.trim();
+    hint.style.display='';
+    hint.innerHTML=same
+      ? `<i data-lucide="pill"></i> 진료실 처방 목록에서 자동으로 채웠습니다 (슬립 화면과 같은 내용)`
+      : `<i data-lucide="pill"></i> 진료실 처방 목록이 따로 있습니다 <button type="button" class="btn sm" style="margin-left:6px" onclick="pullSlipToRx('${p?p.id:''}')">슬립 내용 가져오기</button>`;
+  }
+  return val;
+}
+window.pullSlipToRx=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  const slip=slipLinesFor(p);if(!slip)return;
+  p.rxProc=slip;p.rxAuto=slip;try{save(p);}catch(e){}
+  const ta=document.getElementById('rxProc');if(ta)ta.value=slip;
+  try{fillRxSection(p);}catch(e){}};
 function fillRxSection(p){
-  document.getElementById('rxProc').value=(p&&p.rxProc)||'';
+  document.getElementById('rxProc').value=applySlipToRx(p);
   document.getElementById('rxItems').value=(p&&p.rxItems)||'';
   const pn=[...new Set([...PROC_SET,...Object.keys(PROC_MATERIALS)])], mn=PREP_ITEMS;
   document.getElementById('rxProcChips').innerHTML=pn.length?pn.map(pr=>`<button type="button" class="chipf" onclick="addRx('proc','${esc(pr)}')">+ ${esc(pr)}</button>`).join(''):'<span class="hint">처치 세트가 없습니다(진료실 관리 → 처치 세트에서 등록)</span>';
   document.getElementById('rxItemChips').innerHTML=mn.length?mn.map(m=>`<button type="button" class="chipf" onclick="addRx('items','${esc(m)}')">+ ${esc(m)}</button>`).join(''):'<span class="hint">준비물 세트가 없습니다(진료실 관리 → 준비물 세트에서 등록)</span>';
   renderRxPrev(p);
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
 /* 이전 준비지시 목록 — 과거 내원에서 그대로 가져오기 */
 function renderRxPrev(p){
@@ -8900,6 +9013,11 @@ boot();
   .rx-tbl td.rx-cod{font-weight:700;color:var(--t-indigosoft)}
   .rx-tbl td.rx-nam{white-space:normal;word-break:break-all}
   .rx-tbl .rx-unt{margin-left:4px;font-size:10.5px;color:var(--muted);font-weight:600}
+  .rx-tbl td.rx-t{text-align:left;font-variant-numeric:tabular-nums;color:var(--muted);font-weight:700}
+  .rx-tbl tr.rx-new td{background:rgba(99,102,241,.10)}
+  .rx-tbl tr.rx-new td.rx-t{color:var(--t-indigosoft)}
+  .rx-tag{margin-left:5px;font-size:9.5px;font-weight:800;background:var(--t-indigosoft);color:#fff;border-radius:4px;padding:0 4px;vertical-align:middle}
+  .bitrx-sum.fresh{border-color:var(--t-indigosoft);background:rgba(99,102,241,.12);color:var(--t-indigosoft)}
   .treat-count.click{cursor:pointer}
   /* 환자 정보 창 치료 회차 블록 */
   .treat-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
