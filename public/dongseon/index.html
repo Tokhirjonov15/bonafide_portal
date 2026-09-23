@@ -1821,6 +1821,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div>
       <div id="editChartPast" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
       <div id="editResearchPast" style="display:none;flex-direction:column;gap:8px;max-height:420px;overflow:auto"></div>
+      <!-- 오늘 4층 비급여 치료 예약으로 오셨는지 (2026-09-24) — 지난 기록과 다음 예약 사이 -->
+      <div class="booked-box" id="bookedBox" style="display:none"></div>
       <!-- 다음 예약(충격파·신장분사 시트에 추가) — 환자 정보 창에서 바로 다음 방문을 잡는다. 동선관리 수정본(bookingEdits)에 저장, 시트에는 반영되지 않음 (2026-09-20) -->
       <div class="next-bk" id="nextBk">
         <div class="sect-t" style="display:flex;align-items:center;gap:8px"><i data-lucide="calendar-plus"></i> 다음 예약 <span class="hint">충격파 · 신장분사</span></div>
@@ -7634,6 +7636,7 @@ function fillEditChart(p){
    const fcell=fl=>{const auto=cnt[fl],base=Number(fb[fl]||0),shown=Math.max(0,auto+base);return `<b class="vf-edit" data-floor="${fl}" data-auto="${auto}" data-shown="${shown}" title="누르면 ${fl} 내원 횟수 고치기${base?` (자동 ${auto} + 보정 ${base>0?'+':''}${base})`:''}" onclick="editFloorVisits('${esc(p.id)}','${fl}')">${shown}</b>${base?'<span class="vf-adj">✎</span>':''}`;};
    box.insertAdjacentHTML('afterbegin',`<div class="hint visit-sum" style="margin-bottom:6px" title="${b.visits?'전체는 비트 DB 기준(개원 이후, 오늘 포함)':'전체는 동선관리 기록 기준'} · 층별은 동선관리 내원 기록 기준(오늘 포함) — 숫자를 누르면 고칠 수 있음${b.firstVisit?' · 최초 '+esc(String(b.firstVisit).slice(0,10)):''}${b.prevVisit?' · 직전 '+esc(String(b.prevVisit).slice(0,10)):''}"><i data-lucide="history"></i> 내원기록 <b>${n}회차</b> <span class="visit-floors">· 3층 ${fcell('3층')}회 · 4층 ${fcell('4층')}회</span></div>`);}
   try{fillNextBk(p);}catch(e){console.warn('nextBk',e);}   // 다음 예약 블록
+  try{fillBookedBox(p);}catch(e){console.warn('bookedBox',e);} // 오늘 4층 예약으로 왔는지
   try{fillRxBox(p);}catch(e){console.warn('rxBox',e);}         // 비트 처방내역 표
   try{fillTreatBox(p);}catch(e){console.warn('treatBox',e);}   // 치료 회차 블록
   // 발송 문자 내역: 오늘(진행중) + 과거 내원 기록의 것을 합쳐 최신순 — 접힘/펼침(버튼 클릭 시 열림)
@@ -7854,6 +7857,39 @@ function exportConsults(){
 let routeDragIdx=null;
 function renderRoomButtons(){
   document.getElementById("routeBtns").innerHTML=ROOMS.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
+}
+/* 오늘 4층 비급여 치료(충격파·신장분사 시트)에 예약이 있는 환자인지 — 어디서 예약하고 왔는지 알려 준다 (2026-09-24).
+   시트에 없으면 블록을 숨긴다. 지금은 4층 시트만 본다(진료 예약은 따로 보는 화면이 있음) */
+function bookedFromSheet(p){
+  if(!p)return [];
+  const D=localYMD(new Date());let M=null;
+  try{M=bkMerged(D);}catch(e){return [];}
+  const mrn=String(p.mrn||'').trim(), nm=String(p.name||'').trim();
+  const hit=(M.items||[]).filter(x=>{
+    if(x.removed)return false;
+    const m=String(x.mrn||'').trim();
+    return m?(mrn&&m===mrn):(nm&&String(x.name||'').trim()===nm);});
+  return hit.sort((a,b)=>String(a.t||'').localeCompare(String(b.t||'')));
+}
+function fillBookedBox(p){
+  const box=document.getElementById('bookedBox');if(!box)return;
+  const hit=bookedFromSheet(p);
+  if(!hit.length){box.innerHTML='';box.style.display='none';return;}
+  const rows=hit.map(x=>{
+    const arrived=String(x.color||'').toLowerCase()==='#ffe599';
+    return `<div class="bb-row">
+      <b class="bb-t">${esc(String(x.t||''))}</b>
+      <span class="bb-th">${esc(String(x.th||''))}</span>
+      ${x.code?`<span class="bb-code">${esc(String(x.code))}</span>`:''}
+      ${x.dur?`<span class="bb-dur">${esc(String(x.dur))}분</span>`:''}
+      ${arrived?'<span class="bb-tag ok">내원</span>':''}
+      ${x.added?'<span class="bb-tag add" title="동선관리에서 넣은 예약(시트에는 없음)">동선</span>':''}
+      ${x.note?`<span class="bb-note" title="${esc(String(x.note))}">${esc(String(x.note))}</span>`:''}
+    </div>`;}).join('');
+  box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="calendar-check"></i> 4층 비급여 치료 예약
+      <span class="hint">오늘 시트 ${hit.length}건 — 이 예약으로 오신 환자입니다</span></div>${rows}`;
+  box.style.display='';
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
 /* 환자 정보 창의 비트 처방내역 표 — 비트 '처방내역' 창과 같은 항목 (2026-09-23) */
 /* HH:MM → 오늘 기준 '몇 분 전'. 처방이 방금 것인지 아까 것인지 구분하려고 (2026-09-23) */
@@ -9066,11 +9102,23 @@ boot();
   body.compact .card .bitrx-sum{margin-left:11px;margin-right:11px}
   /* 환자 정보 창의 처방내역 표 */
   .rx-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  /* 오늘 4층 비급여 치료 예약 블록 */
+  .booked-box{margin-top:14px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:5px}
+  .bb-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:8px;padding:5px 10px}
+  .bb-row .bb-t{font-variant-numeric:tabular-nums;color:var(--teal)}
+  .bb-row .bb-th{font-weight:700}
+  .bb-row .bb-code{font-size:11px;color:var(--t-indigosoft);background:rgba(99,102,241,.10);border-radius:5px;padding:1px 6px}
+  .bb-row .bb-dur,.bb-row .bb-note{font-size:11px;color:var(--muted)}
+  .bb-row .bb-note{margin-left:auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bb-tag{font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px}
+  .bb-tag.ok{background:var(--green-bg);color:var(--green)}
+  .bb-tag.add{background:rgba(99,102,241,.16);color:var(--t-indigosoft)}
   .rx-tblwrap{max-height:320px;overflow:auto;margin-top:6px}
   .rx-tbl{width:100%;border-collapse:collapse;font-size:12px}
   .rx-tbl th,.rx-tbl td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
   .rx-tbl th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-size:11.5px}
-  .rx-tbl th:nth-child(1),.rx-tbl th:nth-child(2),.rx-tbl td.rx-cod,.rx-tbl td.rx-nam{text-align:left}
+  .rx-tbl th:nth-child(1),.rx-tbl th:nth-child(2),.rx-tbl th:nth-child(3),
+  .rx-tbl td.rx-t,.rx-tbl td.rx-cod,.rx-tbl td.rx-nam{text-align:left}   /* 시각·처방코드·처방명칭은 왼쪽 맞춤(머리글도 함께) */
   .rx-tbl td.rx-cod{font-weight:700;color:var(--t-indigosoft)}
   .rx-tbl td.rx-nam{white-space:normal;word-break:break-all}
   .rx-tbl .rx-unt{margin-left:4px;font-size:10.5px;color:var(--muted);font-weight:600}
