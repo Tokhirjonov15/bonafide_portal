@@ -19,6 +19,7 @@ $MAP = @{
 }
 function Say($s, $c = 'Gray') { Write-Host $s -ForegroundColor $c }
 $fail = @()
+$MIN_VER = 'db1.1'   # 이 버전보다 낮으면 옛 스크립트가 그대로 돌고 있는 것 — 전화번호·내원 횟수·처방이 올라가지 않는다 (2026-09-23)
 
 # ── 1. 이 PC 알아내기 ──
 $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress } | Where-Object { $_ -like '192.168.*' })
@@ -96,6 +97,13 @@ elseif (-not $ans.StartsWith($expect)) { $fail += "상태 응답이 기대와 �
 elseif (($ans -split ' ').Count -lt 5) { $fail += "옛 버전 에이전트가 답함(동료 목록 칸 없음): '$ans' — 새 bit_db_agent.ps1 이 같은 폴더에 있었는지 확인" }
 $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'bit_db_agent\.ps1' })
 if ($procs.Count -ne 1) { $fail += "에이전트 프로세스가 $($procs.Count)개 (1개여야 함)" }
+# 실제로 돌고 있는 파일의 버전 확인 — 옛 스크립트가 그대로 남아 있으면 여기서 걸린다
+$verNow = ''
+try { $m = Select-String -Path (Join-Path $Dest 'bit_db_agent.ps1') -Pattern "^\`$VER\s*=\s*'([^']+)'" | Select-Object -First 1
+      if ($m) { $verNow = $m.Matches[0].Groups[1].Value } } catch {}
+if (-not $verNow) { $fail += "에이전트 버전을 읽지 못함 ($Destit_db_agent.ps1)" }
+elseif ($verNow -lt $MIN_VER) { $fail += "옛 버전이 설치됨: $verNow (필요: $MIN_VER 이상) — 이 스크립트와 같은 폴더에 새 bit_db_agent.ps1 을 넣고 다시 실행하세요" }
+else { Say "   에이전트 버전: $verNow" }
 Say ""
 if ($fail.Count) { Say "FAIL — $($me.pc): $($fail -join ' / ')" Red } else { Say "PASS — $($me.pc): $ans" Green }
 Say "   최근 로그:"; if (Test-Path $log) { Get-Content $log -Tail 4 -Encoding UTF8 | ForEach-Object { Say "   $_" } }
