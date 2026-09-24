@@ -5495,7 +5495,9 @@ function openWaitScreen(){waitOpen=true;try{if(cloud.intakeCol&&currentUser)subs
 function closeWaitScreen(){waitOpen=false;try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}document.getElementById("waitScreen").classList.remove("show");
   if(waitClockTimer){clearInterval(waitClockTimer);waitClockTimer=null;}
   if(waitRotTimer){clearInterval(waitRotTimer);waitRotTimer=null;}}
-function toggleWaitRoom(room){const i=waitRooms.indexOf(room);if(i>=0)waitRooms.splice(i,1);else{waitRooms=waitRooms.filter(r=>!waitViewOf(r));waitRooms.push(room);}   // 다른 방을 고르면 검사실 보기는 닫힘
+/* 대기화면의 방 고르기는 한 번에 하나만 (2026-09-24): 다른 방을 고르면 먼저 고른 방(검사실 보기 포함)은 풀린다.
+   두 방을 함께 켜 두면 한 방은 환자가 있어 목록이, 다른 방은 비어 그림이 번갈아 나와 헷갈렸다. 같은 방을 다시 누르면 해제 */
+function toggleWaitRoom(room){const on=waitRooms.length===1&&waitRooms[0]===room;waitRooms=on?[]:[room];
   waitPresets[waitCur].rooms=waitRooms.slice();saveWaitPresets();renderWaitScreen();}
 function setWaitMsg(v){waitMsg=v;waitPresets[waitCur].msg=v;saveWaitPresets();const h=document.getElementById("waitHeadline");if(h)h.textContent=v;}
 function onWaitBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)ev.target.value="";if(!f)return;
