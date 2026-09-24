@@ -6,6 +6,8 @@
 <title>반듯한 동선관리</title>
 <!-- 클라우드(Firebase) 연결 워밍업 — 모바일 초기 로딩 단축 -->
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">   <!-- 대기화면 글꼴 (2026-09-24) -->
 <link rel="dns-prefetch" href="https://www.gstatic.com">
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
@@ -835,6 +837,22 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .wait-title{font-size:calc(clamp(38px,5.6vw,88px) * var(--wheadscale,1))}
   .wait-sub{font-size:calc(clamp(16px,1.9vw,36px) * var(--wheadscale,1));margin-top:12px;letter-spacing:-.3px;white-space:nowrap}   /* 한 줄 고정 — 넘치면 waitSubFit 이 글자 크기를 줄임 */
   @media(max-width:1100px){.wait-header{padding:30px 46px 18px;justify-content:flex-start;text-align:left}.wait-brand{align-items:flex-start}.wait-underline{margin:12px 0 0}.wait-clock{position:static}}
+  /* ── 대기화면 새 모양 (2026-09-24, 다른 프로젝트의 순번 화면과 같게): 왼쪽 위 로고 + 큰 제목, 반투명 사진 배경, 시계 없음 ── */
+  .wait-screen{font-family:'Noto Sans KR',-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;background:#f0f4f7}
+  .wait-title-row{display:flex;align-items:center;justify-content:center;gap:clamp(12px,1.5vw,32px);width:100%;font-size:calc(clamp(48px,7vw,120px) * var(--wheadscale,1))}
+  .wait-logo{height:.85em;width:auto;object-fit:contain;flex-shrink:0;display:none}
+  .wait-logo.has{display:inline-block}
+  .wait-title{font-size:1em;flex:0 1 auto;min-width:0;text-align:center;color:#2c3e50;letter-spacing:-.5px;line-height:1.1;text-shadow:none;word-break:keep-all}
+  .wait-sub{font-size:calc(clamp(22px,2.2vw,38px) * var(--wheadscale,1));font-weight:400;color:#2c3e50;margin-top:.3em;letter-spacing:0}
+  .wait-underline{width:5vw;max-width:80px;min-width:40px;height:clamp(4px,.5vw,8px);border-radius:3px;background:#5170ff;margin-top:.8vw}
+  .wait-clock{display:none}                       /* 참고 화면에는 시계가 없음 — 다시 보이게 하려면 이 줄만 지운다 */
+  .wait-bg.has-img{opacity:.75}                   /* 사진은 반투명(흐려 보이게)만 — 뿌옇게 덮거나 흐림 효과는 쓰지 않음 */
+  .wait-bg.has-img::after{display:none}
+  .wait-bg.idle{opacity:1}                        /* 빈 화면 그림(배너)은 선명하게 */
+  .wait-ct{background:#1a3a6b}
+  .wait-foot{background:#1a3a6b}
+  .wait-badge{background:#00bf63;box-shadow:none}
+  .wait-badge.prog{background:#5170ff;box-shadow:none}
   .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
   #roomsModal .modal,#viewModal .modal{overflow:hidden;display:flex;flex-direction:column}
@@ -1528,7 +1546,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="wait-ctl" title="상단 안내 문구 글자 크기 (%)"><i data-lucide="megaphone"></i> 안내 <input id="waitHeadInp" type="number" min="50" max="300" step="10" onchange="setWaitHeadPct(this.value)">%</span>
     <label class="btn sm" style="cursor:pointer"><i data-lucide="image"></i> 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitBg(event)"></label>
     <button class="btn sm" onclick="clearWaitBg()">배경 없음</button>
-    <label class="btn sm wait-admin-only" id="waitIdleBgBtn" style="cursor:pointer" title="검사실 보기(C-Arm, Sono, 근전도, 처치)에 대기 환자가 한 명도 없을 때 대신 보여 줄 이미지 — 여러 장(최대 4장)을 고르면 8초마다 차례로 바뀝니다 (관리자만)"><i data-lucide="image-off"></i> 빈 화면 배경<span id="waitIdleCnt"></span><input type="file" accept="image/*" multiple style="display:none" onchange="onWaitIdleBg(event)"></label>
+    <label class="btn sm wait-admin-only" style="cursor:pointer" title="왼쪽 위 로고 바꾸기 (관리자만) — 비우면 기본 로고"><i data-lucide="badge"></i> 로고<input type="file" accept="image/*" style="display:none" onchange="onWaitLogo(event)"></label>
+    <button class="btn sm wait-admin-only" onclick="clearWaitLogo()" title="로고 숨기기 (관리자만)">로고 없음</button>
+    <label class="btn sm wait-admin-only" id="waitIdleBgBtn" style="cursor:pointer" title="검사실 보기(C-Arm, Sono, 근전도, 처치)에 대기 환자가 한 명도 없을 때 대신 보여 줄 이미지 — 여러 장(최대 12장)을 고르면 8초마다 차례로 바뀝니다 (관리자만)"><i data-lucide="image-off"></i> 빈 화면 배경<span id="waitIdleCnt"></span><input type="file" accept="image/*" multiple style="display:none" onchange="onWaitIdleBg(event)"></label>
     <button class="btn sm wait-admin-only" id="waitIdleClrBtn" onclick="clearWaitIdleBg()" title="빈 화면 배경 지우기 (관리자만)">빈 화면 배경 없음</button>
     <button class="btn sm" onclick="toggleWaitControls()"><i data-lucide="eye-off"></i> 컨트롤 숨기기</button>
     <button class="btn sm" onclick="closeWaitScreen()">✕ 닫기</button>
@@ -1537,7 +1557,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="wait-stage">
     <div class="wait-header">
       <div class="wait-brand">
-        <div class="wait-title" id="waitHeadline"></div>
+        <div class="wait-title-row"><img class="wait-logo" id="waitLogo" alt="" src=""><div class="wait-title" id="waitHeadline"></div></div>
         <div class="wait-sub">시술 5만례 이상 전문의료진 | 대학병원급 진료 시스템 | 풍부한 임상경험 기반 진료 | 숙련된 의료진 상주 진료</div>
         <div class="wait-underline"></div>
       </div>
@@ -5425,16 +5445,45 @@ let waitCur=(function(){const n=parseInt(localStorage.getItem("patientBoard_wait
 let waitRooms=Array.isArray(waitPresets[waitCur].rooms)?waitPresets[waitCur].rooms.slice():[];
 let waitMsg=waitPresets[waitCur].msg||"";
 let waitBg=waitPresets[waitCur].bg||"";
+/* 기본 배경 사진·기본 로고 — 다른 프로젝트 순번 화면과 같은 파일(Google Drive). 관리자가 올리면 그걸 쓰고, '없음' 이면 'none' 으로 표시 안 함 (2026-09-24) */
+const WAIT_DEFAULT_BG='https://drive.google.com/thumbnail?id=1uPzpdll1nHahXwYD7sOALChy_jyM0TuS&sz=w1920';
+const WAIT_DEFAULT_LOGO='https://drive.google.com/thumbnail?id=1bvHk6ZJTWm-Q3dxkal4BMQv-0JI0j0Jf&sz=w600';
+let waitLogo=waitPresets[waitCur].logo||"";
+function applyWaitLogo(){const el=document.getElementById("waitLogo");if(!el)return;const src=(waitLogo==='none')?'':(waitLogo||WAIT_DEFAULT_LOGO);
+  if(el.getAttribute('src')!==src)el.setAttribute('src',src);el.classList.toggle('has',!!src);}
+async function onWaitLogo(ev){const files=Array.from((ev.target&&ev.target.files)||[]);if(ev.target)ev.target.value="";
+  if(!isAdmin()){alert("로고는 관리자만 바꿀 수 있습니다.");return;}if(!files.length)return;
+  const d=await shrinkImageFile(files[0],600,0.9);if(!d)return;
+  waitLogo=d;waitPresets[waitCur].logo=d;saveWaitPresets();applyWaitLogo();}
+function clearWaitLogo(){if(!isAdmin()){alert("로고는 관리자만 바꿀 수 있습니다.");return;}
+  waitLogo='none';waitPresets[waitCur].logo='none';saveWaitPresets();applyWaitLogo();}
 let waitIdleBg=waitPresets[waitCur].idleBg||"";   // (옛 한 장짜리 — 호환용) 빈 화면 배경
 let waitIdleBgs=Array.isArray(waitPresets[waitCur].idleBgs)?waitPresets[waitCur].idleBgs.slice():[];   // 빈 화면 배경 여러 장(최대 4) — 차례로 돌아간다 (2026-09-24)
-const WAIT_IDLE_MAX=4, WAIT_IDLE_ROT_SEC=8;          // 최대 장수 · 넘기는 간격(초)
+const WAIT_IDLE_MAX=12, WAIT_IDLE_ROT_SEC=8;         // 최대 장수 · 넘기는 간격(초)
+/* 빈 화면 배경 그림은 브라우저의 IndexedDB 에 둔다 — localStorage(약 5MB)로는 서너 장이 한계라서. 양식마다 따로 (2026-09-24) */
+const IDB_NAME='patientBoard', IDB_STORE='kv';
+function idbOpen(){return new Promise((res,rej)=>{try{const r=indexedDB.open(IDB_NAME,1);r.onupgradeneeded=()=>{try{r.result.createObjectStore(IDB_STORE);}catch(e){}};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}});}
+async function idbGet(k){try{const db=await idbOpen();return await new Promise((res,rej)=>{const t=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(k);t.onsuccess=()=>res(t.result);t.onerror=()=>rej(t.error);});}catch(e){return undefined;}}
+async function idbSet(k,v){try{const db=await idbOpen();return await new Promise((res,rej)=>{const t=db.transaction(IDB_STORE,'readwrite');t.objectStore(IDB_STORE).put(v,k);t.oncomplete=()=>res(true);t.onerror=()=>rej(t.error);});}catch(e){return false;}}
+/* 양식 i 의 빈 화면 배경을 읽는다. 예전에 localStorage 양식에 넣어 둔 그림이 있으면 옮기고 양식에서는 뺀다(용량) */
+function waitIdleLoad(i){
+  idbGet('waitIdleBgs_'+i).then(arr=>{
+    if(!(Array.isArray(arr)&&arr.length)){
+      const p=waitPresets[i]||{};const legacy=Array.isArray(p.idleBgs)&&p.idleBgs.length?p.idleBgs.slice():(p.idleBg?[p.idleBg]:[]);
+      if(legacy.length){arr=legacy;idbSet('waitIdleBgs_'+i,arr);delete p.idleBgs;delete p.idleBg;try{saveWaitPresets();}catch(e){}}
+      else arr=[];
+    }
+    if(i===waitCur){waitIdleBgs=arr;waitIdleBg="";waitIdleIdx=0;if(waitOpen)renderWaitScreen();else applyWaitBg();}
+  }).catch(()=>{});
+}
 let waitIdleIdx=0, waitIdleTimer=null;
 function waitIdleList(){return waitIdleBgs.length?waitIdleBgs:(waitIdleBg?[waitIdleBg]:[]);}
+try{waitIdleLoad(waitCur);}catch(e){}
 let waitIdle=false;                                // 지금 빈 화면인가(renderWaitScreen 이 정함)
 let waitIdleSoft=false;                            // 빈 화면이지만 제목·시계·하단 안내 띠는 남기는 쪽(일반 방이 비었을 때, 2026-09-24)
 function saveWaitPresets(){ try{localStorage.setItem("patientBoard_waitpresets",JSON.stringify(waitPresets));}catch(e){alert("대기화면 양식 저장 실패 — 배경 이미지가 너무 클 수 있어요. 더 작은 이미지를 쓰거나 배경을 비워 주세요.");} }
 function loadWaitPreset(i){ if(i<0||i>=5)return; waitCur=i; localStorage.setItem("patientBoard_waitcur",String(i));
-  const p=waitPresets[i]||{}; waitMsg=p.msg||""; waitBg=p.bg||""; waitIdleBg=p.idleBg||""; waitIdleBgs=Array.isArray(p.idleBgs)?p.idleBgs.slice():[]; waitIdleIdx=0; waitRooms=Array.isArray(p.rooms)?p.rooms.slice():[];
+  const p=waitPresets[i]||{}; waitMsg=p.msg||""; waitBg=p.bg||""; waitIdleBg=p.idleBg||""; waitIdleBgs=[]; waitIdleIdx=0; waitLogo=p.logo||""; waitRooms=Array.isArray(p.rooms)?p.rooms.slice():[]; waitIdleLoad(i); applyWaitLogo();
   applyWaitBg(); renderWaitScreen(); const inp=document.getElementById("waitMsgInput"); if(inp)inp.value=waitMsg; }
 function renameWaitPreset(i){ if(i<0||i>=5)return; const cur=(waitPresets[i]&&waitPresets[i].name)||("양식 "+(i+1)); const n=prompt("이 양식의 이름",cur); if(n==null)return; waitPresets[i].name=(n.trim()||("양식 "+(i+1))); saveWaitPresets(); renderWaitPresetSel(); }
 function renderWaitPresetSel(){ const el=document.getElementById("waitPresetSel"); if(!el)return;
@@ -5505,10 +5554,12 @@ function toggleWaitRoom(room){const on=waitRooms.length===1&&waitRooms[0]===room
 function setWaitMsg(v){waitMsg=v;waitPresets[waitCur].msg=v;saveWaitPresets();const h=document.getElementById("waitHeadline");if(h)h.textContent=v;}
 function onWaitBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)ev.target.value="";if(!f)return;
   const r=new FileReader();r.onload=()=>{waitBg=r.result;waitPresets[waitCur].bg=r.result;saveWaitPresets();applyWaitBg();};r.readAsDataURL(f);}
-function clearWaitBg(){waitBg="";waitPresets[waitCur].bg="";saveWaitPresets();applyWaitBg();}
+function clearWaitBg(){waitBg="none";waitPresets[waitCur].bg="none";saveWaitPresets();applyWaitBg();}   // 'none' = 기본 사진도 쓰지 않음
 function applyWaitBg(){const el=document.getElementById("waitBg");if(!el)return;
   const list=waitIdleList();const idle=waitIdle&&list.length>0;
-  const src=idle?list[((waitIdleIdx%list.length)+list.length)%list.length]:waitBg;   // 빈 화면이면 빈 화면 배경(있을 때만, 여러 장이면 차례로), 아니면 평소 배경
+  const normalBg=(waitBg==='none')?'':(waitBg||WAIT_DEFAULT_BG);   // 평소 배경: 올린 사진 > 기본 사진, '배경 없음' 이면 비움
+  const src=idle?list[((waitIdleIdx%list.length)+list.length)%list.length]:normalBg;   // 빈 화면이면 빈 화면 배경(있을 때만, 여러 장이면 차례로), 아니면 평소 배경
+  applyWaitLogo();
   el.style.backgroundImage=src?`url("${src}")`:"";el.classList.toggle("has-img",!!src);el.classList.toggle("idle",idle);
   const ws=document.getElementById("waitScreen");if(ws){ws.classList.toggle("idle",idle&&!waitIdleSoft);ws.classList.toggle("idle-soft",idle&&waitIdleSoft);}   // idle: 제목·시계·띠까지 숨김 / idle-soft: 그림만 바꾸고 나머지는 그대로
   const cnt=document.getElementById("waitIdleCnt");if(cnt)cnt.textContent=list.length?` (${list.length}/${WAIT_IDLE_MAX})`:"";
@@ -5522,7 +5573,7 @@ function waitIdleNext(){const list=waitIdleList();if(!waitIdle||list.length<2){r
   fd.style.transition="none";fd.style.opacity="0";fd.style.backgroundImage=`url("${next}")`;void fd.offsetWidth;   // 위 겹층에 다음 장을 놓고
   fd.style.transition="opacity .9s ease";fd.style.opacity="1";                                                        // 서서히 나타나게
   setTimeout(()=>{el.style.backgroundImage=`url("${next}")`;fd.style.transition="none";fd.style.opacity="0";},950);}  // 다 보이면 밑층을 바꾸고 겹층은 숨김
-/* 빈 화면 배경 올리기: 여러 장을 한 번에 골라도 됨(최대 4장). 화면 크기(가로 2560px)를 넘는 큰 그림만 줄이고 JPEG 로 다시 담아 저장 용량을 아낀다 */
+/* 빈 화면 배경 올리기: 여러 장을 한 번에 골라도 됨(최대 WAIT_IDLE_MAX 장, IndexedDB 에 저장). 화면 크기(가로 2560px)를 넘는 큰 그림만 줄이고 JPEG 로 다시 담아 저장 용량을 아낀다 */
 function shrinkImageFile(f,maxW,q){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(f);
   img.onload=()=>{const sc=Math.min(1,maxW/img.width);const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
     const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(u);
@@ -5534,9 +5585,12 @@ async function onWaitIdleBg(ev){const files=Array.from((ev.target&&ev.target.fil
   const list=waitIdleList().slice();
   for(const f of files){ if(list.length>=WAIT_IDLE_MAX){alert(`빈 화면 배경은 최대 ${WAIT_IDLE_MAX}장까지입니다. 먼저 '빈 화면 배경 없음'으로 비우고 다시 올려 주세요.`);break;}
     const d=await shrinkImageFile(f,2560,0.86); if(d)list.push(d); }
-  waitIdleBgs=list;waitIdleBg="";waitIdleIdx=0;waitPresets[waitCur].idleBgs=list;delete waitPresets[waitCur].idleBg;saveWaitPresets();applyWaitBg();}
+  waitIdleBgs=list;waitIdleBg="";waitIdleIdx=0;delete waitPresets[waitCur].idleBgs;delete waitPresets[waitCur].idleBg;saveWaitPresets();
+  if(!(await idbSet('waitIdleBgs_'+waitCur,list)))alert("빈 화면 배경을 저장하지 못했습니다(브라우저 저장 공간). 그림 수를 줄여 보세요.");
+  if(waitOpen)renderWaitScreen();else applyWaitBg();}
 function clearWaitIdleBg(){if(!isAdmin()){alert("빈 화면 배경은 관리자만 바꿀 수 있습니다.");return;}
-  waitIdleBg="";waitIdleBgs=[];waitIdleIdx=0;waitPresets[waitCur].idleBg="";delete waitPresets[waitCur].idleBgs;saveWaitPresets();applyWaitBg();}
+  waitIdleBg="";waitIdleBgs=[];waitIdleIdx=0;waitPresets[waitCur].idleBg="";delete waitPresets[waitCur].idleBgs;saveWaitPresets();idbSet('waitIdleBgs_'+waitCur,[]);
+  if(waitOpen)renderWaitScreen();else applyWaitBg();}
 function toggleWaitControls(){waitHideControls=!waitHideControls;localStorage.setItem("patientBoard_waithide",waitHideControls?"1":"0");applyWaitControls();}
 function applyWaitControls(){const c=document.getElementById("waitControls");if(c)c.classList.toggle("hidden",waitHideControls);
   document.querySelectorAll(".wait-admin-only").forEach(el=>{el.style.display=isAdmin()?"":"none";});   // 빈 화면 배경(올리기·지우기)은 관리자만 (2026-09-24)const inp=document.getElementById("waitMsgInput");if(inp)inp.value=waitMsg;
