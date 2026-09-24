@@ -5658,13 +5658,16 @@ function renderWaitScreen(){
   const dotsHtml=rot?`<div class="wait-rot-dots">${units.map((u,i)=>`<span class="wrd ${i===waitRotIdx?'on':''}" title="${esc(u.view?u.view.chip:waitColTitle(u.keys[0]))}"></span>`).join("")}</div>`:'';
   document.getElementById("waitScreen").classList.toggle("sheet-page",showRs.some(k=>!!sheetGroupOf(k)));
   /* 검사실 보기(C-Arm / Sono / 근전도·처치): 환자가 없는 칸은 아예 숨기고('현재 대기 환자 없음' 없이), 세 칸 모두 비면 목록 대신 '빈 화면 배경'만 (2026-09-15 원장님 지시) */
-  const viewCnt=k=>{const vc=waitViewCol(k);if(!vc)return 1;return data.filter(p=>!p.discharged&&!p.out&&p.route.length&&vc.rooms.includes(curRoom(p))).length;};
+  /* 어느 칸에 들어가는가: 지금 있는 방 + 보드에서 거울로 함께 보이는 방(같은 공간 C-Arm·Sono·처치실·근전도검사는 처방에 따라 여러 칸).
+     예전에는 curRoom 만 봐서 C-Arm 에 있으면서 Sono 처방을 받은 환자가 Sono 칸에 안 나왔다 (2026-09-24) */
+  const inRooms=(p,rooms)=>{if(p.discharged||p.out||!p.route.length)return false;const cr=curRoom(p);return rooms.some(r=>r===cr||mirroredHere(p,r));};
+  const viewCnt=k=>{const vc=waitViewCol(k);if(!vc)return 1;return data.filter(p=>inRooms(p,vc.rooms)).length;};
   const hadView=showRs.some(k=>!!waitViewCol(k));
   if(hadView)showRs=showRs.filter(k=>viewCnt(k)>0);
   /* 빈 화면 판정 (2026-09-24 확장): ① 검사실 보기의 칸이 모두 비었을 때(예전 규칙) ② 그 밖의 보기라도 고른 방 전부에 환자가 0명이고 빈 화면 배경이 있을 때.
      시트 칸(4층 예약표)은 환자 목록이 아니므로 '비어 있음'으로 치지 않는다 */
   const roomCnt=k=>{if(sheetGroupOf(k))return 1;const vc=waitViewCol(k);const rooms=vc?vc.rooms:[k];
-    return data.filter(p=>!p.discharged&&!p.out&&p.route.length&&rooms.includes(curRoom(p))).length;};
+    return data.filter(p=>inRooms(p,rooms)).length;};
   const allEmpty=showRs.length>0&&showRs.every(k=>roomCnt(k)===0);
   const idleHard=hadView&&showRs.length===0;                       // 검사실 보기: 그림만(제목·시계·띠 숨김 — 2026-09-15 지시)
   waitIdleSoft=!idleHard&&allEmpty&&waitIdleList().length>0;       // 일반 방이 비었을 때: 그림을 돌리되 제목·시계·하단 안내 띠는 그대로
@@ -5688,7 +5691,7 @@ function renderWaitScreen(){
       </div>`;
     }
     const vc=waitViewCol(room);const rooms=vc?vc.rooms:[room];const grp=!!(vc&&rooms.length>1);   // 보기의 칸: 방 1개면 그 방 그대로, 2개 이상이면 합산(환자 옆에 방 표시명)
-    let list=data.filter(p=>!p.discharged&&!p.out&&p.route.length&&rooms.includes(curRoom(p))); // 대기·준비·진행 모두 표시 (묶음이면 세 방 합산)
+    let list=data.filter(p=>inRooms(p,rooms)); // 대기·준비·진행 모두 표시 (묶음이면 세 방 합산) — 거울 방 포함
     list.sort((a,b)=>{const ra=curRoom(a),rb=curRoom(b);if(ra!==rb&&grp)return rooms.indexOf(ra)-rooms.indexOf(rb);return roomSort(a,b,ra);});
     list.sort((a,b)=>{const w=s=>s==='진행'?0:(s==='준비'?1:2);return w(a.status||'대기')-w(b.status||'대기');}); // 진행→준비→대기 순 (안정 정렬로 같은 상태끼리는 기존 순서 유지)
     const rows=list.length
@@ -6691,7 +6694,20 @@ function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOStri
   /* 이 방으로 누가 옮겼는지 — 환자 동선 행에 표시 (2026-09-23). by 를 넘기면 그 이름(예: 비트), 없으면 로그인한 사람 */
   {const _r=curRoom(p);if(_r){p.roomBy=p.roomBy||{};p.roomBy[_r]={by:(by!==undefined?by:((currentUser&&currentUser.name)||'')),at:now};
     if(!sameSpaceMates(_r).length&&p.spaceDone)delete p.spaceDone;}}   // 같은 공간을 벗어나면 인계 기록 초기화
+  if(by===undefined)autoAssignMover(p);   // 사람이 옮겼으면(비트·시스템 아님) 옮긴 사람이 그 방 진료의면 담당으로
   autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
+/* 옮긴 사람이 도착한 방의 진료의 목록에 있으면 그 사람을 담당의(상담 방은 담당자)로 지정 — 끌어다 놓기·[종결] 모두 (2026-09-24 요청).
+   예) 이은지 원장이 진료실에서 진료 상담으로 보내면 담당자 = 이은지. 나중에 카드에서 바꿀 수 있다. 로그인 이름(또는 아이디)이 방 목록의 이름과 같아야 한다 */
+function autoAssignMover(p){
+  const r=curRoom(p);if(!r||!currentUser)return false;
+  const me=[currentUser.name,currentUser.id].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean);if(!me.length)return false;
+  const hit=(meta(r).doctors||[]).find(d=>me.includes(String(d||'').trim().toLowerCase()));   // 그 방의 목록만 본다(전체 진료의 목록은 안 봄)
+  if(!hit||isOffToday(hit))return false;
+  p.roomDocs=p.roomDocs||{};if(p.roomDocs[r]===hit)return false;
+  p.roomDocs[r]=hit;
+  if(p.consults&&p.consults[r]&&p.consults[r].who&&p.consults[r].who!==hit)p.consults[r].who=hit;   // 상담 기록에 담당자가 따로 적혀 있으면 그것도 맞춘다
+  try{audit('진료의자동지정',p.name+' · '+r+' → '+hit+' (옮긴 사람)');}catch(e){}
+  return true;}
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
 function autoAssignRoomStaff(p){
   const r=curRoom(p);if(!r)return;
