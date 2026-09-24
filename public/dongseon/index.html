@@ -853,6 +853,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .wait-foot{background:#1a3a6b}
   .wait-badge{background:#00bf63;box-shadow:none}
   .wait-badge.prog{background:#5170ff;box-shadow:none}
+  .wait-badge{min-width:clamp(70px,8vw,130px);text-align:center;padding:clamp(4px,.5vw,8px) 14px;font-size:clamp(14px,1.3vw,29px);font-weight:700;animation:none}
+  .wait-badge.wait{background:#00bf63;animation:none}
+  .wait-badge.prep{background:#10a99a}
+  .wait-num{display:none}                                     /* 순번 화면에는 번호가 없음 — 배지가 그 자리 */
+  .wait-p{background:#f8f9fc;border:1px solid transparent;border-radius:14px;gap:clamp(12px,1.4vw,22px);padding:clamp(10px,1.1vw,18px) clamp(14px,1.4vw,24px);box-shadow:0 1px 3px rgba(20,40,80,.06)}
+  .wait-p.prog{background:#fff8ec;border-color:#f3c46a}          /* 진행중 줄: 연한 살구색 + 노란 테두리 */
+  .wait-p.prep{background:#eefaf8;border-color:#a7dcd3}
+  .wait-p.prep .wait-name{color:#2c3e50}
+  .wait-name{font-weight:700;color:#2c3e50;letter-spacing:.35em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wait-cols.rot .wait-badge{font-size:clamp(18px,1.8vw,34px);min-width:clamp(90px,9vw,160px)}
   .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
   #roomsModal .modal,#viewModal .modal{overflow:hidden;display:flex;flex-direction:column}
@@ -5453,7 +5463,7 @@ function applyWaitLogo(){const el=document.getElementById("waitLogo");if(!el)ret
   if(el.getAttribute('src')!==src)el.setAttribute('src',src);el.classList.toggle('has',!!src);}
 async function onWaitLogo(ev){const files=Array.from((ev.target&&ev.target.files)||[]);if(ev.target)ev.target.value="";
   if(!isAdmin()){alert("로고는 관리자만 바꿀 수 있습니다.");return;}if(!files.length)return;
-  const d=await shrinkImageFile(files[0],600,0.9);if(!d)return;
+  const d=await shrinkImageFile(files[0],600,0.9,true);if(!d)return;
   waitLogo=d;waitPresets[waitCur].logo=d;saveWaitPresets();applyWaitLogo();}
 function clearWaitLogo(){if(!isAdmin()){alert("로고는 관리자만 바꿀 수 있습니다.");return;}
   waitLogo='none';waitPresets[waitCur].logo='none';saveWaitPresets();applyWaitLogo();}
@@ -5574,10 +5584,12 @@ function waitIdleNext(){const list=waitIdleList();if(!waitIdle||list.length<2){r
   fd.style.transition="opacity .9s ease";fd.style.opacity="1";                                                        // 서서히 나타나게
   setTimeout(()=>{el.style.backgroundImage=`url("${next}")`;fd.style.transition="none";fd.style.opacity="0";},950);}  // 다 보이면 밑층을 바꾸고 겹층은 숨김
 /* 빈 화면 배경 올리기: 여러 장을 한 번에 골라도 됨(최대 WAIT_IDLE_MAX 장, IndexedDB 에 저장). 화면 크기(가로 2560px)를 넘는 큰 그림만 줄이고 JPEG 로 다시 담아 저장 용량을 아낀다 */
-function shrinkImageFile(f,maxW,q){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(f);
+/* keepAlpha: 로고처럼 투명 배경이 있는 PNG 는 PNG 그대로 (JPEG 로 바꾸면 투명한 곳이 검게 됨 — 2026-09-24) */
+function shrinkImageFile(f,maxW,q,keepAlpha){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(f);
   img.onload=()=>{const sc=Math.min(1,maxW/img.width);const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
     const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(u);
-    try{res(c.toDataURL('image/jpeg',q));}catch(e){res(null);}};
+    const png=keepAlpha&&/png|webp|gif|svg/i.test(f.type||'');
+    try{res(png?c.toDataURL('image/png'):c.toDataURL('image/jpeg',q));}catch(e){res(null);}};
   img.onerror=()=>{URL.revokeObjectURL(u);res(null);};img.src=u;});}
 async function onWaitIdleBg(ev){const files=Array.from((ev.target&&ev.target.files)||[]);if(ev.target)ev.target.value="";   // 파일 목록을 먼저 읽고 나서 비운다(비우면 목록이 사라짐)
   if(!isAdmin()){alert("빈 화면 배경은 관리자만 바꿀 수 있습니다.");return;}
@@ -5665,7 +5677,7 @@ function renderWaitScreen(){
     list.sort((a,b)=>{const w=s=>s==='진행'?0:(s==='준비'?1:2);return w(a.status||'대기')-w(b.status||'대기');}); // 진행→준비→대기 순 (안정 정렬로 같은 상태끼리는 기존 순서 유지)
     const rows=list.length
       ? list.map((p,i)=>{const st=p.status||'대기';const prep=st==='준비',prog=st==='진행';
-          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-name">${esc(maskName(p.name))}</span>${prog?'<span class="wait-badge prog">진행중</span>':(prep?'<span class="wait-badge">준비중</span>':'')}</div>`;}).join("")
+          return `<div class="wait-p ${prog?'prog':(prep?'prep':'')}"><span class="wait-num">${i+1}</span><span class="wait-badge ${prog?'prog':(prep?'prep':'wait')}">${prog?'진행중':(prep?'준비중':'대기')}</span><span class="wait-name">${esc(maskName(p.name))}</span></div>`;}).join("")   // 순번 화면과 같게: 배지(진행중/준비중/대기)가 이름 앞 (2026-09-24)
       : '<div class="wait-empty">현재 대기 환자 없음</div>';
     return `<div class="wait-col">
       ${(function(){const prog=list.filter(p=>(p.status||'대기')==='진행').length,wait=list.length-prog;return `<span class="wait-cnt-badge">${prog?'진행중 '+prog+'명 · ':''}대기 ${wait}명</span>`;})()}
