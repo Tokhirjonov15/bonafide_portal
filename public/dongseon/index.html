@@ -4970,9 +4970,9 @@ function consultAutoRoute(pid,fromRoom){
    비트에서 온 원장님(p.doctor)은 쓰지 않는다 — 원장님은 위쪽 '원장님' 칸이 따로 담당 (2026-09-22) */
 function consultDefaultWho(room){const l=(meta(room).doctors||[]).filter(n=>!isOffToday(n));return l[0]||"";}
 function consultWho(p,room,c){
-  if(c&&c.who)return c.who;
-  const rd=(p&&p.roomDocs&&p.roomDocs[room])||"";
-  return rd||consultDefaultWho(room);}
+  if(c&&(c.who||c.whoSet))return c.who||"";                 // 담당자 칸에서 고른 값 — whoSet 이면 '(미지정)'을 일부러 고른 것도 그대로 (2026-09-24)
+  if(p&&p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return p.roomDocs[room]||"";   // 방 담당 기록('' = 일부러 미지정)
+  return consultDefaultWho(room);}                           // 아무 기록도 없으면 방 목록의 맨 위 사람
 /* 담당의(진료실 1~4 진료의) — 상담에는 상담자 외에 담당 진료의도 함께 기록 */
 function consultDocPool(){const out=[];ROOMS.forEach(r=>{if(/^진료실\s*\d/.test(r))(meta(r).doctors||[]).forEach(n=>{if(n&&!isOffToday(n)&&!out.includes(n))out.push(n);});});return out;}
 function consultDoc(p,room,c){
@@ -5002,7 +5002,7 @@ function consultWhoHtml(p,room,c,stop){
     </select></div>`;
 }
 function setConsultWho(pid,room,who){const p=data.find(x=>x.id===pid);if(!p)return;getConsult(p,room);
-  const f={who:(who||"").trim()};
+  const f={who:(who||"").trim(),whoSet:true};   // whoSet: 사람이 고른 값(빈칸 포함) — 기본값(맨 위 사람)으로 되돌리지 않는다
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));}
 /* 상담 미시행(기타) 사유 — 정해진 목록에서 고르거나 '직접 입력' */
@@ -5037,7 +5037,7 @@ window.onConsultReasonSel=function(pid,room,sel){
 };
 function setConsultReason(pid,room,text){const p=data.find(x=>x.id===pid);if(!p)return;const c=getConsult(p,room);
   const f={reason:(text||"").trim(),by:currentUser?currentUser.name:"",at:new Date().toISOString()};
-  if(!c.who){const w=docFor(p,room);if(w)f.who=w;}
+  if(!c.who&&!c.whoSet){const w=docFor(p,room);if(w)f.who=w;}   // whoSet = 담당자를 일부러 '(미지정)'으로 둔 것 — 되채우지 않는다
   if(!c.doc){const d=consultDoc(p,room,c);if(d)f.doc=d;}
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));}
@@ -6703,9 +6703,9 @@ function autoAssignMover(p){
   const me=[currentUser.name,currentUser.id].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean);if(!me.length)return false;
   const hit=(meta(r).doctors||[]).find(d=>me.includes(String(d||'').trim().toLowerCase()));   // 그 방의 목록만 본다(전체 진료의 목록은 안 봄)
   if(!hit||isOffToday(hit))return false;
-  p.roomDocs=p.roomDocs||{};if(p.roomDocs[r]===hit)return false;
+  p.roomDocs=p.roomDocs||{};if(p.roomDocs[r]===hit)return false;   // 방에 막 들어왔으므로 예전 기록('(미지정)' 포함)은 옮긴 사람으로 덮어쓴다
   p.roomDocs[r]=hit;
-  if(p.consults&&p.consults[r]&&p.consults[r].who&&p.consults[r].who!==hit)p.consults[r].who=hit;   // 상담 기록에 담당자가 따로 적혀 있으면 그것도 맞춘다
+  if(p.consults&&p.consults[r]){p.consults[r].who=hit;p.consults[r].whoSet=true;}   // 상담 기록이 있으면 담당자도 맞춘다(새로 들어온 것이므로)
   try{audit('진료의자동지정',p.name+' · '+r+' → '+hit+' (옮긴 사람)');}catch(e){}
   return true;}
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
@@ -6714,9 +6714,11 @@ function autoAssignRoomStaff(p){
   const ds=(meta(r).doctors||[]).filter(n=>!isOffToday(n)),   // 휴무자는 자동 지정 안 됨
         ns=(meta(r).nurses||[]).filter(n=>!isOffToday(n)),
         xs=(meta(r).rads||[]).filter(n=>!isOffToday(n));
-  if(ds.length===1){p.roomDocs=p.roomDocs||{};if(!p.roomDocs[r])p.roomDocs[r]=ds[0];}
-  if(ns.length===1){p.roomNurses=p.roomNurses||{};if(!p.roomNurses[r])p.roomNurses[r]=ns[0];}
-  if(xs.length===1){p.roomRads=p.roomRads||{};if(!p.roomRads[r])p.roomRads[r]=xs[0];}
+  /* has(): 그 방에 이미 기록이 있으면 손대지 않는다. 빈칸('')도 기록 — 일부러 '(미지정)'으로 둔 것이므로 다시 채우지 않는다 (2026-09-24) */
+  const has=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k);
+  if(ds.length===1){p.roomDocs=p.roomDocs||{};if(!has(p.roomDocs,r))p.roomDocs[r]=ds[0];}
+  if(ns.length===1){p.roomNurses=p.roomNurses||{};if(!has(p.roomNurses,r))p.roomNurses[r]=ns[0];}
+  if(xs.length===1){p.roomRads=p.roomRads||{};if(!has(p.roomRads,r))p.roomRads[r]=xs[0];}
 }
 function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;if(p.status===st){return;}
   /* 진료의 미지정이면 진행 시작 불가 — 누가 치료하는지 반드시 지정 후 진행.
@@ -8195,7 +8197,9 @@ window.onMrnInput=function(){
 function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)el.innerHTML=DOCTORS.map(d=>`<option value="${esc(d)}">`).join("");}
 /* 방별 담당 진료의: 같은 환자라도 방마다 다른 진료의를 지정할 수 있다.
    지정이 없는 방은 기본 진료의(접수 시 입력한 p.doctor)를 따른다. */
-function docFor(p,room){return (p.roomDocs&&p.roomDocs[room])||p.doctor||'';}
+/* 이 방의 담당 진료의. 방에 값이 있으면 그것(빈 문자열 = 일부러 '미지정'으로 둔 것 — 접수 때 고른 p.doctor 로 되돌아가지 않는다, 2026-09-24),
+   방에 아무 기록도 없으면 접수 때의 담당의(p.doctor) */
+function docFor(p,room){if(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return p.roomDocs[room]||'';return p.doctor||'';}
 function doctorChipHtml(p,room){
   const _r=room||curRoom(p)||'';
   const cur=docFor(p,_r);
@@ -8220,17 +8224,17 @@ function viewerDoctor(room){
   return (hit&&!isOffToday(hit))?hit:'';}
 function autoAssignViewer(p){
   if(!p||p.discharged)return false;const room=curRoom(p);if(!room)return false;
-  if(p.roomDocs&&p.roomDocs[room])return false;
+  if(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return false;   // 빈칸('')도 기록 — 일부러 미지정으로 둔 방은 열어도 자동 지정하지 않는다
   const doc=viewerDoctor(room);if(!doc)return false;
   p.roomDocs=p.roomDocs||{};p.roomDocs[room]=doc;
   try{audit('진료의자동지정',p.name+' · '+room+' → '+doc+' (카드 열람)');}catch(e){}
   saveLocal();render();
-  cloudPatientTxn(p.id,d=>{d.roomDocs=d.roomDocs||{};if(!d.roomDocs[room])d.roomDocs[room]=doc;return d;});
+  cloudPatientTxn(p.id,d=>{d.roomDocs=d.roomDocs||{};if(!Object.prototype.hasOwnProperty.call(d.roomDocs,room))d.roomDocs[room]=doc;return d;});
   return true;}
 /* 카드에서 진료의 빠른 변경 — 현재 방에 대해서만 기록 */
 function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomDocs=p.roomDocs||{};
-  if(nv)p.roomDocs[room]=nv; else delete p.roomDocs[room];
+  p.roomDocs[room]=nv;   // '' 도 그대로 둔다 = 일부러 미지정 (지우면 접수 때 담당의로 되돌아가 '미지정'을 고를 수 없었다)
   if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}
   audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 /* 방별 담당 간호사 — 방에 간호사 목록이 있을 때만 카드에 선택칸 표시 */
@@ -8246,7 +8250,7 @@ function nurseChipHtml(p,room){
 }
 function changeNurse(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomNurses=p.roomNurses||{};
-  if(nv)p.roomNurses[room]=nv; else delete p.roomNurses[room];
+  p.roomNurses[room]=nv;   // '' 도 그대로 = 일부러 미지정 (2026-09-24)
   audit('간호사변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 /* 방별 방사선(영상) 담당 — C-Arm처럼 방사선 인력이 함께 들어가는 방용. 목록이 있는 방에만 선택칸 표시 */
 function radFor(p,room){return (p.roomRads&&p.roomRads[room])||'';}
@@ -8261,7 +8265,7 @@ function radChipHtml(p,room){
 }
 function changeRad(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomRads=p.roomRads||{};
-  if(nv)p.roomRads[room]=nv; else delete p.roomRads[room];
+  p.roomRads[room]=nv;     // '' 도 그대로 = 일부러 미지정 (2026-09-24)
   audit('방사선변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});}if(reloadHistOpen)renderReloadHistory();}
 /* 환자 추가 창 — 재진 검색한 환자의 과거 기록 인라인 펼침 */
