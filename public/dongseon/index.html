@@ -6701,10 +6701,14 @@ function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOStri
 function autoAssignMover(p){
   const r=curRoom(p);if(!r||!currentUser)return false;
   const me=[currentUser.name,currentUser.id].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean);if(!me.length)return false;
-  const hit=(meta(r).doctors||[]).find(d=>me.includes(String(d||'').trim().toLowerCase()));   // 그 방의 목록만 본다(전체 진료의 목록은 안 봄)
-  if(!hit||isOffToday(hit))return false;
+  /* 방 목록에 있으면 그 이름으로, 없으면 전체 진료의 목록에서 — 모든 방·모든 진료의에 적용 (2026-09-24 요청).
+     옮긴 사람이 곧 그 자리에 있는 사람이므로 휴무 표시는 보지 않는다(휴무로 잘못 적혀 있어도 지정된다) */
+  const pick=l=>(l||[]).find(d=>me.includes(String(d||'').trim().toLowerCase()));
+  const hit=pick(meta(r).doctors)||pick(DOCTORS);
+  if(!hit)return false;
   p.roomDocs=p.roomDocs||{};if(p.roomDocs[r]===hit)return false;   // 방에 막 들어왔으므로 예전 기록('(미지정)' 포함)은 옮긴 사람으로 덮어쓴다
   p.roomDocs[r]=hit;
+  if(!DOCTORS.includes(hit)){DOCTORS.push(hit);try{saveDoctorsCfg();}catch(e){}}   // 방 목록에만 있던 이름이면 전체 목록에도 넣어 카드 선택칸에서 보이게
   if(p.consults&&p.consults[r]){p.consults[r].who=hit;p.consults[r].whoSet=true;}   // 상담 기록이 있으면 담당자도 맞춘다(새로 들어온 것이므로)
   try{audit('진료의자동지정',p.name+' · '+r+' → '+hit+' (옮긴 사람)');}catch(e){}
   return true;}
