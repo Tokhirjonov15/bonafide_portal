@@ -157,7 +157,8 @@
   .wait-bg-fade{opacity:0;pointer-events:none;background-size:cover;background-position:center;background-repeat:no-repeat}
   .wait-bg-fade::after{display:none}
   .wait-screen.idle .wait-header,.wait-screen.idle .wait-foot{display:none}   /* 빈 화면 = 이미지만(제목·시계·안내 띠 숨김) — 검사실 보기 */
-  .wait-screen.idle-soft .wait-cols{visibility:hidden}                          /* 일반 방이 빈 화면: 목록 자리만 비우고 제목·시계·하단 안내 띠는 그대로 */
+  .wait-screen.idle-soft .wait-cols{visibility:hidden}                          /* 일반 방이 빈 화면: 목록 자리만 비운다 */
+  .wait-screen.idle-soft .wait-brand{visibility:hidden}                         /* 환자가 없으면 제목('365일 진료하는…')과 그 아래 소개 문구는 숨긴다 — 시계·하단 안내 띠는 그대로 (2026-09-24) */
   .wait-controls{position:relative;z-index:3;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(255,255,255,.9);border-bottom:1px solid rgba(20,40,80,.08);flex-wrap:wrap;flex-shrink:0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .wait-controls.hidden{display:none}
   .wait-msg-input{flex:1;min-width:200px;padding:8px 12px;border:1px solid #cdd7e3;border-radius:10px;font-size:14px;color:#26344a;background:#fff;outline:0}
