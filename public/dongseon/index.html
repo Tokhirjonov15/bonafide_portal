@@ -154,6 +154,8 @@
   .wait-bg{position:absolute;inset:0;z-index:0;background:radial-gradient(120% 90% at 12% 0%,#eef5ff 0%,rgba(238,245,255,0) 55%),radial-gradient(120% 100% at 100% 100%,#f3edfb 0%,rgba(243,237,251,0) 55%),linear-gradient(165deg,#eef3fb 0%,#e7eef8 48%,#eef0f9 100%);background-size:cover;background-position:center}
   .wait-bg.has-img::after{content:"";position:absolute;inset:0;background:rgba(245,248,253,.55);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
   .wait-bg.idle::after{display:none}   /* 빈 화면 배경은 흐림·밝힘 없이 그대로 */
+  .wait-bg-fade{opacity:0;pointer-events:none;background-size:cover;background-position:center;background-repeat:no-repeat}
+  .wait-bg-fade::after{display:none}
   .wait-screen.idle .wait-header,.wait-screen.idle .wait-foot{display:none}   /* 빈 화면 = 이미지만(제목·시계·안내 띠 숨김) */
   .wait-controls{position:relative;z-index:3;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(255,255,255,.9);border-bottom:1px solid rgba(20,40,80,.08);flex-wrap:wrap;flex-shrink:0;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   .wait-controls.hidden{display:none}
@@ -1514,6 +1516,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 </div>
 <div id="waitScreen" class="wait-screen">
   <div class="wait-bg" id="waitBg"></div>
+  <div class="wait-bg wait-bg-fade" id="waitBgFade"></div>   <!-- 빈 화면 배경 여러 장: 다음 장이 서서히 겹쳐 나타나는 층 -->
   <div class="wait-controls" id="waitControls">
     <div class="wait-presetsel" id="waitPresetSel" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap"></div>
     <input id="waitMsgInput" class="wait-msg-input" placeholder="안내 문구 입력 (예: 진료 순서를 안내해 드립니다)" oninput="setWaitMsg(this.value)">
@@ -1523,8 +1526,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="wait-ctl" title="상단 안내 문구 글자 크기 (%)"><i data-lucide="megaphone"></i> 안내 <input id="waitHeadInp" type="number" min="50" max="300" step="10" onchange="setWaitHeadPct(this.value)">%</span>
     <label class="btn sm" style="cursor:pointer"><i data-lucide="image"></i> 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitBg(event)"></label>
     <button class="btn sm" onclick="clearWaitBg()">배경 없음</button>
-    <label class="btn sm" style="cursor:pointer" title="검사실 보기(C-Arm, Sono, 근전도, 처치)에 대기 환자가 한 명도 없을 때 대신 보여 줄 이미지"><i data-lucide="image-off"></i> 빈 화면 배경<input type="file" accept="image/*" style="display:none" onchange="onWaitIdleBg(event)"></label>
-    <button class="btn sm" onclick="clearWaitIdleBg()" title="빈 화면 배경 지우기">빈 화면 배경 없음</button>
+    <label class="btn sm wait-admin-only" id="waitIdleBgBtn" style="cursor:pointer" title="검사실 보기(C-Arm, Sono, 근전도, 처치)에 대기 환자가 한 명도 없을 때 대신 보여 줄 이미지 — 여러 장(최대 4장)을 고르면 8초마다 차례로 바뀝니다 (관리자만)"><i data-lucide="image-off"></i> 빈 화면 배경<span id="waitIdleCnt"></span><input type="file" accept="image/*" multiple style="display:none" onchange="onWaitIdleBg(event)"></label>
+    <button class="btn sm wait-admin-only" id="waitIdleClrBtn" onclick="clearWaitIdleBg()" title="빈 화면 배경 지우기 (관리자만)">빈 화면 배경 없음</button>
     <button class="btn sm" onclick="toggleWaitControls()"><i data-lucide="eye-off"></i> 컨트롤 숨기기</button>
     <button class="btn sm" onclick="closeWaitScreen()">✕ 닫기</button>
   </div>
@@ -5420,11 +5423,15 @@ let waitCur=(function(){const n=parseInt(localStorage.getItem("patientBoard_wait
 let waitRooms=Array.isArray(waitPresets[waitCur].rooms)?waitPresets[waitCur].rooms.slice():[];
 let waitMsg=waitPresets[waitCur].msg||"";
 let waitBg=waitPresets[waitCur].bg||"";
-let waitIdleBg=waitPresets[waitCur].idleBg||"";   // 빈 화면 배경: 검사실 보기의 세 칸에 환자가 한 명도 없을 때 대신 보여 줄 이미지(양식별)
+let waitIdleBg=waitPresets[waitCur].idleBg||"";   // (옛 한 장짜리 — 호환용) 빈 화면 배경
+let waitIdleBgs=Array.isArray(waitPresets[waitCur].idleBgs)?waitPresets[waitCur].idleBgs.slice():[];   // 빈 화면 배경 여러 장(최대 4) — 차례로 돌아간다 (2026-09-24)
+const WAIT_IDLE_MAX=4, WAIT_IDLE_ROT_SEC=8;          // 최대 장수 · 넘기는 간격(초)
+let waitIdleIdx=0, waitIdleTimer=null;
+function waitIdleList(){return waitIdleBgs.length?waitIdleBgs:(waitIdleBg?[waitIdleBg]:[]);}
 let waitIdle=false;                                // 지금 빈 화면인가(renderWaitScreen 이 정함)
 function saveWaitPresets(){ try{localStorage.setItem("patientBoard_waitpresets",JSON.stringify(waitPresets));}catch(e){alert("대기화면 양식 저장 실패 — 배경 이미지가 너무 클 수 있어요. 더 작은 이미지를 쓰거나 배경을 비워 주세요.");} }
 function loadWaitPreset(i){ if(i<0||i>=5)return; waitCur=i; localStorage.setItem("patientBoard_waitcur",String(i));
-  const p=waitPresets[i]||{}; waitMsg=p.msg||""; waitBg=p.bg||""; waitIdleBg=p.idleBg||""; waitRooms=Array.isArray(p.rooms)?p.rooms.slice():[];
+  const p=waitPresets[i]||{}; waitMsg=p.msg||""; waitBg=p.bg||""; waitIdleBg=p.idleBg||""; waitIdleBgs=Array.isArray(p.idleBgs)?p.idleBgs.slice():[]; waitIdleIdx=0; waitRooms=Array.isArray(p.rooms)?p.rooms.slice():[];
   applyWaitBg(); renderWaitScreen(); const inp=document.getElementById("waitMsgInput"); if(inp)inp.value=waitMsg; }
 function renameWaitPreset(i){ if(i<0||i>=5)return; const cur=(waitPresets[i]&&waitPresets[i].name)||("양식 "+(i+1)); const n=prompt("이 양식의 이름",cur); if(n==null)return; waitPresets[i].name=(n.trim()||("양식 "+(i+1))); saveWaitPresets(); renderWaitPresetSel(); }
 function renderWaitPresetSel(){ const el=document.getElementById("waitPresetSel"); if(!el)return;
@@ -5495,14 +5502,38 @@ function onWaitBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)e
   const r=new FileReader();r.onload=()=>{waitBg=r.result;waitPresets[waitCur].bg=r.result;saveWaitPresets();applyWaitBg();};r.readAsDataURL(f);}
 function clearWaitBg(){waitBg="";waitPresets[waitCur].bg="";saveWaitPresets();applyWaitBg();}
 function applyWaitBg(){const el=document.getElementById("waitBg");if(!el)return;
-  const idle=waitIdle&&!!waitIdleBg;const src=idle?waitIdleBg:waitBg;   // 빈 화면이면 빈 화면 배경(있을 때만), 아니면 평소 배경
+  const list=waitIdleList();const idle=waitIdle&&list.length>0;
+  const src=idle?list[((waitIdleIdx%list.length)+list.length)%list.length]:waitBg;   // 빈 화면이면 빈 화면 배경(있을 때만, 여러 장이면 차례로), 아니면 평소 배경
   el.style.backgroundImage=src?`url("${src}")`:"";el.classList.toggle("has-img",!!src);el.classList.toggle("idle",idle);
-  const ws=document.getElementById("waitScreen");if(ws)ws.classList.toggle("idle",idle);}   // 빈 화면: 제목·시계·하단 띠도 숨겨 이미지만 전체 화면
-function onWaitIdleBg(ev){const f=ev.target.files&&ev.target.files[0];if(ev.target)ev.target.value="";if(!f)return;
-  const r=new FileReader();r.onload=()=>{waitIdleBg=r.result;waitPresets[waitCur].idleBg=r.result;saveWaitPresets();applyWaitBg();};r.readAsDataURL(f);}
-function clearWaitIdleBg(){waitIdleBg="";waitPresets[waitCur].idleBg="";saveWaitPresets();applyWaitBg();}
+  const ws=document.getElementById("waitScreen");if(ws)ws.classList.toggle("idle",idle);   // 빈 화면: 제목·시계·하단 띠도 숨겨 이미지만 전체 화면
+  const cnt=document.getElementById("waitIdleCnt");if(cnt)cnt.textContent=list.length?` (${list.length}/${WAIT_IDLE_MAX})`:"";
+  /* 여러 장이면 WAIT_IDLE_ROT_SEC 초마다 다음 장 — 빈 화면일 때만 돌린다 */
+  if(idle&&list.length>1){ if(!waitIdleTimer)waitIdleTimer=setInterval(waitIdleNext,WAIT_IDLE_ROT_SEC*1000); }
+  else if(waitIdleTimer){clearInterval(waitIdleTimer);waitIdleTimer=null;}}
+function waitIdleNext(){const list=waitIdleList();if(!waitIdle||list.length<2){return;}
+  waitIdleIdx=(waitIdleIdx+1)%list.length;const next=list[waitIdleIdx];
+  const el=document.getElementById("waitBg"),fd=document.getElementById("waitBgFade");
+  if(!el||!fd){applyWaitBg();return;}
+  fd.style.transition="none";fd.style.opacity="0";fd.style.backgroundImage=`url("${next}")`;void fd.offsetWidth;   // 위 겹층에 다음 장을 놓고
+  fd.style.transition="opacity .9s ease";fd.style.opacity="1";                                                        // 서서히 나타나게
+  setTimeout(()=>{el.style.backgroundImage=`url("${next}")`;fd.style.transition="none";fd.style.opacity="0";},950);}  // 다 보이면 밑층을 바꾸고 겹층은 숨김
+/* 빈 화면 배경 올리기: 여러 장을 한 번에 골라도 됨(최대 4장). 화면 크기(가로 2560px)를 넘는 큰 그림만 줄이고 JPEG 로 다시 담아 저장 용량을 아낀다 */
+function shrinkImageFile(f,maxW,q){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(f);
+  img.onload=()=>{const sc=Math.min(1,maxW/img.width);const w=Math.max(1,Math.round(img.width*sc)),h=Math.max(1,Math.round(img.height*sc));
+    const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);URL.revokeObjectURL(u);
+    try{res(c.toDataURL('image/jpeg',q));}catch(e){res(null);}};
+  img.onerror=()=>{URL.revokeObjectURL(u);res(null);};img.src=u;});}
+async function onWaitIdleBg(ev){if(ev.target)ev.target.value="";if(!isAdmin()){alert("빈 화면 배경은 관리자만 바꿀 수 있습니다.");return;}
+  const files=Array.from((ev.target&&ev.target.files)||[]);if(!files.length)return;
+  const list=waitIdleList().slice();
+  for(const f of files){ if(list.length>=WAIT_IDLE_MAX){alert(`빈 화면 배경은 최대 ${WAIT_IDLE_MAX}장까지입니다. 먼저 '빈 화면 배경 없음'으로 비우고 다시 올려 주세요.`);break;}
+    const d=await shrinkImageFile(f,2560,0.86); if(d)list.push(d); }
+  waitIdleBgs=list;waitIdleBg="";waitIdleIdx=0;waitPresets[waitCur].idleBgs=list;delete waitPresets[waitCur].idleBg;saveWaitPresets();applyWaitBg();}
+function clearWaitIdleBg(){if(!isAdmin()){alert("빈 화면 배경은 관리자만 바꿀 수 있습니다.");return;}
+  waitIdleBg="";waitIdleBgs=[];waitIdleIdx=0;waitPresets[waitCur].idleBg="";delete waitPresets[waitCur].idleBgs;saveWaitPresets();applyWaitBg();}
 function toggleWaitControls(){waitHideControls=!waitHideControls;localStorage.setItem("patientBoard_waithide",waitHideControls?"1":"0");applyWaitControls();}
-function applyWaitControls(){const c=document.getElementById("waitControls");if(c)c.classList.toggle("hidden",waitHideControls);const inp=document.getElementById("waitMsgInput");if(inp)inp.value=waitMsg;
+function applyWaitControls(){const c=document.getElementById("waitControls");if(c)c.classList.toggle("hidden",waitHideControls);
+  document.querySelectorAll(".wait-admin-only").forEach(el=>{el.style.display=isAdmin()?"":"none";});   // 빈 화면 배경(올리기·지우기)은 관리자만 (2026-09-24)const inp=document.getElementById("waitMsgInput");if(inp)inp.value=waitMsg;
   const ri=document.getElementById("waitRotInp");if(ri)ri.value=waitRotSec;
   const fi=document.getElementById("waitFontInp");if(fi)fi.value=waitFontPct;
   const hi=document.getElementById("waitHeadInp");if(hi)hi.value=waitHeadPct;}
