@@ -6755,7 +6755,10 @@ function icHtml(name){
          +'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-'+name+'">'+kids+'</svg>';
     }
   }catch(e){}
-  IC_CACHE[name]=html;return html;
+  /* SVG 를 만들었을 때만 캐시한다. lucide 가 아직 안 불렸을 때(첫 그리기) 대체 글자를 캐시해 버리면
+     1초마다 <i> 가 새로 들어갔다가 30ms 뒤 SVG 로 바뀌며 카드의 원내·접수 시간이 깜빡였다 (2026-09-27) */
+  if(html.charAt(1)==='s')IC_CACHE[name]=html;
+  return html;
 }
 function totalLabel(p){const r=recvHM(p);return `${icHtml('hospital')} 원내 <b>${fmtClock(totalMsNow(p))}</b>${r?`<span class="recv" title="접수 시각">· 접수 <b>${esc(r)}</b></span>`:''}`;}
 /* 오늘 도착한 카드 중 가장 큰 등록번호 — 전날 카드가 보드에 남아 있어도 오늘 번호에 영향 없음 (2026-09-13: 남은 카드 때문에 #119로 시작한 문제) */

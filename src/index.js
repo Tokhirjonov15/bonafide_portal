@@ -82,6 +82,8 @@ const MIGRATIONS = [
   `ALTER TABLE products  ADD COLUMN alt    TEXT DEFAULT ''`,
   `ALTER TABLE products  ADD COLUMN order_unit  INTEGER DEFAULT 0`,
   `ALTER TABLE products  ADD COLUMN order_group TEXT DEFAULT ''`,
+  `ALTER TABLE products  ADD COLUMN rx_code TEXT DEFAULT ''`,   // 비트 처방코드 (2026-09-27)
+  `ALTER TABLE products  ADD COLUMN hidden  INTEGER DEFAULT 0`,  // 안 쓰는 품목 숨김 — 관리자만 (2026-09-27)
   `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`
 ];
@@ -168,7 +170,7 @@ async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
            p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
-           p.order_unit AS ounit, p.order_group AS ogrp, p.created_at,
+           p.order_unit AS ounit, p.order_group AS ogrp, p.rx_code AS rx, COALESCE(p.hidden,0) AS hidden, p.created_at,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -355,6 +357,7 @@ function applyOrderUnits(items) {
 async function buildOrders(env) {
   const products = await listProducts(env);
   const items = applyOrderUnits(products
+    .filter((p) => !p.hidden)   // 숨긴 품목은 발주하지 않는다
     .filter((p) => (p.par || 0) > 0 || (p.min || 0) > 0)
     .filter((p) => p.stock <= (p.min || 0))
     .map((p) => ({ ...p, need: Math.max(1, (p.par || 0) - p.stock) })));
@@ -546,7 +549,7 @@ async function sendExpiryAlerts(env) {
   const [lotsRaw, products] = await Promise.all([listLots(env), listProducts(env)]);
   const lots = adjustLots(products, lotsRaw);
   const pmap = {};
-  for (const p of products) pmap[p.id] = p;
+  for (const p of products) if (!p.hidden) pmap[p.id] = p;   // 숨긴 품목은 알리지 않는다
 
   /* 오늘부터 정확히 7개월 뒤 날짜 — 그날이 유통기한인 로트는 거래처 교환 요청 대상 */
   const t7 = new Date(kstToday());
@@ -766,6 +769,15 @@ async function handleApi(request, env, url, ident, ctx) {
     return json({ products, lots: adjustLots(products, lotsRaw), movements, me, serverTime: Date.now() });
   }
 
+  /* 품목 숨기기 / 되돌리기 — 관리자만 (2026-09-27) */
+  if (path === "/product/hide" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "관리자만 숨기거나 되돌릴 수 있습니다." }, 403);
+    const pid = s(body.id);
+    if (!pid) return json({ error: "품목이 없습니다." }, 400);
+    await env.DB.prepare(`UPDATE products SET hidden=? WHERE id=?`).bind(body.hidden ? 1 : 0, pid).run();
+    return json({ ok: true });
+  }
+
   /* 품목 추가 / 수정 */
   if (path === "/product" && method === "POST") {
     const name = s(body.name);
@@ -773,21 +785,21 @@ async function handleApi(request, env, url, ident, ctx) {
 
     if (body.id) {
       await env.DB.prepare(
-        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=? WHERE id=?`
+        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=?, rx_code=COALESCE(?, rx_code) WHERE id=?`
       ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), s(body.id)).run();
+             n(body.ounit), s(body.ogrp), body.rx === undefined ? null : s(body.rx), s(body.id)).run();
       return json({ ok: true, id: body.id });
     }
 
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), Date.now())
+             n(body.ounit), s(body.ogrp), s(body.rx), Date.now())
     ];
     const init = n(body.init);
     if (init > 0) {
