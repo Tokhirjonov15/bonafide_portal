@@ -7105,7 +7105,7 @@ function archiveVisit(p){
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
     silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,ins:p.ins||"",
     smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[],
-    bit:(p.bit&&typeof p.bit==='object')?{ocmNum:String(p.bit.ocmNum||''),auto:!!p.bit.auto,pc:p.bit.pc||''}:null   // 비트 접수번호 — 수납취소 자동 복귀에 사용
+    bit:(p.bit&&typeof p.bit==='object')?{ocmNum:String(p.bit.ocmNum||''),auto:!!p.bit.auto,pc:p.bit.pc||'',chojae:p.bit.chojae||''}:null   // 비트 접수번호·초재구분 — 수납취소 복귀, 접수 구분 통계용
   };
   VISITS.push(rec);if(VISITS.length>3000)VISITS=VISITS.slice(-3000);
   cloudAddVisit(rec);
@@ -7618,6 +7618,7 @@ function renderStats(){
     <div class="cf-row" style="margin-bottom:10px;border-bottom:1px solid var(--line2);padding-bottom:8px">
       <button class="chipf" id="stTabTime" onclick="statsTab='time';renderStats()"><i data-lucide="timer"></i> 체류 통계</button>
       <button class="chipf" id="stTabConsult" onclick="statsTab='consult';renderStats()"><i data-lucide="message-circle"></i> 상담 기록</button>
+      <button class="chipf" id="stTabChojae" onclick="statsTab='chojae';renderStats()"><i data-lucide="user-plus"></i> 접수 구분</button>
       <span class="hint" id="stRangeLbl" style="margin-left:auto"></span>
     </div></div><div id="statsContent"></div>`;
     head=document.getElementById('statsHead'); content=document.getElementById('statsContent');
@@ -7628,9 +7629,11 @@ function renderStats(){
   {const di=document.getElementById('stDateInp');if(di.value!==(statsDate||''))di.value=statsDate||'';}
   document.getElementById('stTabTime').classList.toggle('on',statsTab==='time');
   document.getElementById('stTabConsult').classList.toggle('on',statsTab==='consult');
+  document.getElementById('stTabChojae').classList.toggle('on',statsTab==='chojae');
   document.getElementById('stRangeLbl').textContent=statsDate?statsDate:'전체 기간';
   let html='';
   if(statsTab==='consult'){content.innerHTML=consultLogHtml();return;}
+  if(statsTab==='chojae'){content.innerHTML=chojaeHtml();loadChojae();return;}
   html+=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
       <span class="hint" style="margin-left:auto">완료 내원 <b>${vis.length}</b>건 · 평균 원내 <b style="color:var(--orange)">${fmtClock(visAvg)}</b></span></div>
     <div class="hint" style="margin:-2px 0 10px">방 종결 ${totalVisits}건 · 환자 ${uniq}명 · 총 <span style="color:var(--t-amber)">대기 ${fmtClock(totalW)}</span>${anyPrep?` · 총 <span style="color:var(--t-sky)">준비 ${fmtClock(totalP)}</span>`:''} · 총 <span style="color:var(--red)">진행 ${fmtClock(totalA)}</span></div>`;
@@ -7684,7 +7687,73 @@ function exportStats(){
   const tag=statsOpenRoom?("_"+statsOpenRoom):(statsDate?("_"+statsDate):"_전체기간");
   downloadCSV("통계"+tag+".csv",out);
 }
-function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else exportStats();}
+/* ───── 접수 구분(신환·재진) 통계 (2026-09-27 요청) ─────
+   비트 접수창의 초·재 구분(신환/재진/90일초진/물리치료내원…)을 날짜별로 센다.
+   자료: bitLookup/{날짜_병록번호} — 접수 PC 감시 스크립트가 접수마다 쓰는 문서의 chojae 칸.
+   지난달은 바뀌지 않으므로 한 번 읽어 기억해 두고, 이번 달만 1분에 한 번 다시 읽는다. */
+let chojaeYm=localYMD(new Date()).slice(0,7), CHOJAE_CACHE={}, chojaeBusy=false;
+const CHOJAE_MAIN=['신환','재진','90일초진','물리치료내원'];   // 표의 고정 열 — 그 밖의 값은 '기타'
+function chojaeShift(d){const a=chojaeYm.split('-');const nd=new Date(+a[0],+a[1]-1+d,1);
+  chojaeYm=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0');renderStats();}
+async function loadChojae(force){
+  const ym=chojaeYm, cur=localYMD(new Date()).slice(0,7)===ym, c=CHOJAE_CACHE[ym];
+  if(chojaeBusy||!cloud.lookupCol)return;
+  if(c&&!force&&(!cur||Date.now()-c.at<60000))return;   // 지난달은 다시 읽지 않음
+  chojaeBusy=true;
+  try{
+    const snap=await cloud.lookupCol.where('date','>=',ym+'-01').where('date','<=',ym+'-31').get();
+    const days={};
+    snap.forEach(doc=>{const v=doc.data()||{};const d=String(v.date||'');if(!d)return;
+      const raw=String(v.chojae||'').trim()||'(미기재)';
+      (days[d]=days[d]||{});days[d][raw]=(days[d][raw]||0)+1;});
+    CHOJAE_CACHE[ym]={days,at:Date.now()};
+  }catch(e){console.warn('chojae stats',e);if(!CHOJAE_CACHE[ym])CHOJAE_CACHE[ym]={days:{},at:Date.now(),err:String(e&&e.message||e)};}
+  chojaeBusy=false;
+  if(statsTab==='chojae'&&document.getElementById('statsModal').classList.contains('show'))renderStats();
+}
+function chojaeRows(){
+  const c=CHOJAE_CACHE[chojaeYm];if(!c)return null;
+  const etcSet={};
+  const rows=Object.keys(c.days).sort().map(d=>{
+    const m=c.days[d];const row={d,tot:0,etc:0,etcTip:[]};
+    CHOJAE_MAIN.forEach(k=>{row[k]=m[k]||0;row.tot+=row[k];});
+    Object.keys(m).forEach(k=>{if(!CHOJAE_MAIN.includes(k)){row.etc+=m[k];row.tot+=m[k];row.etcTip.push(k+' '+m[k]);etcSet[k]=(etcSet[k]||0)+m[k];}});
+    return row;});
+  return {rows,etcSet,err:c.err};
+}
+function chojaeHtml(){
+  const W=['일','월','화','수','목','금','토'];
+  const data=chojaeRows();
+  const nowYm=localYMD(new Date()).slice(0,7);
+  let html=`<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+    <button class="btn sm" onclick="chojaeShift(-1)">◀</button>
+    <b style="font-size:15px">${chojaeYm.replace('-','년 ')}월</b>
+    <button class="btn sm" onclick="chojaeShift(1)" ${chojaeYm>=nowYm?'disabled':''}>▶</button>
+    <button class="btn sm" onclick="loadChojae(true)" title="다시 불러오기"><i data-lucide="refresh-cw"></i></button>
+    <span class="hint" style="margin-left:auto">비트 접수창의 초·재 구분 기준 · 하루 한 환자당 1건</span></div>`;
+  if(!data){return html+`<div class="route-empty">불러오는 중…</div>`;}
+  if(data.err&&!data.rows.length){return html+`<div class="route-empty">불러오지 못했습니다: ${esc(data.err)}</div>`;}
+  if(!data.rows.length){return html+`<div class="route-empty">이 달에는 기록이 없습니다. (접수 PC 감시 스크립트가 켠 날부터 쌓입니다)</div>`;}
+  const T={tot:0,etc:0};CHOJAE_MAIN.forEach(k=>T[k]=0);
+  data.rows.forEach(r=>{T.tot+=r.tot;T.etc+=r.etc;CHOJAE_MAIN.forEach(k=>T[k]+=r[k]);});
+  html+=`<div class="st-wrap"><table class="stat-tb"><thead><tr><th>날짜</th>${CHOJAE_MAIN.map(k=>`<th>${k}</th>`).join('')}<th>기타</th><th>합계</th></tr></thead><tbody>`;
+  html+=`<tr style="font-weight:800;background:var(--panel2)"><td>합계</td>${CHOJAE_MAIN.map(k=>`<td>${T[k]||''}</td>`).join('')}<td>${T.etc||''}</td><td>${T.tot}</td></tr>`;
+  data.rows.forEach(r=>{const dt=new Date(r.d);const wd=isNaN(dt)?'':W[dt.getDay()];
+    html+=`<tr><td>${r.d.slice(5)} (${wd})</td>${CHOJAE_MAIN.map(k=>`<td>${r[k]||''}</td>`).join('')}
+      <td ${r.etcTip.length?`title="${esc(r.etcTip.join(', '))}"`:''}>${r.etc||''}</td><td><b>${r.tot}</b></td></tr>`;});
+  html+=`</tbody></table></div>`;
+  const etc=Object.entries(data.etcSet).sort((a,b)=>b[1]-a[1]);
+  if(etc.length)html+=`<div class="hint" style="margin-top:6px">기타 = ${etc.map(([k,n])=>esc(k)+' '+n+'건').join(' · ')}</div>`;
+  return html;
+}
+function exportChojae(){
+  const data=chojaeRows();
+  if(!data||!data.rows.length){alert('내보낼 기록이 없습니다.');return;}
+  const out=[['날짜',...CHOJAE_MAIN,'기타','합계','기타 내용']];
+  data.rows.forEach(r=>out.push([r.d,...CHOJAE_MAIN.map(k=>r[k]||0),r.etc||0,r.tot,r.etcTip.join(' / ')]));
+  downloadCSV('접수구분_'+chojaeYm+'.csv',out);
+}
+function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else if(statsTab==='chojae')exportChojae();else exportStats();}
 
 /* ───── 환자 기록(환자 리스트 → 과거 기록) ───── */
 let histKey=null;  // null=리스트, 값=특정 환자 상세
