@@ -165,12 +165,13 @@
   /* 넓은 표는 페이지가 아니라 자기 영역 안에서만 가로 스크롤 */
   #stockWrap,#logWrap,.ordbody,.statbox{overflow-x:auto}
   /* 재고 표: 품목명 열만 넓게, 나머지 열은 내용 크기에 딱 맞게(빈 공간이 생기지 않도록) */
-  #stockWrap td:not(:first-child),#stockWrap th:not(:first-child){width:1%;white-space:nowrap}
-  #stockWrap td:first-child{min-width:160px}
+  #stockWrap td:not(.namecol):not(.selcol),#stockWrap th:not(.namecol):not(.selcol){width:1%;white-space:nowrap}
+  #stockWrap td.namecol{min-width:160px}
+  #stockWrap tr.lowgrp td,#stockWrap tr.lotrow td{width:auto;white-space:normal}   /* 묶음 줄(colspan)은 예외 */
   /* 전체 목록에서도 가로 스크롤이 안 생기도록: 여백 축소 + 긴 바코드 줄바꿈 허용 */
   #stockWrap th{padding:9px 7px}
   #stockWrap td{padding:8px 7px}
-  #stockWrap td:first-child .muted{word-break:break-all;font-size:11px}
+  #stockWrap td.namecol .muted{word-break:break-all;font-size:11px}
   #stockWrap .tag{padding:1px 6px}
   .modes{display:flex; gap:10px; margin-bottom:16px}
   .modes button{
@@ -881,7 +882,7 @@ function render(){
   $("stockWrap").innerHTML = !PRODUCTS.length
     ? `<div class="empty">품목이 없습니다.<br><b><i data-lucide="plus"></i> 품목 추가</b> 또는 <b>설정·백업 → CSV 가져오기</b>로 시작하세요.</div>`
     : `<table><thead><tr>
-        ${ADM?`<th class="selcol"><input type="checkbox" id="selAll" title="보이는 품목 전체 선택" onchange="selectAllVisible(this.checked)"></th>`:""}<th>품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
+        ${ADM?`<th class="selcol"><input type="checkbox" id="selAll" title="보이는 품목 전체 선택" onchange="selectAllVisible(this.checked)"></th>`:""}<th class="namecol">품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
         <th>유통기한</th><th>입출고</th>
       </tr></thead><tbody>${lowGroupRow}${(VISIBLE_IDS=rows.filter(p=>lowOpenT||!isLow(p)).map(p=>p.id), rows.filter(p=>lowOpenT||!isLow(p))).map(p=>{
@@ -900,7 +901,7 @@ function render(){
           }).join("")}</td></tr>` : "";
         return `<tr class="${isLow(p)?"low":""}${SEL.has(p.id)?" selrow":""}">
           ${ADM?`<td class="selcol"><input type="checkbox" ${SEL.has(p.id)?"checked":""} onclick="event.stopPropagation()" onchange="selToggle('${p.id}',this.checked)"></td>`:""}
-          <td>${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}${isLow(p)&&ME&&ME.admin?` <button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
+          <td class="namecol">${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}${isLow(p)&&ME&&ME.admin?` <button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
           <td class="hidem muted" style="white-space:nowrap">${esc(p.loc||"")}</td>
