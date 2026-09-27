@@ -422,6 +422,9 @@
   .res-tag.rt-on{background:var(--green-bg);color:var(--green)}
   .res-tag.rt-wait{background:var(--amber-bg);color:var(--orange)}
   .res-tag.rt-late{background:var(--red-bg);color:var(--red)}
+  /* 동선 순서가 뒤바뀐 환자 — 멀리서도 보이게 빨간 카드 (2026-09-26) */
+  .card.off-route{border:2px solid var(--red);background:linear-gradient(180deg,var(--red-bg),var(--panel) 62%)}
+  .card.off-route .pname{color:var(--red)}
   .card.out{opacity:.62}
   .card.out .out-btn.on{opacity:1}
   .out-banner{margin:0 12px 7px;background:var(--amber-bg);color:var(--orange);font-size:11.5px;font-weight:700;border-radius:8px;padding:5px 8px}
@@ -1242,6 +1245,53 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     .topbar #bitPill.bit-pill::-webkit-scrollbar{display:none}
     html,body{max-width:100vw;overflow-x:hidden}
   }
+  /* ═══ 비급여 동의서 (2026-09-26): 태블릿에서 쓰기 좋게 큼직하게 ═══ */
+  .cst-screen{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px}
+  .cst-screen.show{display:flex}
+  .cst-box{background:var(--panel);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.3);width:min(860px,100%);max-height:96vh;display:flex;flex-direction:column;overflow:hidden}
+  .cst-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:15px}
+  .cst-head .hint{font-weight:600}
+  .cst-spacer{flex:1}
+  .cst-body{flex:1;overflow:auto;padding:14px 16px}
+  .cst-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:var(--panel2)}
+  .cst-foot .btn{min-width:110px;min-height:44px;font-size:15px}
+  .cst-sect-t{font-weight:800;font-size:13px;color:var(--sub);margin:14px 0 7px}
+  .cst-sect-t:first-child{margin-top:0}
+  .cst-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+  .cst-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2);min-height:46px;cursor:pointer}
+  .cst-item input[type=checkbox]{width:20px;height:20px;flex-shrink:0}
+  .cst-item>span{flex:1;font-weight:700;font-size:14px}
+  .cst-price{width:92px;text-align:right;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+  .cst-etc{margin-top:8px}
+  .cst-etc input:not(.cst-price){flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:14px}
+  .cst-total{margin-top:10px;text-align:right;font-size:15px}
+  .cst-total b{font-size:18px}
+  .cst-text{font-size:13.5px;line-height:1.65;margin:0;padding-left:18px}
+  #cstMemo{width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}
+  .cst-signer{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:14px}
+  .cst-signer label{display:flex;align-items:center;gap:6px}
+  .cst-signer input[type=radio]{width:18px;height:18px}
+  .cst-signer input:not([type=radio]){padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+  .cst-canvas{width:100%;box-sizing:border-box;height:200px;border:2px dashed var(--line);border-radius:12px;background:#fff;touch-action:none;display:block}
+  .cst-box input,.cst-box textarea{box-sizing:border-box;font-family:inherit}
+  .cst-body{overflow-x:hidden}
+  .cst-sign-tip{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+  /* 저장된 동의서 목록(환자 정보 안) */
+  .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
+  .cst-main{flex:1;min-width:0;font-size:13px}
+  .cst-items{font-weight:700;margin:2px 0}
+  .cst-btns{display:flex;gap:5px;flex-shrink:0}
+  /* 보기 화면 = 인쇄본과 같은 모양 */
+  .cst-doc h2{text-align:center;margin:0 0 14px;font-size:19px}
+  .cst-doc table{border-collapse:collapse;width:100%;margin-bottom:12px;font-size:13px}
+  .cst-doc th,.cst-doc td{border:1px solid var(--line);padding:6px 8px}
+  .cst-doc .cst-info th{background:var(--panel2);width:86px;text-align:left}
+  .cst-doc .r{text-align:right}
+  .cst-doc .cst-tbl thead th{background:var(--panel2)}
+  .cst-doc .cst-memo{font-size:13px;border:1px solid var(--line);padding:8px;margin-bottom:10px;white-space:pre-wrap}
+  .cst-doc .cst-sign-box{margin-top:16px;text-align:right}
+  .cst-doc .cst-sign-img{height:70px;border-bottom:1px solid var(--sub)}
+  .cst-doc .cst-by{margin-top:12px;font-size:13px;text-align:right}
 </style>
 </head>
 <body>
@@ -1544,6 +1594,57 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     </div>
   </div>
 </div>
+<!-- ═══ 비급여 동의서 (2026-09-26): 작성 화면 + 보기 화면. 태블릿에서 그대로 서명받는다 ═══ -->
+<div id="consentScreen" class="cst-screen">
+  <div class="cst-box">
+    <div class="cst-head">
+      <div><b>비급여 진료 동의서</b> <span class="hint" id="cstWho"></span></div>
+      <div class="hint" id="cstDate"></div>
+      <button type="button" class="btn sm" onclick="closeConsent()">닫기</button>
+    </div>
+    <div class="cst-body">
+      <div class="cst-sect-t">동의 항목 (체크 후 금액 입력)</div>
+      <div class="cst-grid" id="cstItems"></div>
+      <label class="cst-item cst-etc"><span>기타</span>
+        <input id="cstEtc" placeholder="직접 입력" oninput="consentSum()">
+        <input class="cst-price" id="cstEtcPrc" inputmode="numeric" placeholder="금액" oninput="consentSum()"></label>
+      <div class="cst-total">합계 <b id="cstTotal">0원</b></div>
+
+      <div class="cst-sect-t">설명 내용</div>
+      <ul class="cst-text">
+        <li>본인은 위 비급여 항목의 필요성·목적·방법·예상 효과 및 발생 가능한 부작용에 대하여 담당자로부터 충분한 설명을 듣고 이해하였습니다.</li>
+        <li>위 항목은 국민건강보험이 적용되지 않아 비용 전액을 본인이 부담한다는 사실을 확인하였습니다.</li>
+        <li>위 내용에 동의하며, 상기 진료(치료)를 받는 것에 동의합니다.</li>
+      </ul>
+      <textarea id="cstMemo" rows="2" placeholder="추가로 설명한 내용이 있으면 적어 주세요 (선택)"></textarea>
+
+      <div class="cst-sect-t">서명</div>
+      <div class="cst-signer">
+        <label><input type="radio" name="cstSigner" id="cstSignerSelf" checked> 환자 본인</label>
+        <label><input type="radio" name="cstSigner"> 보호자</label>
+        <input id="cstRel" placeholder="관계 (예: 모)" style="width:120px">
+        <span class="cst-spacer"></span>
+        <label class="cst-by-lbl">상담자 <input id="cstBy" style="width:120px"></label>
+      </div>
+      <canvas id="cstSign" class="cst-canvas"></canvas>
+      <div class="cst-sign-tip"><span class="hint">위 칸에 손가락이나 펜으로 서명해 주세요.</span>
+        <button type="button" class="btn sm" onclick="signClear()">다시 서명</button></div>
+    </div>
+    <div class="cst-foot">
+      <button type="button" class="btn" onclick="closeConsent()">취소</button>
+      <button type="button" class="btn primary" id="cstSaveBtn" onclick="saveConsent()">저장</button>
+    </div>
+  </div>
+</div>
+<div id="cstViewScreen" class="cst-screen">
+  <div class="cst-box cst-view">
+    <div class="cst-head"><b>비급여 동의서</b>
+      <span class="cst-spacer"></span>
+      <button type="button" class="btn sm" onclick="printConsent()"><i data-lucide="printer"></i> 인쇄</button>
+      <button type="button" class="btn sm" onclick="closeConsentView()">닫기</button></div>
+    <div class="cst-body" id="cstViewBody"></div>
+  </div>
+</div>
 <div id="waitScreen" class="wait-screen">
   <div class="wait-bg" id="waitBg"></div>
   <div class="wait-bg wait-bg-fade" id="waitBgFade"></div>   <!-- 빈 화면 배경 여러 장: 다음 장이 서서히 겹쳐 나타나는 층 -->
@@ -1806,6 +1907,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div id="pastConsultBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
 
+      <div id="consentSection" style="margin-top:10px">
+        <div class="sect-t" style="margin-bottom:8px"><i data-lucide="file-signature"></i> 비급여 동의서</div>
+        <div id="consentList"></div>
+        <button type="button" class="btn" style="width:100%;margin-top:6px" onclick="openConsent()"><i data-lucide="pen-line"></i> 동의서 작성 (서명)</button>
+      </div>
+
       <div id="notesSection" style="display:none">
         <div class="sect-t" style="margin-bottom:8px">방별 전달사항</div>
         <div class="notes-edit">
@@ -2040,17 +2147,22 @@ function isHandOffDrop(targetEl,p){   // 같은 환자 카드 위에 놓았는�
    · 방 순서는 ROUTE_ORDER. 처방에 없는 방이 손으로 들어가 있으면 그대로 둔다(자동으로 넣은 방만 다시 계산).
    · 직원이 [종결] 대신 다른 방으로 끌어다 놓아도(예: C-Arm → x-ray실) 그 방이 동선 사이에 끼어들고 나머지는 이어진다(moveTo 참고).
    · 낱말이나 방 순서가 바뀌면 여기만 고친다. */
-const ROUTE_ORDER=['x-ray실','CT실','C-Arm','Sono','처치실','근전도검사','물리치료','4층 상담','기본물리치료'];
+const ROUTE_ORDER=['x-ray실','CT실','진료 상담','C-Arm','Sono','근전도검사','처치실','4층 상담','물리치료','기본물리치료'];   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
+/* 진료 상담이 반드시 앞에 들어가야 하는 방들 — 이 중 하나라도 처방되면 상담을 먼저 거친다 (2026-09-26 지시) */
+const CONSULT_NEEDS=['C-Arm','Sono','근전도검사','처치실'];
+const PT_ROOMS=['물리치료','기본물리치료'];   // 수납대기가 이 방들 앞에 들어간다(4층 상담이 없을 때)
+function rxConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^진료\s*상담$/.test(r))||'';}
+function rxUpConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^4층\s*상담$/.test(r))||'';}
 const ROUTE_RX_RULES=[
-  {room:'x-ray실',    cod:/^g/i,        any:/x-?ray/i},
+  {room:'x-ray실',    cod:/^g\d/i,      any:/x-?ray/i, not:/c\s*-?\s*arm/i},   // G+숫자만(genta 주사 제외), 'C-Arm 이용료(G0400)'는 C-Arm 으로
   {room:'CT실',       any:/(^|[^a-z])ct($|[^a-z])/i},            // INJECTION 같은 단어 속 'ct' 는 제외
   {room:'C-Arm',      any:/c\s*-?\s*arm/i},
   {room:'Sono',       any:/sono/i},
-  {room:'처치실',      any:/처치|봉합술|부목|splint/i},
+  {room:'처치실',      any:/처치|봉합술|부목|splint/i, notCod:/^g\d/i},   // 촬영 지시문의 'splint풀고'는 처치가 아님
   {room:'근전도검사',   any:/근전도/},
   {room:'물리치료',     any:/물리치료/, not:/기본물리치료/},
   {room:'4층 상담',    cod:/^cs\d*$/i},
-  {room:'기본물리치료', cod:/^mm\d*$/i, any:/기본물리치료/}
+  {room:'기본물리치료', cod:/^mm\d/i, any:/기본물리치료/}
 ];
 /* 처방에서 갈 방들(ROUTE_ORDER 순서). 처방이 아직 없으면 null, 있는데 해당 방이 없으면 [] */
 function rxRoomsFor(p){
@@ -2062,6 +2174,7 @@ function rxRoomsFor(p){
     ROUTE_RX_RULES.forEach(r=>{
       if(hit.has(r.room))return;
       if(r.not&&r.not.test(hay))return;
+      if(r.notCod&&r.notCod.test(cod))return;   // 코드로 제외(예: 처치 낱말이 촬영 지시문에 섞인 경우)
       if((r.cod&&r.cod.test(cod))||(r.nam&&r.nam.test(nam))||(r.any&&r.any.test(hay)))hit.add(r.room);
     });
   });
@@ -2075,14 +2188,32 @@ function spaceRoomsFromRx(p){
   return rooms.filter(r=>grp.includes(r));
 }
 /* 처방의 지문(코드·명칭) — 같은 처방을 두 번 반영하지 않으려고 */
+const RX_ROUTE_VER='2026-09-26a';   /* 동선 규칙 판(版). 규칙(순서·필수 방·수납 자리)을 고치면 이 값을 바꾼다 →
+   이미 동선이 짜인 환자도 한 번 다시 계산된다. 안 바꾸면 처방이 그대로인 환자는 옛 규칙의 동선을 그대로 쓴다 (2026-09-26) */
 function rxHashOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;if(!rx||!rx.items||!rx.items.length)return '';
-  return rx.items.map(x=>String(x.cod||'')+'|'+String(x.nam||'')).join('\n');}
+  return RX_ROUTE_VER+'\n'+rx.items.map(x=>String(x.cod||'')+'|'+String(x.nam||'')).join('\n');}
+/* 필수로 들어가야 하는 방(진료 상담·4층 상담)을 기준 순서(ROUTE_ORDER) 자리에 끼워 넣는다.
+   지금 있는 방보다 앞자리여도 그 자리에 넣는다 — 상담은 시술 앞에 와야 하므로. 수납 방보다는 항상 앞.
+   이미 동선에 있는 방은 부르지 않는다(지나온 기록을 흐트러뜨리지 않으려고) */
+function placeMustRoom(list,room){
+  const oi=ROUTE_ORDER.indexOf(room); if(oi<0)return;
+  let at=list.findIndex(r=>{const k=ROUTE_ORDER.indexOf(r);return k>=0&&k>oi;});
+  if(at<0){const pi=list.findIndex(isPayRoom);at=(pi>=0)?pi:list.length;}
+  list.splice(at,0,room);}
 /* 한 환자의 동선을 처방에 맞춰 다시 짠다. 바뀌었으면 true
    새 동선 = [지나온 방 + 지금 방] + [손으로 넣어 둔 방(자동으로 넣은 게 아닌 것)] ∪ [처방의 방] (ROUTE_ORDER 순) + [수납대기] */
 function applyRxRoute(p){
   if(!p||p.discharged||!Array.isArray(p.route)||!p.route.length)return false;
   const h=rxHashOf(p); if(!h||h===(p.routeRxHash||''))return false;
-  const want=rxRoomsFor(p)||[];
+  let want=rxRoomsFor(p)||[];
+  /* 필수 상담 (2026-09-26 지시)
+     · SONO·C-Arm·근전도·처치 중 하나라도 처방되면 → '진료 상담'을 그 방들 앞에 반드시
+     · CS(신장분사치료 상담) 처방이면 → '4층 상담'을 반드시 (규칙이 이미 want 에 넣는다)
+     이미 그 방을 지나온 환자라도, 동선에 없으면 기준 순서 자리(=지금 방보다 앞이라도)에 끼워 넣는다 */
+  const consR=rxConsultRoom(), upR=rxUpConsultRoom();
+  const mustCons=!!(consR&&want.some(r=>CONSULT_NEEDS.includes(r)));
+  const mustUp=!!(upR&&want.includes(upR));
+  if(mustCons&&!want.includes(consR))want=[consR,...want];
   const step=Math.max(0,Math.min(p.step||0,p.route.length-1));
   const cur=p.route[step];
   const prefix=p.route.slice(0,step+1), rest=p.route.slice(step+1);
@@ -2092,11 +2223,19 @@ function applyRxRoute(p){
   const ord=r=>{const i=ROUTE_ORDER.indexOf(r);return i<0?-1:i;};
   const mid=[...new Set([...manual,...auto])].sort((a,b)=>{const x=ord(a),y=ord(b);if(x<0&&y<0)return 0;if(x<0)return -1;if(y<0)return 1;return x-y;});
   const next=[...prefix,...mid];
+  /* 필수 상담 방이 원래 동선에 없었다면 기준 순서 자리로 옮겨 넣는다 — 이미 시술 방에 와 있어도 상담이 앞에 보이게 */
+  if(mustCons&&!p.route.includes(consR)){const i=next.indexOf(consR);if(i>=0)next.splice(i,1);placeMustRoom(next,consR);}
+  if(mustUp&&!p.route.includes(upR)){const i=next.indexOf(upR);if(i>=0)next.splice(i,1);placeMustRoom(next,upR);}
+  /* 수납대기 자리: 4층 상담이 있으면 그 뒤(맨 끝), 없으면 물리치료 바로 앞 — 치료 전에 수납 (2026-09-26 지시) */
   const pay=rest.find(isPayRoom)||(typeof payWaitRoom==='function'?payWaitRoom():'');
-  if(pay&&!isPayRoom(cur)&&!next.includes(pay))next.push(pay);
+  if(pay&&!isPayRoom(cur)&&!next.includes(pay)){
+    const up=rxUpConsultRoom(), ptIdx=mid.findIndex(r=>PT_ROOMS.includes(r));
+    if((!up||!mid.includes(up))&&ptIdx>=0)next.splice(prefix.length+ptIdx,0,pay);
+    else next.push(pay);
+  }
   p.routeRxHash=h; p.routeAuto=auto;
   const changed=JSON.stringify(next)!==JSON.stringify(p.route);
-  if(changed){ p.route=next; try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(mid.join(' → ')||'(추가 없음)'));}catch(e){} }
+  if(changed){ p.route=next; const ns=next.indexOf(cur); if(ns>=0)p.step=ns;   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */ try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(mid.join(' → ')||'(추가 없음)'));}catch(e){} }
   try{save(p);}catch(e){}
   return changed;
 }
@@ -2104,7 +2243,7 @@ function applyRxRoute(p){
 function applyRxRoutesAll(){
   if(!currentUser||!Array.isArray(data))return 0;
   let n=0; data.forEach(p=>{try{if(applyRxRoute(p))n++;}catch(e){console.warn('rxRoute',e);}});
-  if(n){try{render();}catch(e){} if(editId){const p=data.find(x=>x.id===editId);if(p&&typeof renderRouteRows==='function'){try{routeDraft=[...p.route];renderRouteRows();}catch(e){}}}}
+  if(n){try{renderThrottled();}catch(e){} if(editId){const p=data.find(x=>x.id===editId);if(p&&typeof renderRouteRows==='function'){try{routeDraft=[...p.route];renderRouteRows();}catch(e){}}}}
   return n;
 }
 function mirroredHere(p, room){
@@ -4528,13 +4667,22 @@ async function startHosted(){
     // 익명 로그인 제거 → 이메일/비번 인증. 저장된 세션이 있으면 onAuthStateChanged가 자동 복원, 없으면 로그인 화면.
   }catch(e){setSync('err');setLoginReady(true);loginMsg('클라우드 연결 실패: '+(e.message||e)+' — 새로고침 해주세요');}
 }
+/* 클라우드에서 문서가 여러 개 한꺼번에 바뀌면(처방 동선 자동 채우기 등) 그리기가 그 횟수만큼 돌았다.
+   120ms 안에 겹치면 한 번만 그린다 — 첫 번째는 곧바로 그리므로 반응은 그대로 (2026-09-26) */
+let _renderT=null,_renderLast=0;
+function renderThrottled(){
+  const now=Date.now(), gap=now-_renderLast;
+  if(gap>=120){_renderLast=now;render();return;}
+  if(_renderT)return;
+  _renderT=setTimeout(()=>{_renderT=null;_renderLast=Date.now();render();},120-gap);
+}
 function afterCloud(){
   if(!cloud.ready.cfg)return;   // 설정 로드 후 진행
   if(!currentUser){establishSession();return;}
   if(cloud.ready.acl&&!currentUser.super){ const me=memByEmail(currentUser.email); if(!me||me.disabled){logout();return;} }  // 명단 제거·차단 시 즉시 로그아웃
   rebuildStaff();
   checkClockSkew();
-  render();
+  renderThrottled();
   try{autoCloseDay();}catch(e){console.warn(e);}
   if(SLIP_MODE&&!slipOpen)openSlipScreen();
   if(RESV_MODE&&!resvOpen)openResvScreen();
@@ -5200,14 +5348,14 @@ function render(){
     body.addEventListener("dragleave",()=>body.classList.remove("drag-over"));
     body.addEventListener("drop",e=>{if(draggedColRoom)return;e.preventDefault();body.classList.remove("drag-over");
       const pid=draggedPid||e.dataTransfer.getData("text/plain");if(!pid)return;
-      if(draggedRoom===room)moveToEnd(pid); else moveTo(pid,room);
+      if(draggedRoom===room)moveToEnd(pid); else moveByDrag(pid,room);
       draggedPid=null;draggedRoom=null;});
     if(folded){   // 접힌 방: 본문이 숨겨져 있으므로 컬럼 자체가 놓기 대상. 클릭하면 펼침
       col.addEventListener("dragover",e=>{if(draggedColRoom)return;e.preventDefault();col.classList.add("drag-over")});
       col.addEventListener("dragleave",()=>col.classList.remove("drag-over"));
       col.addEventListener("drop",e=>{if(draggedColRoom)return;e.preventDefault();col.classList.remove("drag-over");
         const pid=draggedPid||e.dataTransfer.getData("text/plain");if(!pid)return;
-        if(draggedRoom!==room)moveTo(pid,room);draggedPid=null;draggedRoom=null;});
+        if(draggedRoom!==room)moveByDrag(pid,room);draggedPid=null;draggedRoom=null;});
       col.addEventListener("click",e=>{if(e.target.closest('button,input,label'))return;toggleColFold(room);});
     }
 
@@ -5599,7 +5747,7 @@ function waitIdleNext(){const list=waitIdleList();if(!waitIdle||list.length<2){r
   if(!el||!fd){applyWaitBg();return;}
   fd.style.transition="none";fd.style.opacity="0";fd.style.backgroundImage=`url("${next}")`;void fd.offsetWidth;   // 위 겹층에 다음 장을 놓고
   fd.style.transition="opacity .9s ease";fd.style.opacity="1";                                                        // 서서히 나타나게
-  setTimeout(()=>{el.dataset.src=next;el.style.backgroundImage=`url("${next}")`;fd.style.transition="none";fd.style.opacity="0";},950);}   // dataset.src 도 맞춰 둔다(applyWaitBg 가 같은 그림이면 건너뛰므로)  // 다 보이면 밑층을 바꾸고 겹층은 숨김
+  setTimeout(()=>{el.dataset.src=next;el.style.backgroundImage=`url("${next}")`;fd.style.transition="none";fd.style.opacity="0";fd.style.backgroundImage="";},950);   /* 겹층의 그림도 비운다 — 큰 사진이 두 장씩 펼쳐져 있지 않도록 (2026-09-26) */}   // dataset.src 도 맞춰 둔다(applyWaitBg 가 같은 그림이면 건너뛰므로)  // 다 보이면 밑층을 바꾸고 겹층은 숨김
 /* 빈 화면 배경 올리기: 여러 장을 한 번에 골라도 됨(최대 WAIT_IDLE_MAX 장, IndexedDB 에 저장). 화면 크기(가로 2560px)를 넘는 큰 그림만 줄이고 JPEG 로 다시 담아 저장 용량을 아낀다 */
 /* keepAlpha: 로고처럼 투명 배경이 있는 PNG 는 PNG 그대로 (JPEG 로 바꾸면 투명한 곳이 검게 됨 — 2026-09-24) */
 function shrinkImageFile(f,maxW,q,keepAlpha){return new Promise(res=>{const img=new Image();const u=URL.createObjectURL(f);
@@ -6399,7 +6547,8 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"");c.draggable=true;
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(routeOutOfOrder(p)?" off-route":"");c.draggable=true;
+  if(routeOutOfOrder(p))c.title="환자 동선 순서가 처방 순서와 다릅니다 — 카드를 눌러 동선을 확인해 주세요.";
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
@@ -6505,7 +6654,7 @@ function cardEl(p,colRoom){
     const rect=c.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;
     c.classList.remove("drop-before","drop-after");
     if(draggedPid===p.id)spaceHandOff(draggedPid,draggedCol,c.dataset.col||'');           // 같은 환자 카드 위 = 같은 공간 인계
-    else if(draggedRoom===curRoom(p))reorderInData(draggedPid,p.id,before); else moveTo(draggedPid,curRoom(p));
+    else if(draggedRoom===curRoom(p))reorderInData(draggedPid,p.id,before); else moveByDrag(draggedPid,curRoom(p));
     draggedPid=null;draggedRoom=null;draggedCol='';});
   c.addEventListener("click",e=>{if(e.target.closest("button")||e.target.closest("select")||e.target.closest("input"))return;openEdit(p.id)});  // 카드 클릭=환자 정보(3열: 정보·동선·차팅)
   attachTouchDrag(c,p);   // 터치 기기: 길게 눌러 끌기
@@ -6562,8 +6711,8 @@ function tdragMove(x,y){
 function tdragCommit(t){
   const pid=TD.pid,from=TD.room;if(!pid||!t)return false;
   if(t.kind==='card'){if(t.id===pid)return (TD.col&&t.col&&isSameSpace(TD.col,t.col))?spaceHandOff(pid,TD.col,t.col):false;
-    if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveTo(pid,t.room);return true;}
-  if(t.kind==='body'||t.kind==='room'){if(from===t.room){if(t.kind==='body')moveToEnd(pid);}else moveTo(pid,t.room);return true;}
+    if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveByDrag(pid,t.room);return true;}
+  if(t.kind==='body'||t.kind==='room'){if(from===t.room){if(t.kind==='body')moveToEnd(pid);}else moveByDrag(pid,t.room);return true;}
   return false;
 }
 function tdragEnd(commit){
@@ -6589,7 +6738,26 @@ function outMsNow(p){return (p.outMs||0)+((p.out&&p.outAt)?Math.max(0,Date.now()
 function totalMsNow(p){return Math.max(0,(Date.now()-new Date(p.arrivedAt||p.enteredAt).getTime())-outMsNow(p));}  // 원내시간(외출 제외)
 /* 원내 경과시간 + 접수 시각(비트 접수 시각 우선, 없으면 동선관리에 등록된 시각) */
 function recvHM(p){return (p.receiveAt&&/^\d{1,2}:\d{2}$/.test(p.receiveAt))?p.receiveAt:clockHM(p.arrivedAt||p.enteredAt);}
-function totalLabel(p){const r=recvHM(p);return `<i data-lucide="hospital"></i> 원내 <b>${fmtClock(totalMsNow(p))}</b>${r?`<span class="recv" title="접수 시각">· 접수 <b>${esc(r)}</b></span>`:''}`;}
+/* 아이콘을 글자(HTML)로 한 번만 만들어 두고 재사용한다.
+   전에는 1초마다 카드마다 <i data-lucide>를 새로 넣고 lucide.createIcons()로 문서 전체를 훑어
+   SVG 를 100개씩 새로 만들었다 — 사람이 많은 날 화면이 버벅인 주된 까닭 (2026-09-26) */
+const IC_CACHE={};
+function icHtml(name){
+  if(IC_CACHE[name]!==undefined)return IC_CACHE[name];
+  let html='<i data-lucide="'+name+'"></i>';   /* 못 찾으면 예전처럼 옵저버가 바꾼다 */
+  try{
+    const key=String(name).split('-').map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join('');
+    const node=window.lucide&&lucide.icons&&(lucide.icons[key]||lucide.icons[name]);
+    if(Array.isArray(node)){   /* lucide 아이콘 = [['path',{d:…}], …] — 그대로 SVG 글자로 만든다 */
+      const kids=node.map(n=>{const tag=n[0],at=n[1]||{};
+        return '<'+tag+' '+Object.keys(at).map(k=>k+'="'+String(at[k]).replace(/"/g,'&quot;')+'"').join(' ')+'></'+tag+'>';}).join('');
+      html='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+         +'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-'+name+'">'+kids+'</svg>';
+    }
+  }catch(e){}
+  IC_CACHE[name]=html;return html;
+}
+function totalLabel(p){const r=recvHM(p);return `${icHtml('hospital')} 원내 <b>${fmtClock(totalMsNow(p))}</b>${r?`<span class="recv" title="접수 시각">· 접수 <b>${esc(r)}</b></span>`:''}`;}
 /* 오늘 도착한 카드 중 가장 큰 등록번호 — 전날 카드가 보드에 남아 있어도 오늘 번호에 영향 없음 (2026-09-13: 남은 카드 때문에 #119로 시작한 문제) */
 function maxSeqToday(){const t=localYMD(new Date());
   const live=data.reduce((m,p)=>{const src=p.arrivedAt||p.enteredAt;const pt=src?localYMD(new Date(src)):t;return (pt===t&&typeof p.seq==='number'&&p.seq>m)?p.seq:m;},0);
@@ -6785,6 +6953,29 @@ function nudgeCard(pid,dir){
 /* ───── 동선 이동 + 알람 ───── */
 function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if(p.step<p.route.length-1){const from=curRoom(p);completeVisit(p,'종결');p.step++;enterCurrentRoom(p);markSpaceDone(p,from,curRoom(p));save(p);render();enteredRoom(p,curRoom(p));}}
+/* 동선 순서가 기준과 어긋난 환자 — 카드를 빨갛게 (2026-09-26 지시).
+   바쁠 때 물리치료를 먼저 하고 C-Arm 에 가는 식으로 순서가 뒤바뀌면 눈에 띄게 표시한다.
+   처방으로 동선이 짜인 환자만 본다(손으로 짠 동선은 원래 순서가 자유로우므로) */
+function routeOutOfOrder(p){
+  if(!p||p.discharged||!p.routeRxHash||!Array.isArray(p.route))return false;
+  let last=-1;
+  for(const r of p.route){const i=ROUTE_ORDER.indexOf(r);if(i<0)continue;if(i<last)return true;last=i;}
+  return false;}
+/* 처방으로 짜인 동선을 벗어나 끌어다 놓았는지 — 다음 차례 방(=[종결]과 같음)이나 같은 공간 안 인계는 정상 */
+function rxRouteOff(p,room){
+  if(!p||!p.routeRxHash||!Array.isArray(p.route)||!p.route.length)return false;
+  const step=Math.max(0,Math.min(p.step||0,p.route.length-1));
+  if(room===p.route[step+1])return false;
+  if(typeof isSameSpace==='function'&&isSameSpace(p.route[step],room))return false;
+  return true;}
+/* 끌어다 놓기로 옮길 때만 쓴다(비트·자동 이동은 그대로 moveTo). 동선을 벗어나면 안내하고, 그래도 옮길지 확인 */
+function moveByDrag(pid,room){
+  const p=data.find(x=>x.id===pid);if(!p)return;
+  if(curRoom(p)!==room&&rxRouteOff(p,room)){
+    const nxt=p.route[Math.min((p.step||0)+1,p.route.length-1)]||'';
+    if(!confirm('처방에 따라 환자 동선이 정해져 있습니다'+(nxt?' (다음 방: '+nxt+')':'')+'.\n\n종결을 누르시거나, 클릭하여 환자 동선 순서를 조정하십시오.\n\n그래도 \''+room+'\' 로 옮기시겠습니까?'))return;
+  }
+  moveTo(pid,room);}
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
   if(from===room)return;
@@ -8383,9 +8574,199 @@ function openEdit(pid){
   updateEditActions(p);
   renderEditStatus();
   renderModalRail();
-  renderNotesEditor();renderConsultEditor();initPastConsults(p);
+  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();
   showModal();
 }
+/* ═════ 비급여 동의서 (태블릿 서명) — 2026-09-26 요청 ═════
+   상담실에서 태블릿을 들고 가 항목·금액을 고르고 환자에게 직접 서명을 받아 저장한다.
+   저장 위치: patientboard_v3/반듯한정형외과/consent/{차트번호_시각} — 환자 문서와 별개라 하루가 지나도 남는다.
+   항목 목록은 아래 CONSENT_ITEMS 만 고치면 된다(금액은 비워 두면 상담 때 직접 입력). */
+const CONSENT_ITEMS=[
+  {name:'체외충격파', price:''},
+  {name:'신장분사(프롤로)', price:''},
+  {name:'도수치료', price:''},
+  {name:'비급여 주사', price:''},
+  {name:'DNA 주사', price:''},
+  {name:'영양수액', price:''},
+  {name:'C-Arm 유도하 주사', price:''},
+  {name:'초음파 유도하 주사', price:''},
+  {name:'자동차보험 도수', price:''},
+  {name:'SASO', price:''}
+];
+const CONSENT_TEXT=[
+  '본인은 위 비급여 항목의 필요성·목적·방법·예상 효과 및 발생 가능한 부작용에 대하여 담당자로부터 충분한 설명을 듣고 이해하였습니다.',
+  '위 항목은 국민건강보험이 적용되지 않아 비용 전액을 본인이 부담한다는 사실을 확인하였습니다.',
+  '위 내용에 동의하며, 상기 진료(치료)를 받는 것에 동의합니다.'
+];
+let CONSENTS={};            // 차트번호 → [동의서…] (열람 중인 환자만 담아 둔다)
+let consentSign=null;       // 서명판 상태
+let consentFor=null;        // 지금 작성 중인 환자
+
+function consentCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('consent'):null;}
+/* 이 환자의 동의서를 불러온다(차트번호 기준). 색인이 필요 없도록 정렬은 화면에서 한다.
+   실패해도 반드시 결과를 확정해 넣는다 — 안 그러면 화면이 계속 다시 부른다 */
+const CONSENT_LOADING={};
+function loadConsents(mrn){
+  mrn=String(mrn||'').trim(); if(!mrn)return Promise.resolve([]);
+  if(CONSENT_LOADING[mrn])return CONSENT_LOADING[mrn];
+  const col=consentCol(); if(!col){CONSENTS[mrn]=[];return Promise.resolve([]);}
+  const pr=col.where('mrn','==',mrn).get()
+    .then(s=>{const out=[];s.forEach(d=>out.push(d.data()||{}));
+      out.sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+      CONSENTS[mrn]=out;return out;})
+    .catch(e=>{console.warn('consent load',e);CONSENTS[mrn]=[];return [];})
+    .then(r=>{delete CONSENT_LOADING[mrn];return r;});
+  CONSENT_LOADING[mrn]=pr; return pr;
+}
+/* 모달 안 '비급여 동의서' 칸 */
+function renderConsentSection(){
+  const box=document.getElementById('consentList'); if(!box)return;
+  const p=data.find(x=>x.id===editId); if(!p){box.innerHTML='';return;}
+  const mrn=String(p.mrn||'').trim();
+  if(!mrn){box.innerHTML='<div class="hint">차트번호가 있어야 동의서를 쓸 수 있습니다.</div>';return;}
+  if(!consentCol()){box.innerHTML='<div class="hint">클라우드에 연결되면 표시됩니다.</div>';return;}   /* 연결 전에는 불러오지 않는다(다시 부르기 반복 방지) */
+  const list=CONSENTS[mrn];
+  if(list===undefined){
+    box.innerHTML='<div class="hint">불러오는 중…</div>';
+    if(!CONSENT_LOADING[mrn])loadConsents(mrn).then(()=>{if(editId===p.id)renderConsentSection();});
+    return;}
+  if(!list.length){box.innerHTML='<div class="hint">저장된 동의서가 없습니다.</div>';return;}
+  box.innerHTML=list.map(c=>{
+    const items=(c.items||[]).map(i=>esc(i.name)+(i.price?' '+wonTxt(i.price):'')).join(' · ');
+    return `<div class="cst-row">
+      <div class="cst-main"><b>${esc((c.at||'').slice(0,10))}</b> <span class="hint">${esc((c.at||'').slice(11,16))}</span>
+        <div class="cst-items">${items||'(항목 없음)'}</div>
+        <div class="hint">${c.total?'합계 '+wonTxt(c.total)+' · ':''}상담 ${esc(c.by||'')}${c.signer?' · 서명 '+esc(c.signer):''}</div></div>
+      <div class="cst-btns">
+        <button type="button" class="btn sm" onclick="viewConsent('${esc(c.id)}')"><i data-lucide="eye"></i> 보기</button>
+        <button type="button" class="btn sm" onclick="printConsent('${esc(c.id)}')"><i data-lucide="printer"></i></button>
+        ${isAdmin()?`<button type="button" class="btn sm danger" onclick="delConsent('${esc(c.id)}')"><i data-lucide="trash-2"></i></button>`:''}
+      </div></div>`;}).join('');
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
+}
+function wonTxt(n){const v=Number(String(n).replace(/[^\d]/g,''))||0;return v?v.toLocaleString('ko-KR')+'원':'';}   /* 동의서용 — 기존 won()(숫자만)과 이름이 겹치지 않게 (2026-09-26) */
+
+/* ── 동의서 작성 화면 (태블릿) ── */
+function openConsent(){
+  const p=data.find(x=>x.id===editId); if(!p)return;
+  if(!String(p.mrn||'').trim()){alert('차트번호가 없는 환자는 동의서를 쓸 수 없습니다.');return;}
+  consentFor=p;
+  document.getElementById('cstWho').textContent=`${p.name||''} · ${p.mrn||''}${p.birth?' · '+p.birth:''}${p.sex?' · '+p.sex:''}`;
+  document.getElementById('cstDate').textContent=localYMD(new Date())+' '+hhmmNow();
+  document.getElementById('cstBy').value=(currentUser&&currentUser.name)||'';
+  document.getElementById('cstMemo').value='';
+  document.getElementById('cstEtc').value='';
+  document.getElementById('cstSignerSelf').checked=true;
+  document.getElementById('cstRel').value='';
+  document.getElementById('cstItems').innerHTML=CONSENT_ITEMS.map((it,i)=>`
+    <label class="cst-item"><input type="checkbox" id="cstChk${i}" onchange="consentSum()"> <span>${esc(it.name)}</span>
+      <input class="cst-price" id="cstPrc${i}" inputmode="numeric" placeholder="금액" value="${esc(it.price||'')}" oninput="consentSum()"></label>`).join('');
+  consentSum();
+  document.getElementById('consentScreen').classList.add('show');
+  requestAnimationFrame(()=>{signInit();});
+}
+function closeConsent(){document.getElementById('consentScreen').classList.remove('show');consentFor=null;}
+function consentPicked(){
+  const out=[];
+  CONSENT_ITEMS.forEach((it,i)=>{const c=document.getElementById('cstChk'+i);if(c&&c.checked)out.push({name:it.name,price:String(document.getElementById('cstPrc'+i).value||'').replace(/[^\d]/g,'')});});
+  const etc=(document.getElementById('cstEtc').value||'').trim();
+  if(etc)out.push({name:etc,price:String(document.getElementById('cstEtcPrc').value||'').replace(/[^\d]/g,'')});
+  return out;
+}
+function consentSum(){
+  const t=consentPicked().reduce((a,b)=>a+(Number(b.price)||0),0);
+  const el=document.getElementById('cstTotal');if(el)el.textContent=t?wonTxt(t):'0원';
+}
+/* 서명판 — 손가락·펜·마우스 모두 (pointer 이벤트) */
+function signInit(){
+  const cv=document.getElementById('cstSign'); if(!cv)return;
+  const r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+  const g=cv.getContext('2d'); g.scale(dpr,dpr); g.lineWidth=2.4; g.lineCap='round'; g.lineJoin='round'; g.strokeStyle='#111';
+  g.clearRect(0,0,r.width,r.height);
+  consentSign={cv,g,drawing:false,dirty:false};
+  const pos=e=>{const b=cv.getBoundingClientRect();return {x:e.clientX-b.left,y:e.clientY-b.top};};
+  cv.onpointerdown=e=>{e.preventDefault();cv.setPointerCapture(e.pointerId);const q=pos(e);consentSign.drawing=true;consentSign.dirty=true;g.beginPath();g.moveTo(q.x,q.y);};
+  cv.onpointermove=e=>{if(!consentSign.drawing)return;e.preventDefault();const q=pos(e);g.lineTo(q.x,q.y);g.stroke();};
+  cv.onpointerup=cv.onpointercancel=cv.onpointerleave=()=>{consentSign.drawing=false;};
+}
+function signClear(){if(!consentSign)return;const{cv,g}=consentSign;g.clearRect(0,0,cv.width,cv.height);consentSign.dirty=false;}
+async function saveConsent(){
+  const p=consentFor; if(!p)return;
+  const items=consentPicked();
+  if(!items.length){alert('동의 항목을 하나 이상 선택해 주세요.');return;}
+  if(!consentSign||!consentSign.dirty){alert('환자(또는 보호자) 서명을 받아 주세요.');return;}
+  const col=consentCol(); if(!col){alert('클라우드에 연결되어 있지 않습니다.');return;}
+  const self=document.getElementById('cstSignerSelf').checked;
+  const rel=(document.getElementById('cstRel').value||'').trim();
+  const rec={
+    id:String(p.mrn).trim()+'_'+Date.now(),
+    mrn:String(p.mrn||'').trim(), name:p.name||'', birth:p.birth||'', sex:p.sex||'', pid:p.id||'',
+    items, total:items.reduce((a,b)=>a+(Number(b.price)||0),0),
+    memo:(document.getElementById('cstMemo').value||'').trim(),
+    by:(document.getElementById('cstBy').value||'').trim(),
+    signer:self?'환자 본인':('보호자'+(rel?'('+rel+')':'')),
+    sign:consentSign.cv.toDataURL('image/png'),
+    at:new Date().toISOString().slice(0,19), room:curRoom(p)||'', savedBy:(currentUser&&currentUser.name)||''
+  };
+  const btn=document.getElementById('cstSaveBtn'); if(btn){btn.disabled=true;btn.textContent='저장 중…';}
+  try{
+    await col.doc(rec.id).set(rec);
+    const arr=CONSENTS[rec.mrn]||[]; CONSENTS[rec.mrn]=[rec,...arr];
+    try{audit('비급여 동의서',(p.name||'')+' ('+rec.mrn+') · '+items.map(i=>i.name).join(', '));}catch(e){}
+    closeConsent(); renderConsentSection();
+  }catch(e){console.error(e);alert('저장하지 못했습니다: '+(e.message||e));}
+  finally{if(btn){btn.disabled=false;btn.textContent='저장';}}
+}
+function findConsent(id){for(const k in CONSENTS){const f=(CONSENTS[k]||[]).find(c=>c.id===id);if(f)return f;}return null;}
+function consentHtml(c){
+  const rows=(c.items||[]).map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${i.price?wonTxt(i.price):''}</td></tr>`).join('');
+  return `<div class="cst-doc">
+    <h2>비급여 진료 동의서</h2>
+    <table class="cst-info"><tr><th>환자</th><td>${esc(c.name||'')}</td><th>차트번호</th><td>${esc(c.mrn||'')}</td></tr>
+      <tr><th>생년월일</th><td>${esc(c.birth||'')}</td><th>작성일</th><td>${esc((c.at||'').replace('T',' '))}</td></tr></table>
+    <table class="cst-tbl"><thead><tr><th>비급여 항목</th><th class="r">금액</th></tr></thead><tbody>${rows}
+      <tr class="sum"><th>합계</th><th class="r">${c.total?wonTxt(c.total):''}</th></tr></tbody></table>
+    ${c.memo?`<div class="cst-memo">${esc(c.memo)}</div>`:''}
+    <ul class="cst-text">${CONSENT_TEXT.map(t=>`<li>${esc(t)}</li>`).join('')}</ul>
+    <div class="cst-sign-box"><div class="cst-sign-lbl">${esc(c.signer||'환자 본인')} 서명</div>
+      <img class="cst-sign-img" src="${c.sign||''}" alt="서명"></div>
+    <div class="cst-by">설명·상담: ${esc(c.by||'')}${c.savedBy&&c.savedBy!==c.by?' (입력 '+esc(c.savedBy)+')':''}</div>
+  </div>`;
+}
+function viewConsent(id){const c=findConsent(id);if(!c)return;
+  const v=document.getElementById('cstViewBody'); v.innerHTML=consentHtml(c);
+  document.getElementById('cstViewScreen').dataset.id=id;
+  document.getElementById('cstViewScreen').classList.add('show');}
+function closeConsentView(){document.getElementById('cstViewScreen').classList.remove('show');}
+function printConsent(id){
+  const c=findConsent(id||document.getElementById('cstViewScreen').dataset.id);if(!c)return;
+  const w=window.open('','_blank');if(!w){alert('팝업이 차단되었습니다.');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>비급여 동의서 ${esc(c.name||'')}</title><style>
+    @page{size:A4;margin:14mm}body{font-family:'Malgun Gothic',sans-serif;color:#111}
+    h2{text-align:center;margin:0 0 14px;font-size:20px}
+    table{border-collapse:collapse;width:100%;margin-bottom:12px;font-size:13px}th,td{border:1px solid #666;padding:6px 8px}
+    .cst-info th{background:#eef1f6;width:80px;text-align:left}.r{text-align:right}
+    .cst-tbl thead th{background:#eef1f6}.cst-tbl .sum th{background:#f7f7f7}
+    .cst-text{font-size:13px;line-height:1.7;padding-left:18px}
+    .cst-memo{font-size:13px;border:1px solid #ccc;padding:8px;margin-bottom:10px;white-space:pre-wrap}
+    .cst-sign-box{margin-top:18px;text-align:right}.cst-sign-lbl{font-size:13px;margin-bottom:4px}
+    .cst-sign-img{height:70px;border-bottom:1px solid #333}
+    .cst-by{margin-top:14px;font-size:13px;text-align:right}
+  </style></head><body>${consentHtml(c)}<script>window.onload=()=>setTimeout(()=>window.print(),200);<\/script></body></html>`);
+  w.document.close();
+}
+async function delConsent(id){
+  if(!isAdmin()){alert('동의서 삭제는 관리자만 할 수 있습니다.');return;}
+  const c=findConsent(id);if(!c)return;
+  if(!confirm('이 동의서를 삭제할까요? 되돌릴 수 없습니다.\n\n'+(c.at||'').slice(0,16)+' · '+(c.items||[]).map(i=>i.name).join(', ')))return;
+  try{await consentCol().doc(id).delete();
+    CONSENTS[c.mrn]=(CONSENTS[c.mrn]||[]).filter(x=>x.id!==id);
+    try{audit('비급여 동의서 삭제',(c.name||'')+' ('+c.mrn+')');}catch(e){}
+    renderConsentSection();
+  }catch(e){alert('삭제하지 못했습니다: '+(e.message||e));}
+}
+function hhmmNow(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
 /* 과거 상담 기록 (편집 모달 내, 하단 펼침) */
 let pastConsultOpen=false;
 function patientPastConsults(p){
@@ -9244,13 +9625,37 @@ document.addEventListener("keydown",e=>{
 
 // 1초마다 대기/진행 타이머 텍스트만 갱신(전체 리렌더 없이)
 function tickTimers(){if(!currentUser)return;
-  let hasIcon=false;
   document.querySelectorAll('.dwell[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.innerHTML=dwellLabel(p);});
   document.querySelectorAll('.rt-live[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.textContent=routeLiveLabel(p);});
-  document.querySelectorAll('.total[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p){el.innerHTML=totalLabel(p);hasIcon=true;}});
-  /* 새로 넣은 <i data-lucide>를 같은 프레임에 즉시 SVG로 변환 — 옵저버 지연(30ms)로 인한 깜빡임 방지 */
-  if(hasIcon&&window.lucide)try{lucide.createIcons();}catch(e){}}
+  document.querySelectorAll('.total[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p){el.innerHTML=totalLabel(p);}});
+  /* 아이콘은 icHtml() 이 이미 SVG 로 넣으므로 여기서 문서 전체를 다시 훑지 않는다 (2026-09-26) */}
 setInterval(tickTimers,1000);
+/* ═ 메모리 지킴이 — 1분마다 사용량을 적어 두고, 한계에 가까워지면 알리고 그래도 오르면 스스로 새로고침한다.
+   화면이 'Out of Memory' 로 죽어 버리면 아무것도 남지 않으므로, 죽기 전에 새로고침해 되살린다 (크롬에서만 값이 나온다).
+   콘솔에서 memReport() 를 치면 최근 기록을 볼 수 있다 — 어디서 메모리가 늘어나는지 찾는 용도 */
+const MEM_LOG=[]; let memWarned=false;
+function memTick(){
+  const m=(typeof performance!=='undefined')&&performance.memory; if(!m||!m.jsHeapSizeLimit)return;
+  const pct=Math.round(m.usedJSHeapSize/m.jsHeapSizeLimit*100);
+  const rec={hm:new Date().toTimeString().slice(0,5), mb:Math.round(m.usedJSHeapSize/1048576), pct,
+    nodes:document.getElementsByTagName('*').length, pts:(typeof data!=='undefined'&&data?data.length:0),
+    pmemo:(typeof PMEMO!=='undefined'&&PMEMO)?Object.keys(PMEMO).length:0,
+    visits:(typeof VISITS!=='undefined'&&VISITS)?VISITS.length:0};
+  MEM_LOG.push(rec); if(MEM_LOG.length>1440)MEM_LOG.shift();
+  if(pct>=80&&!memWarned){memWarned=true;try{warnToast('메모리 사용량이 높습니다 ('+rec.mb+'MB, '+pct+'%). 잠시 뒤 화면을 새로고침(F5)해 주세요.');}catch(e){}
+    try{console.warn('[mem] 높음',rec);}catch(e){}}
+  if(pct<70)memWarned=false;
+  if(pct>=92){   /* 곧 죽는다 — 입력 중이 아니고 창이 열려 있지 않으면 스스로 새로고침 */
+    const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''));
+    try{console.warn('[mem] 한계 근접',rec,busy?'(사용 중이라 새로고침 보류)':'(자동 새로고침)');}catch(e){}
+    if(!busy){try{sessionStorage.setItem('memReload',JSON.stringify(rec));}catch(e){} location.reload();}
+  }
+}
+setInterval(memTick,60000); setTimeout(memTick,5000);
+window.memReport=function(){ if(!MEM_LOG.length)return '기록 없음(크롬이 아니거나 아직 이름)';
+  try{console.table(MEM_LOG.slice(-40));}catch(e){}
+  const mx=MEM_LOG.reduce((a,b)=>b.mb>a.mb?b:a), last=MEM_LOG[MEM_LOG.length-1];
+  return '지금 '+last.mb+'MB('+last.pct+'%) · 최대 '+mx.mb+'MB · DOM '+last.nodes+'개 · 환자 '+last.pts+' · pmemo '+last.pmemo+' · 내원기록 '+last.visits;};
 // 30초마다 보드 리프레시(모달 안 열려 있을 때만)
 setInterval(()=>{if(currentUser&&!document.querySelector(".modal-bg.show"))render();},30000);
 /* ── 휠 가로 스크롤(스마트): 환자 목록이 세로 스크롤 필요하면 세로 우선, 그 외엔 휠만으로 좌우 이동 ──
@@ -9435,8 +9840,17 @@ boot();
   if(!window.lucide) return;
   let t=null;
   function refreshIcons(){ try{ lucide.createIcons(); }catch(e){} }
-  new MutationObserver(function(){
-    if(document.querySelector('i[data-lucide]')){ clearTimeout(t); t=setTimeout(refreshIcons,30); }
+  /* 전에는 DOM 이 바뀔 때마다 문서 전체에서 i[data-lucide] 를 찾았다 — 그리기가 잦아 그 자체가 부담이었다.
+     이제 새로 붙은 조각 안만 본다 (2026-09-26) */
+  new MutationObserver(function(muts){
+    for(const m of muts){
+      for(const n of m.addedNodes){
+        if(n.nodeType!==1)continue;
+        if((n.matches&&n.matches('i[data-lucide]'))||(n.querySelector&&n.querySelector('i[data-lucide]'))){
+          clearTimeout(t); t=setTimeout(refreshIcons,30); return;
+        }
+      }
+    }
   }).observe(document.documentElement,{childList:true,subtree:true});
   refreshIcons();
 })();
