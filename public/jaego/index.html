@@ -96,6 +96,16 @@
   .selcol{width:34px; text-align:center}
   .selcol input{width:17px; height:17px; cursor:pointer}
   tr.selrow td{background:#EAF1FF}
+  /* 통계표 (엑셀 느낌) */
+  .shtb{border-collapse:collapse; background:var(--card); font-size:13px; min-width:100%}
+  .shtb th,.shtb td{border:1px solid var(--line); padding:0}
+  .shtb th{background:var(--accent-soft); color:#2A4A75; font-size:12px; position:sticky; top:0; white-space:nowrap}
+  .shtb .shcell{display:block; min-width:70px; min-height:20px; padding:6px 8px; outline:none; white-space:pre-wrap}
+  .shtb .shcell[contenteditable="true"]:focus{background:#FFFDE7; box-shadow:inset 0 0 0 2px var(--accent)}
+  .shtb .shnum{background:var(--accent-soft); color:var(--ink2); text-align:center; min-width:30px; padding:6px 4px; font-size:11px}
+  .shx{cursor:pointer; color:var(--warn); font-weight:800; padding:0 6px; font-size:12px}
+  .shtb th{padding-right:2px}
+  .shtb th .shcell{display:inline-block}
   .lowgrp td{background:var(--warn-bg); cursor:pointer; user-select:none; padding:9px 12px}
   .lowgrp b{color:var(--warn)}
   .lowgrp .chev{display:inline-block; transition:transform .15s; margin-right:4px}
@@ -290,6 +300,7 @@
     <button id="tabStock"><i data-lucide="boxes"></i> 재고 현황</button>
     <button id="tabOrder"><i data-lucide="file"></i> 발주</button>
     <button id="tabStats"><i data-lucide="chart-no-axes-combined"></i> 통계</button>
+    <button id="tabSheet"><i data-lucide="table"></i> 통계표</button>
     <button id="tabLog"><i data-lucide="history"></i> 입출고 기록</button>
     <button id="tabSet"><i data-lucide="settings"></i> 설정·백업</button>
   </nav>
@@ -396,6 +407,22 @@
   </section>
 
   <!-- ===== 통계 ===== -->
+  <!-- ===== 통계표: 구글시트 '간호 재고파악'의 약품통계·물품통계 틀 (2026-09-27) ===== -->
+  <section id="pgSheet" style="display:none">
+    <div class="bar">
+      <button class="btn ghost" id="shDrug" onclick="openSheet('drug')">약품통계</button>
+      <button class="btn ghost" id="shGoods" onclick="openSheet('goods')">물품통계</button>
+      <span class="muted" id="shInfo" style="margin-left:auto"></span>
+    </div>
+    <div class="bar" id="shAdminBar" style="display:none; margin-top:-4px">
+      <button class="btn ghost small" onclick="sheetAddRow()"><i data-lucide="plus"></i> 행 추가</button>
+      <button class="btn ghost small" onclick="sheetAddCol()"><i data-lucide="plus"></i> 열 추가</button>
+      <span class="muted" style="font-size:11.5px">칸을 눌러 바로 입력 · 열 이름도 수정 가능 · 삭제는 각 행/열의 ×</span>
+      <button class="btn" id="shSave" style="margin-left:auto" onclick="sheetSave()"><i data-lucide="save"></i> 저장</button>
+    </div>
+    <div id="sheetWrap"><div class="empty">위에서 표를 선택하세요.</div></div>
+  </section>
+
   <section id="pgStats" style="display:none">
     <div class="bar">
       <span class="muted">최근 12개월 기준 · 재고금액 = 현재고 × 단가</span>
@@ -522,7 +549,11 @@
   <h2 id="mvTitle">입고</h2>
   <p id="mvProd" style="font-weight:700; margin-bottom:4px"></p>
   <p class="muted" id="mvNow"></p>
-  <label id="mvQtyLabel">수량</label><input id="mvQty" type="number" min="1" value="1" class="qbig">
+  <div id="mvUnitRow" style="display:none; gap:6px; margin:0 0 6px">
+    <button type="button" class="btn small ghost" id="mvUnitEa" onclick="setMvUnit('ea')">개수</button>
+    <button type="button" class="btn small ghost" id="mvUnitBox" onclick="setMvUnit('box')">박스</button>
+  </div>
+  <label id="mvQtyLabel">수량</label><input id="mvQty" type="number" min="1" value="1" class="qbig" oninput="mvHint()">
   <p class="muted" id="mvBoxHint" style="display:none; margin:2px 0 6px; color:var(--accent); font-weight:700"></p>
   <div id="mvExpWrap"><label>유통기한 (선택)</label><input id="mvExp" type="date"></div>
   <label>메모 (선택)</label><input id="mvMemo" placeholder="예) OO메디칼 납품 / 물리치료실 사용">
@@ -747,13 +778,14 @@ window.bulkDelete=async function(){
 window.toggleLowBox=function(){const o=localStorage.getItem("jaego_low_open")==="1";
   try{localStorage.setItem("jaego_low_open",o?"0":"1");}catch(_){ }
   render();};
-const tabs={tabScan:"pgScan", tabStock:"pgStock", tabOrder:"pgOrder", tabStats:"pgStats", tabLog:"pgLog", tabSet:"pgSet"};
+const tabs={tabScan:"pgScan", tabStock:"pgStock", tabOrder:"pgOrder", tabStats:"pgStats", tabSheet:"pgSheet", tabLog:"pgLog", tabSet:"pgSet"};
 for(const t in tabs){
   $(t).onclick=()=>{
     for(const k in tabs){ $(k).classList.toggle("on",k===t); $(tabs[k]).style.display=(k===t)?"":"none"; }
     render();
     if(t==="tabScan") focusScan();
     if(t==="tabStats") loadStats();
+    if(t==="tabSheet") openSheet(SHEET_ID||"drug");
     if(t==="tabSet" && ME && ME.admin) loadStaffList();
   };
 }
@@ -1014,6 +1046,81 @@ $("venFilter").onchange=render;
    📊 통계 — 월별 사용량 · 지출 · 거래처 · 보관위치
    ============================================================ */
 let STATS=null;
+/* ═════ 통계표 (2026-09-27): 구글시트 '간호 재고파악'의 약품통계·물품통계를 앱 안에서.
+   틀(열 이름)만 가져왔고 값은 비워 시작한다. 행·열 추가 가능, 수정·저장은 관리자만(서버도 확인).
+   저장 = 표 전체 JSON 을 서버 meta 에 보관 — 모든 기기에서 같은 표를 본다. */
+const SHEET_DEFS={
+  drug:{name:'약품통계', cols:['품명','유통기한','대체품목','단위','총 주문량','처방량','처방코드','처방용량','전월 재고량','처방x용량 = 사용갯수','(주문량+재고량)×한박스당','실재고량']},
+  goods:{name:'물품통계', cols:['품목','이월재고량','주문량','재고량+합계','처방량','잔여량','처방코드']}
+};
+/* 시작값: 구글시트 '간호 재고파악'(2026-09-27 사본)의 최신 통계 탭에서 품명·단위·처방코드 등 고정 칸만 가져옴.
+   달마다 바뀌는 수량 칸은 비워 둔다. 저장된 표가 서버에 생기면 이 시작값은 더 쓰이지 않는다 */
+const SHEET_SEED={"drug":[["가다실9가","","","150000","","","가다실9가","1","","","",""],["SK 스카이조스터주 (대상포진) 생백신","","단가: 88,000원","1개","","","SK","1","","","",""],["GSK 싱그릭스 (대상포진) 사백신","","단가: 180,000원","1개","","","GSK","1","","","",""],["(회)(생)테타불린에스앤 250IU 10PFS","","","250IU/10V","","","TTB","1","","","",""],["(회)(생)헤파뮨 1ml 10PFS","","유박스 10PFS","1ml/10관","","","H9","1","","","",""],["박씨그리프주 3가 유료","","행정실 주문","1박스/10EA","","","A7","1","","","",""],["무료독감 지씨플루 3가","","6~36개월미만 대상자,그외대상자","1개당 10EA","","","cobax","1","","","",""],["(회)(생)프롤리아 1ml 1PFS","","","60mL/1PFS","","","pprol","1","","","",""],["이베니티","","","","","","evenity","2","","","",""],["본큐어주","","","","","","본큐어주","1","","","",""],["카티프로","","","1","","","CARTIPRO S","1","","","",""],["콜라플레오 1ml/1관","","리젠씰","","","","collapleo","1","","","",""],["콘쥬란","","","/5관","","","CONJURAN","1","","","",""],["리비탈렉스주 3ml 10V","","폴리네오주 10V","3mL/10V","","","lbt","1","","","",""],["시노비안 3ml 1PFS","","","3ml/1관[PF]","","","ssyno","1","","","",""],["아트리 25mg 10PFS","","","2.5ml/10관[PF]","","","AATRI","1","","","",""],["대한에피네프린주사액 1ml 50A","","","1mL/50A","","","epinefrin","1","","","",""],["페르디핀주","","","","","","perdi","1","","","",""],["라베신주","","","","","","labesin","1","","","",""],["에페드린주","","","","","","ephderin","1","","","",""],["아트로핀주","","","","","","atropine","1","","","",""],["노트롬","","","10a","","","PRPKIT02","1","","","",""],["구주디클로페낙주사액 2ml 50A","","로페낙주 50A","2ml/50A","","","dcf/244-1","1","","","",""],["제일덱사메타손주사액 1ml 50A","","","1mL/50A","","","dxmt","0.03","","","",""],["케로라주 1ml 50A","","","1ml/50A","","","kelo","1","","","",""],["휴메딕스트라마돌염산염주 1ml 50A","","트롤주","1mL/50A","","","trol","1","","","",""],["맥페란주사액 2ml 50A","","멕쿨주 50A","2ml/50A","","","SM182","1","","","",""],["트리암시놀론주사 1ml 30V","","","1mL/30V","","","","1","","","",""],["겐타프로주사 2ml 50A","","","2mL/50A","","","genta","1","","","",""],["휴온스클로르페니라민말레산염주사액 2ml 50A","","","2mL/50A","","","peni","1","","","",""],["나로핀주사 2mg/20ml 5A","","로카인주사 5A","20ml/5A","","","NRP/Rocaine","0.15/0.045","","","",""],["대한염산리도카인염산염수화물2% 20ml 10V","","","20ml/10V","","","sm196","0.2/0.07","","","",""],["리포라제 주 1500IU 10V","","","*10V","","","sm190","0.1","","","",""],["파미레이300주사액 30ml 1V","","","30ml/10병","","","ray","0.1","","","",""],["대한생리식염주사액 20ml 50A","","","20ml/50A[PE]","","","ns20ml","1","","","",""],["대한포도당주사액20% 20ml 50A","","","20ml/50A[PE]","","","","1","","","",""],["대한멸균생리식염수 100ml 50백","","","100mL/50백","","","","1","","","",""],["중외엔에스주사액 500ml 20백","","","500ml/20백","","","","1","","","",""],["아세타펜주 100ml 1백","","큐펜주 100ml 20백","100ml/20백","","","rkarl/pain","1","","","",""],["아르믹스주 250ml 10입","","","250mL/10병","","","jx/mixinject8","1","","","",""],["위너프페리주 217ml 8백","","","217ml/8백","","","wenuf","1","","","",""],["중외관류용멸균증류수 1000ml 10입","","","1000mL/10병","","","","1","","","",""],["(회)메리트씨주사 20ml 10V","","","20mL/10V","","","mixinject8","1","","","",""],["라이넥주 2ml 50A","","","2ml/50A","","","mixinject3","1","","","",""],["메가네슘주10% 5ml 50A","","마시주사10% 25A","5ml/25A","","","mixinject7/mixinject8","1","","","",""],["비엠하이디주 1ml 10V","","","20만IU/1ml/10A","","","HD","1","","","",""],["비코라민주 2ml 50A,지씨비타일이주 2ml 50A","","레드업주 50A","2ml/50A","","","아세타펜 처방수와 같이확인","1","","","",""],["지씨멀티5주 10ml 10V","","제일미네랄5주 10V","10ml/10V","","","JX/mixinject1","1","","","",""],["지씨징코주 5ml 50A","","","5mL/50A","","","mixinject7","1","","","",""],["지씨치옥트산주 5ml 50A","","아이델라주 10A","5ml/10A","","","mixinject2/mixinject5","1","","","",""],["푸르설타민주 10ml 10A","","제일하이비주(비급여) .","10mL/10A","","","mixinject2/mixinject4/mixinject8","1","","","",""],["히시파겐씨주 20ml 50A","","","20ml/50A","","","mixinject6","1","","","",""],["디톡시온주 10A","","","10A","","","mixinject9","1","","","",""],["아모부로펜 4ml 10A","","","4ml/10A","","","pain4","1","","","",""],["아모부로펜 8ml 10A","","","8ml/10A","","","pain8","1","","","",""],["아모부로펜 프리믹스주 104ml 20A","","","104ml/20A","","","pain5","1","","","",""],["아토베리어","","홈페이지 구매","1개","","","atb","1","","","",""],["제로이드","","","","","","zroid","1","","","",""],["제로이드-인텐시브 로션 엠디","","","","","","ITL","1","","","",""],["제로이드- 더마 쉴드 크림 엠디","","","","","","TSC","1","","","",""],["제로이드 - 루트힐 모이스처라이저 엠디","","","","","","ZLM","1","","","",""],["위고비 0.25","","","","","","위고비0.25/E위고비1","1","","","",""],["위고비 0.5","","","","","","위고비0.5/E위고비2","1","","","",""],["위고비 1.0","","","","","","위고비1.0/E위고비3","1","","","",""],["위고비 1.7","","","","","","위고비1.7/E위고비4","1","","","",""],["위고비 2.4","","","","","","위고비2.4/E위고비5","1","","","",""],["마운자로 프리필드 펜주 2.5mg / 4펜","","블루팜주문","","","","Moun2.5/EMoun2.5","1","","","",""],["마운자로 프리필드 펜주 5mg / 4펜","","블루팜주문","","","","Moun5/EMoun5","1","","","",""],["마운자로 프리필드 펜주 7.5mg / 4펜","","블루팜주문","","","","moun7.5/Emoun7.5","1","","","",""],["마운자로 프리필드 펜주 10mg / 4펜","","블루팜주문","","","","moun10/Emoun10","1","","","",""],["실마진","","","","","","silmazin","1","","","",""],["에스로반","","무피로신연고","","","","MUPI","1","","","",""],["콘투라벡스 20g","","","","","","conto","1","","","",""],["이지에프연고","","홈페이지구매","19500","","","egif3","1","","","",""],["파라손연고","","네오시덤연고","","","","Neociderm","1","","","",""],["마데카솔","","","","","","","1","","","",""],["더마겐스카겔","","","","","","DERMA","1","","","",""],["웰스카인플러스크림","","","450g","","","","1","","","",""],["[퍼슨] 알파헥시딘5%액 500ML","","","500ml","","","","1","","","",""],["포비딘(포비돈요오드액10%) 1L","","","1L","","","","1","","","",""],["일회용 헥시딘 스크럽솔","","","1box/20EA\\","","","","1","","","",""],["코어톡스","","","100unit/10v","","","Coretox","","","","",""]],"goods":[["[문정메디칼]SOFT COLLAR(THOMAS)-소","","","","","","neckbrace"],["[문정메디칼]SOFT COLLAR(THOMAS)-중","","","","","",""],["[문정메디칼]SOFT COLLAR(THOMAS)-대","","","","","",""],["ALUMINUM SPLINT 소 1.5CM","","","","","","alsp"],["ALUMINUM SPLINT 중 2CM","","","","","",""],["GIPS123 Long Leg 특소(유아용)(xs) 장하지","","","","","","장하지1"],["GIPS123 Long Leg 소(S) 장하지","","","","","",""],["GIPS123 Long Leg 중(M) 장하지","","","","","",""],["GIPS123 Long Leg 대(L) 장하지","","","","","",""],["Starfix Long Leg 실린더 라이트 - S","","","","","","실린더"],["Starfix Long Leg 실린더 라이트 - M","","","","","",""],["Starfix Long Leg 실린더 라이트 - L","","","","","",""],["Starfix Leg 라이트-XS","","","","","","단하지"],["Starfix Leg 라이트 소(S)","","","","","",""],["Starfix Leg 라이트 중(M)","","","","","",""],["Starfix Leg 라이트 대 (L)","","","","","",""],["Starfix Leg 라이트 (S숏버전) 중(M)","","","","","","단하지(숏)"],["Starfix Leg 라이트 (S숏버전) 대(L)","","","","","",""],["기브스신발 (Purple) S-건강누리","","","","","","cast2"],["기브스신발 (Green) M - 문정","","","","","",""],["기브스신발 (Green) L","","","","","",""],["기브스신발 (Green) XL","","","","","",""],["기브스신발(스타슈즈) 소 (S)","","","","","","cast"],["기브스신발(스타슈즈) 중 (m)","","","","","",""],["기브스신발(스타슈즈) 대 (L)","","","","","",""],["KNEE BRACE(MCL)22 S","","","","","","mclbrace"],["KNEE BRACE(MCL)22 M","","","","","",""],["KNEE BRACE(MCL)22 L","","","","","",""],["KNEE BRACE(MCL)22 XL","","","","","",""],["KNEE BRACE(MCL)22 XXL","","","","","",""],["KNEE BRACE(MCL)22 XXXL","","","","","",""],["ROM KNEE brace S","","","","","","aclbrace"],["ROM KNEE brace  M","","","","","",""],["ROM KNEE brace L","","","","","",""],["ROM KNEE brace XL","","","","","",""],["ROM KNEE brace  2XL","","","","","",""],["L","","","","","","TL-brace"],["XL","","","","","",""],["M","","","","","",""],["허리(척추)보호대 WOMEN S","","","","","",""],["닥터메드 허리보호대 DR-B049 S","","","","","","L-brace"],["닥터메드 허리보호대 DR-B049 M","","","","","",""],["닥터메드 허리보호대 DR-B049 L","","","","","",""],["닥터메드 허리보호대 DR-B049 XL","","","","","",""],["DR.MED KNEE SUPPORT ACL( R-S)","","","","","","aclbrace"],["DR.MED KNEE SUPPORT ACL( R-M)","","","","","",""],["DR.MED KNEE SUPPORT ACL( R-L)","","","","","",""],["DR.MED KNEE SUPPORT ACL( R-XL)","","","","","",""],["DR.MED KNEE SUPPORT ACL( R-2XL)","","","","","",""],["DR.MED KNEE SUPPORT ACL( L-S)","","","","","",""],["DR.MED KNEE SUPPORT ACL( L-M)","","","","","",""],["DR.MED KNEE SUPPORT ACL( L-L)","","","","","",""],["DR.MED KNEE SUPPORT ACL( L-XL)","","","","","",""],["LONG ARM BRACE(팔꿈치) (ACL)","","","","","","LAB"],["Starfix Long Arm - XS(유아)","","","","","","장상지"],["Starfix Long Arm - S","","","","","",""],["Starfix Long Arm - M","","","","","",""],["Starfix Long Arm - L","","","","","",""],["단상지 우-XS","","","","","","단상지"],["단상지 우-S","","","","","",""],["단상지 우-M","","","","","",""],["단상지 우-L","","","","","",""],["단상지 좌-XS","","","","","",""],["단상지 좌-S","","","","","",""],["단상지 좌-M","","","","","",""],["단상지 좌-L","","","","","",""],["Starfix Short Arm 엄지고정(thumb spica)R-S","","","","","","엄지고정"],["Starfix Short Arm 엄지고정(thumb spica)R-M","","","","","",""],["Starfix Short Arm 엄지고정(thumb spica)R-L","","","","","",""],["Starfix Short Arm 엄지고정(thumb spica)L-S","","","","","",""],["Starfix Short Arm 엄지고정(thumb spica)L-M","","","","","",""],["Starfix Short Arm 엄지고정(thumb spica)L-L","","","","","",""],["Starfix Short Arm 콕업 R-XS","","","","","","콕업"],["Starfix Short Arm 콕업 R-S","","","","","",""],["Starfix Short Arm 콕업 R-M","","","","","",""],["Starfix Short Arm 콕업 R-L","","","","","",""],["Starfix Short Arm 콕업 L-XS","","","","","",""],["Starfix Short Arm 콕업 L-S","","","","","",""],["Starfix Short Arm 콕업 L-M","","","","","",""],["Starfix Short Arm 콕업 L-L","","","","","",""],["Starfix Ulnar Gutter R-S(우/소)","","","","","","얼라거터"],["Starfix Ulnar Gutter R-M(우/중)","","","","","",""],["Starfix Ulnar Gutter R-L(우/대)","","","","","",""],["Starfix Ulnar Gutter L-S(좌/소)","","","","","",""],["Starfix Ulnar Gutter L-M(좌/중)","","","","","",""],["Starfix Ulnar Gutter L-L(좌/대)","","","","","",""],["ROLL(N) SPLINT 2\" 덕인)","","","","","","roll2"],["ROLL(N) SPLINT 3\" (덕인)","","","","","","roll3"],["ROLL(N) SPLINT 4\" (덕인)","","","","","","roll4"],["ROLL(N) SPLINT 5\" (덕인)","","","","","","roll5"],["건강누리]멀티핑거스프린트 리필 1호 MULT FINGER","","","","","","fb"],["건강누리]멀티핑거스프린트 리필 2호 MULT FINGER","","","","","",""],["건강누리]멀티핑거스프린트 리필 3호 MULT FINGER","","","","","",""],["건강누리]멀티핑거스프린트 리필 4호 MULT FINGER","","","","","",""],["건강누리]멀티핑거스프린트 리필 5호 MULT FINGER","","","","","",""],["알루미늄목발 (XS) 조별포장","","","","","","crutch"],["알루미늄목발 (S) 조별포장","","","","","",""],["알루미늄목발 (M) 조별포장","","","","","",""],["알루미늄목발 (L) 조별포장","","","","","",""],["알루미늄목발 (XL) 조별포장","","","","","",""],["DR.MED-PATELLA(DR-K009) U공용","","","","","","kneebrace"],["EASY KNEE SPLINT WITH THERMO-MOLDABLE PANEL(LONG LEG) S","","","","","","ROMSPLINT1"],["EASY KNEE SPLINT WITH THERMO-MOLDABLE PANEL(LONG LEG) M","","","","","",""],["EASY KNEE SPLINT WITH THERMO-MOLDABLE PANEL(LONG LEG) L","","","","","",""],["EASY KNEE SPLINT WITH THERMO-MOLDABLE PANEL(LONG LEG) XL","","","","","",""],["DR.MED EASY SPLINT ANKLE - S","","","","","","anksplint1"],["DR.MED EASY SPLINT ANKLE - M","","","","","",""],["DR.MED EASY SPLINT ANKLE - L","","","","","",""],["DR.MED EASY SPLINT ANKLE - XL","","","","","",""],["DR.MED EASY SPLINT ANKLE - 2XL","","","","","",""],["BioGrab.ANKLE-S","","","","","","BIO"],["BioGrab.ANKLE-M","","","","","",""],["BioGrab.ANKLE-L","","","","","",""],["BioGrab.ANKLE-XL","","","","","",""],["ANKLE BRACE(A002)-S","","","","","","ankbrace"],["ANKLE BRACE(A002)-M","","","","","",""],["ANKLE BRACE(A002) -L","","","","","",""],["ANKLE BRACE(A002)- XL","","","","","",""],["ANKLE BRACE(A002)- XXL","","","","","",""],["TENNIS ELBOW BRACE DR-E001","","","","","","elwbrace"],["WRIST SUPPORT (R-S) (W004)","","","","","","wribrace"],["WRIST SUPPORT (R-M) (W004)","","","","","",""],["WRIST SUPPORT (R-L) (W004)","","","","","",""],["WRIST SUPPORT (R-XL) (W004)","","","","","",""],["WRIST SUPPORT (L-S) (W004)","","","","","",""],["WRIST SUPPORT (L-M) (W004)","","","","","",""],["WRIST SUPPORT (L-L) (W004)","","","","","",""],["WRIST SUPPORT (L-XL) (W004)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (R-S)","","","","","","wrisplint1"],["DR.MED EASY SPLINT WRIST(전규격) (R-M)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (R-L)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (R-XL)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (L-S)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (L-M)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (L-L)","","","","","",""],["DR.MED EASY SPLINT WRIST(전규격) (L-XL)","","","","","",""],["WRIST THUMB BRACE(132-1) 엄지손가락(플라스틱지지)","","","","","","tb"],["DR.MED EASY SPLINT THUMB(SHORT ARM) M","","","","","","ts1"],["DR.MED EASY SPLINT THUMB(SHORT ARM) L","","","","","",""],["WRIST THUMB BRACE(132-2)손가락(중지 검지 약지보)","","","","","","fffb"],["EASY MULTI FINGER WRIST PALM SPLINT(전규격)R","","","","","","fffs1"],["EASY MULTI FINGER WRIST PALM SPLINT(전규격) L","","","","","",""],["복대 9\" (문정메디칼)","","","","","","k7901271"],["복대 12\"(문정메디칼)x 42","","","","","","복대12"],["복대 12\"(문정메디칼) x 48","","","","","","복대48"],["팔걸이 (면) 소","","","","","","arm"],["팔걸이 (면) 대","","","","","",""],["벨포밴드 (S)","","","","","","BF"],["벨포밴드 (M)","","","","","",""],["벨포밴드 (L)","","","","","",""],["벨포밴드 (XL)","","","","","",""],["울트라슬링(어깨보호팔걸이)S","","","","","","KSHUL"],["울트라슬링(어깨보호팔걸이)M","","","","","",""],["울트라슬링(어깨보호팔걸이)L","","","","","",""],["울트라슬링(어깨보호팔걸이)XL","","","","","",""],["쇄골붕대 (S)","","","","","","8자붕대"],["쇄골붕대 (M)","","","","","",""],["쇄골붕대 (L)","","","","","",""],["쇄골붕대 (xl)","","","","","",""],["스타키넷 1\" (관상붕대)","","","","","","코드x"],["스타키넷 3\"","","","","","",""],["스타키넷 4\"","","","","","",""],["블랙 슈즈(s) (앞발가락 보조신발)","","","","","","forefoot"],["블랙 슈즈(m) (앞발가락 보조신발)","","","","","",""],["블랙 슈즈(L) (발가락 보조신발)","","","","","",""],["블랙슈즈 덮개 (S)","","","","","","hobble"],["블랙슈즈 덮개 (M)","","","","","",""],["블랙슈즈 덮개 (L)","","","","","",""],["주사기 (성심) 1CC 23G","","","","","","코드x"],["주사기 (성심) 3CC 23G","","","","","","코드x"],["주사기 (성심) 5CC 23G","","","","","","코드x"],["주사기 (성심)10CC 21G","","","","","","코드x"],["주사기 (성심)20CC 18G","","","","","","코드x"],["IV-CA 24G (경기)","","","","","","코드x"],["수액 SET 무침(성심)","","","","","","코드x"],["23G*90mm(성심)","","","","","","코드x"],["25G *60mm(성심)","","","","","","코드x"],["23G*100mm(메디풀)","","","","","","코드x"],["25G*25mm(성심)","","","","","","코드x"],["27G * 60mm (성심)","","","","","","코드x"],["29G*60mm(성심)","","","","","","코드x"],["30G * 13mm (성심)","","","","","","코드x"],["18G*38mm(메디풀)","","","","","","코드x"],["23G*25mm(메디풀)","","","","","","코드x"],["25G*38mm(메디풀)","","","","","","코드x"],["30g*38mm(메디풀)","","","","","","코드x"],["EPI-NEEDLE 22G (태창)","","","","","","코드x"],["POLY GLOVE (M) 한진","","","","","","코드x"],["POLY GLOVE (멸균) 1매","","","","","","코드x"],["INTOUCH GLOVE S","","","","","","코드x"],["INTOUCH GLOVE M","","","","","","코드x"],["대한 DRESSING BAND(KIT) DH-DK-3","","","","","","dressing"],["MESS 11 파라곤","","","","","","코드x"],["NYLON 3/0 NB324 C25","","","","","","nylon30"],["REXLON(블루나일론) SM-NBE418 4/0 C18mm","","","","","","nylon"],["NYLON 5/0 NB526 C15","","","","","","nylon50"],["VICRYL PLUS ANTI BACTERIAL SUTURE(3/0)","","","","","","VICRYPLUS"],["DUODERM EXTRATHIN(4*4)","","","","","","DUODERM"],["메디폼 10*10 (2mm)","","","","","","메디폼2"],["메디폼 10*10 (5mm)","","","","","","메디폼5"],["FIX ROLL 10CMX10M (3M)","","","","","","fix roll"],["OPSITE FLEXIFIX(투명 픽스롤)","","","","","","fix roll3"],["[3M]호산발주*STERI STRIP 1546 1/4*4in 스테리스트립","","","","","","strip"],["큐앤큐메딕스에이밴드 s-1 4.5*5.5cm(2.2*3cm)","","","","","","meds1"],["큐앤큐메딕스에이밴드 1호 6*8cm(2.2*4cm)","","","","","","med1"],["큐앤큐메딕스에이밴드 2호 7*10cm(3.2*6cm)","","","","","","med2"],["큐앤큐메딕스밴드 3호 10*10cm(5.3*6cm)","","","","","","med3"],["큐앤큐메딕스밴드 4호 10*13cm(5.3*8cm)","","","","","","med4"],["큐앤큐메딕스밴드 5호 10*20cm(5.3*15cm)","","","","","","med5"],["큐앤큐메딕스밴드 6호 10*20cm(5.3*15cm)","","","","","","med6"],["큐앤큐메딕스패드 7호 패드 18*20cm(5.3*15cm)","","","","","","med7"],["SKIN STAPLE REMOVER PVC","","","","","","remover"],["SKIN STAPLER(ACOS) REGULAR","","","","","","stapler"],["면반창고(신신)","","","","","","코드x"],["밴드골드 표준반창고(19*72mm) 10매 45개","","","","","","코드x"],["[3M]종이테입 1\" 살색 1533-1 Micropore","","","","","","코드x"],["[3M]종이테입 1/2\" 살색 1533-0 Micropore","","","","","","코드x"],["코반붕대 (PREMA) 1\" 4.5M","","","","","","coban1"],["코반붕대 (PREMA) 2\" 4.5M","","","","","","coban2"],["코반붕대 (PREMA) 3\" 4.5M","","","","","","coban3"],["코반붕대 (PREMA) 4\" 4.5M","","","","","","coban4"],["쿨엘라스틱밴디지(코반) 3인치","","","","","","coolband1"],["탄력붕대 2\"(성십자)","","","","","","eb21"],["탄력붕대 3\"(성십자)","","","","","","eb31"],["탄력붕대 4\"(성십자)","","","","","","eb41"],["탄력붕대 6\"(성십자)","","","","","","eb61"],["솜붕대(수성) 3\"","","","","","","코드x"],["솜붕대(수성) 4\"","","","","","","코드x"],["솜붕대(수성) 6\"","","","","","","코드x"],["나비픽스(MG-MS)","","","","","","nabi"],["ALLEVYN HEEL(13.5*10.5)","","","","","","alle"],["지혈밴드 원형 모아랩","","","","","","코드x"],["근전도 검사 패치","","","","","","코드x"],["근전도 검사 니들","","","","","","코드x"],["3way","","","","","","코드x"],["COTTON BALL 1호(수성)","","","","","","코드x"],["COTTON BALL 3호(수성)","","","","","","코드x"],["접은거즈 2*2*8P","","","","","","코드x"],["접은거즈 4*4*8P","","","","","","코드x"],["설압자","","","","","","코드x"],["알콜 스왑","","","","","","코드x"],["진료실 환자 발판패드","","","","","","코드x"],["(그린)과산화수소 4L","","","","","","코드x"],["소독테입 1\" (J-MADI)","","","","","","코드x"],["에탄올 80% 4L (조은)","","","","","","코드x"],["SONO JELLY 5L (조은)","","","","","","코드x"],["널스캡","","","","","","코드x"],["12*6mm","","","","","","CICA6"],["skinclo 1cm","","","","","","sk1"],["skinclo 5cm","","","","","","sk5"],["T패치","","","","","","t패치"]]};
+let SHEET_ID='', SHEET=null, sheetBusy=false;
+window.openSheet=async function(id){
+  if(sheetBusy) return;
+  SHEET_ID=id;
+  $("shDrug").classList.toggle("ghost",id!=="drug");
+  $("shGoods").classList.toggle("ghost",id!=="goods");
+  $("sheetWrap").innerHTML=`<div class="empty">불러오는 중…</div>`;
+  sheetBusy=true;
+  try{
+    const r=await API.call("/statsheet?id="+id);
+    SHEET=r.sheet||{cols:SHEET_DEFS[id].cols.slice(), rows:(SHEET_SEED[id]||[]).map(r=>r.slice())};
+    if(!SHEET.rows.length)SHEET.rows=Array.from({length:15},()=>SHEET.cols.map(()=>""));
+    renderSheet();
+  }catch(err){ $("sheetWrap").innerHTML=`<div class="errbox">불러오지 못했습니다: ${esc(err.message)}</div>`; }
+  finally{ sheetBusy=false; }
+};
+function renderSheet(){
+  const adm=!!(ME&&ME.admin);
+  $("shAdminBar").style.display=adm?"":"none";
+  $("shInfo").textContent=SHEET&&SHEET.updatedAt
+    ? `마지막 저장: ${new Date(SHEET.updatedAt).toLocaleString("ko-KR")} · ${SHEET.updatedBy||""}`+(adm?"":"  (수정은 관리자만)")
+    : (adm?"아직 저장된 내용이 없습니다 — 입력 후 저장을 눌러 주세요":"수정은 관리자만 할 수 있습니다");
+  const ed=adm?' contenteditable="true"':'';
+  let html=`<div style="overflow:auto"><table class="shtb"><thead><tr><th class="shnum">#</th>`;
+  SHEET.cols.forEach((c,ci)=>{ html+=`<th><span class="shcell"${ed} data-c="${ci}">${esc(c)}</span>${adm?`<span class="shx" title="이 열 삭제" onclick="sheetDelCol(${ci})">×</span>`:""}</th>`; });
+  html+=adm?`<th class="shnum"></th>`:"";
+  html+=`</tr></thead><tbody>`;
+  SHEET.rows.forEach((row,ri)=>{
+    html+=`<tr><td class="shnum">${ri+1}</td>`;
+    SHEET.cols.forEach((_,ci)=>{ html+=`<td><span class="shcell"${ed} data-r="${ri}" data-c="${ci}">${esc(row[ci]??"")}</span></td>`; });
+    html+=adm?`<td class="shnum"><span class="shx" title="이 행 삭제" onclick="sheetDelRow(${ri})">×</span></td>`:"";
+    html+=`</tr>`;
+  });
+  html+=`</tbody></table></div>`;
+  $("sheetWrap").innerHTML=html;
+  refreshIcons();
+}
+/* 화면의 입력 내용을 SHEET 로 읽어들인다 — 행·열을 만지기 전, 저장 전 반드시 */
+function sheetCollect(){
+  if(!SHEET) return;
+  document.querySelectorAll("#sheetWrap thead .shcell").forEach(el=>{ SHEET.cols[+el.dataset.c]=el.textContent.trim(); });
+  document.querySelectorAll("#sheetWrap tbody .shcell").forEach(el=>{ SHEET.rows[+el.dataset.r][+el.dataset.c]=el.textContent.trim(); });
+}
+window.sheetAddRow=function(){ sheetCollect(); SHEET.rows.push(SHEET.cols.map(()=>"")); renderSheet(); };
+window.sheetAddCol=function(){ const name=prompt("새 열 이름"); if(name===null) return;
+  sheetCollect(); SHEET.cols.push(name.trim()||("열"+(SHEET.cols.length+1))); SHEET.rows.forEach(r=>r.push("")); renderSheet(); };
+window.sheetDelRow=function(ri){ sheetCollect();
+  const filled=SHEET.rows[ri].some(v=>String(v).trim());
+  if(filled&&!confirm(`${ri+1}번 행을 삭제할까요?`)) return;
+  SHEET.rows.splice(ri,1); renderSheet(); };
+window.sheetDelCol=function(ci){ sheetCollect();
+  const filled=SHEET.rows.some(r=>String(r[ci]??"").trim());
+  if(!confirm(`'${SHEET.cols[ci]}' 열을 삭제할까요?`+(filled?"\n(입력된 값도 함께 지워집니다)":""))) return;
+  SHEET.cols.splice(ci,1); SHEET.rows.forEach(r=>r.splice(ci,1)); renderSheet(); };
+window.sheetSave=async function(){
+  if(!(ME&&ME.admin)){ alert("관리자만 저장할 수 있습니다."); return; }
+  sheetCollect();
+  $("shSave").disabled=true;
+  try{
+    await API.call("/statsheet",{id:SHEET_ID, sheet:{cols:SHEET.cols, rows:SHEET.rows}});
+    SHEET.updatedAt=Date.now(); SHEET.updatedBy=ME.email;
+    renderSheet();
+  }catch(err){ alert("저장 실패: "+err.message); }
+  finally{ $("shSave").disabled=false; }
+};
 async function loadStats(force){
   if(STATS && !force){ renderStats(); return; }
   $("statsWrap").innerHTML=`<div class="empty">불러오는 중…</div>`;
@@ -1935,15 +2042,10 @@ window.openMv=function(pid,type){
   const nl=nearestLot(pid), lotN=lotsOf(pid).length;
   const bs=boxSizeOf(p);
   const boxTx=boxTxt(p,p.stock)?` = ${boxTxt(p,p.stock)}`:"";
-  /* 입고는 박스 단위: 수량 입력칸 = 박스 수 */
-  if(type==="in"&&bs>1){
-    $("mvQtyLabel").textContent="수량 (박스)";
-    $("mvBoxHint").style.display="";
-    $("mvBoxHint").textContent=`1박스=${bs}개 — 예: 2 입력 시 ${2*bs}개 입고됩니다`;
-  }else{
-    $("mvQtyLabel").textContent="수량";
-    $("mvBoxHint").style.display="none";
-  }
+  /* 개수/박스 단위 고르기 (2026-09-27): 박스 크기가 있으면 단추 표시. 기본값 — 입고=박스, 출고=개수 */
+  mvBs=bs;
+  $("mvUnitRow").style.display=bs>1?"flex":"none";
+  setMvUnit(bs>1?(type==="in"?"box":"ea"):"ea");
   if(type==="out" && nl){
     $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}${esc(boxTx)}<br>
       <span style="color:var(--cau); font-weight:700"><i data-lucide="triangle-alert"></i> 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;
@@ -1961,17 +2063,34 @@ window.openMv=function(pid,type){
   }
   $("mvOvl").classList.add("show"); refreshIcons(); $("mvQty").focus(); $("mvQty").select();
 };
+let mvUnit="ea", mvBs=0;   // 입출고 창의 단위(개수/박스)와 박스 크기
+window.setMvUnit=function(u){
+  mvUnit=(u==="box"&&mvBs>1)?"box":"ea";
+  $("mvUnitEa").classList.toggle("ghost",mvUnit!=="ea");
+  $("mvUnitBox").classList.toggle("ghost",mvUnit!=="box");
+  $("mvUnitBox").textContent=mvBs>1?`박스 (1박스=${mvBs}개)`:"박스";
+  $("mvQtyLabel").textContent=mvUnit==="box"?"수량 (박스)":"수량 (개)";
+  mvHint();
+};
+window.mvHint=function(){
+  const q=+$("mvQty").value||0;
+  if(mvUnit==="box"&&mvBs>1&&q>0){
+    $("mvBoxHint").style.display="";
+    $("mvBoxHint").textContent=`${q}박스 = ${q*mvBs}개 ${mvType==="in"?"입고":"출고"}됩니다 (1박스=${mvBs}개)`;
+  }else $("mvBoxHint").style.display="none";
+};
 $("mvCancel").onclick=()=>{ $("mvOvl").classList.remove("show"); focusScan(); };
 $("mvSave").onclick=async()=>{
   const qty=+$("mvQty").value||0;
   if(qty<=0){ alert("수량을 확인하세요."); return; }
   const p=PRODUCTS.find(x=>x.id===mvPid);
-  if(mvType==="out" && p && qty>p.stock && !confirm("현재 재고보다 많습니다. 그래도 출고할까요?")) return;
+  const eaQty=(mvUnit==="box"&&mvBs>1)?qty*mvBs:qty;   // 낱개로 환산한 수량
+  if(mvType==="out" && p && eaQty>p.stock && !confirm(`현재 재고(${p.stock}개)보다 많습니다(${eaQty}개). 그래도 출고할까요?`)) return;
   const who = ME ? "" : $("mvWho").value.trim();
   if(!ME) localStorage.setItem("jaego_who",who);
   $("mvSave").disabled=true;
   try{
-    await API.call("/movement",{pid:mvPid, type:mvType, qty,
+    await API.call("/movement",{pid:mvPid, type:mvType, qty, unitSel:mvUnit,
       memo:$("mvMemo").value.trim(), who, expiry:$("mvExp").value||""});
     $("mvOvl").classList.remove("show");
     await refresh(true); focusScan();

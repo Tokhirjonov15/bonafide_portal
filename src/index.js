@@ -769,6 +769,25 @@ async function handleApi(request, env, url, ident, ctx) {
     return json({ products, lots: adjustLots(products, lotsRaw), movements, me, serverTime: Date.now() });
   }
 
+  /* 통계표(약품·물품 — 구글시트 '간호 재고파악' 틀) — 보기는 모두, 저장은 관리자만 (2026-09-27) */
+  if (path === "/statsheet" && method === "GET") {
+    const id = url.searchParams.get("id") === "goods" ? "goods" : "drug";
+    const row = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind("statsheet_" + id).first();
+    return json({ id, sheet: row ? JSON.parse(row.value) : null });
+  }
+  if (path === "/statsheet" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "통계표 수정은 관리자만 할 수 있습니다." }, 403);
+    const id = s(body.id) === "goods" ? "goods" : "drug";
+    const sheet = body.sheet;
+    if (!sheet || !Array.isArray(sheet.cols) || !Array.isArray(sheet.rows))
+      return json({ error: "표 내용이 올바르지 않습니다." }, 400);
+    const payload = JSON.stringify({ cols: sheet.cols, rows: sheet.rows, updatedAt: Date.now(), updatedBy: actor });
+    if (payload.length > 900000) return json({ error: "표가 너무 큽니다(900KB 초과)." }, 400);
+    await env.DB.prepare(`INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
+      .bind("statsheet_" + id, payload).run();
+    return json({ ok: true });
+  }
+
   /* 품목 숨기기 / 되돌리기 — 관리자만 (2026-09-27) */
   if (path === "/product/hide" && method === "POST") {
     if (!(staff && staff.admin)) return json({ error: "관리자만 숨기거나 되돌릴 수 있습니다." }, 403);
@@ -844,13 +863,13 @@ async function handleApi(request, env, url, ident, ctx) {
     if (!pid || qty <= 0) return json({ error: "품목과 수량을 확인하세요." }, 400);
 
     let took = [];
-    /* 입고는 박스 단위: 박스 크기가 있는 품목은 입력 수량 = 박스 수 → 실제 낱개 수량으로 환산 */
-    let inQty = qty, boxIn = null;
-    if (type === "in") {
-      const prodRow = await env.DB.prepare(`SELECT unit, order_unit AS ounit FROM products WHERE id=?`).bind(pid).first();
-      const bs = boxSizeOf(prodRow || {});
-      if (bs > 1) { inQty = qty * bs; boxIn = { boxes: qty, per: bs }; }
-    }
+    /* 개수/박스 단위 (2026-09-27 세분화): unitSel='box' → 수량 = 박스 수(낱개로 환산), 'ea' → 낱개 그대로.
+       unitSel 이 없으면 예전 동작(입고 = 박스, 출고 = 낱개) — 옛 화면·스캔과의 호환 */
+    const prodRow = await env.DB.prepare(`SELECT unit, order_unit AS ounit FROM products WHERE id=?`).bind(pid).first();
+    const bs = boxSizeOf(prodRow || {});
+    const unitSel = body.unitSel === "box" ? "box" : (body.unitSel === "ea" ? "ea" : "");
+    const asBox = bs > 1 && (unitSel === "box" || (!unitSel && type === "in"));
+    const inQty = asBox ? qty * bs : qty, boxIn = asBox ? { boxes: qty, per: bs } : null;
     const prev = await currentStock(env, pid);
     if (type === "in") {
       const memoIn = boxIn
@@ -860,10 +879,13 @@ async function handleApi(request, env, url, ident, ctx) {
         `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
       ).bind(uid(), pid, inQty, memoIn, actor, normDate(body.expiry), s(body.lot), Date.now()).run();
     } else {
-      const r = await buildOutStatements(env, pid, qty, s(body.memo), actor);
+      const memoOut = boxIn
+        ? [s(body.memo), `${boxIn.boxes}박스 출고(1박스=${boxIn.per}개)`].filter(Boolean).join(" · ")
+        : s(body.memo);
+      const r = await buildOutStatements(env, pid, inQty, memoOut, actor);
       await env.DB.batch(r.stmts);
       took = r.took;
-      await notifyOrderCross(env, ctx, pid, prev, prev - qty);
+      await notifyOrderCross(env, ctx, pid, prev, prev - inQty);
     }
     return json({ ok: true, took, boxIn, stock: await currentStock(env, pid) });
   }
