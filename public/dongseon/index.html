@@ -7524,6 +7524,18 @@ function toggleChatMine(){document.getElementById("chatMine").classList.toggle("
 
 /* ───── 통계 ───── */
 let statsDate='';        // ''=전체, 'YYYY-MM-DD'=특정일
+/* 기간 선택 (2026-09-27 요청): 모든 통계 탭 공통. statsDays = 0(전체) 또는 최근 N일(오늘=1) */
+const STAT_RANGES=[['전체',0],['오늘',1],['3일',3],['1주일',7],['2주일',14],['1달',30],['6달',180],['1년',365]];
+let statsDays=0;
+function statRangeFrom(){ if(statsDate)return statsDate; if(!statsDays)return '';
+  const f=new Date();f.setDate(f.getDate()-(statsDays-1));return localYMD(f); }
+function statInRange(d){ if(statsDate)return localYMD(new Date(d))===statsDate;
+  if(!statsDays)return true;
+  const ymd=localYMD(new Date(d)); return ymd>=statRangeFrom()&&ymd<=localYMD(new Date()); }
+function statRangeLabel(){ if(statsDate)return statsDate; if(!statsDays)return '전체 기간';
+  return statsDays===1?'오늘':('최근 '+STAT_RANGES.find(x=>x[1]===statsDays)[0]+' ('+statRangeFrom()+' ~)'); }
+function statRangeTag(){ if(statsDate)return '_'+statsDate; if(!statsDays)return '_전체기간';
+  return statsDays===1?'_오늘':'_최근'+STAT_RANGES.find(x=>x[1]===statsDays)[0]; }
 let statsOpenRoom='';    // 세부 펼친 방 이름
 let statsTab='time';     // 'time'=체류 통계, 'consult'=상담 기록
 function localYMD(x){const d=(x instanceof Date)?x:new Date(x);if(isNaN(d))return"";return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
@@ -7537,8 +7549,8 @@ window.openStatRec=function(sid,pid,mrn,name){
   openHistKey(key);
   try{document.getElementById('historyModal').classList.add('show');}catch(e){}
 };
-function statsRecs(){let recs=STATS.slice();if(statsDate)recs=recs.filter(r=>localYMD(r.leftAt||r.enteredAt||r.at)===statsDate);return recs;}
-function statsVis(){let vis=VISITS.slice();if(statsDate)vis=vis.filter(v=>localYMD(v.dischargedAt)===statsDate);return vis;}
+function statsRecs(){let recs=STATS.slice();if(statsDate||statsDays)recs=recs.filter(r=>statInRange(r.leftAt||r.enteredAt||r.at));return recs;}
+function statsVis(){let vis=VISITS.slice();if(statsDate||statsDays)vis=vis.filter(v=>statInRange(v.dischargedAt));return vis;}
 /* ── 방별 대기 통계 (2026-09-22): 중앙값·평균·P90·최대·장기대기·대기 점유·준비/진행 중앙값·유형
    · 배제: 체류가 3시간 넘거나 5초 미만인 기록(내보내기를 잊은 카드·잘못 옮긴 카드)은 계산에서 뺀다 — 건수 옆 '배제 n' 으로 표시
    · 장기대기: 대기 30분 초과 건의 비율·건수
@@ -7609,9 +7621,8 @@ function renderStats(){
   if(!head||!content){
     body.innerHTML=`<div id="statsHead">
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-      <button class="chipf" id="stChipAll" onclick="statsDate='';statsOpenRoom='';renderStats()">전체</button>
-      <button class="chipf" id="stChipToday" onclick="statsDate=localYMD(new Date());statsOpenRoom='';renderStats()">오늘</button>
-      <input type="date" class="stat-date" id="stDateInp" onchange="statsDate=this.value;statsOpenRoom='';renderStats()">
+      ${STAT_RANGES.map(r=>`<button class="chipf st-range" data-days="${r[1]}" onclick="statsDays=${r[1]};statsDate='';statsOpenRoom='';renderStats()">${r[0]}</button>`).join('')}
+      <input type="date" class="stat-date" id="stDateInp" title="특정 하루만 보기" onchange="statsDate=this.value;if(this.value)statsDays=0;statsOpenRoom='';renderStats()">
       <button class="btn sm" style="margin-left:auto" onclick="exportStatsCurrent()"><i data-lucide="download"></i> 엑셀 다운로드</button>
       <button class="btn sm" id="statsResetBtn" style="color:var(--red)" onclick="resetStats()" title="체류 통계·내원 기록을 모두 삭제 (확인 창 2번)"><i data-lucide="eraser"></i> 초기화</button>
     </div>
@@ -7624,13 +7635,12 @@ function renderStats(){
     head=document.getElementById('statsHead'); content=document.getElementById('statsContent');
   }
   {const rb=document.getElementById('statsResetBtn');if(rb)rb.style.display=isAdmin()?'':'none';}   // 초기화는 관리자만(주임은 열람·다운로드)
-  document.getElementById('stChipAll').classList.toggle('on',!statsDate);
-  document.getElementById('stChipToday').classList.toggle('on',statsDate===today);
+  document.querySelectorAll('#statsHead .st-range').forEach(b=>b.classList.toggle('on',!statsDate&&statsDays===+b.dataset.days));
   {const di=document.getElementById('stDateInp');if(di.value!==(statsDate||''))di.value=statsDate||'';}
   document.getElementById('stTabTime').classList.toggle('on',statsTab==='time');
   document.getElementById('stTabConsult').classList.toggle('on',statsTab==='consult');
   document.getElementById('stTabChojae').classList.toggle('on',statsTab==='chojae');
-  document.getElementById('stRangeLbl').textContent=statsDate?statsDate:'전체 기간';
+  document.getElementById('stRangeLbl').textContent=statRangeLabel();
   let html='';
   if(statsTab==='consult'){content.innerHTML=consultLogHtml();return;}
   if(statsTab==='chojae'){content.innerHTML=chojaeHtml();loadChojae();return;}
@@ -7684,37 +7694,40 @@ function exportStats(){
       r.room||"",r.proc||"",r.name||"",r.mrn||"",min(r.waitMs),min(r.prepMs),min(r.activeMs),min(r.durationMs),r.finalStatus||""
     ]);});
   if(rows.length===0){alert("내보낼 기록이 없습니다.");return;}
-  const tag=statsOpenRoom?("_"+statsOpenRoom):(statsDate?("_"+statsDate):"_전체기간");
+  const tag=statsOpenRoom?("_"+statsOpenRoom):statRangeTag();
   downloadCSV("통계"+tag+".csv",out);
 }
 /* ───── 접수 구분(신환·재진) 통계 (2026-09-27 요청) ─────
    비트 접수창의 초·재 구분(신환/재진/90일초진/물리치료내원…)을 날짜별로 센다.
    자료: bitLookup/{날짜_병록번호} — 접수 PC 감시 스크립트가 접수마다 쓰는 문서의 chojae 칸.
-   지난달은 바뀌지 않으므로 한 번 읽어 기억해 두고, 이번 달만 1분에 한 번 다시 읽는다. */
-let chojaeYm=localYMD(new Date()).slice(0,7), CHOJAE_CACHE={}, chojaeBusy=false;
+   기간은 위 기간 칩(전체·오늘·…·1년)을 그대로 따른다. 오늘이 낀 기간만 1분에 한 번 다시 읽고, 지난 기간은 기억해 둔다. */
+let CHOJAE_CACHE={}, chojaeBusy=false;
 const CHOJAE_MAIN=['신환','재진','90일초진','물리치료내원'];   // 표의 고정 열 — 그 밖의 값은 '기타'
-function chojaeShift(d){const a=chojaeYm.split('-');const nd=new Date(+a[0],+a[1]-1+d,1);
-  chojaeYm=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0');renderStats();}
+function chojaeKey(){return statRangeFrom()+'~'+(statsDate||localYMD(new Date()));}
 async function loadChojae(force){
-  const ym=chojaeYm, cur=localYMD(new Date()).slice(0,7)===ym, c=CHOJAE_CACHE[ym];
+  const key=chojaeKey(), from=statRangeFrom(), to=statsDate||localYMD(new Date());
+  const hasToday=to>=localYMD(new Date());
+  const c=CHOJAE_CACHE[key];
   if(chojaeBusy||!cloud.lookupCol)return;
-  if(c&&!force&&(!cur||Date.now()-c.at<60000))return;   // 지난달은 다시 읽지 않음
+  if(c&&!force&&(!hasToday||Date.now()-c.at<60000))return;   // 지난 기간은 다시 읽지 않음
   chojaeBusy=true;
   try{
-    const snap=await cloud.lookupCol.where('date','>=',ym+'-01').where('date','<=',ym+'-31').get();
+    let q=cloud.lookupCol.where('date','<=',to);
+    if(from)q=q.where('date','>=',from);
+    const snap=await q.get();
     const days={};
     snap.forEach(doc=>{const v=doc.data()||{};const d=String(v.date||'');if(!d)return;
       const raw=String(v.chojae||'').trim()||'(미기재)';
       (days[d]=days[d]||{});days[d][raw]=(days[d][raw]||0)+1;});
-    CHOJAE_CACHE[ym]={days,at:Date.now()};
-  }catch(e){console.warn('chojae stats',e);if(!CHOJAE_CACHE[ym])CHOJAE_CACHE[ym]={days:{},at:Date.now(),err:String(e&&e.message||e)};}
+    CHOJAE_CACHE[key]={days,at:Date.now()};
+  }catch(e){console.warn('chojae stats',e);if(!CHOJAE_CACHE[key])CHOJAE_CACHE[key]={days:{},at:Date.now(),err:String(e&&e.message||e)};}
   chojaeBusy=false;
   if(statsTab==='chojae'&&document.getElementById('statsModal').classList.contains('show'))renderStats();
 }
 function chojaeRows(){
-  const c=CHOJAE_CACHE[chojaeYm];if(!c)return null;
+  const c=CHOJAE_CACHE[chojaeKey()];if(!c)return null;
   const etcSet={};
-  const rows=Object.keys(c.days).sort().map(d=>{
+  const rows=Object.keys(c.days).sort().reverse().map(d=>{
     const m=c.days[d];const row={d,tot:0,etc:0,etcTip:[]};
     CHOJAE_MAIN.forEach(k=>{row[k]=m[k]||0;row.tot+=row[k];});
     Object.keys(m).forEach(k=>{if(!CHOJAE_MAIN.includes(k)){row.etc+=m[k];row.tot+=m[k];row.etcTip.push(k+' '+m[k]);etcSet[k]=(etcSet[k]||0)+m[k];}});
@@ -7724,22 +7737,19 @@ function chojaeRows(){
 function chojaeHtml(){
   const W=['일','월','화','수','목','금','토'];
   const data=chojaeRows();
-  const nowYm=localYMD(new Date()).slice(0,7);
   let html=`<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
-    <button class="btn sm" onclick="chojaeShift(-1)">◀</button>
-    <b style="font-size:15px">${chojaeYm.replace('-','년 ')}월</b>
-    <button class="btn sm" onclick="chojaeShift(1)" ${chojaeYm>=nowYm?'disabled':''}>▶</button>
+    <b style="font-size:15px">${statRangeLabel()}</b>
     <button class="btn sm" onclick="loadChojae(true)" title="다시 불러오기"><i data-lucide="refresh-cw"></i></button>
     <span class="hint" style="margin-left:auto">비트 접수창의 초·재 구분 기준 · 하루 한 환자당 1건</span></div>`;
   if(!data){return html+`<div class="route-empty">불러오는 중…</div>`;}
   if(data.err&&!data.rows.length){return html+`<div class="route-empty">불러오지 못했습니다: ${esc(data.err)}</div>`;}
-  if(!data.rows.length){return html+`<div class="route-empty">이 달에는 기록이 없습니다. (접수 PC 감시 스크립트가 켠 날부터 쌓입니다)</div>`;}
+  if(!data.rows.length){return html+`<div class="route-empty">이 기간에는 기록이 없습니다. (접수 PC 감시 스크립트가 켠 날부터 쌓입니다)</div>`;}
   const T={tot:0,etc:0};CHOJAE_MAIN.forEach(k=>T[k]=0);
   data.rows.forEach(r=>{T.tot+=r.tot;T.etc+=r.etc;CHOJAE_MAIN.forEach(k=>T[k]+=r[k]);});
   html+=`<div class="st-wrap"><table class="stat-tb"><thead><tr><th>날짜</th>${CHOJAE_MAIN.map(k=>`<th>${k}</th>`).join('')}<th>기타</th><th>합계</th></tr></thead><tbody>`;
-  html+=`<tr style="font-weight:800;background:var(--panel2)"><td>합계</td>${CHOJAE_MAIN.map(k=>`<td>${T[k]||''}</td>`).join('')}<td>${T.etc||''}</td><td>${T.tot}</td></tr>`;
+  html+=`<tr style="font-weight:800;background:var(--panel2)"><td>합계 (${data.rows.length}일)</td>${CHOJAE_MAIN.map(k=>`<td>${T[k]||''}</td>`).join('')}<td>${T.etc||''}</td><td>${T.tot}</td></tr>`;
   data.rows.forEach(r=>{const dt=new Date(r.d);const wd=isNaN(dt)?'':W[dt.getDay()];
-    html+=`<tr><td>${r.d.slice(5)} (${wd})</td>${CHOJAE_MAIN.map(k=>`<td>${r[k]||''}</td>`).join('')}
+    html+=`<tr><td>${r.d} (${wd})</td>${CHOJAE_MAIN.map(k=>`<td>${r[k]||''}</td>`).join('')}
       <td ${r.etcTip.length?`title="${esc(r.etcTip.join(', '))}"`:''}>${r.etc||''}</td><td><b>${r.tot}</b></td></tr>`;});
   html+=`</tbody></table></div>`;
   const etc=Object.entries(data.etcSet).sort((a,b)=>b[1]-a[1]);
@@ -7750,8 +7760,8 @@ function exportChojae(){
   const data=chojaeRows();
   if(!data||!data.rows.length){alert('내보낼 기록이 없습니다.');return;}
   const out=[['날짜',...CHOJAE_MAIN,'기타','합계','기타 내용']];
-  data.rows.forEach(r=>out.push([r.d,...CHOJAE_MAIN.map(k=>r[k]||0),r.etc||0,r.tot,r.etcTip.join(' / ')]));
-  downloadCSV('접수구분_'+chojaeYm+'.csv',out);
+  data.rows.slice().reverse().forEach(r=>out.push([r.d,...CHOJAE_MAIN.map(k=>r[k]||0),r.etc||0,r.tot,r.etcTip.join(' / ')]));
+  downloadCSV('접수구분'+statRangeTag()+'.csv',out);
 }
 function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else if(statsTab==='chojae')exportChojae();else exportStats();}
 
@@ -8309,13 +8319,13 @@ function gatherConsults(){
 /* 통계 모달 '상담' 탭 본문 HTML (statsDate 날짜필터 + consultRoom 방필터, 날짜별 그룹) */
 function consultLogHtml(){
   let all=gatherConsults();
-  if(statsDate)all=all.filter(c=>localYMD(c.at)===statsDate);
+  if(statsDate||statsDays)all=all.filter(c=>statInRange(c.at));
   const roomsWith=[...new Set(all.map(c=>c.room))];
   if(consultRoom!=='전체'&&!roomsWith.includes(consultRoom))consultRoom='전체';
   const list=all.filter(c=>consultRoom==='전체'||c.room===consultRoom).sort((a,b)=>(new Date(b.at)-new Date(a.at))||0);
   const roomChips=['전체',...roomsWith].map(r=>`<button class="chipf ${consultRoom===r?'on':''}" onclick="consultRoom='${esc(r)}';renderStats()">${r==='전체'?'방 전체':esc(r)}</button>`).join("");
   let html=`<div class="cf-row">${roomChips}<span class="hint" style="margin-left:auto">${list.length}건</span></div>`;
-  if(!list.length){html+=`<div class="route-empty">${statsDate?'해당 날짜에 ':''}상담 기록이 없습니다.${gatherConsults().length?'':" 진료실 관리에서 방에 '💬 상담'을 켜고 카드에서 시행/기타·사유를 입력하면 기록됩니다."}</div>`;return html;}
+  if(!list.length){html+=`<div class="route-empty">${(statsDate||statsDays)?'해당 기간에 ':''}상담 기록이 없습니다.${gatherConsults().length?'':" 진료실 관리에서 방에 '💬 상담'을 켜고 카드에서 시행/기타·사유를 입력하면 기록됩니다."}</div>`;return html;}
   let curDate="";
   list.forEach(c=>{const ds=dateLabel(c.at);if(ds!==curDate){curDate=ds;html+=`<div class="cl-date">${ds}</div>`;}
     const badge=c.result?`<span class="cl-res ${c.result==='시행'?'done':'other'}">${esc(resLabel(c.result))}</span>`:`<span class="hint">결과 미입력</span>`;
@@ -8326,7 +8336,7 @@ function consultLogHtml(){
 function exportConsults(){
   if(!isAdmin())return;
   let all=gatherConsults();
-  if(statsDate)all=all.filter(c=>localYMD(c.at)===statsDate);
+  if(statsDate||statsDays)all=all.filter(c=>statInRange(c.at));
   if(consultRoom!=='전체')all=all.filter(c=>c.room===consultRoom);
   all=all.slice().sort((a,b)=>(new Date(a.at)-new Date(b.at))||0);
   if(!all.length){alert("내보낼 상담 기록이 없습니다.");return;}
@@ -8335,7 +8345,7 @@ function exportConsults(){
   all.forEach(c=>{const d=new Date(c.at);
     out.push([isNaN(d)?"":localYMD(d), isNaN(d)?"":String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),
       c.room||"",c.name||"",c.mrn||"",resLabel(c.result),c.reason||"",c.doc||"",c.who||"",c.by||"",c.live?"진행중":"종결"]);});
-  const tag=consultRoom!=='전체'?("_"+consultRoom):(statsDate?("_"+statsDate):"_전체기간");
+  const tag=consultRoom!=='전체'?("_"+consultRoom):statRangeTag();
   downloadCSV("상담기록"+tag+".csv",out);
 }
 
