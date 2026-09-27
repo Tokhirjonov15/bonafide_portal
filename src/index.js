@@ -811,6 +811,20 @@ async function handleApi(request, env, url, ident, ctx) {
     return json({ ok: true, id });
   }
 
+  /* 여러 품목 한꺼번에 삭제 — 관리자만 (2026-09-27). 입출고 기록도 함께 지운다 */
+  if (path === "/product/delete-many" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "관리자만 선택 삭제를 할 수 있습니다." }, 403);
+    const ids = (Array.isArray(body.ids) ? body.ids : []).map(s).filter(Boolean).slice(0, 1000);
+    if (!ids.length) return json({ error: "삭제할 품목이 없습니다." }, 400);
+    const stmts = [];
+    for (const id of ids) {
+      stmts.push(env.DB.prepare(`DELETE FROM movements WHERE pid=?`).bind(id));
+      stmts.push(env.DB.prepare(`DELETE FROM products  WHERE id=?`).bind(id));
+    }
+    await env.DB.batch(stmts);
+    return json({ ok: true, deleted: ids.length });
+  }
+
   /* 품목 삭제 */
   if (path === "/product/delete" && method === "POST") {
     const id = s(body.id);

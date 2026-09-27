@@ -93,6 +93,14 @@
   .num{font-variant-numeric:tabular-nums; text-align:right}
   /* 발주 필요 품목: 줄 전체를 붉게 칠하면 표가 온통 빨개져 읽기 어려웠다 → 이름 칸 왼쪽 선 + '발주' 표시만 (2026-09-27) */
   .low td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+  .selcol{width:34px; text-align:center}
+  .selcol input{width:17px; height:17px; cursor:pointer}
+  tr.selrow td{background:#EAF1FF}
+  .lowgrp td{background:var(--warn-bg); cursor:pointer; user-select:none; padding:9px 12px}
+  .lowgrp b{color:var(--warn)}
+  .lowgrp .chev{display:inline-block; transition:transform .15s; margin-right:4px}
+  .lowgrp .chev.open{transform:rotate(90deg)}
+  .lowgrp-btns{float:right; display:inline-flex; gap:6px}
   .lowbox{background:var(--card); border:1px solid var(--warn); border-radius:10px; margin-bottom:10px; overflow:hidden}
   .lowhead{display:flex; align-items:center; gap:8px; padding:9px 12px; cursor:pointer; user-select:none}
   .lowhead b{color:var(--warn)}
@@ -343,6 +351,7 @@
       <input type="search" id="q" placeholder="품목명·카테고리·바코드 검색">
       <button class="btn ghost" id="reloadBtn" title="다시 불러오기"><i data-lucide="refresh-cw"></i></button>
       <button class="btn ghost" id="todayLabelBtn" title="오늘 추가된 모든 품목의 라벨을 한 번에 인쇄"><i data-lucide="tags"></i> 오늘 품목 라벨</button>
+      <button class="btn ghost" id="bulkDelBtn" style="display:none;color:var(--warn)" onclick="bulkDelete()" title="체크한 품목을 한꺼번에 삭제 (관리자)"><i data-lucide="trash-2"></i> 선택 삭제 <span id="bulkCnt"></span></button>
       <button class="btn ghost" id="hiddenBtn" style="display:none" onclick="openHidden()" title="숨긴 품목 보기·되돌리기 (관리자)"><i data-lucide="eye-off"></i> 숨긴 목록 <span id="hiddenCnt"></span></button>
       <button class="btn" id="addBtn"><i data-lucide="plus"></i> 품목 추가</button>
     </div>
@@ -578,7 +587,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>(""+(s??"")).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const won=v=>(+v||0).toLocaleString("ko-KR");
 
-let PRODUCTS=[], HIDDEN=[], LOTS=[], MOVEMENTS=[], ME=null, busy=false;
+let PRODUCTS=[], HIDDEN=[], SEL=new Set(), VISIBLE_IDS=[], LOTS=[], MOVEMENTS=[], ME=null, busy=false;
 let scanMode="in", scanHistory=[];
 
 /* ---------- 서버 통신 (직원 토큰 자동 첨부, 401이면 로그인 창) ---------- */
@@ -714,6 +723,26 @@ function renderHiddenList(){
   refreshIcons();
 }
 window.openHidden=function(){ if(!(ME&&ME.admin)) return; renderHiddenList(); $("hiddenOvl").classList.add("show"); };
+/* 선택 삭제 — 관리자만 (서버도 확인) */
+function syncBulkUI(){
+  const b=$("bulkDelBtn"); if(b){ b.style.display=(ME&&ME.admin&&SEL.size)?"":"none"; $("bulkCnt").textContent=SEL.size?`(${SEL.size})`:""; }
+  const a=$("selAll"); if(a){ const n=VISIBLE_IDS.filter(id=>SEL.has(id)).length;
+    a.checked=VISIBLE_IDS.length>0&&n===VISIBLE_IDS.length; a.indeterminate=n>0&&n<VISIBLE_IDS.length; }
+}
+window.selToggle=function(id,on){ if(on)SEL.add(id); else SEL.delete(id);
+  const tr=document.querySelector(`input[onchange*="'${id}'"]`); if(tr&&tr.closest("tr"))tr.closest("tr").classList.toggle("selrow",on);
+  syncBulkUI(); };
+window.selectAllVisible=function(on){ for(const id of VISIBLE_IDS){ if(on)SEL.add(id); else SEL.delete(id); } render(); };
+window.bulkDelete=async function(){
+  if(!(ME&&ME.admin)){alert("관리자만 할 수 있습니다.");return;}
+  const list=PRODUCTS.filter(p=>SEL.has(p.id)); if(!list.length) return;
+  const names=list.slice(0,8).map(p=>"· "+p.name).join("\n")+(list.length>8?`\n… 외 ${list.length-8}개`:"");
+  if(!confirm(`선택한 ${list.length}개 품목과 그 입출고 기록을 모두 삭제합니다.\n되돌릴 수 없습니다.\n\n${names}`)) return;
+  if(list.length>=20 && prompt(`${list.length}개를 삭제합니다. 확인을 위해 "삭제" 라고 입력하세요.`)!=="삭제") return;
+  try{ const r=await API.call("/product/delete-many",{ids:list.map(p=>p.id)});
+    SEL.clear(); await refresh(true); alert(`${r.deleted||list.length}개 품목을 삭제했습니다.`);
+  }catch(err){ alert("삭제 실패: "+err.message); }
+};
 window.toggleLowBox=function(){const o=localStorage.getItem("jaego_low_open")==="1";
   try{localStorage.setItem("jaego_low_open",o?"0":"1");}catch(_){ }
   render();};
@@ -827,52 +856,50 @@ function render(){
   const warn=LOTS.map(l=>({...l, dd:daysLeft(l.expiry), p:PRODUCTS.find(p=>p.id===l.pid)}))
                  .filter(l=>l.dd!==null && l.dd<=60 && l.p)
                  .sort((a,b)=>a.dd-b.dd);
-  /* 발주 필요 목록 — 접힌 상자(기본). 누르면 펼쳐서 품목·현재/주문시점·거래처를 한눈에 (2026-09-27) */
+  setTimeout(syncBulkUI,0);   // 표를 그린 뒤 전체선택·선택 삭제 버튼 상태
   if($("hiddenBtn")){$("hiddenBtn").style.display=(ME&&ME.admin)?"":"none";$("hiddenCnt").textContent=HIDDEN.length?`(${HIDDEN.length})`:"";}
-  const lows=PRODUCTS.filter(isLow).sort((a,b)=>(a.vendor||"").localeCompare(b.vendor||"")||a.name.localeCompare(b.name));
-  const lowOpen=localStorage.getItem("jaego_low_open")==="1";
-  const lowHtml = lows.length ? `<div class="lowbox">
-      <div class="lowhead" onclick="toggleLowBox()">
-        <span class="chev ${lowOpen?"open":""}">▶</span>
-        <b><i data-lucide="file"></i> 발주 필요 ${lows.length}품목</b><span class="sp"></span>
-        <button class="btn small ghost" onclick="event.stopPropagation();$('stateFilter').value='low';render()">표에서만 보기</button>
-        <button class="btn small ghost" onclick="event.stopPropagation();$('tabOrder').click()">발주 탭 →</button>
-      </div>
-      ${lowOpen?`<div class="lowlist">${lows.map(p=>`<div class="lowitem">
-        <span class="nm"><b>${esc(p.name)}</b>${p.loc?` <span class="muted">· ${esc(p.loc)}</span>`:""}</span>
-        <span class="q">${p.stock}${esc(p.unit&&!/^1=1/.test(p.unit)?" "+p.unit:"")}</span>
-        <span class="muted" style="white-space:nowrap">/ 주문시점 ${p.min||0}</span>
-        <span class="muted" style="white-space:nowrap">${esc(p.vendor||"거래처 미지정")}</span>
-        ${ME&&ME.admin?`<button class="btn small ghost hidebtn" title="안 쓰는 품목 — 숨기기" onclick="hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
-      </div>`).join("")}</div>`:""}
-    </div>` : "";
-  $("expAlert").innerHTML = lowHtml + (warn.length
+  $("expAlert").innerHTML = (warn.length
     ? `<div class="caubox"><b><i data-lucide="timer"></i> 유통기한 임박·경과 ${warn.length}건</b><br>
         ${warn.slice(0,8).map(l=>`${esc(l.p.name)} — ${l.expiry} (${l.dd<0?`<b>${-l.dd}일 지남</b>`:`D-${l.dd}`}) · ${l.qty}${esc(l.p.unit||"")}`).join("<br>")}
         ${warn.length>8?`<br><span class="muted">외 ${warn.length-8}건</span>`:""}</div>`
     : "");
 
+  /* 선택 삭제(관리자만): 체크 열·보이는 품목 id 목록 (2026-09-27) */
+  const ADM=!!(ME&&ME.admin);
+  for(const id of [...SEL]) if(!PRODUCTS.some(p=>p.id===id)) SEL.delete(id);   // 사라진 품목은 선택에서 뺀다
+  /* 발주 필요 품목: 표 맨 위의 접이식 줄. 기본은 접힘, 누르면 그 품목 줄들이 바로 아래 펼쳐진다. '부족' 필터일 때는 늘 펼침 */
+  const lowRowsN=rows.filter(isLow).length;
+  const lowOpenT=stateSel==="low"||localStorage.getItem("jaego_low_open")==="1";
+  const lowGroupRow = lowRowsN ? `<tr class="lowgrp" onclick="toggleLowBox()"><td colspan="${ADM?10:9}">
+      <span class="chev ${lowOpenT?"open":""}">▶</span>
+      <b><i data-lucide="file"></i> 발주 필요 ${lowRowsN}품목</b>
+      <span class="muted" style="font-size:12px">${lowOpenT?"":"눌러서 펼치기"}</span>
+      <span class="lowgrp-btns">
+        <button class="btn small ghost" onclick="event.stopPropagation();$('stateFilter').value='low';render()">표에서만 보기</button>
+        <button class="btn small ghost" onclick="event.stopPropagation();$('tabOrder').click()">발주 탭 →</button>
+      </span></td></tr>` : "";
   $("stockWrap").innerHTML = !PRODUCTS.length
     ? `<div class="empty">품목이 없습니다.<br><b><i data-lucide="plus"></i> 품목 추가</b> 또는 <b>설정·백업 → CSV 가져오기</b>로 시작하세요.</div>`
     : `<table><thead><tr>
-        <th>품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
+        ${ADM?`<th class="selcol"><input type="checkbox" id="selAll" title="보이는 품목 전체 선택" onchange="selectAllVisible(this.checked)"></th>`:""}<th>품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
         <th>유통기한</th><th>입출고</th>
-      </tr></thead><tbody>${rows.map(p=>{
+      </tr></thead><tbody>${lowGroupRow}${(VISIBLE_IDS=rows.filter(p=>lowOpenT||!isLow(p)).map(p=>p.id), rows.filter(p=>lowOpenT||!isLow(p))).map(p=>{
         const ls=lotsOf(p.id);
         const open=!!LOT_OPEN[p.id];
         const expCell = !ls.length ? "—"
           : ls.length===1 || ls[0].expiry===ls[ls.length-1].expiry
             ? `${esc(ls[0].expiry)} ${expBadge(p.id)}`
             : `${esc(ls[0].expiry)} ${expBadge(p.id)} <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)}</span> <span class="tag">${ls.length}묶음</span>`;
-        const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="9">
+        const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="${ADM?10:9}">
           <i data-lucide="boxes"></i> 유통기한별 묶음: ${ls.map(l=>{
             const dd=daysLeft(l.expiry);
             const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
                         : dd<=60?` <span class="exptag">D-${dd}</span>` : ` <span class="muted">D-${dd}</span>`;
             return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge} <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 유통기한 수정" onclick="editLotExp('${p.id}','${esc(l.expiry)}')"><i data-lucide="pencil"></i></button></span>`;
           }).join("")}</td></tr>` : "";
-        return `<tr class="${isLow(p)?"low":""}">
+        return `<tr class="${isLow(p)?"low":""}${SEL.has(p.id)?" selrow":""}">
+          ${ADM?`<td class="selcol"><input type="checkbox" ${SEL.has(p.id)?"checked":""} onclick="event.stopPropagation()" onchange="selToggle('${p.id}',this.checked)"></td>`:""}
           <td>${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}${isLow(p)&&ME&&ME.admin?` <button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
