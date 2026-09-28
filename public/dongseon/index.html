@@ -1174,6 +1174,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .st-excl{color:var(--muted);font-size:11px;margin-left:3px}
   .st-long{color:var(--red)}
   .stat-date{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:5px 8px;font-size:12.5px;color-scheme:light}
+  .stat-rec .st-caret2{margin-left:8px;color:var(--sub);transition:transform .15s;font-weight:800}
+  .stat-rec.open .st-caret2{transform:rotate(180deg)}
+  .stat-rec .st-name:hover b{text-decoration:underline}
+  .st-rooms{border:1px solid var(--line2);border-top:0;border-radius:0 0 10px 10px;background:var(--panel2);padding:6px 10px;margin:-1px 0 6px}
+  .st-room-row{display:flex;align-items:center;gap:14px;padding:4px 2px;border-bottom:1px dashed var(--line2);font-size:12.5px}
+  .st-room-row:last-child{border-bottom:0}
+  .st-room-row .rm{min-width:110px;font-weight:700}
+  .st-room-row .tw b{color:var(--t-amber);font-variant-numeric:tabular-nums}
+  .st-room-row .tp b{color:var(--t-sky);font-variant-numeric:tabular-nums}
+  .st-room-row .ta b{color:var(--red);font-variant-numeric:tabular-nums}
   .st-chain{flex:1;min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:2px 0;justify-content:flex-end}
   .st-hop{white-space:nowrap;color:var(--sub)}
   .st-hop b{color:var(--text);font-variant-numeric:tabular-nums}
@@ -7575,13 +7585,16 @@ function roomWaitStats(recs){
     o.n++;o.w.push(r.waitMs||0);o.p.push(r.prepMs||0);o.a.push(r.activeMs||0);o.t+=dur;o.sumW+=(r.waitMs||0);allW+=(r.waitMs||0);if((r.waitMs||0)>ST_LONG_MS)o.long++;});
   const list=Object.values(by).map(o=>{const w=o.w.slice().sort((x,y)=>x-y),p=o.p.slice().sort((x,y)=>x-y),a=o.a.slice().sort((x,y)=>x-y);
     const med=stQuant(w,.5),p90=stQuant(w,.9),max=w.length?w[w.length-1]:0,mean=w.length?o.sumW/w.length:0;
+    const aSum=o.a.reduce((x,y)=>x+y,0),aMax=a.length?a[a.length-1]:0,aMean=a.length?aSum/a.length:0;   // 진행 평균·최대·합계 (2026-09-28)
     let type='few';if(o.n>=ST_MIN_N){type=p90<=15*60000?'good':(med<=10*60000?'vary':'mixed');}
     return {room:o.room,n:o.n,excl:o.excl,med,mean,p90,max,long:o.long,longPct:o.n?o.long/o.n:0,share:allW?o.sumW/allW:0,
-            pMed:stQuant(p,.5),aMed:stQuant(a,.5),total:o.t,type};});
+            pMed:stQuant(p,.5),aMed:stQuant(a,.5),aMean,aMax,aSum,wSum:o.sumW,total:o.t,type};});
   return list;
 }
 const ST_TYPE_LBL={few:'표본 부족',good:'양호',vary:'변동형',mixed:'혼합형'};
 const ST_TYPE_TIP={few:'기록이 10건 미만이라 판단 보류',good:'P90 15분 이하 — 대기가 안정적',vary:'평소엔 짧지만 가끔 크게 밀림(중앙값 ≤ 10분, P90 > 15분)',mixed:'중앙값도 10분 초과 — 늘 기다림'};
+let statRecOpenKeys={};   // 최근 종결 기록에서 펼쳐 둔 환자 (화면을 닫으면 초기화하지 않아도 무해)
+window.toggleStatRec=function(k){statRecOpenKeys[k]=!statRecOpenKeys[k];renderStats();};
 function statRecRow(r){const d=new Date(r.leftAt||r.enteredAt||r.at);
   const dt=isNaN(d)?"":`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   const prepSeg=(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs||0)}</span>`:'';
@@ -7659,45 +7672,54 @@ function renderStats(){
     <div class="hint" style="margin:-2px 0 10px">방 종결 ${totalVisits}건 · 환자 ${uniq}명 · 총 <span style="color:var(--t-amber)">대기 ${fmtClock(totalW)}</span>${anyPrep?` · 총 <span style="color:var(--t-sky)">준비 ${fmtClock(totalP)}</span>`:''} · 총 <span style="color:var(--red)">진행 ${fmtClock(totalA)}</span></div>`;
   if(!rooms.length){html+=`<div class="route-empty">${STATS.length?'해당 날짜에 집계된 기록이 없습니다.':"아직 집계된 기록이 없습니다. 환자를 방에서 '종결' 처리하면 대기·진행 시간이 기록됩니다."}</div>`;body.innerHTML=html;return;}
   html+=`<div class="hint" style="margin-bottom:4px">방 이름을 누르면 계산에 쓰인 세부 기록이 펼쳐집니다. 배제 = 체류 3시간 초과·5초 미만 기록(계산 제외) · 장기대기 = 대기 30분 초과 · 대기 점유 = 전체 대기 시간 중 이 방 비율</div>`;
-  const RS=roomWaitStats(recs).sort((a,b)=>b.med-a.med);const maxMed=Math.max(1,...RS.map(o=>o.med));const maxShare=Math.max(0.01,...RS.map(o=>o.share));
-  const cols=9+(anyPrep?1:0);
-  html+=`<div class="st-wrap"><table class="stat-tb"><thead><tr><th>방</th><th>유형</th><th>건</th><th>대기 중앙값</th><th>대기 평균</th><th>P90</th><th>최대</th><th>장기대기</th><th>대기 점유</th>${anyPrep?'<th>준비 중앙값</th>':''}<th>진행 중앙값</th><th>총 체류</th></tr></thead><tbody>`;
+  const RS=roomWaitStats(recs).sort((a,b)=>b.mean-a.mean);const maxMean=Math.max(1,...RS.map(o=>o.mean));const maxShare=Math.max(0.01,...RS.map(o=>o.share));
+  const cols=11+(anyPrep?1:0);
+  html+=`<div class="st-wrap"><table class="stat-tb"><thead><tr><th>방</th><th>유형</th><th>건</th><th>대기 평균</th><th>최대 대기</th><th>총 대기 시간</th><th>진행 평균</th><th>최대 진행</th><th>총 진행 시간</th><th>장기대기</th><th>대기 점유</th>${anyPrep?'<th>준비 중앙값</th>':''}<th>진행 중앙값</th><th>총 체류</th></tr></thead><tbody>`;
   RS.forEach(o=>{const r=o.room,sel=statsOpenRoom===r;
     html+=`<tr class="click${sel?' sel':''}" data-room="${esc(r)}" onclick="toggleStatRoom('${esc(r)}')">
       <td><span class="st-caret">${sel?'▾':'▸'}</span> ${esc(r)}</td>
       <td><span class="st-type ${o.type}" title="${esc(ST_TYPE_TIP[o.type])}">${ST_TYPE_LBL[o.type]}</span></td>
       <td>${o.n}${o.excl?`<span class="st-excl" title="계산에서 제외한 기록">배제 ${o.excl}</span>`:''}</td>
-      <td><span class="st-bar"><i style="width:${Math.round(o.med/maxMed*100)}%"></i></span><b>${stFmt(o.med)}</b></td>
-      <td>${stFmt(o.mean)}</td>
-      <td style="color:var(--t-amber)">${stFmt(o.p90)}</td>
-      <td>${stFmt(o.max)}</td>
+      <td><span class="st-bar"><i style="width:${Math.round(o.mean/maxMean*100)}%"></i></span><b>${stFmt(o.mean)}</b></td>
+      <td style="color:var(--t-amber)">${stFmt(o.max)}</td>
+      <td>${fmtClock(o.wSum)}</td>
+      <td style="color:var(--red)">${o.aMean?stFmt(o.aMean):'-'}</td>
+      <td style="color:var(--red)">${o.aMax?stFmt(o.aMax):'-'}</td>
+      <td>${fmtClock(o.aSum)}</td>
       <td class="${o.long?'st-long':''}">${o.n?Math.round(o.longPct*100)+'% '+o.long+'건':'-'}</td>
       <td><span class="st-bar share"><i style="width:${Math.round(o.share/maxShare*100)}%"></i></span>${Math.round(o.share*100)}%</td>
       ${anyPrep?`<td style="color:var(--t-sky)">${o.pMed?stFmt(o.pMed):'-'}</td>`:''}
-      <td style="color:var(--red)">${o.aMed?stFmt(o.aMed):'-'}</td>
       <td>${fmtClock(o.total)}</td></tr>`;
     if(sel)html+=statRoomDetailHtml(r,recs,anyPrep,cols+2);   // 누른 방 바로 아래에 세부 기록 펼침
   });
   html+=`</tbody></table></div>`;
   html+=`<div class="sect-t" style="margin-top:16px;margin-bottom:6px">최근 종결 기록 <span class="hint" style="font-weight:400">환자별 한 줄 — 방 이름 아래 숫자는 그 방 체류(대기+준비+진행)</span></div>`;
-  /* 환자별로 묶어 한 줄에 동선 전체를 보여 준다 (2026-09-28 요청 — 전에는 방 종결마다 한 줄씩 나와 같은 환자가 여러 줄이었다) */
+  /* 환자별 한 줄(이름·시각·▾)만 보이고, 누르면 아래로 방별 대기·진행 시간이 펼쳐진다 (2026-09-28 요청) */
   html+=(function(){
     const by={},order=[];
     recs.forEach(r=>{const k=r.patientId||((r.mrn||'')+'|'+(r.name||''));
-      if(!by[k]){by[k]={name:r.name,mrn:r.mrn,patientId:r.patientId,recs:[]};order.push(k);}
+      if(!by[k]){by[k]={key:k,name:r.name,mrn:r.mrn,patientId:r.patientId,recs:[]};order.push(k);}
       by[k].recs.push(r);
-      const i=order.indexOf(k);if(i>=0){order.splice(i,1);order.push(k);}   // 마지막 활동이 최근인 환자를 뒤로
+      const i=order.indexOf(k);if(i>=0){order.splice(i,1);order.push(k);}
     });
     return order.slice(-15).reverse().map(k=>{
       const g=by[k];
       const rs=g.recs.slice().sort((a,b)=>new Date(a.enteredAt||a.at)-new Date(b.enteredAt||b.at));
       const last=new Date(rs[rs.length-1].leftAt||rs[rs.length-1].enteredAt||0);
       const dt=isNaN(last)?'':`${last.getFullYear()}-${String(last.getMonth()+1).padStart(2,'0')}-${String(last.getDate()).padStart(2,'0')} ${String(last.getHours()).padStart(2,'0')}:${String(last.getMinutes()).padStart(2,'0')}`;
-      const chain=rs.map(r=>`<span class="st-hop" title="${esc(r.room)} — 대기 ${fmtClock(r.waitMs||0)}${(r.prepMs||0)>0?' · 준비 '+fmtClock(r.prepMs):''} · 진행 ${fmtClock(r.activeMs||0)}${r.proc?' · '+esc(r.proc):''}">${esc(r.room)} <b>${fmtClock(r.durationMs||0)}</b></span>`).join('<span class="st-arrow">›</span>');
-      return `<div class="stat-rec click" onclick="openStatRec('','${esc(g.patientId||'')}','${esc(g.mrn||'')}','${esc(g.name||'')}')" title="누르면 환자 정보가 열립니다">
-        <span><b>${esc(g.name||'')}</b>${g.mrn?`<span class="hint" style="margin-left:5px">${esc(g.mrn)}</span>`:''}</span>
-        <span class="st-chain">${chain}</span>
-        <span class="hint" style="white-space:nowrap">${dt}</span></div>`;
+      const open=!!statRecOpenKeys[k];
+      const detail=open?`<div class="st-rooms">${rs.map(r=>`<div class="st-room-row">
+          <span class="rm">${esc(r.room)}</span>
+          <span class="tw">대기 <b>${fmtClock(r.waitMs||0)}</b></span>
+          ${(r.prepMs||0)>0?`<span class="tp">준비 <b>${fmtClock(r.prepMs)}</b></span>`:''}
+          <span class="ta">진행 <b>${fmtClock(r.activeMs||0)}</b></span>
+          ${r.proc?`<span class="hint">🔹${esc(r.proc)}</span>`:''}
+        </div>`).join('')}</div>`:'';
+      return `<div class="stat-rec click${open?' open':''}" onclick="toggleStatRec('${esc(k).replace(/'/g,"\\'")}')" title="누르면 방별 대기·진행 시간이 펼쳐집니다">
+        <span class="st-name" onclick="event.stopPropagation();openStatRec('','${esc(g.patientId||'')}','${esc(g.mrn||'')}','${esc(g.name||'')}')" title="환자 정보 열기"><b>${esc(g.name||'')}</b>${g.mrn?`<span class="hint" style="margin-left:5px">${esc(g.mrn)}</span>`:''}</span>
+        <span style="flex:1"></span>
+        <span class="hint" style="white-space:nowrap">${dt}</span>
+        <span class="st-caret2">▾</span></div>${detail}`;
     }).join('');
   })();
   content.innerHTML=html;
