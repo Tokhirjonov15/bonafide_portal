@@ -778,6 +778,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
   .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
+  .sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}   /* neuropathic pain 줄 강조 (2026-09-28 요청) */
   .sd-btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.sd-btns .btn{font-size:16px;padding:10px 18px}
   .slip-empty{padding:24px;color:var(--muted);font-size:15px}
   .slip-sum{margin:7px 12px 0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:#047857;line-height:1.4;cursor:pointer}
@@ -2957,7 +2958,7 @@ function renderSlipScreen(){
       <div class="sd-meta">차트 <b>${esc(it.mrn)}</b>${h.birth?' · '+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.pc?' · '+esc(h.pc):''} · ${h.hm}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
-    <ol class="sd-lines">${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
+    <ol class="sd-lines">${it.lines.map(l=>`<li${/neuropathic\s*pain/i.test(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> 슬립 인쇄</button>
       <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button></div>`;
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
@@ -2979,6 +2980,7 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     table.hd td{font-size:13pt;font-weight:800;padding:0.7mm 0}
     .rule{border-top:0.4mm solid #000;margin:2mm 0 1.5mm}
     ol{list-style:none}li{font-size:13pt;font-weight:700;line-height:1.45;padding:0.6mm 0;border-bottom:0.2mm dashed #999}
+    li.np{text-decoration:underline;text-underline-offset:1mm;font-weight:900}   /* 흑백 인쇄용: 밑줄+굵게 */
     .ft{font-size:10pt;font-weight:700;color:#000;margin-top:3mm;text-align:right}
     .bd{font-size:12pt;font-weight:800;margin-top:1.5mm}
   </style></head><body>
@@ -2989,7 +2991,7 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     </table>
     ${it.badges.length?`<div class="bd">${esc(it.badges.join(' · '))}</div>`:''}
     <div class="rule"></div>
-    <ol>${it.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>
+    <ol>${it.lines.map(l=>`<li${/neuropathic\s*pain/i.test(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
     <div class="ft">발행일자: ${localYMD(now)}</div>
     <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
   </body></html>`;}
@@ -9867,7 +9869,10 @@ function toggleRoomVisible(room,show){
 function toggleTopMenu(){document.getElementById("topActions").classList.toggle("open");}
 document.getElementById("topActions").addEventListener("click",e=>{if(e.target.closest(".btn"))document.getElementById("topActions").classList.remove("open");});
 document.addEventListener("click",e=>{const ta=document.getElementById("topActions");if(ta.classList.contains("open")&&!e.target.closest("#topActions")&&!e.target.closest("#menuBtn"))ta.classList.remove("open");});
-document.getElementById("search").addEventListener("input",render);
+{const se=document.getElementById("search");let t=null,comp=false;   /* 한글 조합 중에는 그리지 않는다 (2026-09-28) */
+  se.addEventListener("compositionstart",()=>{comp=true;});
+  se.addEventListener("compositionend",()=>{comp=false;clearTimeout(t);t=setTimeout(render,150);});
+  se.addEventListener("input",()=>{if(comp)return;clearTimeout(t);t=setTimeout(render,200);});}
 document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
 document.getElementById("roomsModal").addEventListener("click",e=>{if(e.target.id==="roomsModal")closeRooms()});
 document.getElementById("offModal").addEventListener("click",e=>{if(e.target.id==="offModal")closeOff()});
