@@ -6938,7 +6938,10 @@ function autoAssignMover(p){
   const {here,pick}=moverPick(me);
   let f=here(r);                                             // ① 도착한 방의 목록
   const inRoomList=!!f;
-  if(!f)for(const q of ROOMS){f=here(q);if(f)break;}          // ② 다른 방들의 목록(그 사람의 역할을 알아내려고)
+  /* ② 다른 방들의 목록에서 역할을 찾을 때 대기실·수납 계열은 건너뛴다 (2026-09-28):
+     원무 직원(예: 이아람)은 대기실 목록에만 있는데, 카드를 옮겼다고 검사실 담당으로 잡히는 일이 있었다.
+     치료 방 목록에 있는 사람(예: 간호 이은지)만 어느 방으로 옮겨도 담당이 된다 */
+  if(!f)for(const q of ROOMS){if(/대기실|수납/.test(q))continue;f=here(q);if(f)break;}
   if(!f){const n=pick(DOCTORS);if(n)f={name:n,kind:'doc'};}   // ③ 전체 진료의 목록
   if(!f)return false;
   const name=f.name;
