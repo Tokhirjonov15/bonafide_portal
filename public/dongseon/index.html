@@ -554,6 +554,8 @@
   .card.bitpaid.designated{box-shadow:inset 4px 0 0 #f5b301,inset 0 0 0 2px rgba(34,197,94,.35),var(--shadow)}
   .bitpaid-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--t-green);background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.45);border-radius:6px;padding:1px 6px;white-space:nowrap}
   .bitpaid-mark svg{width:12px;height:12px}
+  .bitcancel-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#fff;background:var(--red);border-radius:8px;padding:2px 8px}
+  .bitcancel-mark svg{width:12px;height:12px}
   .seqno{background:var(--blue);color:#fff;font-size:11px;font-weight:800;border-radius:6px;padding:1px 7px;align-self:center}
   .total{padding:0 12px 8px;font-size:12px;color:var(--orange);border-bottom:1px solid var(--line2);margin-bottom:2px}
   .total b{font-variant-numeric:tabular-nums}
@@ -3196,22 +3198,33 @@ let _bitCancelT=null;
 function bitApplyCancels(){
   if(!currentUser||!cloud.intakeCol)return;
   BIT_INTAKE.forEach(r=>{
-    if(!r.cancelled){delete BIT_CANCEL_SEEN[r.docId];return;}
-    if(r.status==='취소'||BIT_CLAIMING[r.docId])return;
-    const seen=BIT_CANCEL_SEEN[r.docId]||(BIT_CANCEL_SEEN[r.docId]=Date.now());
-    if(Date.now()-seen<BIT_CANCEL_GRACE){clearTimeout(_bitCancelT);_bitCancelT=setTimeout(bitApplyCancels,BIT_CANCEL_GRACE+500);return;}
+    if(!r.cancelled){delete BIT_CANCEL_SEEN[r.docId];
+      const ocm0=String(r.ocmNum||'').trim();
+      const q=ocm0&&data.find(x=>!x.discharged&&x.bitCancel&&x.bit&&String(x.bit.ocmNum||'')===ocm0);
+      if(q){delete q.bitCancel;save(q);render();}   // 취소가 풀렸으면 표시도 지운다
+      return;}
+    if(BIT_CLAIMING[r.docId])return;
+    const done=r.status==='취소';
+    if(!done){
+      const seen=BIT_CANCEL_SEEN[r.docId]||(BIT_CANCEL_SEEN[r.docId]=Date.now());
+      if(Date.now()-seen<BIT_CANCEL_GRACE){clearTimeout(_bitCancelT);_bitCancelT=setTimeout(bitApplyCancels,BIT_CANCEL_GRACE+500);return;}
+    }
     const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
     const p=data.find(x=>!x.discharged&&((x.id&&x.id===r.patientId)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)||(mrn&&(x.mrn||'').trim()===mrn&&x.bit)));
-    BIT_CLAIMING[r.docId]=1;
-    cloud.intakeCol.doc(r.docId).set({status:'취소',handledBy:currentUser.name||'',handledAt:new Date().toISOString()},{merge:true})
-      .catch(e=>console.warn('bit cancel',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
+    if(!done){
+      BIT_CLAIMING[r.docId]=1;
+      cloud.intakeCol.doc(r.docId).set({status:'취소',handledBy:currentUser.name||'',handledAt:new Date().toISOString()},{merge:true})
+        .catch(e=>console.warn('bit cancel',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
+    }
     if(!p)return;
     const untouched=p.step===0&&(p.status||'대기')==='대기'&&!p.out&&!(p.visits&&p.visits.length)&&!Object.keys(p.notes||{}).length;
     if(untouched){
       audit('환자삭제(비트 접수취소)',p.name+(p.mrn?' ('+p.mrn+')':''));
       cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
       try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
-    } else {
+    } else if(!p.bitCancel){
+      /* 손댄 카드는 자동 삭제하지 않는다(치료가 시작됐을 수 있음) — 대신 지워지지 않는 빨간 표시를 남긴다 (2026-09-28) */
+      p.bitCancel={at:new Date().toISOString()};save(p);render();
       try{notify('triangle-alert','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되었습니다. 카드를 확인하세요.');}catch(e){}
     }
   });
@@ -6638,6 +6651,7 @@ function cardEl(p,colRoom){
       ${p.seq?`<span class="seqno" title="오늘 등록 순서">#${p.seq}</span>`:''}
       <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
+      ${p.bitCancel?`<span class="bitcancel-mark" title="비트에서 접수가 취소된 환자입니다${p.bitCancel.at?' ('+hhmm(p.bitCancel.at)+')':''} — 확인 후 카드를 삭제하거나 비트에서 재접수하세요"><i data-lucide="circle-x"></i> 비트 접수취소</span>`:''}
       ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
       ${isConsultRoom(_chipRoom)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p,_chipRoom)}</span>`}
       ${nurseChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${nurseChipHtml(p,_chipRoom)}</span>`:''}
@@ -7019,9 +7033,11 @@ function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
   if(from===room)return;
   completeVisit(p,'이동');
-  const i=p.route.indexOf(room);
+  const i=p.route.indexOf(room,p.step+1);
   /* 동선에 없는 방으로 끌어다 놓으면 '지금 방 바로 뒤'에 끼워 넣는다 — 뒤에 남은 방들(처방으로 짠 동선)은 그대로 이어진다 (2026-09-24).
-     예) 동선 C-Arm → Sono 인데 x-ray실로 끌면 C-Arm → x-ray실 → Sono. (예전엔 맨 끝에 붙어 남은 동선이 끊겼다) */
+     예) 동선 C-Arm → Sono 인데 x-ray실로 끌면 C-Arm → x-ray실 → Sono. (예전엔 맨 끝에 붙어 남은 동선이 끊겼다)
+     2026-09-28: '지금 위치 뒤'에서만 찾는다 — 이미 지나온 방(예: 물리치료 앞의 수납대기)으로 다시 가면
+     단계가 뒤로 감기지 않고(5/5→4/5 문제) 새 단계로 끼워 넣는다 */
   if(i>=0)p.step=i; else {p.route.splice(p.step+1,0,room);p.step=p.step+1;}
   enterCurrentRoom(p);
   markSpaceDone(p,from,room);
