@@ -1737,7 +1737,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <textarea id="bk_names" rows="9" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;outline:0;resize:vertical"></textarea></div>
       <div class="row2">
         <div class="fld"><label>공통 비밀번호</label><input id="bk_pw" type="text" placeholder="8자 이상, 영문+숫자" autocomplete="off"></div>
-        <div class="fld"><label>권한</label><select id="bk_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="doctor">원장님 (통계 열람)</option><option value="admin">관리자</option></select></div>
+        <div class="fld"><label>권한</label><select id="bk_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="doctor">원장님 (통계 열람)</option><option value="office">행정실 (통계 열람)</option><option value="admin">관리자</option></select></div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn sm" type="button" onclick="bulkFillDoctors()" title="방 설정·진료의 목록에서 아직 계정이 없는 이름을 채웁니다"><i data-lucide="stethoscope"></i> 진료의 이름 불러오기</button>
@@ -1758,7 +1758,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="body">
       <div class="fld"><label>아이디 (이름)</label><input id="s_name" placeholder="이름"></div>
       <div class="row2">
-        <div class="fld"><label>권한</label><select id="s_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="doctor">원장님 (통계 열람)</option><option value="admin">관리자</option></select></div>
+        <div class="fld"><label>권한</label><select id="s_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="doctor">원장님 (통계 열람)</option><option value="office">행정실 (통계 열람)</option><option value="admin">관리자</option></select></div>
         <div class="fld"><label>팀 (선택)</label><input id="s_team" list="teamOpts" placeholder="예: 간호팀"><datalist id="teamOpts"></datalist></div>
       </div>
       <div class="fld"><label id="s_pwlabel">비밀번호</label><input id="s_pw" type="password" placeholder="비밀번호"></div>
@@ -2413,10 +2413,10 @@ async function pwVerify(plain,rec){if(!rec||!plain)return false;if(rec.pw)return
 function findUserByName(nm){nm=(nm||'').trim().toLowerCase();if(!nm)return null;if(SUPER_ADMIN.name.toLowerCase()===nm)return SUPER_ADMIN;return STAFF.find(u=>(u.name||'').trim().toLowerCase()===nm)||null;}
 function isAdmin(){return !!(currentUser&&currentUser.role==='admin');}
 /* 주임(chief): 관리자 아님 — 직원 권한 + 통계 열람(내보내기 포함, 초기화는 관리자만). 계정 관리·방 설정 등은 못 함 (2026-09-21) */
-function isChief(){return !!(currentUser&&(currentUser.role==='chief'||currentUser.role==='doctor'));}   /* 원장님 = 주임과 같은 권한 (2026-09-28) */
+function isChief(){return !!(currentUser&&(currentUser.role==='chief'||currentUser.role==='doctor'||currentUser.role==='office'));}   /* 원장님·행정실 = 주임과 같은 권한 (2026-09-28) */
 function canStats(){return isAdmin()||isChief();}
-function roleLabel(m){return !m?'':(m.super?'최고관리자':m.role==='admin'?'관리자':m.role==='chief'?'주임':m.role==='doctor'?'원장님':'직원');}
-function roleCls(m){return !m?'staff':(m.role==='admin'?'admin':(m.role==='chief'||m.role==='doctor')?'chief':'staff');}
+function roleLabel(m){return !m?'':(m.super?'최고관리자':m.role==='admin'?'관리자':m.role==='chief'?'주임':m.role==='doctor'?'원장님':m.role==='office'?'행정실':'직원');}
+function roleCls(m){return !m?'staff':(m.role==='admin'?'admin':(m.role==='chief'||m.role==='doctor'||m.role==='office')?'chief':'staff');}
 function isSuper(){return !!(currentUser&&currentUser.super);}
 function ensureSuper(){let s=STAFF.find(x=>x.id==='super');if(!s){STAFF.push({id:'super',name:SUPER_ADMIN.name,role:'admin',super:true,pw:SUPER_ADMIN.pw});}else{s.name=SUPER_ADMIN.name;s.role='admin';s.super=true;if(!s.pw)s.pw=SUPER_ADMIN.pw;}saveStaffStore();}
 
@@ -3406,7 +3406,7 @@ function updateUserPill(){
   document.getElementById('userAv').textContent=(currentUser.name||'?').slice(0,1);
   document.getElementById('userName').textContent=currentUser.name;
   const sub=document.getElementById('userSub'); if(sub){ const parts=[currentUser.team,currentUser.position].filter(Boolean); sub.textContent=parts.join(' · '); sub.style.display=parts.length?'block':'none'; }
-  const rt=document.getElementById('userRole'); const mgr=currentUser.role==='admin'||currentUser.super||currentUser.role==='chief'||currentUser.role==='doctor';
+  const rt=document.getElementById('userRole'); const mgr=currentUser.role==='admin'||currentUser.super||['chief','doctor','office'].includes(currentUser.role);
   rt.textContent=roleLabel(currentUser);
   rt.className='role-tag '+roleCls(currentUser); rt.style.display=mgr?'':'none'; // 직원은 배지 숨김
 }
@@ -3529,7 +3529,7 @@ function renderAccount(){
 }
 function renderStaffList(){
   const box=document.getElementById('staffList');if(!box)return;
-  const rk=m=>m.role==='admin'?0:(m.role==='chief'||m.role==='doctor')?1:2;
+  const rk=m=>m.role==='admin'?0:['chief','doctor','office'].includes(m.role)?1:2;
   const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>rk(a)-rk(b)||String(a.name||'').localeCompare(String(b.name||'')));
   if(!list.length){box.innerHTML=`<div class="route-empty">등록된 계정이 없습니다.</div>`;return;}
   const meEm=(currentUser&&currentUser.email)||'';
@@ -3632,7 +3632,7 @@ async function bulkAddRun(){
   if(!isAdmin()){alert('관리자만 가능합니다.');return;}
   const lines=document.getElementById('bk_names').value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const common=document.getElementById('bk_pw').value.trim();
-  const rv=document.getElementById('bk_role').value;const role=rv==='admin'?'admin':rv==='chief'?'chief':rv==='doctor'?'doctor':'staff';
+  const rv=document.getElementById('bk_role').value;const role=['admin','chief','doctor','office'].includes(rv)?rv:'staff';
   if(!lines.length){alert('이름을 한 줄에 하나씩 입력하세요.');return;}
   const rows=[];const bad=[];
   for(const l of lines){const p=l.split(/[,\t]/).map(x=>x.trim());const name=p[0]||'';const pw=p[1]||common;const team=p[2]||'';
@@ -4651,7 +4651,7 @@ async function startHosted(){
       if(!user.email){try{await firebase.auth().signOut();}catch(e){}return;}  // 익명 등 이메일 없는 세션 정리
       cloud.user=user.uid;cloud.email=user.email||'';
       try{await migrateIfNeeded();}catch(e){console.error('migrate',e);}
-      try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));}catch(e){}
+      try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));fixAutoClosedDates();}catch(e){}
       try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());localStorage.setItem(STATS_STORE,JSON.stringify(STATS));}catch(e){}
       try{await loadRegistryExt();}catch(e){console.warn('registryChunks',e);}   // 비트 EMR 대용량 명단(있으면)
       if(cloud.unsub)cloud.unsub();
@@ -7105,8 +7105,27 @@ function autoCloseDay(){
       .catch(e=>console.warn('autoClose',e)).finally(()=>{delete AUTO_CLOSING[p.id];});
   });
 }
+/* 과거의 자동 마감 기록을 도착한 날로 되돌리는 일회성 정리 (2026-09-28) — 고칠 것이 없으면 아무 일도 안 함 */
+function fixAutoClosedDates(){
+  try{
+    if(!cloud.active||!cloud.visitsCol)return;
+    const bad=VISITS.filter(v=>v.autoClosed&&v.id&&v.arrivedAt&&v.dischargedAt&&localYMD(new Date(v.arrivedAt))<localYMD(new Date(v.dischargedAt)));
+    if(!bad.length)return;
+    bad.forEach(v=>{const a=new Date(v.arrivedAt);a.setHours(23,59,0,0);
+      v.dischargedAt=a.toISOString();v.totalMs=Math.max(0,a-new Date(v.arrivedAt));});
+    localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));
+    let batch=cloud.db.batch(),n=0;
+    bad.forEach(v=>{batch.update(cloud.visitsCol.doc(v.id),{dischargedAt:v.dischargedAt,totalMs:v.totalMs});
+      if(++n>=400){batch.commit().catch(()=>{});batch=cloud.db.batch();n=0;}});
+    if(n>0)batch.commit().catch(()=>{});
+    console.log('자동 마감 날짜 정리',bad.length+'건');
+  }catch(e){console.warn('fixAutoClosedDates',e);}
+}
 function archiveVisit(p){
-  const dischargedAt=new Date().toISOString();
+  let dischargedAt=new Date().toISOString();
+  /* 자동 마감(전날 남은 카드 아침 정리)은 도착한 날의 기록으로 — 그날 23:59 (2026-09-28) */
+  if(p.autoClosed){const a=new Date(p.arrivedAt||p.enteredAt||Date.now());
+    if(!isNaN(a)&&localYMD(a)<localYMD(new Date())){a.setHours(23,59,0,0);dischargedAt=a.toISOString();}}
   const rec={
     id:id(),seq:p.seq||null,mrn:p.mrn||"",name:p.name,birth:p.birth||"",sex:p.sex||"",
     doctor:p.doctor||"",
