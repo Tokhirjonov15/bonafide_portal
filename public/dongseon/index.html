@@ -4697,9 +4697,15 @@ async function startHosted(){
 }
 /* 클라우드에서 문서가 여러 개 한꺼번에 바뀌면(처방 동선 자동 채우기 등) 그리기가 그 횟수만큼 돌았다.
    120ms 안에 겹치면 한 번만 그린다 — 첫 번째는 곧바로 그리므로 반응은 그대로 (2026-09-26) */
-let _renderT=null,_renderLast=0;
+let _renderT=null,_renderLast=0,uiScrollHold=0;
 function renderThrottled(){
-  const now=Date.now(), gap=now-_renderLast;
+  const now=Date.now();
+  /* 사용자가 목록을 스크롤하는 동안에는 그리기를 미룬다(끊김 방지) — 최대 2.5초까지만 (2026-09-28) */
+  if(now-uiScrollHold<300&&now-_renderLast<2500){
+    if(!_renderT)_renderT=setTimeout(()=>{_renderT=null;renderThrottled();},250);
+    return;
+  }
+  const gap=now-_renderLast;
   if(gap>=120){_renderLast=now;render();return;}
   if(_renderT)return;
   _renderT=setTimeout(()=>{_renderT=null;_renderLast=Date.now();render();},120-gap);
@@ -9874,6 +9880,7 @@ function toggleRoomVisible(room,show){
 function toggleTopMenu(){document.getElementById("topActions").classList.toggle("open");}
 document.getElementById("topActions").addEventListener("click",e=>{if(e.target.closest(".btn"))document.getElementById("topActions").classList.remove("open");});
 document.addEventListener("click",e=>{const ta=document.getElementById("topActions");if(ta.classList.contains("open")&&!e.target.closest("#topActions")&&!e.target.closest("#menuBtn"))ta.classList.remove("open");});
+document.getElementById("board").addEventListener("scroll",()=>{uiScrollHold=Date.now();},{capture:true,passive:true});   /* 방 목록·보드 스크롤 감지 — 스크롤 중 재렌더 보류용 (2026-09-28) */
 {const se=document.getElementById("search");let t=null,comp=false;   /* 한글 조합 중에는 그리지 않는다 (2026-09-28) */
   se.addEventListener("compositionstart",()=>{comp=true;});
   se.addEventListener("compositionend",()=>{comp=false;clearTimeout(t);t=setTimeout(render,150);});
@@ -9903,6 +9910,7 @@ document.addEventListener("keydown",e=>{
 
 // 1초마다 대기/진행 타이머 텍스트만 갱신(전체 리렌더 없이)
 function tickTimers(){if(!currentUser)return;
+  if(Date.now()-uiScrollHold<300)return;   /* 스크롤 중에는 글자 갱신도 쉰다 (2026-09-28) */
   document.querySelectorAll('.dwell[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.innerHTML=dwellLabel(p);});
   document.querySelectorAll('.rt-live[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p)el.textContent=routeLiveLabel(p);});
   document.querySelectorAll('.total[data-pid]').forEach(el=>{const p=data.find(x=>x.id===el.dataset.pid);if(p){el.innerHTML=totalLabel(p);}});
