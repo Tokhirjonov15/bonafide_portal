@@ -7108,7 +7108,8 @@ function autoCloseDay(){
 /* 과거의 자동 마감 기록을 도착한 날로 되돌리는 일회성 정리 (2026-09-28) — 고칠 것이 없으면 아무 일도 안 함 */
 function fixAutoClosedDates(){
   try{
-    if(!cloud.active||!cloud.visitsCol)return;
+    /* cloud.active 는 이 시점(로그인 직후 기록 로드)엔 아직 false 라 정리가 한 번도 돌지 않았다 (2026-09-28) */
+    if(!cloud.db||!cloud.visitsCol)return;
     const bad=VISITS.filter(v=>v.autoClosed&&v.id&&v.arrivedAt&&v.dischargedAt&&localYMD(new Date(v.arrivedAt))<localYMD(new Date(v.dischargedAt)));
     if(!bad.length)return;
     bad.forEach(v=>{const a=new Date(v.arrivedAt);a.setHours(23,59,0,0);
