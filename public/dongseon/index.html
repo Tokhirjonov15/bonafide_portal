@@ -5307,6 +5307,7 @@ function render(){
   /* 스크롤 위치 보존 — 카드 안에서 선택(상담 결과·사유·원장님 등)만 바꿔도 전체를 다시 그리므로,
      각 방 목록(col-body)의 세로 위치와 보드의 가로 위치, 페이지 스크롤을 기억했다가 그린 뒤 되돌림 */
   const _scr={}; board.querySelectorAll('.col-body[data-room]').forEach(b=>{if(b.scrollTop)_scr[b.dataset.room]=b.scrollTop;});
+  const _vscr=(board.querySelector('.vlist-scroll')||{}).scrollTop||0;   // 내원 목록 스크롤도 보존 (2026-09-28: 1~2초마다 다시 그리며 맨 위로 튀었다)
   const _bx=board.scrollLeft, _by=board.scrollTop, _wy=window.scrollY||window.pageYOffset||0;
   board.innerHTML="";
   board.classList.toggle("disch-mode",currentGroup==='__disch__');
@@ -5407,6 +5408,7 @@ function render(){
   if(window.lucide)try{lucide.createIcons();}catch(e){}   // 아이콘 즉시 변환(옵저버 지연 없이 같은 프레임)
   applyColFilters();   // 방별 검색 필터 재적용 + 입력 포커스 복원
   board.querySelectorAll('.col-body[data-room]').forEach(b=>{const t=_scr[b.dataset.room];if(t)b.scrollTop=t;});
+  {const vs=board.querySelector('.vlist-scroll');if(vs&&_vscr)vs.scrollTop=_vscr;}
   if(_bx)board.scrollLeft=_bx; if(_by)board.scrollTop=_by;
   if(_wy&&Math.abs((window.scrollY||0)-_wy)>2)try{window.scrollTo(window.scrollX||0,_wy);}catch(e){}
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=canStats()?"":"none";
