@@ -951,7 +951,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #modal .body textarea{width:100%;max-width:100%;box-sizing:border-box}
   #modal .fld>input, #modal .fld>select{max-width:100%;min-width:0;box-sizing:border-box}
   /* 상단 상태 pill: 세로 정렬 카드(방 → 시간 → 상태버튼) */
-  #modal .modal-head{flex-direction:column;align-items:stretch;padding-right:46px}
+  /* 세로 배치에서 wrap 이 남아 있으면 이름 줄·가족관계가 '옆 열'로 밀려 화면 밖에 걸치고(닫기 X 밑에 글자 조각),
+     그 높이만큼 머리글이 늘어나 특이사항 위에 빈 공간이 생겼다 (2026-09-28 휴대폰 제보) */
+  #modal .modal-head{flex-direction:column;flex-wrap:nowrap;align-items:stretch;padding-right:46px}
+  #modal .modal-head #mhPatient, #modal .modal-head .family-line{flex:0 0 auto}
   #modal #editStatusRow{align-self:stretch;max-width:100%}
   #modal .es-wrap{display:flex;flex-direction:column;align-items:stretch;height:auto;border-radius:14px;padding:10px 12px;gap:8px;max-width:100%}
   #modal .es-time{white-space:normal;gap:14px;font-size:12px}
