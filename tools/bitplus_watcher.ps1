@@ -193,7 +193,7 @@ function ReadRx($hwnd) {   # 차트번호 칸(라벨 오른쪽) + 특이사항 �
 }
 # ── ③ 외래진료실 창(진료실 PC) — 증상 칸 맨 아래의 약·주사 목록 ──
 $RX_HEAD = '^\s*med\b'   # 처방 블록 머리글(줄 시작, 대소문자 무시). 이 줄부터 끝까지 원문을 보내고 해석은 동선관리가 한다
-$RX_MAX_LINES = 20         # 안전 상한(머리글부터 세어 앞쪽 유지)
+$RX_MAX_LINES = 300        # 안전 상한 — 사실상 전부 보냄 (2026-09-28: 20줄에서 긴 처방의 꼬리가 잘렸다. 문서 크기 여유 충분)
 function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 (BITDoctorOrder.exe). 없으면 $null (접수 PC에서는 보통 없음)
   $proc = Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue | Select-Object -First 1
   if (-not $proc) { return $null }
