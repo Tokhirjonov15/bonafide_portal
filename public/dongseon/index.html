@@ -9836,8 +9836,19 @@ function closeView(){document.getElementById("viewModal").classList.remove("show
 function renderViewList(){
   const box=document.getElementById("viewList");if(!box||!currentUser)return;
   const h=hiddenSet();
-  box.innerHTML=ROOMS.map(r=>`
+  const allOn=ROOMS.every(r=>!h.has(r));
+  box.innerHTML=`<div class="view-row" style="border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px">
+      <label style="font-weight:800"><input type="checkbox" ${allOn?'checked':''} onchange="setAllRoomsVisible(this.checked)"> 전체 선택</label></div>`
+    +ROOMS.map(r=>`
     <div class="view-row"><label><input type="checkbox" ${h.has(r)?'':'checked'} onchange="toggleRoomVisible('${esc(r)}',this.checked)"> ${esc(r)}</label></div>`).join("");
+}
+/* 전체 선택/해제 — 끌 때는 실수 방지로 한 번 확인 (2026-09-28) */
+function setAllRoomsVisible(on){
+  if(!currentUser)return;
+  if(!on&&!confirm('모든 방을 숨길까요? 보드가 비어 보이게 됩니다.')){renderViewList();return;}
+  currentUser.hiddenRooms=on?[]:ROOMS.slice();
+  STAFF_PREFS[currentUser.email]=Object.assign({},STAFF_PREFS[currentUser.email],{hiddenRooms:currentUser.hiddenRooms});
+  savePrefs();renderViewList();render();
 }
 function toggleRoomVisible(room,show){
   if(!currentUser)return;
@@ -9845,7 +9856,7 @@ function toggleRoomVisible(room,show){
   if(show)h.delete(room);else h.add(room);
   currentUser.hiddenRooms=[...h];
   STAFF_PREFS[currentUser.email]=Object.assign({},STAFF_PREFS[currentUser.email],{hiddenRooms:currentUser.hiddenRooms});
-  savePrefs();render();
+  savePrefs();renderViewList();render();
 }
 
 /* ───── 이벤트 ───── */
