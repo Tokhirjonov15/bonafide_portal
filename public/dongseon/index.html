@@ -2529,6 +2529,7 @@ async function establishSession(){
   if(currentUser.super){try{await seedApp();await ensureAclShape();}catch(e){console.error('seed',e);}}
   audit('로그인');
   updateUserPill(); render(); scanAlarms(); resetIdle(); maybeBackupReminder(); try{syncRoomsToBot();}catch(e){}
+  try{if(localStorage.getItem('pb_waitOpen')==='1')setTimeout(openWaitScreen,400);}catch(e){}   // 새로고침 전에 대기화면이었으면 복귀
   applyEmrPrefill();   // 로그인 전에 도착한 EMR 접수 연동 데이터가 있으면 지금 적용
 }
 /* 공용 PC 보안: 일정 시간 무동작 시 자동 로그아웃 — 시간은 콘솔 설정(acl.idleTimeoutMin, 분). 0=사용 안 함 */
@@ -5736,9 +5737,9 @@ function wtStop(){if(wtRaf)cancelAnimationFrame(wtRaf);wtRaf=null;}
 window.addEventListener('resize',()=>{if(waitOpen){waitTickerFit();waitSubFit();}});
 /* 글꼴(Noto Sans KR)이 나중에 내려오면 문장 폭이 달라져 한 바퀴 끝에서 글이 멈췄다 되돌아가듯 튄다 → 글꼴이 준비되면 다시 잰다 (2026-09-24) */
 try{if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(waitOpen){waitTickerFit();waitSubFit();}});}catch(e){}
-function openWaitScreen(){waitOpen=true;if(!waitIdleLoaded){waitIdleLoaded=true;try{waitIdleLoad(waitCur);}catch(e){}}try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(()=>{waitTickerFit();waitSubFit();});wtStart();
+function openWaitScreen(){waitOpen=true;try{localStorage.setItem('pb_waitOpen','1');}catch(e){}if(!waitIdleLoaded){waitIdleLoaded=true;try{waitIdleLoad(waitCur);}catch(e){}}try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}applyWaitControls();applyWaitFont();renderWaitScreen();document.getElementById("waitScreen").classList.add("show");requestAnimationFrame(()=>{waitTickerFit();waitSubFit();});wtStart();
   if(waitClockTimer)clearInterval(waitClockTimer);waitClockTimer=setInterval(updateWaitClock,1000);restartWaitRot();}
-function closeWaitScreen(){waitOpen=false;try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}document.getElementById("waitScreen").classList.remove("show");
+function closeWaitScreen(){waitOpen=false;try{localStorage.removeItem('pb_waitOpen');}catch(e){}try{if(cloud.intakeCol&&currentUser)subscribeBitIntake();}catch(e){}document.getElementById("waitScreen").classList.remove("show");
   if(waitClockTimer){clearInterval(waitClockTimer);waitClockTimer=null;}
   if(waitRotTimer){clearInterval(waitRotTimer);waitRotTimer=null;}wtStop();}
 /* 대기화면의 방 고르기는 한 번에 하나만 (2026-09-24): 다른 방을 고르면 먼저 고른 방(검사실 보기 포함)은 풀린다.
@@ -9917,6 +9918,22 @@ function memTick(){
   }
 }
 setInterval(memTick,60000); setTimeout(memTick,5000);
+/* ═ 새 배포 감지 — 30분마다 이 파일을 다시 받아 지문이 바뀌면(새 버전 배포) 한가할 때 스스로 새로고침.
+   구버전 화면이 남아 있으면 새 코드와 환자 문서를 서로 고쳐 쓰며 보드가 굳는다 (2026-09-28 사고) ═ */
+let APP_SIG='';
+async function checkNewBuild(){try{
+  const t=await (await fetch('index.html',{cache:'no-store'})).text();
+  if(!t||t.length<10000)return;                       // 오류 페이지 등은 무시
+  let h=0;for(let i=0;i<t.length;i+=97)h=(h*31+t.charCodeAt(i))>>>0;
+  const sig=t.length+'-'+h;
+  if(!APP_SIG){APP_SIG=sig;return;}
+  if(sig===APP_SIG)return;
+  const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''));
+  if(busy){setTimeout(checkNewBuild,3*60000);return;} // 쓰는 중이면 3분 뒤 다시
+  try{audit('새 버전 자동 새로고침');}catch(e){}
+  location.reload();
+}catch(_){}}
+setInterval(checkNewBuild,30*60000); setTimeout(checkNewBuild,60000);
 window.memReport=function(){ if(!MEM_LOG.length)return '기록 없음(크롬이 아니거나 아직 이름)';
   try{console.table(MEM_LOG.slice(-40));}catch(e){}
   const mx=MEM_LOG.reduce((a,b)=>b.mb>a.mb?b:a), last=MEM_LOG[MEM_LOG.length-1];
