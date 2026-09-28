@@ -471,13 +471,108 @@ async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebas
   return (r.ok && j.users && j.users[0] && j.users[0].email) || "";
 }
 function fmtMin(ms) { ms = Math.max(0, ms || 0); if (ms < 60000) return Math.round(ms / 1000) + "초"; const m = Math.round(ms / 60000); return m < 60 ? m + "분" : Math.floor(m / 60) + "시간 " + (m % 60) + "분"; }
+
+/* ============================================================
+   방 알림 전용 봇 (2026-09-28) — 발주 봇에서 분리
+   · BotFather 로 만든 별도 봇(Secrets: ROOM_BOT_TOKEN, ROOM_HOOK_SECRET, 선택 ROOM_JOIN)
+   · 웹훅이라 즉시 반응. 설정 1회: 배포 후  GET /api/roombot/setup?s=<ROOM_HOOK_SECRET>
+   · /start [코드] → 동선관리 방 목록이 단추로 나옴. 눌러서 켜고(✅) 다시 눌러 끔.
+     여러 방 선택 가능(한 원장님이 여러 방 진료). '모두 해제'로 전부 끔. /rooms 로 언제든 변경.
+   · 방 목록은 동선관리 화면이 로그인할 때 /api/dongseon/rooms 로 보내 meta 에 저장된다.
+   · 구독 저장은 기존 room_subs 표 그대로(챗·방 한 줄). 인증 표시는 room='#auth' 행.
+   ============================================================ */
+async function tgRoomApi(env, method, payload) {
+  const res = await fetch(`https://api.telegram.org/bot${env.ROOM_BOT_TOKEN}/${method}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
+  });
+  return await res.json().catch(() => ({}));
+}
+async function roomBotRooms(env) {
+  const row = await env.DB.prepare(`SELECT value FROM meta WHERE key='dongseon_rooms'`).first();
+  try { const a = JSON.parse(row && row.value || "[]"); return Array.isArray(a) ? a.filter(x => typeof x === "string" && x) : []; }
+  catch (_) { return []; }
+}
+async function roomBotSubs(env, chatId) {
+  const rows = (await env.DB.prepare(`SELECT room FROM room_subs WHERE chat_id=? AND room<>'#auth' ORDER BY room`).bind(chatId).all()).results || [];
+  return rows.map(r => r.room);
+}
+async function roomBotMenu(env, chatId) {
+  const rooms = await roomBotRooms(env);
+  if (!rooms.length) return { text: "방 목록이 아직 없습니다. 동선관리 화면을 한 번 열면(로그인) 목록이 올라옵니다.", reply_markup: null };
+  const subs = await roomBotSubs(env, chatId);
+  const kb = [];
+  for (let i = 0; i < rooms.length; i += 2) {
+    kb.push(rooms.slice(i, i + 2).map(r => ({ text: (subs.includes(r) ? "✅ " : "") + r, callback_data: "r|" + r.slice(0, 55) })));
+  }
+  kb.push([{ text: "🔕 모두 해제", callback_data: "r|__off" }, { text: "완료", callback_data: "r|__close" }]);
+  const cur = subs.length ? "지금 알림 받는 방: " + subs.join(", ") : "아직 선택한 방이 없습니다.";
+  return { text: "알림 받을 방을 고르세요 (여러 개 가능).\n누르면 켜지고(✅), 다시 누르면 꺼집니다.\n\n" + cur, reply_markup: { inline_keyboard: kb } };
+}
+async function roomBotAuthorized(env, chatId) {
+  return !!(await env.DB.prepare(`SELECT 1 AS x FROM room_subs WHERE chat_id=? LIMIT 1`).bind(chatId).first());
+}
+async function roomBotUpdate(env, u) {
+  /* 단추 누름 */
+  if (u.callback_query) {
+    const q = u.callback_query, chatId = String(q.message && q.message.chat && q.message.chat.id || "");
+    const data = String(q.data || "");
+    if (!chatId || !data.startsWith("r|")) { await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id }); return; }
+    const v = data.slice(2);
+    let toast = "";
+    if (v === "__close") {
+      const subs = await roomBotSubs(env, chatId);
+      await tgRoomApi(env, "editMessageText", { chat_id: chatId, message_id: q.message.message_id,
+        text: subs.length ? "설정 완료 ✅\n알림 받는 방: " + subs.join(", ") + "\n\n바꾸려면 /rooms 를 보내세요." : "선택한 방이 없습니다. 다시 고르려면 /rooms 를 보내세요." });
+      await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id });
+      return;
+    }
+    if (v === "__off") {
+      await env.DB.prepare(`DELETE FROM room_subs WHERE chat_id=? AND room<>'#auth'`).bind(chatId).run();
+      toast = "모든 방 알림을 껐습니다";
+    } else {
+      const rooms = await roomBotRooms(env);
+      const room = rooms.find(r => r.slice(0, 55) === v);
+      if (!room) toast = "목록에 없는 방입니다";
+      else {
+        const on = (await roomBotSubs(env, chatId)).includes(room);
+        if (on) { await env.DB.prepare(`DELETE FROM room_subs WHERE chat_id=? AND room=?`).bind(chatId, room).run(); toast = room + " 알림 끔"; }
+        else {
+          const name = ((q.from && (q.from.first_name || "")) + " " + (q.from && q.from.last_name || "")).trim();
+          await env.DB.prepare(`INSERT OR REPLACE INTO room_subs (chat_id, room, name, added) VALUES (?,?,?,?)`).bind(chatId, room, name, Date.now()).run();
+          toast = room + " 알림 켬 ✅";
+        }
+      }
+    }
+    const menu = await roomBotMenu(env, chatId);
+    await tgRoomApi(env, "editMessageReplyMarkup", { chat_id: chatId, message_id: q.message.message_id, reply_markup: menu.reply_markup });
+    await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id, text: toast });
+    return;
+  }
+  /* 일반 메시지 */
+  const msg = u.message;
+  if (!msg || !msg.text) return;
+  const chatId = String(msg.chat.id), text = msg.text.trim();
+  const joinCode = env.ROOM_JOIN || env.TELEGRAM_JOIN || "";
+  const authorized = await roomBotAuthorized(env, chatId);
+  if (joinCode && !authorized) {
+    if (!text.includes(joinCode)) {
+      await tgRoomApi(env, "sendMessage", { chat_id: chatId, text: "이 봇은 반듯한정형외과 직원용입니다.\n관리자에게 받은 초대 링크(코드)로 시작해 주세요." });
+      return;
+    }
+    const name = ((msg.from && (msg.from.first_name || "")) + " " + (msg.from && msg.from.last_name || "")).trim();
+    await env.DB.prepare(`INSERT OR REPLACE INTO room_subs (chat_id, room, name, added) VALUES (?,'#auth',?,?)`).bind(chatId, name, Date.now()).run();
+  }
+  const menu = await roomBotMenu(env, chatId);
+  await tgRoomApi(env, "sendMessage", Object.assign({ chat_id: chatId, text: menu.text }, menu.reply_markup ? { reply_markup: menu.reply_markup } : {}));
+}
+
 async function dongseonNotify(request, env) {
   try {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
     const room = s(b.room), kind = s(b.kind);
     if (!room || (kind !== "in" && kind !== "out")) return json({ error: "room/kind 필요" }, 400);
-    if (!env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
+    if (!env.ROOM_BOT_TOKEN && !env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
     await ensureSchema(env);
     const subs = ((await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || []).filter((r) => normRoom(r.room) === normRoom(room));
     if (!subs.length) return json({ ok: true, sent: 0 });
@@ -490,7 +585,10 @@ async function dongseonNotify(request, env) {
       ? `🟢 ${room} 도착 · ${who} · ${hm}`
       : `⚪ ${room} 나감 · ${who} · ${hm}` + ((b.waitMs || b.activeMs) ? ` · 대기 ${fmtMin(b.waitMs)}${b.activeMs ? " · 진행 " + fmtMin(b.activeMs) : ""}` : "") + (s(b.next) ? ` → ${s(b.next)}` : "");
     let sent = 0;
-    for (const sub of subs) { if (await tgSendTo(env, sub.chat_id, text)) sent++; }
+    for (const sub of subs) {
+      if (env.ROOM_BOT_TOKEN) { const r = await tgRoomApi(env, "sendMessage", { chat_id: sub.chat_id, text }); if (r && r.ok) sent++; }
+      else if (await tgSendTo(env, sub.chat_id, text)) sent++;
+    }
     return json({ ok: true, sent });
   } catch (err) {
     return json({ error: err && err.message ? err.message : String(err) }, 500);
@@ -1239,6 +1337,32 @@ export default {
     }
     if (url.pathname.startsWith("/api/dongseon/admin/")) {   // 동선관리 계정 관리 — Firebase 로그인으로 따로 인증
       return dongseonApi(request, env, url);
+    }
+    if (url.pathname.startsWith("/api/roombot/hook/")) {   // 방 알림 봇 웹훅 (텔레그램 → 여기)
+      if (!env.ROOM_HOOK_SECRET || url.pathname !== "/api/roombot/hook/" + env.ROOM_HOOK_SECRET) return json({ error: "not found" }, 404);
+      if (request.method !== "POST") return json({ error: "POST" }, 405);
+      await ensureSchema(env);
+      const upd = await request.json().catch(() => ({}));
+      try { await roomBotUpdate(env, upd); } catch (e) { console.log("roombot", e && e.message); }
+      return json({ ok: true });
+    }
+    if (url.pathname === "/api/roombot/setup") {   // 1회: 웹훅 등록 (배포 후 브라우저로 연다)
+      if (!env.ROOM_HOOK_SECRET || url.searchParams.get("s") !== env.ROOM_HOOK_SECRET) return json({ error: "s(비밀값)가 다릅니다" }, 403);
+      if (!env.ROOM_BOT_TOKEN) return json({ error: "ROOM_BOT_TOKEN 이 없습니다" }, 400);
+      const hook = url.origin + "/api/roombot/hook/" + env.ROOM_HOOK_SECRET;
+      const r = await tgRoomApi(env, "setWebhook", { url: hook, allowed_updates: ["message", "callback_query"] });
+      return json({ hook, telegram: r });
+    }
+    if (url.pathname === "/api/dongseon/rooms" && request.method === "POST") {   // 동선관리 → 방 목록 저장(봇 메뉴용)
+      const email = await fbEmailFromRequest(request);
+      if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+      const b = await request.json().catch(() => ({}));
+      const rooms = (Array.isArray(b.rooms) ? b.rooms : []).map(s).filter(Boolean).slice(0, 60);
+      if (!rooms.length) return json({ error: "rooms 필요" }, 400);
+      await ensureSchema(env);
+      await env.DB.prepare(`INSERT INTO meta (key,value) VALUES ('dongseon_rooms',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
+        .bind(JSON.stringify(rooms)).run();
+      return json({ ok: true, n: rooms.length });
     }
     if (url.pathname === "/api/dongseon/notify") {   // 동선관리 방 도착·퇴실 → 텔레그램(/room 구독자)
       return dongseonNotify(request, env);

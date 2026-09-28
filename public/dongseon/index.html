@@ -2528,7 +2528,7 @@ async function establishSession(){
   document.getElementById('loginOverlay').classList.remove('show');
   if(currentUser.super){try{await seedApp();await ensureAclShape();}catch(e){console.error('seed',e);}}
   audit('로그인');
-  updateUserPill(); render(); scanAlarms(); resetIdle(); maybeBackupReminder();
+  updateUserPill(); render(); scanAlarms(); resetIdle(); maybeBackupReminder(); try{syncRoomsToBot();}catch(e){}
   applyEmrPrefill();   // 로그인 전에 도착한 EMR 접수 연동 데이터가 있으면 지금 적용
 }
 /* 공용 PC 보안: 일정 시간 무동작 시 자동 로그아웃 — 시간은 콘솔 설정(acl.idleTimeoutMin, 분). 0=사용 안 함 */
@@ -7227,6 +7227,18 @@ function renderSoundRooms(){
 }
 /* 방 도착·퇴실 텔레그램 알림 (2026-09-22): 카드를 옮긴(행동한) 화면만 서버(/api/dongseon/notify)에 알린다 → 여러 화면이 열려 있어도 중복 없음.
    서버는 그 방을 구독한 텔레그램(봇에게 "/room 방이름")에만 보낸다. 구독자가 없으면 아무 일도 없음. 실패해도 보드 동작에는 영향 없음 */
+/* 방 알림 봇 메뉴용 방 목록 올리기 — 로그인 뒤 한 번, 목록이 바뀌었을 때만 (2026-09-28) */
+function syncRoomsToBot(){
+  try{
+    if(!(window.firebase&&firebase.auth&&firebase.auth().currentUser))return;
+    if(!Array.isArray(ROOMS)||!ROOMS.length)return;
+    const sig=JSON.stringify(ROOMS);
+    if(localStorage.getItem('pb_roomsSynced')===sig)return;
+    firebase.auth().currentUser.getIdToken().then(tok=>fetch('/api/dongseon/rooms',{method:'POST',
+      headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({rooms:ROOMS})})
+      .then(r=>{if(r.ok)localStorage.setItem('pb_roomsSynced',sig);}).catch(()=>{}));
+  }catch(e){}
+}
 function roomNotify(p,room,kind,extra){
   try{
     if(!p||!room||!(window.firebase&&firebase.auth)||!firebase.auth().currentUser)return;
