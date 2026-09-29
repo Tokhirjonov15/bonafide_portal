@@ -780,7 +780,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
   .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
-  .sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}   /* neuropathic pain 줄 강조 (2026-09-28 요청) */
+  .sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}   /* 놓치면 안 되는 줄 강조 — slipHot() 참고 (2026-09-28 neuropathic pain, 2026-09-29 reduction) */
   .sd-btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.sd-btns .btn{font-size:16px;padding:10px 18px}
   .slip-empty{padding:24px;color:var(--muted);font-size:15px}
   .slip-sum{margin:7px 12px 0;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.4);border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700;color:#047857;line-height:1.4;cursor:pointer}
@@ -2914,6 +2914,10 @@ function rxParse(rx){
   if(/약\s*처방\s*[oO0]/.test(h))b.push('약처방 있음');else if(/약\s*(처방)?\s*[xX×]/.test(h)||/약처방\s*없음/.test(h))b.push('약처방 없음');
   return {valid:true,lines:lines.slice(mi),badges:b,head};   // med 줄부터 끝까지(의사가 적은 그대로) — med 줄의 표시는 배지로도 보여 준다
 }
+/* 슬립에서 눈에 띄게 표시할 줄 — 놓치면 안 되는 처방. 화면·인쇄 모두 이 규칙을 쓴다(한 곳만 고치면 된다).
+   · neuropathic pain (2026-09-28 요청)
+   · reduction — 골절·탈구 정복. 'reduction' 한 줄로도, 'Lt. wrist reduction' 처럼 부위와 함께도 온다 (2026-09-29 요청) */
+function slipHot(l){return /neuropathic\s*pain|reduction/i.test(String(l||''));}
 /* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
 function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
   const nm=String((p&&p.name)||'').trim();if(!nm)return null;const c=BIT_NOTES.filter(n=>String(n.name||'').trim()===nm);return c.length===1?c[0]:null;}
@@ -2965,7 +2969,7 @@ function renderSlipScreen(){
       <div class="sd-meta">차트 <b>${esc(it.mrn)}</b>${h.birth?' · '+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.pc?' · '+esc(h.pc):''} · ${h.hm}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
-    <ol class="sd-lines">${it.lines.map(l=>`<li${/neuropathic\s*pain/i.test(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
+    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> 슬립 인쇄</button>
       <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button></div>`;
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
@@ -2998,7 +3002,7 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     </table>
     ${it.badges.length?`<div class="bd">${esc(it.badges.join(' · '))}</div>`:''}
     <div class="rule"></div>
-    <ol>${it.lines.map(l=>`<li${/neuropathic\s*pain/i.test(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
+    <ol>${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
     <div class="ft">발행일자: ${localYMD(now)}</div>
     <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
   </body></html>`;}
@@ -4050,6 +4054,11 @@ async function runSelfTest(){
      ok('rxParse: med 없이 중간 줄에 neuropathic pain → 처방 아님', rxParse('PT는 우측 어깨로\nneuropathic pain c-mbb').valid===false);
      eq('rxParse: 구버전 감시 스크립트 호환 — neuropathic pain 으로 시작하는 블록은 배지 없이 처방', (r=>[r.valid,r.lines.length,r.badges.length])(rxParse('neuropathic pain c-mbb\nGreen')), [true,2,0]);
      ok('rxParse: 목록 첫 줄이 med 줄', rxParse('med g\nneuropathic pain x\nGreen').lines[0]==='med g');
+     eq('slipHot: 강조할 줄 — neuropathic pain, reduction(부위와 함께도) / 그 밖은 강조 안 함',
+        ['neuropathic pain IA','reduction','Lt. wrist reduction','Rt. foot 2nd toe reduction','REDUCTION','c-mbb rt 345','med g','Green'].map(slipHot),
+        [true,true,true,true,true,false,false,false]);
+     ok('슬립 인쇄: reduction 줄에도 강조(np) 클래스', (()=>{const _n=BIT_NOTES;BIT_NOTES=[{docId:'r1',mrn:'296',name:'정복환자',rx:'med\nneuropathic pain\nLt. wrist reduction',updatedAt:new Date().toISOString()}];
+        const it=slipItems().find(x=>x.mrn==='296');const h=it?slipHTML(it):'';BIT_NOTES=_n;return /<li class="np">Lt\. wrist reduction<\/li>/.test(h);})());
      {const _n=BIT_NOTES;BIT_NOTES=[{docId:'x',mrn:'555',name:'이름연결',rx:'med\nneuropathic pain z',updatedAt:new Date().toISOString()}];
       const pc={id:'c9',name:'이름연결',mrn:'',route:['3층 대기실'],step:0,status:'대기',notes:{}};data.push(pc);
       ok('bitNoteFor: 차트번호 없는 카드도 오늘 그 이름이 하나뿐이면 처방 문서 연결', bitNoteFor(pc)&&bitNoteFor(pc).mrn==='555');data.pop();BIT_NOTES=_n;}
@@ -4672,8 +4681,11 @@ async function startHosted(){
       if(!user.email){try{await firebase.auth().signOut();}catch(e){}return;}  // 익명 등 이메일 없는 세션 정리
       cloud.user=user.uid;cloud.email=user.email||'';
       try{await migrateIfNeeded();}catch(e){console.error('migrate',e);}
-      try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));fixAutoClosedDates();}catch(e){}
-      try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());localStorage.setItem(STATS_STORE,JSON.stringify(STATS));}catch(e){}
+      /* 내원 기록·체류 기록은 여기서 클라우드에서 통째로 받는다(화면은 이 메모리 배열을 쓴다).
+         로컬에는 최근 것만 캐시한다 — 전체를 쓰면 3.7MB 라 용량 한도에 걸린다 (2026-09-29) */
+      try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());
+        lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));fixAutoClosedDates();}catch(e){}
+      try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());lsSet(STATS_STORE,JSON.stringify(STATS));}catch(e){}
       try{await loadRegistryExt();}catch(e){console.warn('registryChunks',e);}   // 비트 EMR 대용량 명단(있으면)
       if(cloud.unsub)cloud.unsub();
       cloud.unsub=cloud.ref.onSnapshot(s=>{cloud.active=true;setSync('live');
@@ -4682,7 +4694,7 @@ async function startHosted(){
       },err=>cloudErr(err));
       if(cloud.unsubP)cloud.unsubP();
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
-        data=s.docs.map(d=>d.data());normalizeData();localStorage.setItem(STORE,JSON.stringify(data));
+        data=s.docs.map(d=>d.data());normalizeData();lsSet(STORE,JSON.stringify(data));   /* 용량 초과로 던져도 실시간 갱신이 멈추지 않게 (2026-09-29) */
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
         try{scanRoomArrivals();}catch(e){console.warn('roomArrivals',e);}   // 내가 고른 방에 환자가 들어오면 소리(다른 기기에서 옮긴 것 포함)
         try{renderBitBar();bitAutoProcess();renderSlipScreen();}catch(e){}
@@ -4698,7 +4710,7 @@ async function startHosted(){
           if(v.treatBy&&typeof v.treatBy==='object'&&Object.keys(v.treatBy).length)rec.treatBy=v.treatBy;   // 그 보정을 누가 언제 했는지
           if(Number(v.visitAdj))rec.visitAdj=Number(v.visitAdj);   // 내원 횟수 보정(손으로 넣은 예약)
           m[mrn]=rec;});
-        PMEMO=m;localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
+        PMEMO=m;lsSet(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
       },err=>console.error('pmemo snap',err));
       if(cloud.unsubAcl)cloud.unsubAcl();
       cloud.unsubAcl=cloud.aclRef.onSnapshot(s=>{applyAcl(s.exists?s.data():{});cloud.ready.acl=true;afterCloud();},err=>console.error('acl snap',err));
@@ -4745,8 +4757,35 @@ function saveRoutines(){localStorage.setItem(ROUTINE_STORE,JSON.stringify(ROUTIN
 function loadVisits(){try{const s=JSON.parse(localStorage.getItem(VISIT_STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
 function loadSeen(){try{const s=JSON.parse(localStorage.getItem("patientBoard_seen"));if(Array.isArray(s))return s;}catch(e){}return [];}
 function saveSeen(){let a=[...seenAlarms];if(a.length>4000)a=a.slice(-4000);seenAlarms=new Set(a);localStorage.setItem("patientBoard_seen",JSON.stringify(a));}
-function saveLocal(){localStorage.setItem(STORE,JSON.stringify(data));localStorage.setItem(STATS_STORE,JSON.stringify(STATS));localStorage.setItem(REG_STORE,JSON.stringify(REGISTRY));localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));}
-function save(p){saveLocal();if(p)cloudSavePatient(p);}
+/* ═════ 로컬 캐시 저장 — 2026-09-29 '카드를 옮기면 렉이 심하고 아예 안 넘어간다' 수정 ═════
+   전에는 카드를 옮길 때마다 saveLocal() 이 data·STATS·REGISTRY·VISITS 를 모두 문자열로 만들어
+   localStorage 에 다시 썼다. 그런데 VISITS(내원 기록)가 하루 160건씩 쌓여 3.7MB 가 되어 있었다.
+   ① 한 번 옮길 때마다 약 4MB 를 통째로 다시 쓰니 그 사이 화면이 멈춘다(동기 작업).
+   ② localStorage 한도(약 5MB)를 넘기면 setItem 이 예외를 던지고, save() 가 거기서 끊겨
+      바로 뒤의 cloudSavePatient() 까지 못 갔다 → 옮긴 것이 저장되지 않아 카드가 제자리로 돌아온다.
+   그래서: 작은 것(카드)만 즉시, 큰 것은 3초 뒤 한 번만, 모든 쓰기는 try/catch,
+   그리고 클라우드 저장을 먼저 해서 로컬 저장 실패가 절대 클라우드 저장을 막지 못하게 한다.
+   VISITS 캐시는 최근 것만 둔다 — 전체 목록은 로그인할 때 클라우드에서 다시 받으므로 손실이 아니다. */
+const VISIT_CACHE=300;   /* 오프라인일 때 최근 내원만 보이면 된다 — 전체는 로그인할 때 클라우드에서 받는다 */
+function lsSet(k,v){
+  try{localStorage.setItem(k,v);return true;}
+  catch(e){
+    /* 용량이 찼다: 가장 큰 캐시(내원 기록)를 버리고 한 번만 다시 시도한다.
+       카드(data) 저장은 반드시 성공해야 하므로 이 구제 절차를 둔다. 그래도 안 되면 포기 — 원본은 클라우드다. */
+    try{localStorage.removeItem(VISIT_STORE);localStorage.setItem(k,v);return true;}catch(_){}
+    console.warn('localStorage 저장 실패(용량)',k,e&&e.name);return false;}}
+let _bigSaveT=null;
+function saveBigLocal(){_bigSaveT=null;
+  lsSet(STATS_STORE,JSON.stringify(STATS));
+  lsSet(REG_STORE,JSON.stringify(REGISTRY));
+  lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));}
+function saveLocal(){lsSet(STORE,JSON.stringify(data));
+  if(!_bigSaveT)_bigSaveT=setTimeout(saveBigLocal,3000);}
+function flushBigLocal(){if(_bigSaveT){clearTimeout(_bigSaveT);saveBigLocal();}}
+window.addEventListener('pagehide',flushBigLocal);            /* 창을 닫거나 새로고침하면 미뤄 둔 것을 쓴다 */
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushBigLocal();});
+/* 클라우드 먼저 — 로컬 저장이 실패해도(용량) 클라우드 저장을 막지 못하게. 둘은 서로를 막지 않는다. */
+function save(p){if(p){try{cloudSavePatient(p);}catch(e){console.error('cloudSavePatient',e);}}saveLocal();}
 const REG_CAP=6000;   // 설정 문서 1MB 한도 보호: 등록부는 최근 활동순 6000명까지(초과분=가장 오래 안 온 환자부터 정리)
 function capRegistry(arr){return (Array.isArray(arr)&&arr.length>REG_CAP)?arr.slice(-REG_CAP):(arr||[]);}
 /* ═════ 대용량 환자 명단(비트 EMR 내보내기): registryChunks/{c0..cN} 에 1,000명씩 보관 — 설정문서(1MB)와 분리 ═════ */

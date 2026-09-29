@@ -5,10 +5,13 @@
    구글시트 "반듯한 OS 연장근무" 의 해당 달 탭에 자동으로 적는다.
 
    ── 기재 규칙 (담당자 확인 2026-09-27) ─────────────────────────────────
+   · 1.5배는 "더할 때"만 붙는다. 빼는 것(사용)은 언제나 1배.
    · 연장(출근 전·퇴근 후·점심 근무) → 연장 행에 =분*1.5 수식.
      메시지에 "1.5배X" 가 있으면 그대로(곱하지 않음). 같은 날 두 번이면 수식에 이어 붙임.
-   · 추가(휴무일 추가근무) → 480분까지 추가 행, 넘는 분은 추가연장 행. 보라 배경(#9900ff).
-   · 사용 → 연장 행에 음수. 초록 배경(#00ff00).
+   · 추가(휴무일 추가근무) → 480분까지 추가 행에 1배, 480 넘는 분은 추가연장 행에 =분*1.5.
+     보라 배경(#9900ff). (480 기준은 사용설명서 사진에서 온 것 — 담당자 재확인 2026-09-29)
+   · 사용("사용일"·연장근무에서 차감) → 연장 행에 음수, 1배로 그대로 뺀다(1.5배 금지).
+     초록 배경(#00ff00). (담당자 확인 2026-09-29)
    · 9/30 근무를 10월에 올려도 9월 탭에 적는다.
    · 칸 메모에 원문·보낸이·시각을 남긴다.
    · 원래 메시지에 "답장"으로 수정을 올리면: 원래 기록을 빼고 새 기록을 넣는다.
@@ -101,8 +104,13 @@ function handleMessage(msg) {
   reply(msg, out || '❓ 기재할 내용을 찾지 못했습니다.');
 }
 
+/* 방에 되돌려 줄 한 줄 — 실제로 칸에 들어간 값까지 보여 준다(1.5배인지 바로 확인되게) */
 function fmtEntry(en) {
-  return en.name + ' · ' + en.date.slice(5).replace('-', '/') + ' · ' + en.kind + ' ' + en.minutes + '분' + (en.mult15 === false && en.kind === '연장' ? ' (1.5배X)' : '');
+  const head = en.name + ' · ' + en.date.slice(5).replace('-', '/') + ' · ' + en.kind + ' ' + en.minutes + '분';
+  if (en.kind === '연장') return head + (en.mult15 === false ? ' (1.5배X → ' + en.minutes + ')' : ' ×1.5 → ' + (en.minutes * 1.5));
+  if (en.kind === '사용') return head + ' 차감 (1배 → -' + en.minutes + ')';
+  if (en.minutes > 480) return head + ' (480까지 1배, 초과 ' + (en.minutes - 480) + '분 ×1.5)';
+  return head + ' (1배)';
 }
 function reply(msg, text) {
   tg('sendMessage', { chat_id: msg.chat.id, reply_to_message_id: msg.message_id, text: text });
@@ -119,10 +127,15 @@ function parseWithClaude(text, replyText, sender, msgDate) {
     '- 메시지를 보낸 사람과 근무한 사람은 다를 수 있다. 이름은 반드시 메시지 본문에서 찾는다.',
     '- 한 메시지에 여러 기록이 있을 수 있다. 각각 entries 항목으로.',
     '- kind: 출근 전/퇴근 후/점심 근무·"출근전 근무"·"퇴근시간전근무" 등 근무일의 연장 = "연장".',
-    '  휴무일에 나와 일한 것·"추가근무" = "추가". "사용일"·연장근무 차감 = "사용".',
+    '  휴무일에 나와 일한 것·"추가근무" = "추가".',
+    '  쌓인 시간을 쓴 것 = "사용". "사용일"·"연장근무 사용"·"연장에서 차감"·"연장근무 90분 썼습니다"·',
+    '  "조퇴/늦게 출근하며 연장근무로 대체" 는 문장에 "연장근무" 가 들어 있어도 모두 "사용" 이다.',
+    '  구분 기준은 낱말이 아니라 방향이다 — 시간이 늘어나면 연장/추가, 줄어들면 사용.',
     '- minutes: 본문에 적힌 분(分)을 그대로 쓴다. 시간 범위와 분이 다르면 적힌 분을 믿는다.',
     '  분이 없고 시간 범위만 있으면 범위로 계산한다. 둘 다 없으면 errors 에 이유를 적고 그 항목은 버린다. 추측 금지.',
-    '- mult15: 기본 true. 본문에 "1.5배X"·"1.5배 안함" 이 있으면 false. (추가·사용에는 의미 없음 — true 로 둔다)',
+    '  minutes 는 언제나 양수다. 빼는 것은 음수가 아니라 kind="사용" 으로 표시한다.',
+    '- mult15: kind="연장" 일 때만 쓴다. 기본 true, 본문에 "1.5배X"·"1.5배 안함" 이 있으면 false.',
+    '  kind 가 "추가" 또는 "사용" 이면 반드시 false — 이 둘은 1배다.',
     '- "Total 연장근무시간"·"남은연장근무시간" 같은 합계 숫자는 기록이 아니다. 무시한다.',
     '- date: 연도가 없으면 메시지 날짜(아래) 기준 가장 가까운 과거(오늘 포함)로 정한다. "사용일 9/23" 처럼 사용 날짜가 따로 있으면 그 날짜다.',
     '- 답장 원문이 주어지고 새 메시지에 "수정" 이 있으면: 답장 원문을 해석해 remove 에, 고쳐진 내용을 entries 에 넣는다.',
@@ -153,11 +166,16 @@ function parseWithClaude(text, replyText, sender, msgDate) {
   if (!m) throw new Error('Claude 응답에서 JSON 을 찾지 못했습니다.');
   const out = JSON.parse(m[0]);
   out.entries = out.entries || []; out.remove = out.remove || []; out.errors = out.errors || [];
-  /* 최소 검증 */
-  out.entries = out.entries.filter(function (en) {
-    if (!en.name || !en.date || !en.minutes || !en.kind) { out.errors.push('빠진 값이 있는 항목을 건너뜀'); return false; }
-    return true;
-  });
+  /* 최소 검증 + 규칙 고정 (해석이 틀려도 1.5배가 잘못 붙지 않도록) */
+  function clean(list) {
+    return list.filter(function (en) {
+      if (!en.name || !en.date || !en.minutes || !en.kind) { out.errors.push('빠진 값이 있는 항목을 건너뜀'); return false; }
+      en.minutes = Math.abs(Number(en.minutes));                 // 분은 항상 양수
+      if (en.kind !== '연장') en.mult15 = false;                 // 추가·사용은 1배
+      return en.minutes > 0;
+    });
+  }
+  out.entries = clean(out.entries); out.remove = clean(out.remove);
   return out;
 }
 
@@ -172,21 +190,25 @@ function applyEntry(ss, en, msg, sender, isRemove) {
 
   if (en.kind === '사용') {
     const cell = sh.getRange(row, col);
-    addToCell(cell, -min, false);                  // 사용은 음수
+    addToCell(cell, -min, false);                  // 음수, 1배 — 쓴 분을 그대로 뺀다
     cell.setBackground('#00ff00');
     appendNote(cell, note);
   } else if (en.kind === '연장') {
     const cell = sh.getRange(row, col);
-    addToCell(cell, min, en.mult15 !== false);     // 기본 1.5배 수식
+    addToCell(cell, min, en.mult15 !== false);     // 더할 때만 1.5배
     appendNote(cell, note);
   } else if (en.kind === '추가') {
+    /* 추가 행에 480분까지 1배, 480 넘는 분은 추가연장 행에 =분*1.5 로. (2026-09-29 확인) */
     const c1 = sh.getRange(row + 1, col), c2 = sh.getRange(row + 2, col);
-    const total = numOf(c1) + numOf(c2) + min;
+    const total = numOf(c1) + rawOver(c2) + min;    // rawOver: 추가연장 칸의 1.5배 이전 원래 분
     if (total < 0) throw new Error('추가근무가 음수가 됩니다(' + total + '분)');
-    c1.setValue(total > 0 ? Math.min(total, 480) : '');
-    c2.setValue(total > 480 ? total - 480 : '');
-    if (total > 0) { c1.setBackground('#9900ff'); if (total > 480) c2.setBackground('#9900ff'); }
+    const base = Math.min(total, 480), over = Math.max(total - 480, 0);
+    c1.setValue(base > 0 ? base : '');
+    if (over > 0) c2.setFormula('=' + over + '*1.5'); else c2.setValue('');
+    c1.setBackground(base > 0 ? '#9900ff' : null);
+    c2.setBackground(over > 0 ? '#9900ff' : null);  /* 수정으로 0 이 되면 색도 지운다 */
     appendNote(c1, note);
+    if (over > 0) appendNote(c2, note);
   } else {
     throw new Error('알 수 없는 종류: ' + en.kind);
   }
@@ -206,6 +228,19 @@ function addToCell(cell, min, mult15) {
   }
 }
 function numOf(range) { const v = range.getValue(); return (v === '' || v === null || isNaN(v)) ? 0 : Number(v); }
+/* 추가연장 칸은 =분*1.5 수식으로 적는다. 같은 날 또 들어오면 다시 계산해야 하므로 원래 분을 되돌려 읽는다.
+   사람이 손으로 넣은 값·모르는 수식이면 덮어쓰지 않고 멈춘다 — 잘못 계산하는 것보다 안전하다. */
+function rawOver(range) {
+  const f = String(range.getFormula() || '').trim();
+  if (!f) {
+    const v = range.getValue();
+    if (v === '' || v === null || isNaN(v) || Number(v) === 0) return 0;
+    throw new Error('추가연장 칸(' + range.getA1Notation() + ')에 손으로 넣은 값 ' + v + ' 이 있습니다 — 직접 확인해 주세요');
+  }
+  const m = f.match(/^=\s*(\d+(?:\.\d+)?)\s*\*\s*1\.5$/);
+  if (m) return Number(m[1]);
+  throw new Error('추가연장 칸(' + range.getA1Notation() + ') 수식 "' + f + '" 을 해석할 수 없습니다 — 직접 확인해 주세요');
+}
 function appendNote(cell, note) {
   const old = cell.getNote();
   cell.setNote(old ? old + '\n' + note : note);
