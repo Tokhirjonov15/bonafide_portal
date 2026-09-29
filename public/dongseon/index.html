@@ -3194,7 +3194,7 @@ async function bitAutoProcess(){
   }catch(e){console.warn('bitAutoProcess',e);}
   finally{BIT_AUTO_BUSY=false;}
 }
-/* 비트에서 접수취소(캐스트 Command 3) → 아직 첫 방에서 대기 중이고 손대지 않은 카드는 자동 제거, 그 외엔 알림만
+/* 비트에서 접수취소(캐스트 Command 3) → 카드를 지운다(손댄 카드도 — 2026-09-29, 내원 목록을 비트와 같게)
    · 비트는 접수 수정·보류 때 '접수취소 → 접수'를 1초 안에 연달아 보낸다 → 취소를 처음 본 뒤 6초(이 화면 시계 기준) 기다렸다가,
      그때도 여전히 cancelled 이면 진짜 취소로 본다 (PC 간 시계 차이에 영향 없도록 문서의 시각은 쓰지 않음) */
 const BIT_CANCEL_GRACE=6000;
@@ -3222,16 +3222,14 @@ function bitApplyCancels(){
         .catch(e=>console.warn('bit cancel',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
     }
     if(!p)return;
-    const untouched=p.step===0&&(p.status||'대기')==='대기'&&!p.out&&!(p.visits&&p.visits.length)&&!Object.keys(p.notes||{}).length;
-    if(untouched){
-      audit('환자삭제(비트 접수취소)',p.name+(p.mrn?' ('+p.mrn+')':''));
-      cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
-      try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
-    } else if(!p.bitCancel){
-      /* 손댄 카드는 자동 삭제하지 않는다(치료가 시작됐을 수 있음) — 대신 지워지지 않는 빨간 표시를 남긴다 (2026-09-28) */
-      p.bitCancel={at:new Date().toISOString()};save(p);render();
-      try{notify('triangle-alert','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되었습니다. 카드를 확인하세요.');}catch(e){}
-    }
+    /* 2026-09-29: 손댄 카드도 지운다 — 비트에서 취소된 접수는 내원이 아니므로 내원 목록이 비트와 같아야 한다.
+       (전에는 치료 중일 수 있어 빨간 표시만 남겼다.) 내원 기록(visits)은 만들지 않는다. 비트에서 다시 접수하면
+       문서가 되살아나(bitRevived) 새 카드가 생긴다. 이미 치료를 진행한 카드였으면 소리 알림도 함께 */
+    const touched=!(p.step===0&&(p.status||'대기')==='대기'&&!p.out&&!(p.visits&&p.visits.length)&&!Object.keys(p.notes||{}).length);
+    audit('환자삭제(비트 접수취소)',p.name+(p.mrn?' ('+p.mrn+')':'')+(touched?' — 진행 중이던 카드':''));
+    cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
+    try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
+    if(touched)try{notify('triangle-alert','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되어 카드를 지웠습니다. 다시 접수하면 새 카드가 생깁니다.');}catch(e){}
   });
 }
 /* 비트 수납완료(캐스트 Command 8) → 환자가 계산하고 나갔으므로 카드를 수납대기 경유로 자동 내보내기(내원 기록 보관).
@@ -4686,6 +4684,21 @@ async function startHosted(){
          로컬에는 최근 것만 캐시한다 — 전체를 쓰면 3.7MB 라 용량 한도에 걸린다 (2026-09-29) */
       try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());
         lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));fixAutoClosedDates();}catch(e){}
+      /* 오늘 내원 기록은 실시간으로 듣는다 (2026-09-29): 전에는 로그인 때 한 번만 받아서, 다른 PC 가 [내보내기] 한 환자가
+         이 PC 의 내원 목록에는 새로고침 전까지 없었다 — 접수 #번호가 빠져 보이고 '완료 0' 으로 나왔다.
+         '다시 원내로'로 지운 기록도 바로 빠진다. 지난 날짜는 위의 한 번 받기로 충분하고, 오늘(현지 자정 이후) 완료 문서만 들으니 가볍다 */
+      if(cloud.unsubV)cloud.unsubV();
+      {const d0=new Date();d0.setHours(0,0,0,0);
+       cloud.unsubV=cloud.visitsCol.where('dischargedAt','>=',d0.toISOString()).onSnapshot(s=>{
+         if(s.metadata&&s.metadata.hasPendingWrites)return;   // 이 PC 가 방금 쓴 것은 archiveVisit 이 이미 VISITS 에 넣었다
+         let n=0;
+         s.docChanges().forEach(ch=>{const v=ch.doc.data()||{};const id=v.id||ch.doc.id;
+           const i=VISITS.findIndex(x=>x.id===id);
+           if(ch.type==='removed'){if(i>=0){VISITS.splice(i,1);n++;}return;}
+           if(i<0){VISITS.push(v);n++;}
+           else if(JSON.stringify(VISITS[i])!==JSON.stringify(v)){VISITS[i]=v;n++;}});
+         if(n){try{renderThrottled();}catch(e){}}
+       },err=>console.warn('visits snap',err));}
       try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());lsSet(STATS_STORE,JSON.stringify(STATS));}catch(e){}
       try{await loadRegistryExt();}catch(e){console.warn('registryChunks',e);}   // 비트 EMR 대용량 명단(있으면)
       if(cloud.unsub)cloud.unsub();
