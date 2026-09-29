@@ -71,12 +71,13 @@ function handleMessage(msg) {
   if (!text || text.startsWith('/')) return;   // 명령·빈 메시지 무시
   if (msg.from && msg.from.is_bot) return;
 
-  /* OT 메시지로 보이지 않으면 조용히 넘어간다(잡담 방해 금지):
-     숫자+분 이 없고 '수정' 도 아니면 스킵 */
-  if (!/\d\s*분|\d+\s*시간|수정/.test(text)) return;
+  const replyText = (msg.reply_to_message && msg.reply_to_message.text) ? msg.reply_to_message.text : '';
+
+  /* OT 메시지로 보이지 않으면 조용히 넘어간다(잡담 방해 금지).
+     "삭제"·"취소" 는 원래 메시지에 답장일 때만 받는다 — 그냥 대화 중의 '취소' 에 끼어들지 않도록 (2026-09-29) */
+  if (!/\d\s*분|\d+\s*시간|수정/.test(text) && !(replyText && /삭제|취소|잘못/.test(text))) return;
 
   const sender = ((msg.from && msg.from.first_name) || '') + ((msg.from && msg.from.last_name) ? ' ' + msg.from.last_name : '');
-  const replyText = (msg.reply_to_message && msg.reply_to_message.text) ? msg.reply_to_message.text : '';
   const msgDate = Utilities.formatDate(new Date(msg.date * 1000), 'Asia/Seoul', 'yyyy-MM-dd');
 
   const parsed = parseWithClaude(text, replyText, sender, msgDate);
@@ -139,6 +140,9 @@ function parseWithClaude(text, replyText, sender, msgDate) {
     '- "Total 연장근무시간"·"남은연장근무시간" 같은 합계 숫자는 기록이 아니다. 무시한다.',
     '- date: 연도가 없으면 메시지 날짜(아래) 기준 가장 가까운 과거(오늘 포함)로 정한다. "사용일 9/23" 처럼 사용 날짜가 따로 있으면 그 날짜다.',
     '- 답장 원문이 주어지고 새 메시지에 "수정" 이 있으면: 답장 원문을 해석해 remove 에, 고쳐진 내용을 entries 에 넣는다.',
+    '  새 메시지가 "삭제"·"취소"·"잘못 올렸습니다" 처럼 지우라는 뜻뿐이면: 답장 원문을 remove 에만 넣고 entries 는 비운다.',
+    '  답장 원문이 없는데 고치거나 지우라고 하면, 무엇을 고칠지 알 수 없으므로 errors 에',
+    '  "고칠 원래 메시지에 답장으로 보내 주세요" 라고 적는다. 지어내지 않는다.',
     '- 확실하지 않은 것은 errors 에 한국어 한 줄로 적는다. 지어내지 않는다.'
   ].join('\n');
   const usr = '메시지 날짜: ' + msgDate + '\n보낸 사람: ' + sender + (replyText ? '\n--- 답장 원문 ---\n' + replyText : '') + '\n--- 메시지 ---\n' + text;

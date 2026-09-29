@@ -2011,14 +2011,15 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   </div>
 </div>
 
-<!-- 휴무 관리 모달 (관리자) -->
+<!-- 휴무 관리 모달 (직원 모두) -->
 <div class="modal-bg" id="offModal">
   <div class="modal" style="width:620px">
     <h3><i data-lucide="calendar-off"></i> 휴무 관리</h3>
     <div class="body">
       <p class="hint">병원은 연중무휴 — 직원별 휴무·근무시간을 지정하세요. <b>휴무이거나 근무시간 밖인 직원은</b> 진료의/간호사 선택 목록에서 빠지고 자동 지정되지 않습니다.<br>
       · 요일 버튼 = 매주 반복 휴무 · 하루 휴무 = 그날만 휴무<br>
-      · 근무시간 = 요일별로 몇 시부터 몇 시까지 일하는지 (비우면 종일). 날짜별 근무시간을 넣으면 그날은 그 시간이 우선</p>
+      · 근무시간 = 요일별로 몇 시부터 몇 시까지 일하는지 (비우면 종일). 날짜별 근무시간을 넣으면 그날은 그 시간이 우선<br>
+      · <b>직원 모두 고칠 수 있습니다</b> — 저장 버튼 없이 바로 반영되고, 누가 언제 바꿨는지는 접근 기록에 남습니다</p>
       <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)">
         <i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderOffList()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
       </div>
@@ -5478,7 +5479,7 @@ function render(){
   if(_wy&&Math.abs((window.scrollY||0)-_wy)>2)try{window.scrollTo(window.scrollX||0,_wy);}catch(e){}
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=canStats()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
-  const ob=document.getElementById("offBtn");if(ob)ob.style.display=isAdmin()?"":"none";
+  const ob=document.getElementById("offBtn");if(ob)ob.style.display="";   /* 휴무 관리는 모두에게 — 본인 휴무·근무시간을 직접 고친다 (2026-09-29 요청) */
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
 }
 /* 휴대폰 방 바로가기 — 보이는 방(현재 층 탭 기준)마다 칩 하나(환자 수 포함). 넓은 화면에서는 CSS로 숨김 */
@@ -9668,7 +9669,7 @@ window.bulkCreateStaff=async function(){
   alert(`완료\n생성: ${made.length}개\n건너뜀(이미 있음): ${skipped.length}개${failed.length?'\n실패: '+failed.join(', '):''}`);
   try{renderStaffList();}catch(e){}
 };
-/* ───── 휴무 관리 (관리자) ───── */
+/* ───── 휴무 관리 (직원 모두 — 버튼도 모두에게 보인다) ───── */
 let OFF_NAMES=[];   // renderOffList가 채움 — 인라인 핸들러는 인덱스로 참조(한글 이름 따옴표 문제 회피)
 function offNames(){const s2=new Set();
   DOCTORS.forEach(n=>{if(n)s2.add(n);});
@@ -9678,7 +9679,8 @@ function offNames(){const s2=new Set();
 function offOf(n){const o=OFF_SCHED[n]||(OFF_SCHED[n]={});if(!Array.isArray(o.weekly))o.weekly=[];if(!Array.isArray(o.dates))o.dates=[];
   if(!o.hours||typeof o.hours!=='object')o.hours={};if(!o.dateHours||typeof o.dateHours!=='object')o.dateHours={};return o;}
 let OFF_HOURS_EDIT=null;   // {name, di} — 지금 편집 중인 요일 근무시간
-window.openOff=function(){if(!isAdmin()){alert("휴무 관리는 관리자만 가능합니다.");return;}renderOffList();document.getElementById("offModal").classList.add("show");};
+/* 휴무 관리는 직원 모두가 열고 고친다 (2026-09-29 요청). 누가 무엇을 바꿨는지는 audit('휴무변경'·'근무시간변경') 에 남는다 */
+window.openOff=function(){renderOffList();document.getElementById("offModal").classList.add("show");};
 window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
 const OFF_DAYS=["일","월","화","수","목","금","토"];
 function renderOffList(){
