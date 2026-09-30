@@ -3247,10 +3247,39 @@ function bitApplyCancels(){
        문서가 되살아나(bitRevived) 새 카드가 생긴다. 이미 치료를 진행한 카드였으면 소리 알림도 함께 */
     const touched=!(p.step===0&&(p.status||'대기')==='대기'&&!p.out&&!(p.visits&&p.visits.length)&&!Object.keys(p.notes||{}).length);
     audit('환자삭제(비트 접수취소)',p.name+(p.mrn?' ('+p.mrn+')':'')+(touched?' — 진행 중이던 카드':''));
+    const gone=p.seq;
     cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
+    try{bitShiftSeqAfter(r,gone);}catch(e){console.warn('seq shift',e);}   /* 빈 번호가 남지 않게 뒷번호를 당긴다 (2026-09-30) */
     try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
     if(touched)try{notify('triangle-alert','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되어 카드를 지웠습니다. 다시 접수하면 새 카드가 생깁니다.');}catch(e){}
   });
+}
+/* ═════ 비트 접수취소 뒤 등록번호 당기기 (2026-09-30 요청) ═════
+   #35 가 취소로 지워지면 #36→#35, #37→#36 … 그날 번호가 비지 않게 한다. 대상 = 오늘 보드 카드 + 오늘 내원 기록 중 지워진 번호보다 큰 것.
+   · 같은 취소를 여러 화면이 동시에 처리하므로, 접수 문서에 seqShifted 를 트랜잭션으로 먼저 찍은 화면 하나만 당긴다.
+   · 번호 필드(seq)만 update 로 바꾼다 — 문서를 통째로 다시 쓰지 않는다(유령 카드 되살리기 방지). 다른 화면은 카드·내원 기록 구독으로 받는다.
+   · 카운터(seqNext)는 당긴 뒤 '오늘 최대 번호+1' 로 내려 설정 문서에 올린다 — seqSyncFromCfg 가 다른 화면에도 내린다. */
+function bitShiftSeqAfter(r,seq){
+  if(!(typeof seq==='number'&&seq>0)||!cloud.db||!cloud.intakeCol||!r||!r.docId)return;
+  const ref=cloud.intakeCol.doc(r.docId);
+  cloud.db.runTransaction(t=>t.get(ref).then(d=>{const x=d.exists?(d.data()||{}):null;if(!x||x.seqShifted)return false;t.update(ref,{seqShifted:seq});return true;}))
+    .then(won=>{if(won)return shiftSeqAfter(seq);})
+    .catch(e=>console.warn('seq shift claim',e));
+}
+async function shiftSeqAfter(seq){
+  const today=localYMD(new Date());
+  const dayOf=x=>{const src=x.arrivedAt||x.enteredAt||x.dischargedAt;return src?localYMD(new Date(src)):'';};
+  const live=data.filter(p=>!p.discharged&&typeof p.seq==='number'&&p.seq>seq&&dayOf(p)===today);
+  const vis=(Array.isArray(VISITS)?VISITS:[]).filter(v=>typeof v.seq==='number'&&v.seq>seq&&localYMD(new Date(v.dischargedAt||0))===today);
+  const jobs=[];
+  live.forEach(p=>{p.seq=p.seq-1;if(cloud.patientsCol)jobs.push(cloud.patientsCol.doc(p.id).update({seq:p.seq}).catch(e=>console.warn('seq shift card',p.id,e&&e.code)));});
+  vis.forEach(v=>{v.seq=v.seq-1;if(cloud.visitsCol&&v.id)jobs.push(cloud.visitsCol.doc(v.id).update({seq:v.seq}).catch(e=>console.warn('seq shift visit',v.id,e&&e.code)));});
+  await Promise.all(jobs);
+  seqNext=Math.max(1,maxSeqToday()+1);seqDate=today;
+  lsSet("patientBoard_seq",String(seqNext));lsSet("patientBoard_seqdate",today);
+  saveLocal();cloudSaveConfig();render();
+  try{audit('등록번호 당김(비트 접수취소)','#'+seq+' 빈자리 → 카드 '+live.length+'장·내원 기록 '+vis.length+'건 번호 -1, 다음 번호 #'+seqNext);}catch(e){}
+  if(live.length+vis.length)try{toast('접수 #'+seq+' 취소 → 뒷번호 '+(live.length+vis.length)+'건을 하나씩 당겼습니다');}catch(e){}
 }
 /* 비트 수납완료(캐스트 Command 8) → 환자가 계산하고 나갔으므로 카드를 수납대기 경유로 자동 내보내기(내원 기록 보관).
    · 수납대기(7)는 아직 원내(추가 치료가 생길 수 있음) → 카드를 그대로 둔다.
@@ -4515,13 +4544,40 @@ function applyCfg(d){
 }
 /* ── 클라우드 타깃 쓰기 ── */
 function cloudSaveConfig(){if(cloud.active&&cloud.ref){const c=cfgBundle();c.updatedAt=Date.now();c.updatedBy=cloud.user;cloud.ref.set(jclone(c)).catch(e=>{setSync('err');console.error(e);});}}  // jclone으로 undefined 제거(Firestore 거부 방지)
-function cloudSavePatient(p){if(cloud.active&&cloud.patientsCol&&p&&p.id)cloud.patientsCol.doc(p.id).set(jclone(p)).catch(e=>{setSync('err');console.error(e);});}
+/* ═════ 유령 카드 방지 (2026-09-30) ═════
+   화면이 오래되어(잠든 태블릿·끊긴 구독) 다른 화면에서 이미 내보낸 카드가 그대로 보이는 일이 있었다. 그 카드를 옮기거나
+   처방 동선 자동 채우기가 save() 하면 Firestore set() 이 지워진 문서를 다시 만들어 — 카드가 보드에 되살아나고,
+   다시 내보내면 내원 기록이 한 번 더 생겼다 (09-30: #28 세 번, #26·#30 되살아남).
+   그래서 서버가 한 번이라도 보여 준 카드(KNOWN_PIDS)는 update() 로만 쓴다 — 문서가 없으면 실패하고, 그때는
+   유령으로 보고 이 화면에서 지운 뒤 새로고침한다. 새 카드(서버가 아직 모르는 id)만 set() 으로 만든다. */
+const KNOWN_PIDS=new Set();
+let _ghostReloadT=null;
+function ghostPatient(pid,why){
+  const i=data.findIndex(x=>x.id===pid);const nm=i>=0?(data[i].name||''):'';
+  if(i>=0){data.splice(i,1);saveLocal();try{render();}catch(e){}}
+  console.warn('유령 카드',pid,why);
+  try{audit('유령 카드 정리',nm+' — '+why);}catch(e){}
+  try{toast((nm?dispName(nm)+' 님 카드는 ':'이 카드는 ')+'다른 화면에서 이미 내보냈습니다. 화면이 오래되어 새로고침합니다.');}catch(e){}
+  if(!_ghostReloadT)_ghostReloadT=setTimeout(()=>{try{flushBigLocal();}catch(e){}location.reload();},2500);
+}
+function cloudSavePatient(p){
+  if(!(cloud.active&&cloud.patientsCol&&p&&p.id))return;
+  const ref=cloud.patientsCol.doc(p.id);
+  if(!KNOWN_PIDS.has(p.id)){ref.set(jclone(p)).catch(e=>{setSync('err');console.error(e);});return;}   // 새 카드
+  /* update() 는 지운 필드(delete p.parking 등)를 서버에 반영하지 못하므로, 있는지 확인한 뒤 통째로 set 한다(트랜잭션) */
+  const body=jclone(p);
+  cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;t.set(ref,body);return true;}))
+    .then(ok=>{if(ok===false)ghostPatient(p.id,'저장 시 서버에 없음');})
+    .catch(e=>{setSync('err');console.error(e);});
+}
 /* 동시편집 안전 쓰기: 서버 최신본을 트랜잭션으로 다시 읽고 mutate만 적용 → 다른 기기가 바꾼 필드·노트를 덮어쓰지 않음. 오프라인이면 로컬만(이미 반영됨). */
 function cloudPatientTxn(pid,mutate){
   if(!cloud.active||!cloud.patientsCol||!cloud.db||!pid)return Promise.resolve(false);
   const ref=cloud.patientsCol.doc(pid);
   return cloud.db.runTransaction(tx=>tx.get(ref).then(snap=>{
-    const base=snap.exists?snap.data():(data.find(x=>x.id===pid)||null);
+    /* 서버에 문서가 없으면 로컬 복사본으로 되살리지 않는다 — 다른 화면에서 이미 내보낸 유령 카드 (2026-09-30) */
+    if(!snap.exists){if(KNOWN_PIDS.has(pid))setTimeout(()=>ghostPatient(pid,'수정 시 서버에 없음'),0);return null;}
+    const base=snap.data();
     if(!base)return null;
     const d=jclone(base);mutate(d);tx.set(ref,jclone(d));return d;
   })).then(d=>{
@@ -4729,6 +4785,7 @@ async function startHosted(){
       if(cloud.unsubP)cloud.unsubP();
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
         data=s.docs.map(d=>d.data());normalizeData();lsSet(STORE,JSON.stringify(data));   /* 용량 초과로 던져도 실시간 갱신이 멈추지 않게 (2026-09-29) */
+        s.docs.forEach(d=>KNOWN_PIDS.add(d.id));   /* 서버가 보여 준 카드 id — 이후 저장은 update() 로만 (유령 카드 방지, 2026-09-30) */
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
         try{scanRoomArrivals();}catch(e){console.warn('roomArrivals',e);}   // 내가 고른 방에 환자가 들어오면 소리(다른 기기에서 옮긴 것 포함)
         try{renderBitBar();bitAutoProcess();renderSlipScreen();}catch(e){}
@@ -6896,8 +6953,10 @@ function seqSyncFromCfg(d){
   const _today=localYMD(new Date());
   if(seqDate!==_today){seqNext=1;seqDate=_today;}
   const cloudNext=(d&&d.seqDate===_today&&typeof d.seqNext==='number')?d.seqNext:1;
-  seqNext=Math.max(seqNext,cloudNext,maxSeqToday()+1);
-  localStorage.setItem("patientBoard_seq",String(seqNext));localStorage.setItem("patientBoard_seqdate",seqDate);
+  /* 2026-09-30: 이 기기의 옛 카운터는 더 이상 우선하지 않는다 — 비트 접수취소로 뒷번호를 당긴 뒤 설정 문서의 낮아진 카운터를 받아들여야
+     다음 환자가 빈 번호(#36 등)를 다시 받지 않는다. 중복 방지는 '오늘 최대 번호+1'(카드·내원 기록 기준)이 맡는다 */
+  seqNext=Math.max(cloudNext,maxSeqToday()+1);
+  lsSet("patientBoard_seq",String(seqNext));lsSet("patientBoard_seqdate",seqDate);
 }
 /* 오늘 등록번호 다시 매기기(관리자) — 오늘의 내원 기록 + 보드 카드를 도착 시각순으로 1번부터. 잘못 붙은 번호(#218 등)를 바로잡는다 */
 function renumberToday(){
@@ -7154,6 +7213,7 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     try{audit('주차권지급',p.name+(p.mrn?' ('+p.mrn+')':'')+' (내보내기 확인)');}catch(e){}
   }
   if(!confirm(`'${p.name}'님을 종결하고 보드에서 내보낼까요?\n(내원 기록으로 보관됩니다)`))return;
+  try{audit('내보내기',p.name+(p.mrn?' ('+p.mrn+')':'')+(p.seq?' #'+p.seq:''));}catch(e){}   /* 누가 언제 내보냈는지 — 유령 카드 추적용 (2026-09-30) */
   completeVisit(p,'종결');archiveVisit(p);cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();}
 /* ── 자동 마감: 내보내기를 잊은 카드 정리 ──
    · 전날(또는 그 이전) 도착한 카드 → 언제든 즉시 내보내기 (다음 날 등록번호가 #1부터 시작하도록)
