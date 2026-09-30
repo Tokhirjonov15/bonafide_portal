@@ -9511,11 +9511,13 @@ function savePatient(){
 /* 실비보험 체크 ↔ 한도 입력 활성화 */
 window.onSilbi=function(){const c=document.getElementById("f_silbi"),l=document.getElementById("f_silbiLimit");
   if(!c||!l)return;l.disabled=!c.checked;if(!c.checked)l.value="";};
-function deletePatient(){if(editId){const p=data.find(x=>x.id===editId);if(confirm("이 환자를 삭제할까요?")){audit('환자삭제',(p&&p.name)||'');cloudDelPatient(editId);data=data.filter(x=>x.id!==editId);save();render();closeModal();}}}
+/* 카드를 지우면(내보내기 아님) 그 뒤 번호를 하나씩 당긴다 — 시험 카드 #53 을 지웠을 때 #54→#53 … (2026-09-30 요청). 지운 화면 하나만 실행하므로 선점이 필요 없다 */
+function shiftAfterDelete(p){try{if(p&&typeof p.seq==='number'&&p.seq>0)shiftSeqAfter(p.seq);}catch(e){console.warn('seq shift',e);}}
+function deletePatient(){if(editId){const p=data.find(x=>x.id===editId);if(confirm("이 환자를 삭제할까요?")){audit('환자삭제',(p&&p.name)||'');cloudDelPatient(editId);data=data.filter(x=>x.id!==editId);save();render();closeModal();shiftAfterDelete(p);}}}
 function deletePatientById(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if(!confirm(`'${p.name}'님을 보드에서 삭제할까요?\n(되돌릴 수 없습니다)`))return;
   audit('환자삭제',p.name+(p.mrn?' ('+p.mrn+')':''));
-  cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();}
+  cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();shiftAfterDelete(p);}
 
 /* ───── 루틴 동선 ───── */
 function openRoutines(){if(!isAdmin()){alert("루틴 관리는 관리자만 가능합니다.");return;}renderRoutineList();document.getElementById("routineModal").classList.add("show");}
