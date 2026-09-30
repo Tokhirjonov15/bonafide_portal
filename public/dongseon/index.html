@@ -3241,7 +3241,9 @@ function bitApplyCancels(){
       cloud.intakeCol.doc(r.docId).set({status:'취소',handledBy:currentUser.name||'',handledAt:new Date().toISOString()},{merge:true})
         .catch(e=>console.warn('bit cancel',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
     }
-    if(!p)return;
+    if(!p){   /* 카드가 이미 없음(다른 화면이 먼저 지움) — 접수 문서에 적어 둔 번호로 뒷번호는 당긴다 (2026-09-30: 09-30 취소 3건 모두 이 경합으로 당기기가 빠졌다) */
+      if(typeof r.seq==='number'&&r.seq>0)try{bitShiftSeqAfter(r,r.seq);}catch(e){}
+      return;}
     /* 2026-09-29: 손댄 카드도 지운다 — 비트에서 취소된 접수는 내원이 아니므로 내원 목록이 비트와 같아야 한다.
        (전에는 치료 중일 수 있어 빨간 표시만 남겼다.) 내원 기록(visits)은 만들지 않는다. 비트에서 다시 접수하면
        문서가 되살아나(bitRevived) 새 카드가 생긴다. 이미 치료를 진행한 카드였으면 소리 알림도 함께 */
@@ -3272,7 +3274,10 @@ async function shiftSeqAfter(seq){
   const live=data.filter(p=>!p.discharged&&typeof p.seq==='number'&&p.seq>seq&&dayOf(p)===today);
   const vis=(Array.isArray(VISITS)?VISITS:[]).filter(v=>typeof v.seq==='number'&&v.seq>seq&&localYMD(new Date(v.dischargedAt||0))===today);
   const jobs=[];
-  live.forEach(p=>{p.seq=p.seq-1;if(cloud.patientsCol)jobs.push(cloud.patientsCol.doc(p.id).update({seq:p.seq}).catch(e=>console.warn('seq shift card',p.id,e&&e.code)));});
+  live.forEach(p=>{p.seq=p.seq-1;if(cloud.patientsCol)jobs.push(cloud.patientsCol.doc(p.id).update({seq:p.seq}).catch(e=>console.warn('seq shift card',p.id,e&&e.code)));
+    /* 접수 문서에 적어 둔 번호도 같이 당긴다 — 나중에 이 환자가 취소될 때 카드가 없어도 맞는 번호로 당기도록 (문서 id = 날짜_ocm접수번호) */
+    const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,'');
+    if(ocm&&cloud.intakeCol)jobs.push(cloud.intakeCol.doc(today+'_ocm'+ocm).update({seq:p.seq}).catch(()=>{}));});
   vis.forEach(v=>{v.seq=v.seq-1;if(cloud.visitsCol&&v.id)jobs.push(cloud.visitsCol.doc(v.id).update({seq:v.seq}).catch(e=>console.warn('seq shift visit',v.id,e&&e.code)));});
   await Promise.all(jobs);
   seqNext=Math.max(1,maxSeqToday()+1);seqDate=today;
@@ -3406,7 +3411,7 @@ async function bitClaimAndCreate(r,name,reg){
       t.update(ref,{status:'자동접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()});return true;});
     if(!won)return;
     const p=bitCreatePatient(r,name,reg);
-    if(p){try{await ref.set({patientId:p.id},{merge:true});}catch(e){}}
+    if(p){try{await ref.set({patientId:p.id,seq:(typeof p.seq==='number'?p.seq:null)},{merge:true});}catch(e){}}   /* seq: 취소 때 카드가 이미 없어도 뒷번호를 당길 수 있게 (2026-09-30) */
     else{try{await ref.set({status:''},{merge:true});}catch(e){}}   // 만들지 못했으면 선점 해제 → 대기 줄로
   }catch(e){console.warn('bitClaimAndCreate',e);}
   finally{delete BIT_CLAIMING[r.docId];}
@@ -3458,7 +3463,7 @@ function bitAfterSave(p){
   const r=pf.rec;if(String(r.mrn||'').trim()!==String(p.mrn||'').trim())return;
   try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(p.mrn))setRegFamily(p.mrn,p.name,r.guardian+'('+r.relation+')');}catch(e){}
   p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||''};
-  try{cloud.intakeCol.doc(pf.docId).set({status:'접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString(),patientId:p.id},{merge:true});}catch(e){}
+  try{cloud.intakeCol.doc(pf.docId).set({status:'접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString(),patientId:p.id,seq:(typeof p.seq==='number'?p.seq:null)},{merge:true});}catch(e){}
 }
 function logout(){audit('로그아웃');sessionEstablished=false;currentUser=null;if(idleTimer){clearTimeout(idleTimer);idleTimer=null;}localStorage.removeItem(SESSION_KEY);closeAccount();
   /* 로그아웃 전에 실시간 구독을 먼저 끊는다 — 인증이 사라진 뒤 리스너가 권한 오류를 내며 '연결 권한 오류' 화면이 뜨는 것을 방지 */
@@ -4551,6 +4556,7 @@ function cloudSaveConfig(){if(cloud.active&&cloud.ref){const c=cfgBundle();c.upd
    그래서 서버가 한 번이라도 보여 준 카드(KNOWN_PIDS)는 update() 로만 쓴다 — 문서가 없으면 실패하고, 그때는
    유령으로 보고 이 화면에서 지운 뒤 새로고침한다. 새 카드(서버가 아직 모르는 id)만 set() 으로 만든다. */
 const KNOWN_PIDS=new Set();
+const REMOVED_PIDS=new Set();   /* 이 화면이 '지워짐'을 본 카드 id — 같은 id 가 다시 생기면 옛 판 화면이 되살린 유령이다 */
 let _ghostReloadT=null;
 function ghostPatient(pid,why){
   const i=data.findIndex(x=>x.id===pid);const nm=i>=0?(data[i].name||''):'';
@@ -4785,7 +4791,15 @@ async function startHosted(){
       if(cloud.unsubP)cloud.unsubP();
       cloud.unsubP=cloud.patientsCol.onSnapshot(s=>{cloud.active=true;setSync('live');
         data=s.docs.map(d=>d.data());normalizeData();lsSet(STORE,JSON.stringify(data));   /* 용량 초과로 던져도 실시간 갱신이 멈추지 않게 (2026-09-29) */
-        s.docs.forEach(d=>KNOWN_PIDS.add(d.id));   /* 서버가 보여 준 카드 id — 이후 저장은 update() 로만 (유령 카드 방지, 2026-09-30) */
+        s.docs.forEach(d=>KNOWN_PIDS.add(d.id));   /* 서버가 보여 준 카드 id — 이후 저장은 서버에 있을 때만 (유령 카드 방지, 2026-09-30) */
+        /* 옛 판 화면(새로고침 안 됨)이 set() 으로 되살린 카드 잡기: 이 화면이 '지워짐'을 본 id 가 다시 '추가됨'으로 오면 유령이다 —
+           되돌리기·비트 재접수는 늘 새 id 로 만들므로 같은 id 의 재등장은 되살아난 것뿐이다. 건강한 화면 하나가 곧바로 지운다 (2026-09-30) */
+        try{s.docChanges().forEach(ch=>{const id=ch.doc.id;
+          if(ch.type==='removed'){REMOVED_PIDS.add(id);return;}
+          if(ch.type==='added'&&REMOVED_PIDS.has(id)){REMOVED_PIDS.delete(id);
+            const v=ch.doc.data()||{};cloudDelPatient(id);
+            try{audit('유령 카드 정리(되살아남)',(v.name||'')+(v.mrn?' ('+v.mrn+')':'')+(v.seq?' #'+v.seq:''));}catch(e){}
+            console.warn('되살아난 카드 제거',id);}});}catch(e){}
         cloud.ready.pts=true;afterCloud();if(currentUser){scanAlarms();checkArrivalPrints();evaluateAutoSms();}
         try{scanRoomArrivals();}catch(e){console.warn('roomArrivals',e);}   // 내가 고른 방에 환자가 들어오면 소리(다른 기기에서 옮긴 것 포함)
         try{renderBitBar();bitAutoProcess();renderSlipScreen();}catch(e){}
@@ -10074,6 +10088,9 @@ async function checkNewBuild(){try{
   location.reload();
 }catch(_){}}
 setInterval(checkNewBuild,30*60000); setTimeout(checkNewBuild,60000);
+/* 잠들었다 깬 태블릿·다시 연결된 화면은 곧바로 확인한다 — 30분 타이머는 잠든 동안 돌지 않아 옛 판이 몇 시간씩 남았다 (2026-09-30: 옛 판 화면이 내보낸 카드를 되살림) */
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(checkNewBuild,1500);});
+window.addEventListener('online',()=>setTimeout(checkNewBuild,3000));
 window.memReport=function(){ if(!MEM_LOG.length)return '기록 없음(크롬이 아니거나 아직 이름)';
   try{console.table(MEM_LOG.slice(-40));}catch(e){}
   const mx=MEM_LOG.reduce((a,b)=>b.mb>a.mb?b:a), last=MEM_LOG[MEM_LOG.length-1];
