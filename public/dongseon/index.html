@@ -4742,7 +4742,7 @@ function applyCfg(d){
   localStorage.setItem(ROUTINE_STORE,JSON.stringify(ROUTINES));
 }
 /* ── 클라우드 타깃 쓰기 ── */
-function cloudSaveConfig(){if(cloud.active&&cloud.ref){const c=cfgBundle();c.updatedAt=Date.now();c.updatedBy=cloud.user;cloud.ref.set(jclone(c)).catch(e=>{setSync('err');console.error(e);});}}  // jclone으로 undefined 제거(Firestore 거부 방지)
+function cloudSaveConfig(){if(cloud.active&&cloud.ref){const c=cfgBundle();c.updatedAt=Date.now();c.updatedBy=cloud.user;cloud.ref.set(jclone(c)).catch(e=>{syncFail('설정 저장',e);});}}  // jclone으로 undefined 제거(Firestore 거부 방지)
 /* ═════ 유령 카드 방지 (2026-09-30) ═════
    화면이 오래되어(잠든 태블릿·끊긴 구독) 다른 화면에서 이미 내보낸 카드가 그대로 보이는 일이 있었다. 그 카드를 옮기거나
    처방 동선 자동 채우기가 save() 하면 Firestore set() 이 지워진 문서를 다시 만들어 — 카드가 보드에 되살아나고,
@@ -4771,7 +4771,7 @@ const KNOWN_GONE=new Set();   // 카드 구독이 '지워짐'으로 알려 준 i
 function cloudSavePatient(p){
   if(!(cloud.active&&cloud.patientsCol&&p&&p.id))return;
   const ref=cloud.patientsCol.doc(p.id);
-  if(!KNOWN_PIDS.has(p.id)){ref.set(jclone(p)).catch(e=>{setSync('err');console.error(e);});return;}   // 새 카드
+  if(!KNOWN_PIDS.has(p.id)){ref.set(jclone(p)).catch(e=>{syncFail('새 카드 저장',e);});return;}   // 새 카드
   /* update() 는 지운 필드(delete p.parking 등)를 서버에 반영하지 못하므로, 있는지 확인한 뒤 통째로 set 한다(트랜잭션) */
   const body=jclone(p);
   cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;
@@ -4779,7 +4779,7 @@ function cloudSavePatient(p){
          이 두 칸은 알림 선점 트랜잭션만 쓰므로 언제나 서버 값을 따른다 — 전에는 옛 값이 남아 있으면 그대로 덮어써서 처방 변경 알림이 화면마다 한 번씩 갔다 */
       t.set(ref,body);return true;}))
     .then(ok=>{if(ok===false)ghostPatient(p.id,'저장 시 서버에 없음');})
-    .catch(e=>{setSync('err');console.error(e);});
+    .catch(e=>{syncFail('카드 저장',e);});
 }
 /* 동시편집 안전 쓰기: 서버 최신본을 트랜잭션으로 다시 읽고 mutate만 적용 → 다른 기기가 바꾼 필드·노트를 덮어쓰지 않음. 오프라인이면 로컬만(이미 반영됨). */
 function cloudPatientTxn(pid,mutate){
@@ -4794,7 +4794,7 @@ function cloudPatientTxn(pid,mutate){
   })).then(d=>{
     if(d){const i=data.findIndex(x=>x.id===pid);if(i>=0)data[i]=d;}  // 서버 확정본을 로컬에 반영(onSnapshot가 곧 재확정)
     return true;
-  }).catch(e=>{setSync('err');console.error('patient txn',e);return false;});
+  }).catch(e=>{syncFail('카드 수정',e);return false;});
 }
 function cloudDelPatient(pid){if(cloud.active&&cloud.patientsCol&&pid)cloud.patientsCol.doc(pid).delete().catch(e=>console.error(e));}
 function cloudAddVisit(v){if(cloud.active&&cloud.visitsCol&&v.id)cloud.visitsCol.doc(v.id).set(jclone(v)).catch(e=>console.error(e));}
@@ -4906,6 +4906,12 @@ async function loadAudit(){
     <td class="wrap">${esc(r.target||'')||'-'}</td>
   </tr>`).join('')}</tbody></table>`;
 }
+/* 저장 실패 → '동기화 오류' 표시. 무엇이 왜 실패했는지 알약에 마우스를 올리면 보이고, 감사 로그에도 남긴다(화면당 5분에 한 번) (2026-10-01) */
+let SYNC_ERR_LOG=0;
+function syncFail(where,e){console.error(where,e);setSync('err');
+  const msg=where+': '+((e&&(e.code||e.name))||'')+' '+String((e&&e.message)||e||'').slice(0,160);
+  try{const el=document.getElementById('syncPill');if(el)el.title=hhmm(new Date().toISOString())+' '+msg+' — 다음 저장이 되면 저절로 사라집니다';}catch(_){}
+  if(Date.now()-SYNC_ERR_LOG>300000){SYNC_ERR_LOG=Date.now();try{audit('동기화 오류',msg);}catch(_){}}}
 function setSync(state){
   const el=document.getElementById('syncPill');if(!el)return;
   el.style.display=hostedMode?'':'none';
@@ -9082,13 +9088,14 @@ function sendWaitAlert(p,w){
   if(WAIT_SENT[p.id+'#'+key])return;WAIT_SENT[p.id+'#'+key]=1;
   if(p.waitAlert&&p.waitAlert.key===key)return;
   const ref=cloud.patientsCol.doc(p.id);
+  setTimeout(()=>{const q0=data.find(x=>x.id===p.id);if(!q0||(q0.waitAlert&&q0.waitAlert.key===key))return;   // 화면마다 0~20초 늦춰 부딪힘을 줄인다
   cloud.db.runTransaction(t=>t.get(ref).then(sn=>{if(!sn.exists)return false;const d=sn.data()||{};
       if(d.waitAlert&&d.waitAlert.key===key)return false;t.update(ref,{waitAlert:{key,at:Date.now()}});return true;}))
     .then(won=>{if(!won)return;
       const q=data.find(x=>x.id===p.id);if(q)q.waitAlert={key,at:Date.now()};
       roomNotify(p,w.room,'wait',{min:w.level*WAIT_ALERT_MIN});
       try{audit('대기 '+(w.level*WAIT_ALERT_MIN)+'분 넘음 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+w.room);}catch(e){}})
-    .catch(e=>console.warn('wait alert',e));}
+    .catch(e=>console.warn('wait alert',e));},Math.floor(Math.random()*20000));}
 setInterval(()=>{try{if(currentUser)refreshWaitAlerts();}catch(e){}},20000);
 /* ═════ 대기실 30분 넘음 → 전체알람 (2026-10-01 요청) ═════
    3층·4층 대기실에서 30분 넘게 기다리면 그 방 전달사항으로 '확인해 주세요' 한 줄을 남긴다 → 전체알람에 뜨고 버튼에 빨간 숫자.
@@ -9110,6 +9117,9 @@ function lobbyAlertScan(){
     const min=Math.floor(waitMsNow(p)/60000);if(min<LOBBY_ALERT_MIN)return;
     const key=r+'|'+(p.enteredAt||'');
     if(p.lobbyAlert===key||LOBBY_SENT[p.id+'#'+key])return;LOBBY_SENT[p.id+'#'+key]=1;
+    /* 모든 화면이 같은 순간에 같은 카드에 트랜잭션을 걸면 서로 부딪혀 다른 저장까지 실패할 수 있다(동기화 오류) —
+       화면마다 0~20초 늦춰 걸고, 그 사이 다른 화면이 이미 남겼으면 건너뛴다 */
+    setTimeout(()=>{const q0=data.find(x=>x.id===p.id);if(!q0||q0.lobbyAlert===key)return;
     const note={at:new Date().toISOString(),by:'자동 알림',text:`${r}에서 ${LOBBY_ALERT_MIN}분 넘게 기다리고 있어요 — 확인해 주세요`};
     const ref=cloud.patientsCol.doc(p.id);
     cloud.db.runTransaction(t=>t.get(ref).then(sn=>{if(!sn.exists)return null;const d=sn.data()||{};
@@ -9119,6 +9129,7 @@ function lobbyAlertScan(){
         try{renderChat();scanAlarms();}catch(e){}
         try{audit('대기실 '+LOBBY_ALERT_MIN+'분 넘음 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+r);}catch(e){}})
       .catch(e=>console.warn('lobby alert',e));
+    },Math.floor(Math.random()*20000));
   });}
 setInterval(()=>{try{if(currentUser)lobbyAlertScan();}catch(e){}},30000);
 function fillBookedBox(p){
