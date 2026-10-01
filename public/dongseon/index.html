@@ -1125,6 +1125,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .board-col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
   .side-panel{flex:0 0 330px;max-width:46vw;display:none;flex-direction:column;background:var(--panel);border-left:1px solid var(--line);min-height:0}
   .side-panel.show{display:flex}
+  .chat-tabs{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .chat-tabs button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:1px solid var(--line);background:var(--panel);color:var(--sub);border-radius:8px;padding:6px 8px;font-size:13px;font-weight:700;cursor:pointer}
+  .chat-tabs button i,.chat-tabs button svg{width:14px;height:14px}
+  .chat-tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
   .chat-head{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);font-weight:700}
   .chat-head .mute-tg{margin-left:auto;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
   .chat-head button{border:0;background:transparent;font-size:20px;color:var(--sub);cursor:pointer}
@@ -1330,14 +1334,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <span id="bitPill" class="bit-pill" style="display:none" onclick="bitStatusPoll(true)" title="클릭: 지금 새로고침 · 비트플러스 연동 상태 — PC별 (초록=접수 창 또는 외래진료실 창 열림, 노랑=비트 창 닫힘, 회색=150초 이상 신호 없음)"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
   <div class="top-actions" id="topActions">
-    <button class="btn" id="mineBtn" onclick="toggleChatMine()"><i data-lucide="hand"></i> 담당알람<span id="mineBadge"></span></button>
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
-    <span class="fold-tools" title="방(컬럼) 접기/펼치기 — 이 화면(기기)에만 적용. 각 방 머리의 ▾/▸ 로 하나씩도 됩니다">
-      <button class="btn" onclick="foldEmpty()" title="지금 환자가 없는 방만 접기"><i data-lucide="fold-horizontal"></i> 빈 방 접기</button>
-      <button class="btn" onclick="foldAll(true)" title="모든 방 접기">모두 접기</button>
-      <button class="btn" onclick="foldAll(false)" title="모든 방 펼치기"><i data-lucide="unfold-horizontal"></i> 모두 펼치기</button>
-    </span>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
     <!-- 4층 비급여 치료: SHOW_RESV 로 표시 여부를 켜고 끈다 (2026-09-21 숨김 → 2026-09-23 다시 표시) -->
@@ -1366,16 +1364,15 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="room-jump" id="roomJump"></div>   <!-- 휴대폰: 방 바로가기(760px 이하에서만 표시) -->
     <div class="board" id="board"></div>
   </div>
-  <div class="side-panel" id="chatMine">
-    <div class="chat-head"><i data-lucide="hand"></i> 담당 알람
-      <label class="mute-tg" title="팝업/소리 끄기 — 목록엔 계속 쌓입니다"><input type="checkbox" id="muteChk2" onchange="toggleMute(this.checked)"> 팝업 끄기</label>
-      <button onclick="toggleChatMine()">×</button></div>
-    <div class="chat-body" id="chatBodyMine"></div>
-  </div>
+  <!-- 알람 창 하나 — 위 [전체 | 담당] 탭으로 전환. 예전 '담당알람' 버튼·창을 여기로 합침 (2026-10-01 요청) -->
   <div class="side-panel" id="chatAll">
-    <div class="chat-head"><i data-lucide="bell-ring"></i> 전체 알람
+    <div class="chat-head"><i data-lucide="bell-ring"></i> 알람
       <label class="mute-tg" title="팝업/소리 끄기 — 목록엔 계속 쌓입니다"><input type="checkbox" id="muteChk" onchange="toggleMute(this.checked)"> 팝업 끄기</label>
       <button onclick="toggleChatAll()">×</button></div>
+    <div class="chat-tabs">
+      <button type="button" id="chatTabAll" onclick="setChatTab('all')"><i data-lucide="bell-ring"></i> 전체<span id="chatTabAllN"></span></button>
+      <button type="button" id="chatTabMine" onclick="setChatTab('mine')" title="방 헤더의 '담당'을 체크한 방의 알람만"><i data-lucide="hand"></i> 담당<span id="chatTabMineN"></span></button>
+    </div>
     <div class="chat-body" id="chatBodyAll"></div>
   </div>
 </div>
@@ -1432,6 +1429,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="modal" style="width:380px">
     <h3><i data-lucide="eye"></i> 방 보기 설정</h3>
     <div class="body">
+      <!-- 방 접기/펼치기 — 위 도구줄에서 이 창으로 옮김: 방에 관한 일은 모두 '방 보기'에서 (2026-10-01 요청) -->
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="fold-horizontal"></i> 방 접기·펼치기 <span class="hint" style="font-weight:400">(이 기기에만 적용 · 방 머리의 ▾/▸ 로 하나씩도 됩니다)</span></div>
+      <div class="fold-tools" style="margin-bottom:14px;flex-wrap:wrap">
+        <button class="btn" onclick="foldEmpty()" title="지금 환자가 없는 방만 접기"><i data-lucide="fold-horizontal"></i> 빈 방 접기</button>
+        <button class="btn" onclick="foldAll(true)" title="모든 방 접기">모두 접기</button>
+        <button class="btn" onclick="foldAll(false)" title="모든 방 펼치기"><i data-lucide="unfold-horizontal"></i> 모두 펼치기</button>
+      </div>
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="eye"></i> 표시할 방</div>
       <p class="hint">내 화면에 표시할 방을 선택하세요. (내 계정에만 적용)</p>
       <div id="viewList" style="display:flex;flex-direction:column;gap:6px"></div>
       <p class="hint" style="margin-top:10px;display:flex;gap:6px;align-items:flex-start"><i data-lucide="lightbulb" style="flex-shrink:0;margin-top:2px"></i><span>보드에서 방 제목 왼쪽 <b>⠿</b>를 드래그하면 <b>내 화면의 방 순서</b>를 바꿀 수 있어요(자주 쓰는 방을 앞으로). 이것도 내 계정에만 적용됩니다.</span></p>
@@ -1725,6 +1730,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="modal">
     <h3>계정</h3>
     <div class="body" id="accountBody"></div>
+    <!-- 내 휴무·근무시간 — 이름을 누르면 바로 내 것만 고친다 (2026-10-01 요청: 휴무 관리 목록에서 남의 줄을 잘못 누르는 일 방지) -->
+    <div class="body" id="accountOffWrap" style="padding-top:0">
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="calendar-off"></i> 내 휴무·근무시간 <span class="hint" style="font-weight:400">(누르면 바로 저장)</span></div>
+      <p class="hint" style="margin:0 0 8px">요일 버튼 = 매주 쉬는 요일 · 하루 휴무 = 그날만 · 근무시간 = 요일별 출퇴근 시간(비우면 종일)</p>
+      <div id="accountOffList"></div>
+    </div>
     <div class="foot">
       <button class="btn" style="margin-left:auto" onclick="closeAccount()">닫기</button>
     </div>
@@ -2899,6 +2910,7 @@ function renderBitPill(){
   const el=document.getElementById('bitPill');if(!el)return;
   const pcs=Object.keys(BIT_STATUS).sort();
   if(!pcs.length||!currentUser){el.style.display='none';return;}
+  if(!isAdmin()){el.style.display='none';return;}   /* DB·접수 연결 표시는 관리자만 — 초록/회색이 바뀌는 걸 보고 직원들이 헷갈려 했다 (2026-10-01 요청) */
   el.style.display='';const now=Date.now();
   const ago=BIT_STATUS_AT?Math.round((Date.now()-BIT_STATUS_AT)/60000):null;
   el.innerHTML=`<span class="hint" title="하트비트는 5분마다 읽음(클릭하면 지금)">비트${ago!==null&&ago>=1?' ('+ago+'분 전)':''}</span> `+pcs.map(pc=>{const st=BIT_STATUS[pc]||{};const age=(now-new Date(st.lastSeen||0).getTime())/1000;
@@ -3286,6 +3298,27 @@ async function shiftSeqAfter(seq){
   try{audit('등록번호 당김(비트 접수취소)','#'+seq+' 빈자리 → 카드 '+live.length+'장·내원 기록 '+vis.length+'건 번호 -1, 다음 번호 #'+seqNext);}catch(e){}
   if(live.length+vis.length)try{toast('접수 #'+seq+' 취소 → 뒷번호 '+(live.length+vis.length)+'건을 하나씩 당겼습니다');}catch(e){}
 }
+/* ═════ 같은 번호 두 명 자동 정리 (2026-10-01) ═════
+   번호는 각 화면이 '오늘 최대+1' 로 매기므로, 두 화면이 같은 순간에 카드를 만들면 같은 번호가 붙는다
+   (09-30 18:26:56 — 두 환자가 모두 #95). 그래서 카드 구독이 올 때마다 오늘 카드의 번호 중복을 찾아,
+   늦게 만든 쪽(문서 id 사전순 뒤)을 '오늘 최대+1' 로 옮긴다. 생긴 지 몇 초 안에 고쳐지므로 다음 환자 번호와 겹치지 않는다.
+   모든 화면이 같은 데이터로 같은 계산을 하므로 서로 싸우지 않고(같은 값을 쓴다), seq 필드만 update 한다. */
+const HEALED_SEQ=new Set();
+function healDupSeq(){
+  if(!currentUser||!cloud.patientsCol)return;
+  const t=localYMD(new Date());
+  const today=data.filter(p=>!p.discharged&&typeof p.seq==='number'&&p.seq>0&&localYMD(new Date(p.arrivedAt||p.enteredAt||0))===t);
+  const by={};today.forEach(p=>{(by[p.seq]=by[p.seq]||[]).push(p);});
+  let max=maxSeqToday(),n=0;
+  Object.keys(by).map(Number).sort((a,b)=>a-b).forEach(s=>{const l=by[s];if(l.length<2)return;
+    l.sort((a,b)=>String(a.id)<String(b.id)?-1:1);           // 모든 화면이 같은 순서 → 같은 결정
+    for(let i=1;i<l.length;i++){const p=l[i];const old=p.seq;max+=1;p.seq=max;n++;
+      cloud.patientsCol.doc(p.id).update({seq:max}).catch(()=>{});
+      const k=p.id+':'+old+'>'+max;
+      if(!HEALED_SEQ.has(k)){HEALED_SEQ.add(k);
+        try{audit('등록번호 중복 정리','#'+old+' 두 명 → '+(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' 을 #'+max+' 로');}catch(e){}}}});
+  if(n){seqNext=Math.max(seqNext,max+1);lsSet("patientBoard_seq",String(seqNext));saveLocal();try{renderThrottled();}catch(e){}}
+}
 /* 비트 수납완료(캐스트 Command 8) → 환자가 계산하고 나갔으므로 카드를 수납대기 경유로 자동 내보내기(내원 기록 보관).
    · 수납대기(7)는 아직 원내(추가 치료가 생길 수 있음) → 카드를 그대로 둔다.
    · 여러 화면이 열려 있어도 한 번만 처리하도록 문서 status 를 '수납완료'로 트랜잭션 선점.
@@ -3490,8 +3523,10 @@ function updateUserPill(){
 }
 
 /* 계정 모달 */
-function openAccount(){renderAccount();document.getElementById('accountModal').classList.add('show');}
-function closeAccount(){document.getElementById('accountModal').classList.remove('show');}
+function openAccount(){renderAccount();
+  OFF_SELF=true;OFF_HOURS_EDIT=null;try{renderOffList();}catch(e){console.warn('내 휴무',e);}   // 내 휴무·근무시간 (2026-10-01)
+  document.getElementById('accountModal').classList.add('show');}
+function closeAccount(){OFF_SELF=false;OFF_HOURS_EDIT=null;document.getElementById('accountModal').classList.remove('show');}
 function renderAccount(){
   if(!currentUser)return;
   const box=document.getElementById('accountBody');
@@ -4804,6 +4839,7 @@ async function startHosted(){
         try{scanRoomArrivals();}catch(e){console.warn('roomArrivals',e);}   // 내가 고른 방에 환자가 들어오면 소리(다른 기기에서 옮긴 것 포함)
         try{renderBitBar();bitAutoProcess();renderSlipScreen();}catch(e){}
         try{if(Object.keys(BIT_RX).length)applyRxRoutesAll();}catch(e){}   // 새로 생긴 카드에 이미 온 처방이 있으면 동선을 채운다
+        try{healDupSeq();}catch(e){console.warn('healDupSeq',e);}   // 같은 번호 두 명이면 늦은 쪽을 끝 번호로 (2026-10-01)
       },err=>cloudErr(err));
       if(cloud.unsubPm)cloud.unsubPm();
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
@@ -5583,7 +5619,7 @@ function render(){
   if(_wy&&Math.abs((window.scrollY||0)-_wy)>2)try{window.scrollTo(window.scrollX||0,_wy);}catch(e){}
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=canStats()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
-  const ob=document.getElementById("offBtn");if(ob)ob.style.display="";   /* 휴무 관리는 모두에게 — 본인 휴무·근무시간을 직접 고친다 (2026-09-29 요청) */
+  const ob=document.getElementById("offBtn");if(ob)ob.style.display=isAdmin()?"":"none";   /* 전 직원 휴무 목록은 관리자만. 직원은 이름(계정 창)에서 자기 것만 고친다 (2026-10-01 요청) */
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
 }
 /* 휴대폰 방 바로가기 — 보이는 방(현재 층 탭 기준)마다 칩 하나(환자 수 포함). 넓은 화면에서는 CSS로 숨김 */
@@ -5651,6 +5687,23 @@ function setVisitSort(key){if(listSortKey===key)listSortAsc=!listSortAsc;else{li
 function setVisitDate(v){listDate=v||null;render();}
 function setVisitRoom(v){listRoom=v||'';render();}
 function visitDateShift(d){const c=new Date(visitListYMD());c.setDate(c.getDate()+d);listDate=localYMD(c);render();}
+/* 머리글 인원수 = 접수 번호 기준 (2026-10-01 요청: 09-30 저녁 두 화면이 동시에 카드를 만들어 #95 가 두 명에게 붙자
+   줄 수(121)와 번호(120)가 어긋났다). 같은 번호는 한 명으로 세고, 번호 중복·빈 번호는 머리글 옆에 바로 보여 준다 */
+function vlHeadCount(rows){
+  const seqs=rows.map(r=>r.seq).filter(s=>typeof s==='number'&&s>0);
+  return new Set(seqs).size+(rows.length-seqs.length);}   // 번호 없는 행(수기 등)은 각각 센다
+function vlSeqWarn(rows){
+  const seqs=rows.map(r=>r.seq).filter(s=>typeof s==='number'&&s>0);
+  if(!seqs.length)return '';
+  const uniq=new Set(seqs);
+  const dups=[...new Set(seqs.filter((s,i)=>seqs.indexOf(s)!==i))].sort((a,b)=>a-b);
+  const max=Math.max(...seqs),gaps=[];
+  for(let i=1;i<=max;i++)if(!uniq.has(i))gaps.push(i);
+  if(!dups.length&&!gaps.length)return '';
+  const t=[];
+  if(dups.length)t.push('번호 중복 '+dups.slice(0,6).map(s=>'#'+s).join(' ')+(dups.length>6?' 외 '+(dups.length-6):''));
+  if(gaps.length)t.push('빈 번호 '+gaps.slice(0,6).map(s=>'#'+s).join(' ')+(gaps.length>6?' 외 '+(gaps.length-6):''));
+  return ` <span style="font-size:11.5px;font-weight:700;color:var(--orange)" title="같은 번호는 한 명으로 셉니다. 중복은 곧 자동 정리되고, 빈 번호는 취소·삭제 자리입니다">⚠ ${esc(t.join(' · '))}</span>`;}
 function renderDischargedBoard(board,q){
   const ymd=visitListYMD();const isToday=ymd===localYMD(new Date());
   let rows=buildVisitRows(ymd);
@@ -5672,7 +5725,7 @@ function renderDischargedBoard(board,q){
   const wrap=document.createElement("div");wrap.className="vlist-wrap";
   wrap.innerHTML=`
     <div class="vlist-head">
-      <span class="vl-title"><i data-lucide="clipboard-list"></i> 내원 목록 <b>${rows.length}</b>명</span>
+      <span class="vl-title"><i data-lucide="clipboard-list"></i> 내원 목록 <b>${vlHeadCount(rows)}</b>명${vlSeqWarn(rows)}</span>
       <div class="vl-date">
         <button class="vl-nav" title="이전 날" onclick="visitDateShift(-1)">◀</button>
         <input type="date" value="${ymd}" max="${localYMD(new Date())}" onchange="setVisitDate(this.value)">
@@ -6820,7 +6873,8 @@ function cardEl(p,colRoom){
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
     <div class="status-row">
-      <button class="st-btn wait ${st==='대기'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','대기')">대기</button>
+      ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
+             진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
       <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
@@ -6832,10 +6886,10 @@ function cardEl(p,colRoom){
     ${consultHtml}
     ${notesHtml}
     <div class="card-foot">
-      <button class="out-btn ${p.out?'on':''}" title="${p.out?'복귀 — 다시 대기열로':'외출 — 잠시 나갔다 옴(시간 정지)'}" onclick="event.stopPropagation();toggleOut('${p.id}')">${p.out?'<i data-lucide="undo-2"></i> 복귀':'<i data-lucide="log-out"></i> 외출'}</button>
+      ${''/* 2026-10-01 요청: [외출]은 3층 대기실에서만(이미 외출 중이면 어느 방이든 [복귀]는 보인다). [서류]·[수정]은 카드에서 뺐다 —
+             카드를 누르면 환자 정보 창이 열리고, 서류(진단서 작성)도 그 창에 있다 */}
+      ${(p.out||_cur==='3층 대기실')?`<button class="out-btn ${p.out?'on':''}" title="${p.out?'복귀 — 다시 대기열로':'외출 — 잠시 나갔다 옴(시간 정지)'}" onclick="event.stopPropagation();toggleOut('${p.id}')">${p.out?'<i data-lucide="undo-2"></i> 복귀':'<i data-lucide="log-out"></i> 외출'}</button>`:''}
       ${smsBtnHtml(p)}
-      <button class="icon-btn" title="진단서·소견서 작성 (진단서 작성기 열기)" onclick="event.stopPropagation();openCertFor('${encodeURIComponent(JSON.stringify({key:pKey(p.mrn,p.name),name:p.name,mrn:p.mrn||'',birth:p.birth||'',sex:p.sex||''}))}')"><i data-lucide="file-text"></i> 서류</button>
-      <button class="icon-btn" title="환자 정보·차팅 열기" onclick="event.stopPropagation();openEdit('${p.id}')">✎ 수정</button>
       <button class="icon-btn del" title="이 환자 삭제" onclick="event.stopPropagation();deletePatientById('${p.id}')"><i data-lucide="trash-2"></i> 삭제</button>
     </div>`;
   c.addEventListener("dragstart",e=>{draggedPid=p.id;draggedRoom=curRoom(p);draggedCol=c.dataset.col||curRoom(p);e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);c.classList.add("dragging");});
@@ -7713,14 +7767,19 @@ function renderChatBody(bodyId,panelId,items,emptyMsg){
 function renderChat(){
   const all=chatItems();const mine=all.filter(isMineItem);
   const undoneAll=all.filter(it=>!it.n.done).length, undoneMine=mine.filter(it=>!it.n.done).length;
-  const b1=document.getElementById("chatBadge");if(b1)b1.innerHTML=undoneAll?`<span class="chat-badge">${undoneAll}</span>`:"";
-  const b2=document.getElementById("mineBadge");if(b2)b2.innerHTML=undoneMine?`<span class="chat-badge">${undoneMine}</span>`:"";
-  document.querySelectorAll("#muteChk,#muteChk2").forEach(mc=>mc.checked=isMuted());
-  renderChatBody("chatBodyAll","chatAll",all,"전달사항이 없습니다. 방별 전달사항을 등록하면 여기에 모두 모입니다.");
-  renderChatBody("chatBodyMine","chatMine",mine,'내 담당 방의 전달사항이 없습니다. 방 헤더의 "담당"을 체크하면 그 방 알람만 모여요.');
+  /* 버튼 배지 = 전체 미확인 수. 내 담당 방에 미확인이 있으면 배지를 주황으로 바꿔 '내 일'이 있음을 알린다 */
+  const b1=document.getElementById("chatBadge");if(b1)b1.innerHTML=undoneAll?`<span class="chat-badge"${undoneMine?' style="background:var(--orange)" title="내 담당 방 미확인 '+undoneMine+'건"':''}>${undoneAll}</span>`:"";
+  const tA=document.getElementById("chatTabAllN");if(tA)tA.innerHTML=undoneAll?` <span class="chat-badge">${undoneAll}</span>`:"";
+  const tM=document.getElementById("chatTabMineN");if(tM)tM.innerHTML=undoneMine?` <span class="chat-badge">${undoneMine}</span>`:"";
+  document.querySelectorAll("#chatTabAll,#chatTabMine").forEach(b=>b.classList.toggle("on",b.id===(CHAT_TAB==='mine'?'chatTabMine':'chatTabAll')));
+  document.querySelectorAll("#muteChk").forEach(mc=>mc.checked=isMuted());
+  if(CHAT_TAB==='mine')renderChatBody("chatBodyAll","chatAll",mine,'내 담당 방의 전달사항이 없습니다. 방 헤더의 "담당"을 체크하면 그 방 알람만 모여요.');
+  else renderChatBody("chatBodyAll","chatAll",all,"전달사항이 없습니다. 방별 전달사항을 등록하면 여기에 모두 모입니다.");
 }
+var CHAT_TAB=(()=>{try{return localStorage.getItem('patientBoard_chatTab')==='mine'?'mine':'all';}catch(e){return 'all';}})();   // 이 기기에서 마지막에 본 탭
+function setChatTab(t){CHAT_TAB=t==='mine'?'mine':'all';try{localStorage.setItem('patientBoard_chatTab',CHAT_TAB);}catch(e){}renderChat();}
 function toggleChatAll(){document.getElementById("chatAll").classList.toggle("show");renderChat();}
-function toggleChatMine(){document.getElementById("chatMine").classList.toggle("show");renderChat();}
+function toggleChatMine(){const p=document.getElementById("chatAll");if(!p.classList.contains("show"))p.classList.add("show");setChatTab('mine');}   // 옛 호출 호환
 
 /* ───── 통계 ───── */
 let statsDate='';        // ''=전체, 'YYYY-MM-DD'=특정일
@@ -8722,10 +8781,13 @@ function fillRxBox(p){
   const times=rx.items.map(x=>String(x.t||'').trim()).filter(Boolean).sort();
   const last=times.length?times[times.length-1]:'';
   const first=times.length?times[0]:'';
+  const dcs=(p&&p.rxDc)||{};
   const rows=rx.items.map(x=>{
     const qty=String(x.qty||'').trim(), tms=String(x.tms||'').trim(), day=String(x.day||'').trim(), unt=String(x.unt||'').trim();
     const t=String(x.t||'').trim(), ago=rxMinAgo(t), fresh=(ago!==null&&ago<=RX_NEW_MIN);
-    return `<tr${fresh?' class="rx-new"':''}><td class="rx-t" title="${esc(t?('처방 '+t+(rxAgoText(t)?' · '+rxAgoText(t):'')):'')}">${esc(t)}${fresh?'<span class="rx-tag">새로</span>':''}</td>
+    const k=rxDcKey(x), dc=dcs[k];
+    const dcCell=`<td class="rx-dc" title="${dc?esc('D/C — '+(dc.by||'')+' '+hhmm(dc.at)+' (다시 누르면 취소)'):'D/C(중지) 체크 → 텔레그램 알림'}"><label onclick="event.stopPropagation()"><input type="checkbox"${dc?' checked':''} onchange="toggleRxDc('${p.id}','${encodeURIComponent(k)}',this)">${dc?`<span class="rx-dc-by">${esc(dc.by||'')}</span>`:''}</label></td>`;
+    return `<tr class="${fresh?'rx-new':''}${dc?' rx-dcd':''}">${dcCell}<td class="rx-t" title="${esc(t?('처방 '+t+(rxAgoText(t)?' · '+rxAgoText(t):'')):'')}">${esc(t)}${fresh?'<span class="rx-tag">새로</span>':''}</td>
       <td class="rx-cod">${esc(String(x.cod||'').trim())}</td><td class="rx-nam">${esc(String(x.nam||'').trim())}</td>
       <td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td>${esc(tms)}</td><td>${esc(day)}</td></tr>`;}).join('');
   const dr=(rx.items.find(x=>String(x.dr||'').trim())||{}).dr||'';
@@ -8733,9 +8795,42 @@ function fillRxBox(p){
   const agoTx=rxAgoText(last);
   box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역
       <span class="hint">비트 · 오늘 ${rx.items.length}건${dr?' · '+esc(dr):''}${span?' · '+esc(span):''}${agoTx?` <b style="color:var(--t-indigosoft)">마지막 ${esc(agoTx)}</b>`:''}</span></div>
-    <div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th>시각</th><th>처방코드</th><th>처방명칭</th><th>총투여량</th><th>횟수</th><th>일수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th title="D/C(중지)된 처방에 체크하면 그 방 텔레그램으로 알림">D/C</th><th>시각</th><th>처방코드</th><th>처방명칭</th><th>총투여량</th><th>횟수</th><th>일수</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   box.style.display='';
   if(window.lucide)try{lucide.createIcons();}catch(e){}
+}
+/* ═════ 처방 D/C(중지) 체크 → 텔레그램 알림 (2026-10-01 요청) ═════
+   처방내역 한 줄에 체크하면 카드 문서 p.rxDc[키] 에 {at,by,cod,nam} 을 남기고(모든 화면 공유),
+   그 처방이 가는 방(처방→방 규칙, 예: c-arm → C-Arm)의 방 알림 봇 구독자에게 "최다솜 5860 C-ARM D/C" 를 보낸다.
+   방 규칙에 없는 처방(약 등)은 환자가 지금 있는 방으로. 체크를 풀면 "D/C 취소" 를 보낸다. */
+function rxDcKey(x){return String(x.t||'').trim()+'|'+String(x.cod||'').trim()+'|'+String(x.nam||'').trim().slice(0,30);}
+function rxItemRooms(x){
+  const cod=String(x.cod||'').trim(), nam=String(x.nam||'').trim(), hay=cod+' '+nam, out=[];
+  ROUTE_RX_RULES.forEach(r=>{
+    if(out.includes(r.room))return;
+    if(r.not&&r.not.test(hay))return;
+    if(r.notCod&&r.notCod.test(cod))return;
+    if((r.cod&&r.cod.test(cod))||(r.nam&&r.nam.test(nam))||(r.any&&r.any.test(hay)))out.push(r.room);});
+  return out.filter(r=>ROOMS.includes(r));}
+function toggleRxDc(pid,kEnc,el){
+  const p=data.find(x=>x.id===pid);if(!p){if(el)el.checked=!el.checked;return;}
+  const k=decodeURIComponent(kEnc);const rx=bitRxFor(p);const it=rx&&rx.items.find(x=>rxDcKey(x)===k);
+  if(!it){alert('처방 항목을 찾지 못했습니다. 창을 닫았다 다시 열어 주세요.');if(el)el.checked=!el.checked;return;}
+  const on=!!(el&&el.checked);
+  const label=String(it.nam||'').trim()||String(it.cod||'').trim();
+  const rooms=rxItemRooms(it);const targets=rooms.length?rooms:[curRoom(p)].filter(Boolean);
+  if(!confirm(on?`'${label}' 처방을 D/C(중지)로 표시할까요?\n\n텔레그램 알림: ${targets.join(', ')||'(방 없음)'}`
+                :`'${label}' 의 D/C 표시를 취소할까요?\n(취소 알림이 갑니다)`)){if(el)el.checked=!on;return;}
+  const by=(currentUser&&currentUser.name)||'';
+  const rec={at:new Date().toISOString(),by,cod:String(it.cod||'').trim(),nam:String(it.nam||'').trim()};
+  const apply=d=>{d.rxDc=Object.assign({},d.rxDc||{});if(on)d.rxDc[k]=rec;else delete d.rxDc[k];if(!Object.keys(d.rxDc).length)delete d.rxDc;return d;};
+  apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  try{audit(on?'처방 D/C':'처방 D/C 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+label);}catch(e){}
+  /* 알림의 처방 이름: 코드가 짧은 대문자 표기(C-ARM 등)면 그대로 읽히도록 '명칭' 우선, 없으면 코드 */
+  targets.forEach(room=>roomNotify(p,room,on?'dc':'dcundo',{item:label,by}));
+  try{toast(`${dispName(p.name)} 님 ${label} ${on?'D/C':'D/C 취소'} → ${targets.join(', ')||'알림 없음'}`);}catch(e){}
+  try{fillRxBox(p);}catch(e){}
+  render();
 }
 /* 환자 정보 창의 치료 회차 블록 — 회차를 직접 고치고, 누가 고쳤는지 함께 보여 준다 (2026-09-23) */
 function treatGroupsOf(){const seen=[],out=[];
@@ -9756,16 +9851,28 @@ function offOf(n){const o=OFF_SCHED[n]||(OFF_SCHED[n]={});if(!Array.isArray(o.we
   if(!o.hours||typeof o.hours!=='object')o.hours={};if(!o.dateHours||typeof o.dateHours!=='object')o.dateHours={};return o;}
 let OFF_HOURS_EDIT=null;   // {name, di} — 지금 편집 중인 요일 근무시간
 /* 휴무 관리는 직원 모두가 열고 고친다 (2026-09-29 요청). 누가 무엇을 바꿨는지는 audit('휴무변경'·'근무시간변경') 에 남는다 */
-window.openOff=function(){renderOffList();document.getElementById("offModal").classList.add("show");};
+window.openOff=function(){OFF_SELF=false;OFF_HOURS_EDIT=null;renderOffList();document.getElementById("offModal").classList.add("show");};
 window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
 const OFF_DAYS=["일","월","화","수","목","금","토"];
+/* OFF_SELF: 계정 창(이름 클릭)에서 '내 것만' 그릴 때 true — 같은 편집 함수들이 이 값으로 그릴 곳을 고른다 (2026-10-01) */
+var OFF_SELF=false;
 function renderOffList(){
+  if(OFF_SELF){
+    const box=document.getElementById("accountOffList");if(!box)return;
+    const me=String((currentUser&&currentUser.name)||'').trim();
+    OFF_NAMES=me?[me]:[];
+    if(!OFF_NAMES.length){box.innerHTML='<p class="hint">로그인한 이름을 찾지 못했습니다.</p>';return;}
+    box.innerHTML='';renderOffRows(box);return;
+  }
   OFF_NAMES=offNames();
   const q=((document.getElementById("offSearch")||{}).value||"").trim().toLowerCase();
   if(q)OFF_NAMES=OFF_NAMES.filter(n=>n.toLowerCase().includes(q));
   const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");
   if(!OFF_NAMES.length){box.innerHTML=q?'<p class="hint">검색 결과가 없습니다.</p>':"";emp.style.display=q?"none":"";return;}
   emp.style.display="none";
+  renderOffRows(box);
+}
+function renderOffRows(box){
   const today=new Date().getDay(), todayYmd=localYMD(new Date());
   const inp='padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);color:var(--text)';
   box.innerHTML=OFF_NAMES.map((n,i)=>{const o=offOf(n);
@@ -10188,8 +10295,13 @@ boot();
   .rx-tbl{width:100%;border-collapse:collapse;font-size:12px}
   .rx-tbl th,.rx-tbl td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line2);white-space:nowrap}
   .rx-tbl th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-size:11.5px}
-  .rx-tbl th:nth-child(1),.rx-tbl th:nth-child(2),.rx-tbl th:nth-child(3),
-  .rx-tbl td.rx-t,.rx-tbl td.rx-cod,.rx-tbl td.rx-nam{text-align:left}   /* 시각·처방코드·처방명칭은 왼쪽 맞춤(머리글도 함께) */
+  .rx-tbl th:nth-child(2),.rx-tbl th:nth-child(3),.rx-tbl th:nth-child(4),
+  .rx-tbl td.rx-t,.rx-tbl td.rx-cod,.rx-tbl td.rx-nam{text-align:left}   /* 시각·처방코드·처방명칭은 왼쪽 맞춤(머리글도 함께). 1열 = D/C 체크 */
+  .rx-tbl th:nth-child(1),.rx-tbl td.rx-dc{text-align:center;width:1%}
+  .rx-tbl td.rx-dc label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+  .rx-tbl td.rx-dc input{width:16px;height:16px;cursor:pointer;accent-color:#d92d20}
+  .rx-tbl .rx-dc-by{font-size:10.5px;font-weight:700;color:#d92d20}
+  .rx-tbl tr.rx-dcd td:not(.rx-dc){text-decoration:line-through;color:var(--muted);opacity:.75}   /* D/C 된 처방은 줄을 긋는다 */
   .rx-tbl td.rx-cod{font-weight:700;color:var(--t-indigosoft)}
   .rx-tbl td.rx-nam{white-space:normal;word-break:break-all}
   .rx-tbl .rx-unt{margin-left:4px;font-size:10.5px;color:var(--muted);font-weight:600}

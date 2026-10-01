@@ -571,7 +571,7 @@ async function dongseonNotify(request, env) {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
     const room = s(b.room), kind = s(b.kind);
-    if (!room || (kind !== "in" && kind !== "out")) return json({ error: "room/kind 필요" }, 400);
+    if (!room || !["in", "out", "dc", "dcundo"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
     if (!env.ROOM_BOT_TOKEN && !env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
     await ensureSchema(env);
     const subs = ((await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || []).filter((r) => normRoom(r.room) === normRoom(room));
@@ -581,7 +581,12 @@ async function dongseonNotify(request, env) {
     const who = (b.seq ? "#" + b.seq + " " : "") + s(b.name) + (s(b.mrn) ? " (" + s(b.mrn) + ")" : "");
     const d = new Date(Date.now() + 9 * 3600 * 1000);
     const hm = String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
-    const text = kind === "in"
+    /* 처방 D/C(중지) 알림 (2026-10-01): "최다솜 5860 C-ARM D/C" — 처방내역에서 체크한 항목 */
+    const dcWho = s(b.name) + (s(b.mrn) ? " " + s(b.mrn) : "");
+    const dcItem = s(b.item).slice(0, 80);
+    const text = kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      : kind === "in"
       ? `🟢 ${room} 도착 · ${who} · ${hm}`
       : `⚪ ${room} 나감 · ${who} · ${hm}` + ((b.waitMs || b.activeMs) ? ` · 대기 ${fmtMin(b.waitMs)}${b.activeMs ? " · 진행 " + fmtMin(b.activeMs) : ""}` : "") + (s(b.next) ? ` → ${s(b.next)}` : "");
     let sent = 0;
