@@ -3395,6 +3395,51 @@ async function shiftSeqAfter(seq){
    (09-30 18:26:56 — 두 환자가 모두 #95). 그래서 카드 구독이 올 때마다 오늘 카드의 번호 중복을 찾아,
    늦게 만든 쪽(문서 id 사전순 뒤)을 '오늘 최대+1' 로 옮긴다. 생긴 지 몇 초 안에 고쳐지므로 다음 환자 번호와 겹치지 않는다.
    모든 화면이 같은 데이터로 같은 계산을 하므로 서로 싸우지 않고(같은 값을 쓴다), seq 필드만 update 한다. */
+/* ═════ 빈 번호 자동 정리 (2026-10-01 요청: "#13 #22 가 비면 뒷번호를 당겨 저절로 맞게") ═════
+   취소·삭제 때 당기기가 빠지는 경우(옛 판 화면이 지움 등)가 남아, 30초마다 오늘 번호에 빈 칸이 있는지 본다.
+   · 빈 칸이 60초 넘게 그대로일 때만 — 지우기·당기기가 진행 중인 순간에 끼어들지 않게
+   · 고치기 전에 서버에서 오늘 카드·내원 기록을 새로 받아 계산 — 이 화면 메모리가 오래됐어도 틀리게 매기지 않게
+   · seq 칸만 update. 모든 화면이 같은 서버 자료로 같은 결과를 내므로 서로 엇갈리지 않는다(중복 번호는 healDupSeq 가 맡음) */
+let _seqGapSince=0,_seqGapSig='',_seqHealBusy=false;
+function seqGapsLocal(){
+  const t=localYMD(new Date());const s=new Set();
+  data.forEach(p=>{if(!p.discharged&&typeof p.seq==='number'&&p.seq>0&&localYMD(new Date(p.arrivedAt||p.enteredAt||0))===t)s.add(p.seq);});
+  (Array.isArray(VISITS)?VISITS:[]).forEach(v=>{if(typeof v.seq==='number'&&v.seq>0&&localYMD(new Date(v.dischargedAt||0))===t)s.add(v.seq);});
+  if(!s.size)return [];const max=Math.max(...s),g=[];for(let i=1;i<=max;i++)if(!s.has(i))g.push(i);return g;}
+async function healSeqGaps(){
+  if(!currentUser||!cloud.active||!cloud.patientsCol||!cloud.visitsCol||_seqHealBusy)return;
+  const gaps=seqGapsLocal();
+  if(!gaps.length){_seqGapSince=0;_seqGapSig='';return;}
+  const sig=gaps.join(',');
+  if(sig!==_seqGapSig){_seqGapSig=sig;_seqGapSince=Date.now();return;}
+  if(Date.now()-_seqGapSince<60000)return;
+  _seqHealBusy=true;
+  try{
+    const t=localYMD(new Date());const d0=new Date();d0.setHours(0,0,0,0);
+    const [ps,vs]=await Promise.all([cloud.patientsCol.get(),cloud.visitsCol.where('dischargedAt','>=',d0.toISOString()).get()]);
+    const rows=[];
+    ps.docs.forEach(d=>{const x=d.data()||{};if(x.discharged||!(typeof x.seq==='number'&&x.seq>0))return;
+      if(localYMD(new Date(x.arrivedAt||x.enteredAt||0))!==t)return;rows.push({kind:'p',id:d.id,seq:x.seq,ocm:String((x.bit&&x.bit.ocmNum)||'').replace(/\D/g,'')});});
+    vs.docs.forEach(d=>{const x=d.data()||{};if(!(typeof x.seq==='number'&&x.seq>0))return;
+      if(localYMD(new Date(x.dischargedAt||0))!==t)return;rows.push({kind:'v',id:d.id,seq:x.seq});});
+    const distinct=[...new Set(rows.map(r=>r.seq))].sort((a,b)=>a-b);
+    if(!distinct.length||distinct[distinct.length-1]===distinct.length){_seqGapSince=0;_seqGapSig='';return;}   // 서버 기준으론 빈 칸 없음
+    const map={};distinct.forEach((s,i)=>{map[s]=i+1;});
+    const jobs=[];let n=0;
+    rows.forEach(r=>{const ns=map[r.seq];if(ns===r.seq)return;n++;
+      if(r.kind==='p'){jobs.push(cloud.patientsCol.doc(r.id).update({seq:ns}).catch(()=>{}));
+        if(r.ocm&&cloud.intakeCol)jobs.push(cloud.intakeCol.doc(t+'_ocm'+r.ocm).update({seq:ns}).catch(()=>{}));
+        const lp=data.find(x=>x.id===r.id);if(lp)lp.seq=ns;}
+      else{jobs.push(cloud.visitsCol.doc(r.id).update({seq:ns}).catch(()=>{}));const lv=VISITS.find(x=>x.id===r.id);if(lv)lv.seq=ns;}});
+    await Promise.all(jobs);
+    seqNext=distinct.length+1;seqDate=t;lsSet("patientBoard_seq",String(seqNext));lsSet("patientBoard_seqdate",t);
+    saveLocal();cloudSaveConfig();renderThrottled();
+    try{audit('등록번호 자동 정리','빈 번호 '+gaps.map(g=>'#'+g).join(' ')+' → '+n+'건 번호 당김, 다음 #'+seqNext);}catch(e){}
+    _seqGapSince=0;_seqGapSig='';
+  }catch(e){console.warn('seq gap heal',e);}
+  finally{_seqHealBusy=false;}
+}
+setInterval(()=>{try{healSeqGaps();}catch(e){}},30000);
 const HEALED_SEQ=new Set();
 function healDupSeq(){
   if(!currentUser||!cloud.patientsCol)return;
@@ -7328,7 +7373,7 @@ function moveByDrag(pid,room){
   /* 다음 차례가 아닌 방으로 옮겼으면 모두에게: 끼워 넣음(동선에 없던 방) 또는 건너뜀(사이 방을 지나침) */
   const q=data.find(x=>x.id===pid);if(!q||_from===room)return;
   const ni=_old.indexOf(room,_st+1);
-  if(ni<0)routeChangeNotify(q,_old,q.route,'끌어서 끼워 넣음 '+_from+' → '+room);
+  if(ni<0)routeChangeNotify(q,_old,q.route,_from+' → '+room);
   else if(ni>_st+1)routeChangeNotify(q,_old,q.route,'건너뜀 '+_old.slice(_st+1,ni).join(', '));
 }
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;

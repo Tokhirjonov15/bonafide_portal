@@ -593,7 +593,9 @@ async function dongseonNotify(request, env) {
     /* 동선 변경 (2026-10-01): 누가 무엇을 바꿨는지 + 바뀐 동선 전체 */
     const routeTxt = kind === "route"
       ? `🔀 ${dcWho} 동선 변경 · ${s(b.why) || "변경"} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}` +
-        (s(b.added) ? `\n＋ ${s(b.added)}` : "") + (s(b.removed) ? `\n－ ${s(b.removed)}` : "") + (s(b.to) ? `\n→ ${s(b.to).slice(0, 300)}` : "")
+        /* 읽기 쉽게 한 줄씩 띄운다 (2026-10-01 요청): 제목 / (빈 줄) ＋·－ 바뀐 방 / (빈 줄) → 전체 동선 */
+        ((s(b.added) || s(b.removed)) ? "\n" : "") + (s(b.added) ? `\n＋ ${s(b.added)}` : "") + (s(b.removed) ? `\n－ ${s(b.removed)}` : "") +
+        (s(b.to) ? `\n\n→ ${s(b.to).slice(0, 300)}` : "")
       : "";
     const dcRooms = s(b.rooms) || room;
     const text = kind === "route" ? routeTxt
