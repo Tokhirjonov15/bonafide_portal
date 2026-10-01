@@ -2611,6 +2611,9 @@ async function establishSession(){
     return;
   }
   currentUser=u; sessionEstablished=true;
+  /* 이 기기에 '로그인해 있음' 표시 — 새로고침 때 로그인 창 대신 '다시 연결 중…' 을 보이게 하는 기준.
+     (2026-10-01: 이 표시를 쓰던 finishLogin 은 클라우드 모드에서 불리지 않아, 그 고침이 실제로는 한 번도 동작하지 않았다) */
+  try{localStorage.setItem(SESSION_KEY,String(u.id||u.email||'1'));}catch(e){}
   showReconnecting(false);
   document.getElementById('loginOverlay').classList.remove('show');
   if(currentUser.super){try{await seedApp();await ensureAclShape();}catch(e){console.error('seed',e);}}
@@ -4944,7 +4947,7 @@ async function startHosted(){
     cloud.bookingEditsCol=cloud.db.collection('bookingEdits');   // 직원이 4층 비급여 치료 화면에서 고친 예약(수정·취소·추가) — 시트 문서 위에 겹쳐 보임 (id: YYYY-MM-DD)
     cloud.lookupCol=cloud.db.collection('bitLookup');      // 접수 창에서 조회된 인적정보(어느 PC든, id: YYYY-MM-DD_병록번호) — 차트번호 없는 캐스트 카드를 이름으로 채움
     firebase.auth().onAuthStateChanged(async(user)=>{
-      if(!user){currentUser=null;sessionEstablished=false;cloud.email='';
+      if(!user){currentUser=null;sessionEstablished=false;cloud.email='';try{localStorage.removeItem(SESSION_KEY);}catch(e){}   /* 정말 로그아웃됨 — 다음에 열 때 바로 로그인 창 */
         if(!document.getElementById('loginBody').querySelector('#lg_name'))showLogin();return;}
       if(!user.email){try{await firebase.auth().signOut();}catch(e){}return;}  // 익명 등 이메일 없는 세션 정리
       cloud.user=user.uid;cloud.email=user.email||'';
@@ -7373,8 +7376,8 @@ function moveByDrag(pid,room){
   /* 다음 차례가 아닌 방으로 옮겼으면 모두에게: 끼워 넣음(동선에 없던 방) 또는 건너뜀(사이 방을 지나침) */
   const q=data.find(x=>x.id===pid);if(!q||_from===room)return;
   const ni=_old.indexOf(room,_st+1);
-  if(ni<0)routeChangeNotify(q,_old,q.route,_from+' → '+room);
-  else if(ni>_st+1)routeChangeNotify(q,_old,q.route,'건너뜀 '+_old.slice(_st+1,ni).join(', '));
+  if(ni<0)routeChangeNotify(q,_old,q.route,_from+' → '+room,[_from,room]);
+  else if(ni>_st+1)routeChangeNotify(q,_old,q.route,'건너뜀 '+_old.slice(_st+1,ni).join(', '),[_from,room,..._old.slice(_st+1,ni)]);
 }
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
@@ -7659,10 +7662,16 @@ function roomNotify(p,room,kind,extra){
 function routeDiff(a,b){const cnt=x=>{const m={};x.forEach(r=>m[r]=(m[r]||0)+1);return m;};const A=cnt(a),B=cnt(b);
   const add=[],rem=[];Object.keys(B).forEach(r=>{for(let i=(A[r]||0);i<B[r];i++)add.push(r);});Object.keys(A).forEach(r=>{for(let i=(B[r]||0);i<A[r];i++)rem.push(r);});
   return {add,rem};}
-function routeChangeNotify(p,oldRoute,newRoute,why){
+/* 진료 전 단계(3층 대기실 · x-ray실 · 진료실)끼리의 이동·변경은 알리지 않는다 (2026-10-01 요청) —
+   '3층 대기실 → x-ray실 → 진료실', '3층 대기실 → 진료실' 처럼 진료 전에는 순서가 자주 바뀌는 게 정상이라 소음만 된다.
+   바뀐 방(오간 방·더한 방·뺀 방·건너뛴 방)이 모두 이 안에 있을 때만 조용히, 하나라도 다른 방이면 그대로 알린다 */
+function routeAlertQuietRoom(r){return r==='3층 대기실'||r==='x-ray실'||/진료실\s*\d*$/.test(r||'');}
+function routeChangeNotify(p,oldRoute,newRoute,why,involved){
   oldRoute=Array.isArray(oldRoute)?oldRoute:[];newRoute=Array.isArray(newRoute)?newRoute:[];
   if(JSON.stringify(oldRoute)===JSON.stringify(newRoute)&&!/건너/.test(why||''))return;
   const d=routeDiff(oldRoute,newRoute);
+  const rooms=[...(Array.isArray(involved)?involved:[]),...d.add,...d.rem].filter(Boolean);
+  if(rooms.length&&rooms.every(routeAlertQuietRoom))return;
   roomNotify(p,'__all__','route',{why:why||'변경',by:(currentUser&&currentUser.name)||'',added:d.add.join(', '),removed:d.rem.join(', '),to:newRoute.join(' → ')});
   try{audit('동선 변경 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+(why||'')+' · '+newRoute.join(' → '));}catch(e){}
 }
@@ -10522,7 +10531,7 @@ async function checkNewBuild(){try{
   const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''));
   if(busy){setTimeout(checkNewBuild,3*60000);return;} // 쓰는 중이면 3분 뒤 다시
   try{audit('새 버전 자동 새로고침');}catch(e){}
-  location.reload();
+  setTimeout(()=>location.reload(),800);   /* 기록이 서버에 닿을 시간 — 바로 새로고침하면 이 기록이 빠져 원인 추적이 어려웠다 */
 }catch(_){}}
 setInterval(checkNewBuild,30*60000); setTimeout(checkNewBuild,60000);
 /* 잠들었다 깬 태블릿·다시 연결된 화면은 곧바로 확인한다 — 30분 타이머는 잠든 동안 돌지 않아 옛 판이 몇 시간씩 남았다 (2026-09-30: 옛 판 화면이 내보낸 카드를 되살림) */
