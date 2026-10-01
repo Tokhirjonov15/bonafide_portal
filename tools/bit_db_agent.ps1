@@ -35,7 +35,8 @@ param(
   [int]$ResvDays = 7,                       # 진료 예약(RsvInf)을 오늘부터 며칠치 올릴지 → bitResv/{날짜}. 0 = 예약 연동 끔
   [int]$ResvEvery = 2,                      # 예약은 몇 주기마다 읽을지(2 = 8초). 바뀐 날짜의 문서만 다시 쓴다
   [int]$RxEvery = 3,                        # 처방(OdrInf)을 몇 주기마다 읽을지(3 = 12초). 0 = 처방 연동 끔. 바뀐 접수건만 다시 쓴다
-  [switch]$RxAlways,                        # 대기(standby)여도 처방 문서는 쓴다 — 담당 PC 가 처방 기능이 없는 옛 버전인 동안
+  [switch]$RxAlways,
+  [switch]$PayAlways,                       # 대기(standby)여도 처방 금액(pay)은 쓴다 — 접수 PC 가 db1.2 전인 동안 개발 PC 에서 (2026-10-01)                        # 대기(standby)여도 처방 문서는 쓴다 — 담당 PC 가 처방 기능이 없는 옛 버전인 동안
   [switch]$ResvAlways,                      # 대기(standby)여도 예약 문서는 쓴다 — 담당 PC 의 에이전트가 예약 기능이 없는 옛 버전인 동안 임시로(관리 PC 용)
   [switch]$DryRun,                          # Firestore 에 쓰지 않고 로그만
   [switch]$SendExistingOnStart,             # 시작 시 오늘 접수분을 전부 보냄(기본: 스냅샷만 찍고 보내지 않음)
@@ -49,7 +50,8 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.1'   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
+$VER = 'db1.2'   # 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+# $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
@@ -427,7 +429,8 @@ $RX_QUERY = @"
 SELECT RTRIM(o.OdrOcmNum) AS k, RTRIM(o.OdrChtNum) AS mrn, o.OdrSeq AS seq,
        RTRIM(o.OdrCod) AS cod, RTRIM(o.OdrCodNam) AS nam,
        o.OdrQty AS qty, o.OdrTms AS tms, o.OdrDay AS dys,
-       RTRIM(o.OdrUntCod) AS unt, RTRIM(u.UidNam) AS dr, RTRIM(o.OdrDtm) AS dtm
+       RTRIM(o.OdrUntCod) AS unt, RTRIM(u.UidNam) AS dr, RTRIM(o.OdrDtm) AS dtm,
+       o.OdrPrc AS prc, o.OdrAmt AS amt, RTRIM(o.OdrInsYon) AS ins
 FROM OdrInf o WITH (NOLOCK)
 JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OdrDtrCod
@@ -435,6 +438,7 @@ WHERE LEFT(m.OcmAcpDtm, 8) = '{0}' AND o.OdrDelFlg <> 'C'
 ORDER BY o.OdrOcmNum, o.OdrSeq
 "@
 $script:RxHash = @{}
+$script:PayHash = @{}
 function NumTxt($v) { if ($null -eq $v -or $v -is [DBNull]) { return '' }
   $d = 0.0; if (-not [double]::TryParse([string]$v, [ref]$d)) { return ([string]$v).Trim() }
   if ($d -eq [Math]::Floor($d)) { return [string][int]$d }
@@ -453,10 +457,24 @@ function PollRx() {
                       unt = ([string]$r.unt).Trim(); dr = ([string]$r.dr).Trim()
                       t = $(if ($dtm.Length -ge 12) { $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2) } else { '' }) }
     [void]$byOcm[$key].items.Add($it)
+    # 금액(2026-10-01, db1.2): 단가·금액·급여구분(OdrInsYon: 2=비급여, 0=급여). 금액이 있는 줄만 — 비급여 동의서 금액 자동 채우기용.
+    #  items 와 따로 'pay' 필드로 쓴다: 옛 빌드 담당 PC 가 items 를 다시 써도 pay 는 지워지지 않는다(FsPatch 는 준 필드만 바꾼다)
+    $amtN = 0.0; [void][double]::TryParse([string]$r.amt, [ref]$amtN)
+    if ($amtN -gt 0) {
+      if (-not $byOcm[$key].pay) { $byOcm[$key].pay = (New-Object System.Collections.ArrayList) }
+      [void]$byOcm[$key].pay.Add([ordered]@{ cod = $it.cod; nam = $it.nam; t = $it.t; prc = (NumTxt $r.prc); amt = (NumTxt $r.amt); ins = ([string]$r.ins).Trim() })
+    }
   }
   $sent = 0
   foreach ($key in ($byOcm.Keys | Sort-Object)) {
     $v = $byOcm[$key]
+    # 금액(pay) — 자기 해시로 따로 쓴다. 담당이 아니어도 -PayAlways 면 쓴다(접수 PC 가 옛 빌드인 동안 개발 PC 가 채움)
+    $pay = @(); if ($v.pay) { $pay = @($v.pay) }
+    $ph = (($pay | ForEach-Object { "$($_.cod)|$($_.prc)|$($_.amt)|$($_.ins)" }) -join "`n")
+    if ($script:PayHash[$key] -ne $ph) {
+      if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:PayHash[$key] = $ph }
+      else { try { FsPatch "bitRx/${day}_ocm$key" @{ pay = $pay; payAt = (NowIso); payPc = $Pc }; $script:PayHash[$key] = $ph } catch { Log "처방 금액 전송 오류 ${key}: $($_.Exception.Message)" } }
+    }
     $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)" }) -join "`n")
     if ($script:RxHash[$key] -eq $h) { continue }
     if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }

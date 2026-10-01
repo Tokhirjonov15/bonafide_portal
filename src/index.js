@@ -571,7 +571,7 @@ async function dongseonNotify(request, env) {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
     const room = s(b.room), kind = s(b.kind);
-    if (!room || !["in", "out", "dc", "dcundo"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
+    if (!room || !["in", "out", "dc", "dcundo", "floor"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
     if (!env.ROOM_BOT_TOKEN && !env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
     await ensureSchema(env);
     const subs = ((await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || []).filter((r) => normRoom(r.room) === normRoom(room));
@@ -584,7 +584,9 @@ async function dongseonNotify(request, env) {
     /* 처방 D/C(중지) 알림 (2026-10-01): "최다솜 5860 C-ARM D/C" — 처방내역에서 체크한 항목 */
     const dcWho = s(b.name) + (s(b.mrn) ? " " + s(b.mrn) : "");
     const dcItem = s(b.item).slice(0, 80);
-    const text = kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+    /* 3층↔4층 이동 (2026-10-01): "최다솜 5860 기본물리치료 → C-Arm 순서변동" — room = '3층 이동 알림' / '4층 이동 알림' 채널 */
+    const text = kind === "floor" ? `🔀 ${dcWho} ${s(b.from)} → ${s(b.to)} 순서변동 · ${hm}`
+      : kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
       : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
       : kind === "in"
       ? `🟢 ${room} 도착 · ${who} · ${hm}`

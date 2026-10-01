@@ -773,6 +773,13 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-item{padding:10px 12px;border-bottom:1px solid var(--line2);cursor:pointer;border-left:4px solid transparent}
   .slip-item.sel{background:rgba(59,130,246,.14);border-left-color:#3b82f6}
   .slip-item.ack{opacity:.55}
+  /* 4층 예약 10분 전 깜빡임 (2026-10-01) */
+  @keyframes ptBlink{0%,100%{box-shadow:0 0 0 0 rgba(234,88,12,0);border-color:var(--line)}50%{box-shadow:0 0 0 4px rgba(234,88,12,.55);border-color:#ea580c}}
+  .card.pt-soon{animation:ptBlink 1.1s ease-in-out infinite;border:2px solid #ea580c}
+  .pt-soon-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(234,88,12,.12);color:#c2410c;font-size:12.5px;font-weight:800}
+  .slip-printed{display:inline-block;font-size:11px;font-weight:800;color:#047857;background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.45);border-radius:6px;padding:0 6px;line-height:17px;white-space:nowrap}
+  .slip-printed.stale{color:#b45309;background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.55)}
+  .slip-printed.big{font-size:14px;line-height:26px;padding:0 10px;align-self:center}
   .si-top{display:flex;justify-content:space-between;align-items:baseline;font-size:16px}.si-t{font-size:12px;color:var(--muted)}
   .si-sub{font-size:12px;color:var(--muted);margin-top:2px}
   .slip-detail{flex:1;overflow:auto;padding:18px 22px}
@@ -1291,6 +1298,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cst-etc input:not(.cst-price){flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:14px}
   .cst-total{margin-top:10px;text-align:right;font-size:15px}
   .cst-total b{font-size:18px}
+  .pcont{margin-bottom:10px}
+  .cont-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);max-height:220px;overflow:auto}
+  .cst-price.from-bit{border-color:#6366f1;background:rgba(99,102,241,.08);font-weight:700}   /* 비트 처방 금액으로 채운 칸 */
+  .cst-bitinfo{margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px}
+  .cst-bitinfo i,.cst-bitinfo svg{width:14px;height:14px}
+  .cst-bitrest{background:var(--chip);border-radius:6px;padding:1px 7px;font-weight:700}
   .cst-text{font-size:13.5px;line-height:1.65;margin:0;padding-left:18px}
   #cstMemo{width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:14px}
   .cst-signer{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;font-size:14px}
@@ -1635,6 +1648,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <input id="cstEtc" placeholder="직접 입력" oninput="consentSum()">
         <input class="cst-price" id="cstEtcPrc" inputmode="numeric" placeholder="금액" oninput="consentSum()"></label>
       <div class="cst-total">합계 <b id="cstTotal">0원</b></div>
+      <div class="hint cst-bitinfo" id="cstBitInfo"></div>
 
       <div class="cst-sect-t">설명 내용</div>
       <ul class="cst-text">
@@ -1880,6 +1894,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       </div>
       </div><!-- /pcol 좌(정보+동선) -->
       <div class="pcol">
+      <div class="pmemo pcont" id="contBox" style="display:none">
+        <div class="pm-head"><i data-lucide="list-ordered"></i> 연속메모 <span class="hint" style="font-weight:400">(비트 접수메모(연속) 그대로 — 비트에서 고치면 여기도 바뀝니다)</span></div>
+        <div id="f_cont" class="cont-text"></div>
+      </div>
       <div class="pmemo" id="pmemoBox">
         <div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
         <textarea id="f_pmemo" rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의… (칸을 벗어나면 즉시 저장)" oninput="cvGrow(this)" onchange="pmemoNow(this.value)"></textarea>
@@ -1922,7 +1940,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
           <div id="rxSlipHint" class="hint" style="display:none;margin-bottom:5px"></div>
           <textarea id="rxProc" rows="2" oninput="rxGrow(this)" placeholder="예: C-Arm 주사, 신경차단술" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
         </div>
-        <div class="fld" style="margin-top:8px">
+        <!-- 준비물은 화면에서 뺐다 (2026-10-01 요청). 요소는 남겨 둔다 — 열기·저장 코드가 rxItems 를 읽으므로 지우면 창이 깨진다 -->
+        <div class="fld" style="margin-top:8px;display:none">
           <label>준비물</label>
           <div id="rxItemChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0"></div>
           <textarea id="rxItems" rows="2" oninput="rxGrow(this)" placeholder="예: 26G 바늘, 조영제, 리도카인, 드레싱" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);font-size:14px;resize:vertical"></textarea>
@@ -2829,7 +2848,7 @@ function subscribeBitIntake(){
     cloud.unsubRx=cloud.rxCol.where('date','==',today).onSnapshot(s=>{
       BIT_RX={};BIT_RX_MRN={};
       s.docs.forEach(d=>{const v=d.data()||{};const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
-        const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||''};
+        const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[]};   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
         if(ocm)BIT_RX[ocm]=rec; if(mrn)BIT_RX_MRN[mrn]=rec;});
       try{applyRxRoutesAll();}catch(e){console.warn('rxRoutes',e);}   // 처방 → 동선 자동 채우기 (바뀐 카드가 있으면 안에서 다시 그림)
       try{render();}catch(e){}
@@ -2990,7 +3009,7 @@ function renderSlipScreen(){
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
   const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
-      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.note.ack?' · ✔ 확인':''}</div></div>`;}).join('')
+      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div></div>`;}).join('')
     :'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>';
   if(box.dataset.h!==listHtml){box.dataset.h=listHtml;box.innerHTML=listHtml;}
   const it=items.find(x=>x.mrn===slipSel);
@@ -3003,7 +3022,7 @@ function renderSlipScreen(){
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
     <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
-    <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> 슬립 인쇄</button>
+    <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
       <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button></div>`;
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
 }
@@ -3042,7 +3061,21 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
 function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it)return;   // 숨김 iframe 인쇄(라벨과 같은 방식) — 태블릿에서는 브라우저 인쇄 대화상자
   try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
     document.body.appendChild(ifr);const cw=ifr.contentWindow;cw.onafterprint=function(){setTimeout(()=>{if(ifr.parentNode)ifr.remove();},300);};
-    const d=cw.document;d.open();d.write(slipHTML(it));d.close();setTimeout(()=>{if(ifr.parentNode)ifr.remove();},20000);}catch(e){console.error('slip',e);}}
+    const d=cw.document;d.open();d.write(slipHTML(it));d.close();setTimeout(()=>{if(ifr.parentNode)ifr.remove();},20000);}catch(e){console.error('slip',e);}
+  markSlipPrinted(it);}
+/* ── 인쇄됨 표시 (2026-10-01 요청) — [슬립 인쇄]를 누르면 처방 문서(bitNote)에 남겨 모든 화면(슬립 화면·카드)에 보인다.
+   인쇄한 뒤 진료실에서 처방이 또 바뀌면(rev 증가) '인쇄 후 변경'으로 바꿔 보여 준다 — 옛 슬립으로 일하지 않게 */
+function markSlipPrinted(it){
+  const n=it&&it.note;if(!n||!n.docId)return;
+  const rec={printed:true,printedAt:Date.now(),printedBy:(currentUser&&currentUser.name)||'',printedRev:(n.rev|0)};
+  try{if(cloud.noteCol&&cloud.active)cloud.noteCol.doc(n.docId).set(rec,{merge:true});}catch(e){console.warn('slip printed',e);}
+  Object.assign(n,rec);
+  try{audit('슬립 인쇄',(it.name||'')+(it.mrn?' ('+it.mrn+')':''));}catch(e){}
+  try{renderSlipScreen();}catch(e){}try{render();}catch(e){}}
+function slipPrinted(n){if(!n||!n.printed)return {on:false,stale:false};return {on:true,stale:(n.rev|0)>(n.printedRev|0),at:n.printedAt,by:n.printedBy||''};}
+function slipPrintedTag(n,big){const s=slipPrinted(n);if(!s.on)return '';
+  const tip=`${s.by?s.by+' · ':''}${s.at?hhmm(new Date(s.at).toISOString()):''} 인쇄${s.stale?' — 그 뒤 처방이 바뀌었습니다. 다시 인쇄하세요':''}`;
+  return ` <span class="slip-printed${s.stale?' stale':''}${big?' big':''}" title="${esc(tip)}">🖨 ${s.stale?'인쇄 후 변경':'인쇄됨'}</span>`;}
 function onBitNotes(){try{if(currentUser){if(bitApplyLookups())bitBackfillMrn();bitBackfillMemo();}}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}}   // 특이사항 보충 + 카드 요약(처방 N줄) 갱신
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
@@ -3054,7 +3087,8 @@ window.bitAccept=function(docId){
   {const si=document.getElementById('f_ins');if(si&&r.ins){si.value=r.ins;if(si.value!==r.ins)si.value='';}}
   if(r.nextResv&&r.nextResv.slice(0,10)===localYMD(new Date())){const m=/(\d{2}:\d{2})/.exec(r.nextResv.slice(10));if(m)set('f_reserve',m[1]);}
   {const t=new Date(r.seenAt);if(!isNaN(t))set('f_receive',String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'));}
-  {const ta=document.getElementById('f_pmemo');const combo=bitMemoCombined(r);
+  {const ta=document.getElementById('f_pmemo');const combo=bitMemoKeep(r.memoRx);   // 특이사항 칸 = 비트 특이사항만. 연속메모는 따로 (2026-10-01)
+    {const cb=document.getElementById('contBox'),ct=document.getElementById('f_cont'),cv=bitMemoKeep(r.memoCont);if(cb&&ct&&cv){cb.style.display='';ct.textContent=cv;}}
     if(ta&&combo){const cur=ta.value.trim();
       if(!cur)ta.value=combo;
       else if(r.memoRx&&!cur.includes(r.memoRx.trim()))ta.value=cur+'\n'+r.memoRx.trim();   // 원외처방 특이사항이 새로 왔으면 덧붙임
@@ -3139,26 +3173,40 @@ function bitMemoClean(t){   // RTF 면 글자만 뽑고, '+','-','.' 처럼 뜻 
   const junk=/^[\s+\-_.·ㆍ,~*]*$/;
   return stripRtfBlocks(t).split(/\r?\n/).filter(x=>!junk.test(x)).join('\n').trim();}
 /* 환자 명단의 특이사항(영구 메모)에 없는 문장만 덧붙인다 — 비트 접수메모(연속)·원외처방 특이사항·외래진료실 특이사항 공용. 바뀌었으면 true */
-function bitMergeMemo(mrn,name,parts){
-  mrn=String(mrn||'').trim();parts=(parts||[]).map(bitMemoClean).filter(Boolean);
-  if(!mrn||!parts.length||!name)return false;
+/* 비트 메모를 특이사항에 넣기 — 2026-10-01 고침(요청: '+' 가 빠지고, 순서가 뒤바뀐다)
+   · 비트 글은 비트에 적힌 순서 그대로, '+' 줄도 그대로 맨 위에 둔다. (전에는 '+'·'-' 만 있는 줄을 버리고, 줄 머리의 '+' 를 지운 채 비교했으며,
+     새 줄을 언제나 맨 아래에 붙여 비트에서 위쪽에 추가한 내용이 아래로 가 순서가 뒤집혔다)
+   · 직원이 동선관리에서 손으로 적은 줄(비트에 없는 줄)은 그 아래에 그대로 남긴다.
+   · 메모 전체가 '+' 하나뿐이면(비트의 빈 표시) 넣지 않는다. 같은 줄이 두 메모(연속·특이사항)에 다 있으면 한 번만 */
+function bitMemoKeep(t){const s=stripRtfBlocks(t).replace(/\r/g,'');if(/^[\s+\-_.·ㆍ,~*]*$/.test(s))return '';
+  return s.split('\n').map(x=>x.replace(/\s+$/,'')).join('\n').replace(/^\n+|\n+$/g,'');}
+function bitMergeMemo(mrn,name,parts,exclude){
+  mrn=String(mrn||'').trim();parts=(parts||[]).map(bitMemoKeep).filter(Boolean);
+  if(!mrn||!name)return false;
+  const exKeys=new Set();String(exclude||'').split('\n').forEach(l=>{const k=bitMemoLineKey(l);if(k){exKeys.add(k);exKeys.add(k.replace(/^[+]+\s*/,''));}});   // 연속메모 줄 — 특이사항에서 뺀다(예전에 합쳐 넣은 것 정리)
+  if(!parts.length&&!exKeys.size)return false;
   const raw=regMemo(mrn);
-  let cm=stripRtfBlocks(raw),changed=(cm!==raw);   // 예전에 저장된 RTF 원문은 여기서 글자만 남기고 정리한다(같은 문장이 두 번 붙는 것도 막음) 2026-09-23
-  if(/^[\s+\-_.·ㆍ,~*]*$/.test(cm)){cm='';changed=!!raw;}   // 예전에 '-' 만 들어간 특이사항은 비운 뒤 채움
-  /* 줄 단위로 비교 — '- ' 머리표·앞뒤 공백·끝의 '/' 차이는 같은 문장으로 본다. 접수메모(연속)는 '- ' 로, 원외처방·외래진료실 특이사항은 머리표 없이
-     같은 내용을 보내므로 블록 통째로 비교하면 두 번 붙었다(2026-09-17). 이미 두 번 들어간 기존 특이사항도 이때 정리한다 */
-  const lines=cm?cm.split(/\r?\n/):[];const keys=new Set();const out=[];
-  lines.forEach(l=>{const k=bitMemoLineKey(l);if(!k)return;if(keys.has(k)){changed=true;return;}keys.add(k);out.push(l);});
-  if(out.length!==lines.length)changed=true;
-  parts.forEach(t=>t.split(/\r?\n/).forEach(l=>{const k=bitMemoLineKey(l);if(!k||keys.has(k))return;keys.add(k);out.push(l.trim());changed=true;}));
-  const next=out.join('\n');
-  if(!changed||next===raw)return false;   // 저장돼 있던 원문(raw)과 같을 때만 건너뛴다 — RTF 정리분도 저장되도록
+  let cm=stripRtfBlocks(raw);
+  if(/^[\s+\-_.·ㆍ,~*]*$/.test(cm))cm='';   // 예전에 '-' 만 들어간 특이사항
+  const bitLines=[],bitKeys=new Set();
+  parts.forEach(t=>t.split('\n').forEach(l=>{const k=bitMemoLineKey(l);
+    if(!k){if(bitLines.length&&bitLines[bitLines.length-1]!=='')bitLines.push('');return;}   // 빈 줄은 문단 구분으로 하나만
+    if(bitKeys.has(k))return;bitKeys.add(k);bitLines.push(l);}));
+  while(bitLines.length&&bitLines[bitLines.length-1]==='')bitLines.pop();
+  const own=[],ownKeys=new Set();
+  (cm?cm.split(/\r?\n/):[]).forEach(l=>{const k=bitMemoLineKey(l);if(!k||bitKeys.has(k)||ownKeys.has(k)||exKeys.has(k)||exKeys.has(k.replace(/^[+]+\s*/,'')))return;ownKeys.add(k);own.push(l);});
+  /* 예전 방식으로 저장돼 머리 '+' 만 빠진 비트 줄은 직원 줄로 남기지 않는다 */
+  const plusLess=new Set([...bitKeys].map(k=>k.replace(/^[+]+\s*/,'')));
+  const own2=own.filter(l=>!plusLess.has(bitMemoLineKey(l).replace(/^[+]+\s*/,'')));
+  const next=[bitLines.join('\n'),own2.join('\n')].filter(Boolean).join('\n');
+  if(next===raw)return false;
   return setRegMemo(mrn,name,next);
 }
-function bitMemoLineKey(s){return String(s||'').replace(/^[\s\-–—•·ㆍ*+.]+/,'').replace(/[\s\/]+$/,'').replace(/\s+/g,' ').trim();}   // 비교용 정규화(표시 문장은 그대로 둔다)
+function bitMemoLineKey(s){return String(s||'').replace(/^[\s\-–—•·ㆍ*.]+/,'').replace(/[\s\/]+$/,'').replace(/\s+/g,' ').trim();}   // 비교용 정규화 — '+' 는 지우지 않는다(2026-10-01: '+' 도 뜻이 있다)
 function bitMemoCombined(r){const a=bitMemoClean(r.memoCont),b=bitMemoClean(r.memoRx);if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
 function bitBackfillMemo(){
+  const memoAll={};   // mrn → {name, parts} — 아래에서 모아 환자마다 한 번만 bitMergeMemo
   BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수'&&r.status!=='수납완료')return;   // 수납완료 뒤에 오는 원외처방 특이사항도 명단에는 반영
     const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();
     const p=data.find(x=>!x.discharged&&((mrn&&(x.mrn||'').trim()===mrn)||(ocm&&x.bit&&String(x.bit.ocmNum||'')===ocm)));
@@ -3183,14 +3231,22 @@ function bitBackfillMemo(){
     /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
        카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
     if(!mrn)return;
-    if(bitMergeMemo(mrn,p?p.name:(r.name||''),[r.memoCont,r.memoRx]))console.log('비트 특이사항 보충',mrn,p?'':'(카드 없음)');
+    const g=memoAll[mrn]||(memoAll[mrn]={name:'',parts:[],cont:''});
+    if(!g.name)g.name=p?p.name:(r.name||'');
+    if(bitMemoKeep(r.memoCont))g.cont=r.memoCont;   // 연속메모는 따로(나중 문서 것)
+    g.parts.push(r.memoRx);
   });
   /* 외래진료실(진료실 PC)의 특이사항 — 의사가 진료 뒤(환자가 이미 내보내진 뒤)에 적어도 명단 특이사항에 남겨 다음 내원 때 보이게. 이름은 카드 → 비트 창 순 */
-  BIT_NOTES.forEach(n=>{const mrn=String(n.mrn||'').trim();if(!mrn||!bitMemoClean(n.memo))return;
+  BIT_NOTES.forEach(n=>{const mrn=String(n.mrn||'').trim();if(!mrn||!bitMemoKeep(n.memo))return;
     const p=data.find(x=>!x.discharged&&(x.mrn||'').trim()===mrn);const reg=regFind(mrn);
-    const name=(p&&p.name)||(reg&&reg.name)||n.name||'';
-    if(bitMergeMemo(mrn,name,[n.memo]))console.log('진료실 특이사항 보충',mrn,p?'':'(카드 없음)');
+    const g=memoAll[mrn]||(memoAll[mrn]={name:'',parts:[],cont:''});
+    if(!g.name)g.name=(p&&p.name)||(reg&&reg.name)||n.name||'';
+    g.parts.push(n.memo);
   });
+  /* 한 환자의 비트 메모(연속 → 특이사항 → 외래진료실)는 한 번에 넣는다 — 따로 넣으면 서로 자기 것을 맨 위로 올려 순서가 계속 바뀐다 (2026-10-01) */
+  Object.keys(memoAll).forEach(mrn=>{const g=memoAll[mrn];
+    if(g.cont&&setRegCont(mrn,g.name,g.cont))console.log('비트 연속메모 갱신',mrn);
+    if(bitMergeMemo(mrn,g.name,g.parts,regCont(mrn)))console.log('비트 특이사항 보충',mrn);});
 }
 /* ── 자동 접수: 비트에서 실제로 접수된 환자(전진료일 = 오늘)는 확인 없이 3층 대기실 카드로 만든다.
    · 판단 근거: 비트 인적정보의 '전진료일'이 오늘이면 오늘 접수(진료 기록 생성)된 환자. 단순 조회는 전진료일이 과거.
@@ -3432,7 +3488,7 @@ function bitBackfillMrn(){
     p.mrn=mrn;const rp=r.rrn7?parseRRN(r.rrn7):null;if(rp){p.birth=rp.birth;p.sex=rp.sex;}
     {const si=document.getElementById('f_ins');if(!p.ins&&si&&r.ins&&[...si.options].some(o=>o.value===r.ins))p.ins=r.ins;}
     regUpsert(mrn,p.name,p.birth,p.sex);
-    try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,p.name,combo);}catch(e){}
+    try{if(r.memoCont)setRegCont(mrn,p.name,r.memoCont);const sp=bitMemoKeep(r.memoRx);if(sp&&!regMemo(mrn))setRegMemo(mrn,p.name,sp);}catch(e){}
     save(p);render();console.log('비트 차트번호 보충',ocm);
   });
 }
@@ -3475,7 +3531,7 @@ function bitCreatePatient(r,name,reg){
          ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn,memoSrc:p.memoToday||''};
   if(mrn){
     regUpsert(mrn,name,birth,sex);
-    try{const combo=bitMemoCombined(r);if(combo&&!regMemo(mrn))setRegMemo(mrn,name,combo);}catch(e){}
+    try{if(r.memoCont)setRegCont(mrn,name,r.memoCont);const sp=bitMemoKeep(r.memoRx);if(sp&&!regMemo(mrn))setRegMemo(mrn,name,sp);}catch(e){}
     try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(mrn))setRegFamily(mrn,name,r.guardian+'('+r.relation+')');}catch(e){}
   }
   autoAssignRoomStaff(p);
@@ -4167,7 +4223,7 @@ async function runSelfTest(){
      eq('진료실 특이사항: 카드가 없어도(내보낸 뒤) 명단 특이사항에 저장', regMemo('501'), '2026. 9. 10 기본물리치료만');
      ok('진료실 특이사항: 비트 빈 표시(+)만이면 저장 안 함', regMemo('502')==='');
      PMEMO['501']={memo:'기존 메모',name:'퇴원후메모'};bitBackfillMemo();
-     eq('진료실 특이사항: 기존 메모 뒤에 없는 문장만 덧붙임', regMemo('501'), '기존 메모\n2026. 9. 10 기본물리치료만');
+     eq('진료실 특이사항: 비트 글이 위(비트 순서), 직원이 적은 줄은 그 아래에 남김 (2026-10-01)', regMemo('501'), '2026. 9. 10 기본물리치료만\n기존 메모');
      const before=regMemo('501');bitBackfillMemo();
      ok('진료실 특이사항: 같은 내용 반복 호출해도 중복 없음', regMemo('501')===before);
      BIT_INTAKE=BIT_INTAKE_BAK;data=_d5;BIT_NOTES=_n5;PMEMO=_pm;window.pmemoSave=_ps;window.audit=_au;}
@@ -4598,9 +4654,17 @@ function ghostPatient(pid,why){
   if(i>=0){data.splice(i,1);saveLocal();try{render();}catch(e){}}
   console.warn('유령 카드',pid,why);
   try{audit('유령 카드 정리',nm+' — '+why);}catch(e){}
-  try{toast((nm?dispName(nm)+' 님 카드는 ':'이 카드는 ')+'다른 화면에서 이미 내보냈습니다. 화면이 오래되어 새로고침합니다.');}catch(e){}
-  if(!_ghostReloadT)_ghostReloadT=setTimeout(()=>{try{flushBigLocal();}catch(e){}location.reload();},2500);
+  /* 2026-10-01: 바로 새로고침하지 않는다. 다른 화면에서 카드를 지우는 바로 그 순간 이 화면이 그 카드를 저장하려던 것뿐인 경우가 대부분이었다
+     (09-30: 26번 모두 새로고침 → 로그인 화면이 잠깐 보임, 대부분 삭제와 같은 초). 카드만 이 화면에서 빼고,
+     8초 안에 카드 구독이 그 삭제를 알려 주면(=구독이 살아 있음) 그대로 둔다. 알려 주지 않으면 구독이 끊긴 오래된 화면이므로 그때만 새로고침 */
+  setTimeout(()=>{
+    if(REMOVED_PIDS.has(pid)||KNOWN_GONE.has(pid))return;   // 구독이 삭제를 봤다 — 정상 화면
+    try{toast((nm?dispName(nm)+' 님 카드는 ':'이 카드는 ')+'다른 화면에서 이미 내보냈습니다. 화면이 오래되어 새로고침합니다.');}catch(e){}
+    try{audit('오래된 화면 새로고침',nm+' — '+why);}catch(e){}
+    if(!_ghostReloadT)_ghostReloadT=setTimeout(()=>{try{flushBigLocal();}catch(e){}location.reload();},2500);
+  },8000);
 }
+const KNOWN_GONE=new Set();   // 카드 구독이 '지워짐'으로 알려 준 id (REMOVED_PIDS 는 되살아남 검사에서 지워지므로 따로 둔다)
 function cloudSavePatient(p){
   if(!(cloud.active&&cloud.patientsCol&&p&&p.id))return;
   const ref=cloud.patientsCol.doc(p.id);
@@ -4817,6 +4881,19 @@ async function startHosted(){
          if(n){try{renderThrottled();}catch(e){}}
        },err=>console.warn('visits snap',err));}
       try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());lsSet(STATS_STORE,JSON.stringify(STATS));}catch(e){}
+      /* 오늘 방별 체류 기록도 실시간으로 (2026-10-01): 전에는 로그인 때 한 번만 받아, 다른 PC 에서 종결한 환자가 통계의 '최근 종결 기록'에
+         새로고침 전까지 없었다(내원 목록에는 있는데 통계에는 적게 보임). 오늘 0시 이후 나간 기록만 듣는다 */
+      if(cloud.unsubS)cloud.unsubS();
+      {const d0=new Date();d0.setHours(0,0,0,0);
+       cloud.unsubS=cloud.statsCol.where('leftAt','>=',d0.toISOString()).onSnapshot(s=>{
+         if(s.metadata&&s.metadata.hasPendingWrites)return;   // 이 PC 가 방금 쓴 것은 completeVisit 이 이미 STATS 에 넣었다
+         let n=0;
+         s.docChanges().forEach(ch=>{const v=ch.doc.data()||{};const id=v.id||ch.doc.id;
+           const i=STATS.findIndex(x=>x.id===id);
+           if(ch.type==='removed'){if(i>=0){STATS.splice(i,1);n++;}return;}
+           if(i<0){STATS.push(v);n++;}else if(JSON.stringify(STATS[i])!==JSON.stringify(v)){STATS[i]=v;n++;}});
+         if(n){try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}}
+       },err=>console.warn('stats snap',err));}
       try{await loadRegistryExt();}catch(e){console.warn('registryChunks',e);}   // 비트 EMR 대용량 명단(있으면)
       if(cloud.unsub)cloud.unsub();
       cloud.unsub=cloud.ref.onSnapshot(s=>{cloud.active=true;setSync('live');
@@ -4830,7 +4907,7 @@ async function startHosted(){
         /* 옛 판 화면(새로고침 안 됨)이 set() 으로 되살린 카드 잡기: 이 화면이 '지워짐'을 본 id 가 다시 '추가됨'으로 오면 유령이다 —
            되돌리기·비트 재접수는 늘 새 id 로 만들므로 같은 id 의 재등장은 되살아난 것뿐이다. 건강한 화면 하나가 곧바로 지운다 (2026-09-30) */
         try{s.docChanges().forEach(ch=>{const id=ch.doc.id;
-          if(ch.type==='removed'){REMOVED_PIDS.add(id);return;}
+          if(ch.type==='removed'){REMOVED_PIDS.add(id);KNOWN_GONE.add(id);return;}
           if(ch.type==='added'&&REMOVED_PIDS.has(id)){REMOVED_PIDS.delete(id);
             const v=ch.doc.data()||{};cloudDelPatient(id);
             try{audit('유령 카드 정리(되살아남)',(v.name||'')+(v.mrn?' ('+v.mrn+')':'')+(v.seq?' #'+v.seq:''));}catch(e){}
@@ -4845,7 +4922,7 @@ async function startHosted(){
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
         const m={};
         s.docs.forEach(d=>{const v=d.data()||{};const mrn=String(v.mrn||d.id||'').trim();if(!mrn)return;
-          const rec={};if(v.memo)rec.memo=v.memo;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
+          const rec={};if(v.memo)rec.memo=v.memo;if(v.cont)rec.cont=v.cont;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
           if(v.floorBase&&typeof v.floorBase==='object'&&Object.keys(v.floorBase).length)rec.floorBase=v.floorBase;   // 층별 내원 보정
           if(v.treatBase&&typeof v.treatBase==='object'&&Object.keys(v.treatBase).length)rec.treatBase=v.treatBase;   // 치료 회차 보정(충격파·신장분사·자동차도수)
           if(v.treatBy&&typeof v.treatBy==='object'&&Object.keys(v.treatBy).length)rec.treatBy=v.treatBy;   // 그 보정을 누가 언제 했는지
@@ -4999,11 +5076,11 @@ function pmKey(mrn){return String(mrn||'').trim().replace(/[^\w-]/g,'_')||'_';} 
 function pmRec(mrn){mrn=(mrn||'').trim();return mrn?(PMEMO[mrn]||null):null;}
 /* 한 환자 문서만 저장(전체 설정이 아니라) → 문서당 ~2KB, 1MB 한도 접근 불가 */
 function pmemoSave(mrn){mrn=(mrn||'').trim();if(!mrn)return;
-  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length)||(rec.floorBase&&Object.keys(rec.floorBase).length)||(rec.treatBase&&Object.keys(rec.treatBase).length)||rec.visitAdj);   // floorBase(층별 내원 보정)·treatBase(치료 회차 보정)·visitAdj 만 있어도 기록 유지
+  const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.cont)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length)||(rec.floorBase&&Object.keys(rec.floorBase).length)||(rec.treatBase&&Object.keys(rec.treatBase).length)||rec.visitAdj);   // floorBase(층별 내원 보정)·treatBase(치료 회차 보정)·visitAdj 만 있어도 기록 유지
   if(!has)delete PMEMO[mrn];
   localStorage.setItem(PMEMO_STORE,JSON.stringify(PMEMO));
   if(cloud.active&&cloud.pmemoCol){
-    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),treatBase:(rec.treatBase||{}),treatBy:(rec.treatBy||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
+    if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),cont:(rec.cont||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),treatBase:(rec.treatBase||{}),treatBy:(rec.treatBy||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{setSync('err');console.error('pmemo',e);});
     else cloud.pmemoCol.doc(pmKey(mrn)).delete().catch(()=>{});   // 내용이 비면 문서 삭제
   }
 }
@@ -5025,6 +5102,12 @@ function refreshOpenMemoUI(){try{
 }catch(e){}}
 /* 특이사항(영구 메모) */
 function regMemo(mrn){const r=pmRec(mrn);return (r&&r.memo)||'';}
+/* 비트 연속메모 — 특이사항과 따로 둔다 (2026-10-01 요청). 비트가 원본이므로 비트 글 그대로(순서·'+' 포함) 덮어쓴다. 동선관리에서는 고치지 않는다 */
+function regCont(mrn){const r=pmRec(mrn);return (r&&r.cont)||'';}
+function setRegCont(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=bitMemoKeep(v||'');
+  const cur=PMEMO[mrn]||{};if((cur.cont||'')===v)return false;
+  if(v)cur.cont=v;else delete cur.cont;if(name&&!cur.name)cur.name=name;
+  PMEMO[mrn]=cur;pmemoSave(mrn);return true;}
 function setRegMemo(mrn,name,v){mrn=(mrn||'').trim();if(!mrn)return false;v=(v||'').trim();
   const cur=PMEMO[mrn]||{};
   if((cur.memo||'')===v)return false;
@@ -6793,7 +6876,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(routeOutOfOrder(p)?" off-route":"");c.draggable=true;
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(routeOutOfOrder(p)?" off-route":"")+(PT_SOON[p.id]?" pt-soon":"");c.draggable=true;
   if(routeOutOfOrder(p))c.title="환자 동선 순서가 처방 순서와 다릅니다 — 카드를 눌러 동선을 확인해 주세요.";
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
@@ -6872,6 +6955,7 @@ function cardEl(p,colRoom){
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
+    <div class="pt-soon-tag" style="${PT_SOON[p.id]?'':'display:none'}">${esc(ptSoonText(PT_SOON[p.id]))}</div>
     <div class="status-row">
       ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
@@ -6881,7 +6965,7 @@ function cardEl(p,colRoom){
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
-      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||String(n.mrn||''))}')" title="진료실 처방 목록 ${ls.length}줄 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b>${rp.badges.length?' · <b>'+esc(rp.badges.join(' · '))+'</b>':''}</div>`;})()}
+      return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||String(n.mrn||''))}')" title="진료실 처방 목록 ${ls.length}줄 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b>${rp.badges.length?' · <b>'+esc(rp.badges.join(' · '))+'</b>':''}${slipPrintedTag(n)}</div>`;})()}
     ${procHtml}
     ${consultHtml}
     ${notesHtml}
@@ -7127,15 +7211,16 @@ function autoAssignRoomStaff(p){
         xs=(meta(r).rads||[]).filter(n=>!isOffToday(n));
   /* has(): 그 방에 이미 기록이 있으면 손대지 않는다. 빈칸('')도 기록 — 일부러 '(미지정)'으로 둔 것이므로 다시 채우지 않는다 (2026-09-24) */
   const has=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k);
-  if(ds.length===1){p.roomDocs=p.roomDocs||{};if(!has(p.roomDocs,r))p.roomDocs[r]=ds[0];}
-  if(ns.length===1){p.roomNurses=p.roomNurses||{};if(!has(p.roomNurses,r))p.roomNurses[r]=ns[0];}
-  if(xs.length===1){p.roomRads=p.roomRads||{};if(!has(p.roomRads,r))p.roomRads[r]=xs[0];}
+  /* 카드에서 숨긴 칸(CARD_STAFF_HIDE)은 자동 지정하지 않는다 — 보이지 않는 담당이 통계에 남지 않게 (2026-10-01) */
+  if(ds.length===1&&!CARD_STAFF_HIDE.doc(r)){p.roomDocs=p.roomDocs||{};if(!has(p.roomDocs,r))p.roomDocs[r]=ds[0];}
+  if(ns.length===1&&!CARD_STAFF_HIDE.nurse(r)){p.roomNurses=p.roomNurses||{};if(!has(p.roomNurses,r))p.roomNurses[r]=ns[0];}
+  if(xs.length===1&&!CARD_STAFF_HIDE.rad(r)){p.roomRads=p.roomRads||{};if(!has(p.roomRads,r))p.roomRads[r]=xs[0];}
 }
 function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;if(p.status===st){return;}
   /* 진료의 미지정이면 진행 시작 불가 — 누가 치료하는지 반드시 지정 후 진행.
      상담 방은 카드 위 선택칸을 없앴으므로(2026-09-22) 아래 '담당자'로 판단한다 */
   {const _r=curRoom(p), _cs=isConsultRoom(_r);
-   const has=_cs?!!consultWho(p,_r,(p.consults&&p.consults[_r])||null):!!docFor(p,_r);
+   const has=_cs?!!consultWho(p,_r,(p.consults&&p.consults[_r])||null):(CARD_STAFF_HIDE.doc(_r)||!!docFor(p,_r));   // 진료의 칸을 숨긴 방은 요구하지 않음
    if(st==='진행'&&!has){
      alert(`'${p.name}'님의 ${_cs?'담당자':'진료의'}가 지정되지 않았습니다.\n${_cs?"카드 아래 '담당자'를":'카드의 🩺 선택에서 이 방('+(_r||'')+')의 진료의를'} 먼저 지정한 뒤 [진행]을 눌러주세요.`);
      return;}}
@@ -7454,10 +7539,11 @@ function syncRoomsToBot(){
   try{
     if(!(window.firebase&&firebase.auth&&firebase.auth().currentUser))return;
     if(!Array.isArray(ROOMS)||!ROOMS.length)return;
-    const sig=JSON.stringify(ROOMS);
+    const list=[...ROOMS,...Object.values(FLOOR_CHANNEL)];   // + 층 이동 알림 채널 (2026-10-01)
+    const sig=JSON.stringify(list);
     if(localStorage.getItem('pb_roomsSynced')===sig)return;
     firebase.auth().currentUser.getIdToken().then(tok=>fetch('/api/dongseon/rooms',{method:'POST',
-      headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({rooms:ROOMS})})
+      headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({rooms:list})})
       .then(r=>{if(r.ok)localStorage.setItem('pb_roomsSynced',sig);}).catch(()=>{}));
   }catch(e){}
 }
@@ -7468,7 +7554,23 @@ function roomNotify(p,room,kind,extra){
     firebase.auth().currentUser.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});
   }catch(e){}
 }
+/* ═════ 3층 ↔ 4층 이동 텔레그램 알림 (2026-10-01 요청) ═════
+   3층 = 3층 그룹 방 + 수납대기·수납완료.  4층 = 4층 그룹 방(3층 진료실은 빼고 — 그룹은 4층이지만 요청대로 어느 층에도 넣지 않음).
+   층이 바뀌어 들어오면 '들어온 층' 알림 채널(봇 메뉴의 '3층 이동 알림'·'4층 이동 알림')로 "최다솜 5860 기본물리치료 → C-Arm 순서변동".
+   옮긴 화면 하나만 보낸다(enteredRoom 은 옮긴 화면에서만 불린다). 이전 방 = 방금 끝낸 체류 기록(p.visits 마지막) */
+const FLOOR_ALARM_SKIP=['3층 진료실'];
+const FLOOR_CHANNEL={'3층':'3층 이동 알림','4층':'4층 이동 알림'};
+function alarmFloor(r){if(!r||FLOOR_ALARM_SKIP.includes(r))return '';if(isPayRoom(r))return '3층';
+  const g=meta(r).group||'';return (g==='3층'||g==='4층')?g:'';}
+function floorMoveNotify(p,room){
+  const v=(p.visits||[])[(p.visits||[]).length-1];if(!v||!v.room||v.room===room)return;
+  if(Date.now()-new Date(v.leftAt||0).getTime()>60000)return;   // 방금 끝낸 방이 아니면(복귀·재생성 등) 보내지 않음
+  const a=alarmFloor(v.room),b=alarmFloor(room);if(!a||!b||a===b)return;
+  roomNotify(p,FLOOR_CHANNEL[b],'floor',{from:v.room,to:room});
+  try{audit('층 이동 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+v.room+' → '+room);}catch(e){}
+}
 function enteredRoom(p,room){if(ROOM_ARR_PREV)ROOM_ARR_PREV[p.id]=room;   // 내가 직접 옮긴 카드는 스냅샷 비교에서 다시 울리지 않게(여기서 한 번만)
+  try{floorMoveNotify(p,room);}catch(e){console.warn('floor alarm',e);}
   roomNotify(p,room,'in');
   if(shouldPopup(room)||mySoundRooms().includes(room))   // 담당자이거나, 내가 소리 낼 방으로 고른 방이면 — 직접 옮겼어도 한 번 울린다
   notify("bell",`${esc(room)} 도착`,`${esc(p.name)}${p.mrn?` · ${esc(p.mrn)}`:""}`,room);
@@ -7836,6 +7938,8 @@ const ST_TYPE_LBL={few:'표본 부족',good:'양호',vary:'변동형',mixed:'혼
 const ST_TYPE_TIP={few:'기록이 10건 미만이라 판단 보류',good:'P90 15분 이하 — 대기가 안정적',vary:'평소엔 짧지만 가끔 크게 밀림(중앙값 ≤ 10분, P90 > 15분)',mixed:'중앙값도 10분 초과 — 늘 기다림'};
 let statRecOpenKeys={};   // 최근 종결 기록에서 펼쳐 둔 환자 (화면을 닫으면 초기화하지 않아도 무해)
 window.toggleStatRec=function(k){statRecOpenKeys[k]=!statRecOpenKeys[k];renderStats();};
+var STAT_REC_SHOW=50;   // 최근 종결 기록에 한 번에 보일 환자 수 — [더 보기]로 50명씩 늘린다 (2026-10-01)
+window.statRecMore=function(all){STAT_REC_SHOW=all?1e9:STAT_REC_SHOW+50;renderStats();};
 function statRecRow(r){const d=new Date(r.leftAt||r.enteredAt||r.at);
   const dt=isNaN(d)?"":`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
   const prepSeg=(r.prepMs||0)>0?`<span class="hint" style="color:var(--t-sky)">준비 ${fmtClock(r.prepMs||0)}</span>`:'';
@@ -7936,13 +8040,19 @@ function renderStats(){
   html+=`<div class="sect-t" style="margin-top:16px;margin-bottom:6px">최근 종결 기록 <span class="hint" style="font-weight:400">환자별 한 줄 — 방 이름 아래 숫자는 그 방 체류(대기+준비+진행)</span></div>`;
   /* 환자별 한 줄(이름·시각·▾)만 보이고, 누르면 아래로 방별 대기·진행 시간이 펼쳐진다 (2026-09-28 요청) */
   html+=(function(){
-    const by={},order=[];
+    /* 2026-10-01: ① 마지막 종결 시각 기준 최신순 (전에는 클라우드에서 받은 문서 순서라 날짜가 뒤섞였다)
+       ② 15명만 보이던 것을 STAT_REC_SHOW 명씩, [더 보기]로 늘린다 — 기간 필터의 전원을 볼 수 있다 */
+    const by={};
+    const tOf=r=>new Date(r.leftAt||r.enteredAt||0).getTime()||0;
     recs.forEach(r=>{const k=r.patientId||((r.mrn||'')+'|'+(r.name||''));
-      if(!by[k]){by[k]={key:k,name:r.name,mrn:r.mrn,patientId:r.patientId,recs:[]};order.push(k);}
-      by[k].recs.push(r);
-      const i=order.indexOf(k);if(i>=0){order.splice(i,1);order.push(k);}
-    });
-    return order.slice(-15).reverse().map(k=>{
+      if(!by[k])by[k]={key:k,name:r.name,mrn:r.mrn,patientId:r.patientId,recs:[],lastT:0};
+      by[k].recs.push(r);by[k].lastT=Math.max(by[k].lastT,tOf(r));});
+    const order=Object.keys(by).sort((a,b)=>by[b].lastT-by[a].lastT);
+    const shown=order.slice(0,STAT_REC_SHOW);
+    const more=order.length-shown.length;
+    const moreBtn=`<div class="hint" style="display:flex;align-items:center;gap:10px;margin-top:8px">총 <b>${order.length}</b>명 중 ${shown.length}명 표시`+
+      (more>0?` <button type="button" class="btn sm" onclick="statRecMore()">더 보기 (+${Math.min(more,50)})</button> <button type="button" class="btn sm" onclick="statRecMore(true)">전체 보기</button>`:'')+`</div>`;
+    return shown.map(k=>{
       const g=by[k];
       const rs=g.recs.slice().sort((a,b)=>new Date(a.enteredAt||a.at)-new Date(b.enteredAt||b.at));
       const last=new Date(rs[rs.length-1].leftAt||rs[rs.length-1].enteredAt||0);
@@ -7960,7 +8070,7 @@ function renderStats(){
         <span style="flex:1"></span>
         <span class="hint" style="white-space:nowrap">${dt}</span>
         <span class="st-caret2">▾</span></div>${detail}`;
-    }).join('');
+    }).join('')+moreBtn;
   })();
   content.innerHTML=html;
 }
@@ -8730,8 +8840,11 @@ function exportConsults(){
 
 /* ───── 환자 추가/편집 모달 ───── */
 let routeDragIdx=null;
+/* 동선 추가 버튼 순서: '진료 상담'을 맨 앞에 (2026-10-01 요청). 나머지는 방 순서 그대로 — 보드 칸 순서(ROOMS)는 건드리지 않는다 */
+const ROUTE_BTN_FIRST=['진료 상담'];
 function renderRoomButtons(){
-  document.getElementById("routeBtns").innerHTML=ROOMS.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
+  const order=[...ROUTE_BTN_FIRST.filter(r=>ROOMS.includes(r)),...ROOMS.filter(r=>!ROUTE_BTN_FIRST.includes(r))];
+  document.getElementById("routeBtns").innerHTML=order.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
 }
 /* 오늘 4층 비급여 치료(충격파·신장분사 시트)에 예약이 있는 환자인지 — 어디서 예약하고 왔는지 알려 준다 (2026-09-24).
    시트에 없으면 블록을 숨긴다. 지금은 4층 시트만 본다(진료 예약은 따로 보는 화면이 있음) */
@@ -8746,6 +8859,38 @@ function bookedFromSheet(p){
     return m?(mrn&&m===mrn):(nm&&String(x.name||'').trim()===nm);});
   return hit.sort((a,b)=>String(a.t||'').localeCompare(String(b.t||'')));
 }
+/* ═════ 4층 치료 예약 10분 전 카드 깜빡임 — 3층에서만 (2026-10-01 요청) ═════
+   4층 비급여 예약 시트(충격파·신장분사, 시간이 있는 예약)에 오늘 예약이 있는 환자가 4층이 아닌 방에 있으면,
+   예약 10분 전부터 카드가 깜빡이고 '🔔 4층 예약 14:30' 이 보인다. 4층 방으로 옮기면 멈춘다. 예약 시각이 지나도 30분까지는 깜빡인다(늦음 표시).
+   카드를 다시 그리지 않고 15초마다 표시만 바꾼다(PT_SOON). */
+var PT_SOON_BEFORE=10, PT_SOON_AFTER=30;   // 분
+var PT_SOON={};   // var: 카드 그리기(render)가 이 줄보다 먼저 돌 수 있다
+function roomFloor(r){const g=(meta(r).group||'');if(g==='3층'||g==='4층')return g;if(/4층/.test(r||''))return '4층';if(/3층/.test(r||''))return '3층';
+  return SHEET_GROUPS.some(sg=>sg.rooms.includes(r))?'4층':'';}
+function computePtSoon(){
+  const out={};if(typeof SHOW_RESV!=='undefined'&&!SHOW_RESV)return out;
+  const D=localYMD(new Date());let M=null;try{M=bkMerged(D);}catch(e){return out;}
+  const items=(M&&M.items||[]).filter(x=>!x.removed&&/^\d{1,2}:\d{2}$/.test(String(x.t||'')));
+  if(!items.length)return out;
+  const now=Date.now(),base=new Date();base.setHours(0,0,0,0);
+  data.forEach(p=>{
+    if(p.discharged||p.out)return;
+    const room=curRoom(p);if(!room||roomFloor(room)==='4층')return;   // 4층에서는 깜빡이지 않는다
+    const mrn=String(p.mrn||'').trim(),nm=String(p.name||'').trim();
+    const mine=items.filter(x=>{const m=String(x.mrn||'').trim();return m?(mrn&&m===mrn):(nm&&String(x.name||'').trim()===nm);});
+    for(const b of mine.sort((a,c)=>String(a.t).localeCompare(String(c.t)))){
+      const [h,mi]=String(b.t).split(':').map(Number);const at=base.getTime()+(h*60+mi)*60000;
+      if(now>=at-PT_SOON_BEFORE*60000&&now<=at+PT_SOON_AFTER*60000){out[p.id]={t:b.t,th:b.th||'',late:now>at,min:Math.round((at-now)/60000)};break;}
+    }});
+  return out;}
+function ptSoonText(s){return s?`🔔 4층 예약 ${s.t}${s.th?' · '+s.th:''}${s.late?' · 지남':(s.min>0?' · '+s.min+'분 전':' · 지금')}`:'';}
+function refreshPtSoon(){
+  let next={};try{next=computePtSoon();}catch(e){console.warn('ptSoon',e);}
+  PT_SOON=next;
+  document.querySelectorAll('.card[data-pid]').forEach(c=>{const s=PT_SOON[c.dataset.pid];
+    c.classList.toggle('pt-soon',!!s);
+    const tg=c.querySelector('.pt-soon-tag');if(tg){tg.style.display=s?'':'none';tg.textContent=ptSoonText(s);}});}
+setInterval(()=>{try{if(currentUser)refreshPtSoon();}catch(e){}},15000);
 function fillBookedBox(p){
   const box=document.getElementById('bookedBox');if(!box)return;
   const hit=bookedFromSheet(p);
@@ -8910,8 +9055,12 @@ function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)e
 /* 이 방의 담당 진료의. 방에 값이 있으면 그것(빈 문자열 = 일부러 '미지정'으로 둔 것 — 접수 때 고른 p.doctor 로 되돌아가지 않는다, 2026-09-24),
    방에 아무 기록도 없으면 접수 때의 담당의(p.doctor) */
 function docFor(p,room){if(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return p.roomDocs[room]||'';return p.doctor||'';}
+/* 카드에서 담당 선택칸을 숨길 방 (2026-10-01 요청): 진료실 → 간호, x-ray실 → 방사선, 3층 대기실 → 원무과(진료의 칸에 원무 직원이 들어 있었다).
+   숨긴 칸은 자동 지정도 하지 않고, 진료의 칸을 숨긴 방은 [진행] 때 진료의를 요구하지 않는다 */
+const CARD_STAFF_HIDE={doc:r=>/^3층\s*대기실$/.test(r||''), nurse:r=>/진료실/.test(r||''), rad:r=>/x-?ray/i.test(r||'')};
 function doctorChipHtml(p,room){
   const _r=room||curRoom(p)||'';
+  if(CARD_STAFF_HIDE.doc(_r))return '';
   const cur=docFor(p,_r);
   const roomDocs=(_r?(meta(_r).doctors||[]):[]).filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
   /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
@@ -8951,6 +9100,7 @@ function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;
 function nurseFor(p,room){return (p.roomNurses&&p.roomNurses[room])||'';}
 function nurseChipHtml(p,room){
   const _r=room||curRoom(p)||''; if(!_r)return '';
+  if(CARD_STAFF_HIDE.nurse(_r))return '';   // 진료실은 간호 칸 없음 (2026-10-01)
   const listAll=meta(_r).nurses||[]; const cur=nurseFor(p,_r);
   if(!listAll.length&&!cur)return '';
   const list=listAll.filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
@@ -8966,6 +9116,7 @@ function changeNurse(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;c
 function radFor(p,room){return (p.roomRads&&p.roomRads[room])||'';}
 function radChipHtml(p,room){
   const _r=room||curRoom(p)||''; if(!_r)return '';
+  if(CARD_STAFF_HIDE.rad(_r))return '';   // x-ray실은 방사선 칸 없음 (2026-10-01)
   const listAll=meta(_r).rads||[]; const cur=radFor(p,_r);
   if(!listAll.length&&!cur)return '';
   const list=listAll.filter(n=>!isOffToday(n));
@@ -9079,18 +9230,33 @@ function openEdit(pid){
    상담실에서 태블릿을 들고 가 항목·금액을 고르고 환자에게 직접 서명을 받아 저장한다.
    저장 위치: patientboard_v3/반듯한정형외과/consent/{차트번호_시각} — 환자 문서와 별개라 하루가 지나도 남는다.
    항목 목록은 아래 CONSENT_ITEMS 만 고치면 된다(금액은 비워 두면 상담 때 직접 입력). */
+/* bit: 비트 처방코드(cod)·명칭(nam)으로 그 항목의 오늘 금액을 찾는 규칙 — 처방내역의 '금액'(OdrAmt) 합계를 넣는다 (2026-10-01).
+   코드는 2026-07~09 실제 처방에서 확인: ES10~30 체외충격파 · cryo3~50 신장분사 · sono3/SONO4·5·7 근골격계초음파 · SM190 리포라제/PROLO 프롤로 ·
+   mixinject·pain·oppain 수액 · KR006 도수치료 · 자도 자동차 도수. C-ARM·SASO 는 비트 금액이 0 이라 직접 입력 */
 const CONSENT_ITEMS=[
-  {name:'체외충격파', price:''},
-  {name:'신장분사(프롤로)', price:''},
-  {name:'도수치료', price:''},
-  {name:'비급여 주사', price:''},
-  {name:'DNA 주사', price:''},
-  {name:'영양수액', price:''},
-  {name:'C-Arm 유도하 주사', price:''},
-  {name:'초음파 유도하 주사', price:''},
-  {name:'자동차보험 도수', price:''},
-  {name:'SASO', price:''}
+  {name:'체외충격파', price:'', bit:{cod:/^es\d+$/i, nam:/체외충격파/}},
+  {name:'신장분사(프롤로)', price:'', bit:{cod:/^cryo\d+$/i, nam:/신장분사치료\d/}},
+  {name:'도수치료', price:'', bit:{cod:/^kr006$/i}},
+  {name:'비급여 주사', price:'', bit:{cod:/^(sm190|smd|prolo)$/i, nam:/리포라제|프롤로\s*주사/}},
+  {name:'DNA 주사', price:'', bit:{nam:/pdrn|dna|폴리뉴클레오/i}},
+  {name:'영양수액', price:'', bit:{cod:/^(mixinject\d*|26evt\d*|pain\d*|oppain|vitamind)$/i, nam:/수액|비타민주사|영양주사/}},
+  {name:'C-Arm 유도하 주사', price:'', bit:{cod:/^c-?arm$/i}},
+  {name:'초음파 유도하 주사', price:'', bit:{cod:/^sono\d+$/i}},
+  {name:'자동차보험 도수', price:'', bit:{cod:/^자도$/}},
+  {name:'SASO', price:'', bit:{cod:/^ss1?$/i}}
 ];
+/* 이 환자의 오늘 비트 처방 금액 → 항목별 합계. 반환: {byItem:[금액…], used:Set(줄 번호), lines:[금액 있는 비급여 줄]} */
+function consentBitAmounts(p){
+  const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;
+  const pay=(rx&&Array.isArray(rx.pay))?rx.pay:[];
+  const byItem=CONSENT_ITEMS.map(()=>0), used=new Set();
+  pay.forEach((ln,j)=>{const amt=Number(String(ln.amt||'').replace(/[^\d.]/g,''))||0;if(amt<=0)return;
+    const cod=String(ln.cod||'').trim(), nam=String(ln.nam||'').trim();
+    const i=CONSENT_ITEMS.findIndex(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(cod))||(it.bit.nam&&it.bit.nam.test(nam))));
+    if(i>=0){byItem[i]+=amt;used.add(j);}});
+  const lines=pay.map((ln,j)=>Object.assign({j},ln)).filter(ln=>String(ln.ins||'')==='2'&&(Number(ln.amt)||0)>0);
+  return {byItem,used,lines,has:pay.length>0};
+}
 const CONSENT_TEXT=[
   '본인은 위 비급여 항목의 필요성·목적·방법·예상 효과 및 발생 가능한 부작용에 대하여 담당자로부터 충분한 설명을 듣고 이해하였습니다.',
   '위 항목은 국민건강보험이 적용되지 않아 비용 전액을 본인이 부담한다는 사실을 확인하였습니다.',
@@ -9159,7 +9325,20 @@ function openConsent(){
   document.getElementById('cstItems').innerHTML=CONSENT_ITEMS.map((it,i)=>`
     <label class="cst-item"><input type="checkbox" id="cstChk${i}" onchange="consentSum()"> <span>${esc(it.name)}</span>
       <input class="cst-price" id="cstPrc${i}" inputmode="numeric" placeholder="금액" value="${esc(it.price||'')}" oninput="consentSum()"></label>`).join('');
+  /* 비트 처방 금액 자동 채우기 (2026-10-01) — 금액이 있는 항목은 체크하고 금액을 넣는다. 고칠 수 있다 */
+  {const info=document.getElementById('cstBitInfo');
+   try{const B=consentBitAmounts(p);let filled=0;
+     B.byItem.forEach((amt,i)=>{if(amt<=0)return;filled++;
+       const c=document.getElementById('cstChk'+i),pr=document.getElementById('cstPrc'+i);
+       if(c)c.checked=true;if(pr){pr.value=String(Math.round(amt));pr.classList.add('from-bit');pr.title='비트 처방 금액';}});
+     const rest=B.lines.filter(ln=>!B.used.has(ln.j));
+     if(info){
+       if(!B.has)info.innerHTML='<i data-lucide="info"></i> 비트 처방 금액이 아직 없습니다 (진료 처방이 나오면 자동으로 채워집니다)';
+       else info.innerHTML=`<i data-lucide="pill"></i> 비트 처방에서 <b>${filled}개 항목</b> 금액을 불러왔습니다`+
+         (rest.length?` · 항목에 안 맞는 비급여: ${rest.map(ln=>`<span class="cst-bitrest" title="${esc(ln.cod)}">${esc(ln.nam||ln.cod)} ${esc(wonTxt(Number(ln.amt)||0))}</span>`).join(' ')} (필요하면 '기타'에)`:'');}
+   }catch(e){console.warn('consent bit',e);if(info)info.textContent='';}}
   consentSum();
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
   document.getElementById('consentScreen').classList.add('show');
   requestAnimationFrame(()=>{signInit();});
 }
@@ -9378,7 +9557,9 @@ function renderModalRail(){
 /* 특이사항 입력칸 채우기/미리보기 */
 function fillPmemo(mrn){
   const ta=document.getElementById('f_pmemo'); if(!ta)return;
-  ta.value=stripRtfBlocks(regMemo(mrn)); updatePmemoPreview();   // 옛 메모에 박힌 RTF 원문은 글자만 보여 준다(저장하면 정리됨)
+  ta.value=stripRtfBlocks(regMemo(mrn)); updatePmemoPreview();
+  {const cb=document.getElementById('contBox'),ct=document.getElementById('f_cont'),cv=regCont(mrn);   // 연속메모(비트) — 따로 보여 준다 (2026-10-01)
+   if(cb&&ct){cb.style.display=cv?'':'none';ct.textContent=cv;}}   // 옛 메모에 박힌 RTF 원문은 글자만 보여 준다(저장하면 정리됨)
   requestAnimationFrame(()=>cvGrow(ta)); setTimeout(()=>cvGrow(ta),150);   // 내용 길이에 맞게 자동 확장(모달 표시 타이밍 대비 재시도)
   try{renderPhotos(mrn);}catch(e){}   // 환자 사진 갤러리 갱신(add/edit/재진 모두 이 경로)
 }
