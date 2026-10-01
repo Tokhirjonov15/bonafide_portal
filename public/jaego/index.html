@@ -1158,7 +1158,7 @@ function renderXl(){
   const prev=prevSavedMonth();
   $("shCopyPrev").style.display=(xlAdm()&&SHEET_META.from!=='book'&&prev)?"":"none";
   $("shCopyPrev").innerHTML=`<i data-lucide="copy"></i> ${prev?prev.replace('-','년 ')+'월':'지난달'} 문서 복사해서 시작`;
-  xlInfo(); xlRenderTabs(); xlRenderTools(); xlRenderGrid(); refreshIcons();
+  xlInfo(); xlRenderTabs(); xlRenderTools(); xlRenderGrid(); xlKeepSelection(); refreshIcons();
 }
 /* ── 시트 탭 ── */
 function xlRenderTabs(){
@@ -1217,7 +1217,16 @@ function xlRenderTools(){
   h+=b('xlFullscreen()',XL_FULL?'minimize':'maximize',XL_FULL?'전체 화면 끝내기':'전체 화면')+b('sheetCsv()','download','이 시트를 엑셀(CSV)로 내려받기');
   $("xlTools").innerHTML=h;
 }
-function xlCells(){return (JSS&&JSS.highlighted&&JSS.highlighted.length)?JSS.highlighted:null;}
+/* 서식을 입힐 칸. 표 밖(도구 모음)을 누르면 jspreadsheet 가 선택을 풀어 버려 '먼저 칸을 선택하세요'가 떴다(2026-10-01 제보) —
+   도구 모음의 mousedown 은 표까지 가지 않게 막고(아래 xlKeepSelection), 그래도 풀렸으면 마지막으로 고른 칸(XL_SEL)을 다시 고른다 */
+function xlCells(){
+  if(!JSS)return null;
+  if(JSS.highlighted&&JSS.highlighted.length)return JSS.highlighted;
+  if(XL_SEL){try{JSS.updateSelectionFromCoords(XL_SEL[0],XL_SEL[1],XL_SEL[2],XL_SEL[3]);}catch(e){}
+    if(JSS.highlighted&&JSS.highlighted.length)return JSS.highlighted;}
+  return null;}
+function xlKeepSelection(){['xlTools','xlTabs'].forEach(id=>{const el=$(id);if(el&&!el._keepSel){el._keepSel=1;el.addEventListener('mousedown',e=>e.stopPropagation());}});
+  const fb=document.querySelector('.xl-fbar');if(fb&&!fb._keepSel){fb._keepSel=1;fb.addEventListener('mousedown',e=>e.stopPropagation());}}
 window.xlStyle=function(k,v){const c=xlCells();if(!c){alert('먼저 칸을 선택하세요.');return;}JSS.setStyle(c,k,v);xlDirty();};
 window.xlToggle=function(k,v){const c=xlCells();if(!c){alert('먼저 칸을 선택하세요.');return;}
   const on=String(c[0].style.getPropertyValue(k)||'').indexOf(v)>=0;JSS.setStyle(c,k,on?'':v);xlDirty();};
