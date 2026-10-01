@@ -877,6 +877,47 @@ async function handleApi(request, env, url, ident, ctx) {
   }
 
   /* 통계표(약품·물품 — 구글시트 '간호 재고파악' 틀) — 보기는 모두, 저장은 관리자만 (2026-09-27) */
+  /* ═════ 통계 '통합문서' (2026-10-01): 한 달 = 한 문서 statbook_{YYYY-MM}, 안에 시트 여러 장(이름·열·행·서식·병합·메모).
+     시트 탭 '+' 로 추가·이름 바꾸기. 그 달의 문서가 아직 없으면 예전 표(statsheet_drug/goods_{달} → 월 구분 전 표)를 모아 보여 준다 */
+  if (path === "/statbook" && method === "GET") {
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    const cur = kst.getUTCFullYear() + "-" + String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const qm = s(url.searchParams.get("month"));
+    const month = /^\d{4}-\d{2}$/.test(qm) ? qm : cur;
+    const keys = ((await env.DB.prepare(`SELECT key FROM meta WHERE key LIKE 'statbook_%' OR key LIKE 'statsheet_%'`).all()).results || []).map((r) => r.key);
+    const months = [...new Set(keys.map((k) => (k.match(/_(\d{4}-\d{2})$/) || [])[1]).filter(Boolean))].sort();
+    const row = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind("statbook_" + month).first();
+    if (row) return json({ month, current: cur, months, book: JSON.parse(row.value), from: "book" });
+    /* 예전 표에서 모으기 */
+    const sheets = [];
+    for (const [id, name] of [["drug", "약품통계"], ["goods", "물품통계"]]) {
+      let r = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind("statsheet_" + id + "_" + month).first();
+      let legacy = false;
+      if (!r && !months.length) { r = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind("statsheet_" + id).first(); legacy = !!r; }
+      if (r) { const v = JSON.parse(r.value); sheets.push({ name, cols: v.cols, rows: v.rows, widths: v.widths, legacy }); }
+    }
+    return json({ month, current: cur, months, book: sheets.length ? { sheets } : null, from: sheets.length ? "old" : "none" });
+  }
+  if (path === "/statbook" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "통계표 수정은 관리자만 할 수 있습니다." }, 403);
+    const month = s(body.month);
+    if (!/^\d{4}-\d{2}$/.test(month)) return json({ error: "달(YYYY-MM)이 필요합니다." }, 400);
+    const book = body.book;
+    if (!book || !Array.isArray(book.sheets) || !book.sheets.length || book.sheets.some((x) => !x || !Array.isArray(x.cols) || !Array.isArray(x.rows)))
+      return json({ error: "표 내용이 올바르지 않습니다." }, 400);
+    const clean = book.sheets.slice(0, 30).map((x) => ({
+      name: s(x.name).slice(0, 40) || "Sheet", cols: x.cols, rows: x.rows,
+      widths: Array.isArray(x.widths) ? x.widths : undefined,
+      style: x.style && typeof x.style === "object" ? x.style : undefined,
+      merge: x.merge && typeof x.merge === "object" ? x.merge : undefined,
+      comments: x.comments && typeof x.comments === "object" ? x.comments : undefined }));
+    const payload = JSON.stringify({ sheets: clean, updatedAt: Date.now(), updatedBy: actor });
+    if (payload.length > 1800000) return json({ error: "통합문서가 너무 큽니다(1.8MB 초과). 시트를 나누어 주세요." }, 400);
+    await env.DB.prepare(`INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
+      .bind("statbook_" + month, payload).run();
+    return json({ ok: true, month });
+  }
+
   /* 2026-10-01: 달마다 따로 저장 — 키 statsheet_{id}_{YYYY-MM}. month 를 안 주면 이번 달(한국 시각).
      예전 표(월 구분 전, 키 statsheet_{id})는 저장된 달이 하나도 없을 때만 '기존 표'로 보여 준다 — 저장하면 그 달로 들어간다 */
   if (path === "/statsheet" && method === "GET") {
