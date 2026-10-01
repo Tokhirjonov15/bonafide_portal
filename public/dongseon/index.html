@@ -3358,7 +3358,7 @@ function bitApplyCancels(){
     const touched=!(p.step===0&&(p.status||'대기')==='대기'&&!p.out&&!(p.visits&&p.visits.length)&&!Object.keys(p.notes||{}).length);
     audit('환자삭제(비트 접수취소)',p.name+(p.mrn?' ('+p.mrn+')':'')+(touched?' — 진행 중이던 카드':''));
     const gone=p.seq;
-    cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
+    purgePatientStats(p);cloudDelPatient(p.id);data=data.filter(x=>x.id!==p.id);save();render();
     try{bitShiftSeqAfter(r,gone);}catch(e){console.warn('seq shift',e);}   /* 빈 번호가 남지 않게 뒷번호를 당긴다 (2026-09-30) */
     try{toast('비트 접수취소 → '+dispName(p.name)+' 님 카드 제거');}catch(e){}
     if(touched)try{notify('triangle-alert','비트 접수취소',esc(dispName(p.name))+' 님 — 비트에서 접수가 취소되어 카드를 지웠습니다. 다시 접수하면 새 카드가 생깁니다.');}catch(e){}
@@ -5921,6 +5921,7 @@ function renderDischargedBoard(board,q){
         ${ROOMS.map(r=>`<option value="${esc(r)}" ${listRoom===r?'selected':''}>${esc(r)} 거친 사람</option>`).join("")}
       </select>
       <span class="hint">${listRoom?`<b>${esc(listRoom)}</b> 거쳐감 · `:''}${isToday?`완료 ${doneCnt} · 진료중 ${liveCnt}`:`${ymd} 완료 ${doneCnt}명`} · 헤더 클릭=정렬, <i data-lucide="undo-2" style="width:12px;height:12px;vertical-align:-2px"></i>=다시 원내로</span>
+      ${(isToday&&isAdmin())?'<button class="btn sm" style="margin-left:auto" title="오늘 등록번호를 도착 순서대로 #1부터 다시 매깁니다" onclick="resetSeq()"><i data-lucide="hash"></i> 등록번호 초기화</button>':''}
     </div>`;
   const sc=document.createElement("div");sc.className="vlist-scroll";
   if(!rows.length){sc.innerHTML=`<div class="vl-empty">${isToday?'오늘 내원한 환자가 없어요.':'이 날짜의 내원 기록이 없어요.'}</div>`;wrap.appendChild(sc);board.appendChild(wrap);return;}
@@ -9962,12 +9963,23 @@ function savePatient(){
 window.onSilbi=function(){const c=document.getElementById("f_silbi"),l=document.getElementById("f_silbiLimit");
   if(!c||!l)return;l.disabled=!c.checked;if(!c.checked)l.value="";};
 /* 카드를 지우면(내보내기 아님) 그 뒤 번호를 하나씩 당긴다 — 시험 카드 #53 을 지웠을 때 #54→#53 … (2026-09-30 요청). 지운 화면 하나만 실행하므로 선점이 필요 없다 */
+/* 삭제·비트 취소한 환자는 통계(방별 체류·최근 종결 기록)에서도 뺀다 (2026-10-01) — 시험 카드나 잘못 만든 카드가 통계에 남지 않게.
+   이 카드의 방 기록(p.visits 의 id)과 서버에서 patientId 가 같은 기록을 모두 지운다 */
+function purgePatientStats(p){try{if(!p||!p.id)return;
+  const ids=new Set((p.visits||[]).map(v=>v&&v.id).filter(Boolean));
+  const before=STATS.length;STATS=STATS.filter(r=>!(r.patientId===p.id||ids.has(r.id)));
+  if(STATS.length!==before)lsSet(STATS_STORE,JSON.stringify(STATS));
+  if(cloud.active&&cloud.statsCol){
+    ids.forEach(i=>cloud.statsCol.doc(i).delete().catch(e=>console.warn('stat del',e)));
+    cloud.statsCol.where('patientId','==',p.id).get().then(s=>s.forEach(d=>{if(!ids.has(d.id))d.ref.delete().catch(e=>console.warn('stat del',e));})).catch(e=>console.warn('stat purge',e));}
+  try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}
+}catch(e){console.warn('purgePatientStats',e);}}
 function shiftAfterDelete(p){try{if(p&&typeof p.seq==='number'&&p.seq>0)shiftSeqAfter(p.seq);}catch(e){console.warn('seq shift',e);}}
-function deletePatient(){if(editId){const p=data.find(x=>x.id===editId);if(confirm("이 환자를 삭제할까요?")){audit('환자삭제',(p&&p.name)||'');cloudDelPatient(editId);data=data.filter(x=>x.id!==editId);save();render();closeModal();shiftAfterDelete(p);}}}
+function deletePatient(){if(editId){const p=data.find(x=>x.id===editId);if(confirm("이 환자를 삭제할까요?")){audit('환자삭제',(p&&p.name)||'');purgePatientStats(p);cloudDelPatient(editId);data=data.filter(x=>x.id!==editId);save();render();closeModal();shiftAfterDelete(p);}}}
 function deletePatientById(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   if(!confirm(`'${p.name}'님을 보드에서 삭제할까요?\n(되돌릴 수 없습니다)`))return;
   audit('환자삭제',p.name+(p.mrn?' ('+p.mrn+')':''));
-  cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();shiftAfterDelete(p);}
+  purgePatientStats(p);cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();shiftAfterDelete(p);}
 
 /* ───── 루틴 동선 ───── */
 function openRoutines(){if(!isAdmin()){alert("루틴 관리는 관리자만 가능합니다.");return;}renderRoutineList();document.getElementById("routineModal").classList.add("show");}
