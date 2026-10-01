@@ -1169,6 +1169,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .rcount{color:var(--teal);font-weight:700;font-size:11px}
   .chat-badge{background:var(--red);color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:0 6px;margin-left:4px}
   #chatBtn{position:relative}
+  .lobby-wait{margin-left:auto;flex:0 0 auto;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:800;background:#f59e0b;color:#fff;white-space:nowrap}   /* 대기실 30분 넘음 (2026-10-01) */
+  .lobby-wait.lv2{background:#dc2626}
   #chatBtn .chat-badge{position:absolute;top:-7px;right:-7px;margin:0;min-width:20px;height:20px;line-height:20px;padding:0 5px;border-radius:999px;text-align:center;box-shadow:0 0 0 2px var(--bg,#fff)}   /* 전체알람 버튼 위 빨간 동그라미 (2026-10-01) */
   /* ── 통계 ── */
   .stat-tb{width:100%;border-collapse:collapse;font-size:13px}
@@ -2842,7 +2844,7 @@ const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
 function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
-function bitUnsubAll(){['unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
+function bitUnsubAll(){['unsubSlipMark','unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
 /* ── 감시 PC 하트비트 읽기 ── 실시간(onSnapshot)으로 들으면 "하트비트 1건 = 듣는 화면 수만큼 읽기"라 PC 24대 × 5분 × 화면 10개 = 하루 7만 회에 달했다(2026-09-14·15 무료 한도 초과).
    그래서 주기적으로 한 번씩만 읽는다: v3.4 부터 모든 PC 가 bitStatus/_all 한 문서에 모아 쓰므로 5분마다 그 1건만, 아직 v3.3 이하(PC 별 문서)인 PC 는 60분마다 컬렉션을 한 번 읽어 합친다(최근 lastSeen 우선).
    pill 을 누르면 즉시 새로고침. 화면 역할이 staff 일 때만 */
@@ -2899,8 +2901,15 @@ function subscribeBitIntake(){
   }
   if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
-      BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));onBitNotes();
+      BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));applySlipMarks();onBitNotes();
     },err=>console.warn('bitNote',err));
+    /* 인쇄됨·확인 표시는 우리 앱 문서 아래 slipMark 에 둔다 (2026-10-01) — bitNote 는 진료실 감시 스크립트 전용이라
+       직원 화면의 쓰기가 규칙에 막혀 저장되지 않았다(누른 화면에서만 잠깐 보이고 사라짐) */
+    if(cloud.ref){if(cloud.unsubSlipMark)cloud.unsubSlipMark();
+      cloud.unsubSlipMark=cloud.ref.collection('slipMark').where('date','==',today).onSnapshot(s=>{
+        SLIP_MARKS={};s.docs.forEach(d=>{SLIP_MARKS[d.id]=d.data()||{};});applySlipMarks();
+        try{renderSlipScreen();}catch(e){}try{renderThrottled();}catch(e){}
+      },err=>console.warn('slipMark',err));}
   }
   if(role!=='tv'&&cloud.bookingsCol){   // 예약 시트(오늘) — 직원용 예약관리 화면(환자용 TV 는 듣지 않음)
     cloud.unsubBk=cloud.bookingsCol.doc(today).onSnapshot(s=>{BOOKINGS[today]=s.exists?s.data():null;if(resvOpen)renderResvScreen();},err=>console.warn('bookings',err));
@@ -3068,8 +3077,15 @@ function renderSlipScreen(){
       <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button></div>`;
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
 }
+var SLIP_MARKS={};   // slipMark/{bitNote docId} — 인쇄됨·확인 (모든 화면 공유)
+function applySlipMarks(){(BIT_NOTES||[]).forEach(n=>{const m=SLIP_MARKS[n.docId];if(m)Object.assign(n,m);});}
+function saveSlipMark(docId,rec){
+  SLIP_MARKS[docId]=Object.assign({},SLIP_MARKS[docId],rec);
+  if(!(cloud.ref&&cloud.active))return;
+  cloud.ref.collection('slipMark').doc(docId).set(Object.assign({date:localYMD(new Date())},rec),{merge:true})
+    .catch(e=>{console.warn('slipMark',e);try{warnToast('인쇄·확인 표시를 저장하지 못했습니다. 인터넷 연결을 확인해 주세요.');}catch(_){}});}
 function ackSlip(docId,on){   // 처치실에서 봤음 표시 — 모든 화면에 공유
-  try{if(cloud.noteCol&&cloud.active)cloud.noteCol.doc(docId).set({ack:!!on,ackBy:(currentUser&&currentUser.name)||'',ackAt:Date.now()},{merge:true});}catch(e){console.warn('ackSlip',e);}
+  saveSlipMark(docId,{ack:!!on,ackBy:(currentUser&&currentUser.name)||'',ackAt:Date.now()});
   const n=BIT_NOTES.find(x=>x.docId===docId);if(n){n.ack=!!on;renderSlipScreen();}}
 /* 생년월일 → 슬립 표기: 앞 6자리(YYMMDD)만 보이고 뒷자리는 ******* (개인정보 가림). 1990-01-01 → 900101-******* */
 function slipBirthMasked(birth){const d=String(birth||'').replace(/\D/g,'');if(d.length<8)return '';return d.slice(2,8)+'-*******';}
@@ -3110,7 +3126,7 @@ function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it
 function markSlipPrinted(it){
   const n=it&&it.note;if(!n||!n.docId)return;
   const rec={printed:true,printedAt:Date.now(),printedBy:(currentUser&&currentUser.name)||'',printedRev:(n.rev|0)};
-  try{if(cloud.noteCol&&cloud.active)cloud.noteCol.doc(n.docId).set(rec,{merge:true});}catch(e){console.warn('slip printed',e);}
+  saveSlipMark(n.docId,rec);
   Object.assign(n,rec);
   try{audit('슬립 인쇄',(it.name||'')+(it.mrn?' ('+it.mrn+')':''));}catch(e){}
   try{renderSlipScreen();}catch(e){}try{render();}catch(e){}}
@@ -7041,6 +7057,7 @@ function cardEl(p,colRoom){
       ${isConsultRoom(_chipRoom)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p,_chipRoom)}</span>`}
       ${nurseChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${nurseChipHtml(p,_chipRoom)}</span>`:''}
       ${radChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${radChipHtml(p,_chipRoom)}</span>`:''}
+      ${(function(){const t=lobbyWaitLabel(p);return `<span class="lobby-wait${t.lv>1?' lv2':''}" style="${t.text?'':'display:none'}">${esc(t.text)}</span>`;})()}
     </div>
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.reserveAt?`<div class="card-time"><span class="t-res"><i data-lucide="calendar"></i> 예약 ${esc(p.reserveAt)}</span>${resTagHtml}</div>`:''}
@@ -8001,7 +8018,6 @@ function chatMsgHtml(it){
         <button class="cm-check ${it.n.done?'on':''}" onclick="toggleNoteDone('${it.p.id}','${esc(it.room)}',${it.i})">${it.n.done?'✓ 확인 '+esc(it.n.doneBy||''):'전달 확인'}</button>
       </div>
       ${reps?`<div class="replies">${reps}</div>`:""}
-      <div class="cm-reply"><input placeholder="답장 입력 후 Enter" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)doReply(this,'${it.p.id}','${esc(it.room)}',${it.i})"><button onclick="doReply(this.previousElementSibling,'${it.p.id}','${esc(it.room)}',${it.i})">답장</button></div>
     </div>`;
 }
 function renderChatBody(bodyId,panelId,items,emptyMsg){
@@ -9056,7 +9072,9 @@ function refreshWaitAlerts(){
   WAIT_OVER=next;
   document.querySelectorAll('.card[data-pid]').forEach(c=>{const w=WAIT_OVER[c.dataset.pid];
     c.classList.toggle('wait-over',!!w);
-    const tg=c.querySelector('.wait-over-tag');if(tg){tg.style.display=w?'':'none';tg.textContent=waitOverText(w);}});
+    const tg=c.querySelector('.wait-over-tag');if(tg){tg.style.display=w?'':'none';tg.textContent=waitOverText(w);}
+    const lw=c.querySelector('.lobby-wait');if(lw){const p=data.find(x=>x.id===c.dataset.pid);const t=lobbyWaitLabel(p);
+      lw.style.display=t.text?'':'none';lw.textContent=t.text;lw.classList.toggle('lv2',t.lv>1);}});
   Object.keys(WAIT_OVER).forEach(pid=>{const p=data.find(x=>x.id===pid);if(p)sendWaitAlert(p,WAIT_OVER[pid]);});}
 function sendWaitAlert(p,w){
   if(!cloud.db||!cloud.patientsCol||!currentUser)return;
@@ -9076,6 +9094,13 @@ setInterval(()=>{try{if(currentUser)refreshWaitAlerts();}catch(e){}},20000);
    3층·4층 대기실에서 30분 넘게 기다리면 그 방 전달사항으로 '확인해 주세요' 한 줄을 남긴다 → 전체알람에 뜨고 버튼에 빨간 숫자.
    대기실에 들어올 때마다 한 번만(같은 입실이면 다시 쓰지 않음). 여러 화면이 같이 쓰지 않도록 카드 문서 lobbyAlert 를 트랜잭션으로 선점 */
 var LOBBY_ALERT_MIN=30;
+/* 카드 오른쪽 위 '30분 대기' · '1시간 대기' · '1시간 30분 대기' … (30분 단위, 1시간부터 빨강) */
+function lobbyWaitLabel(p){
+  if(!p||p.discharged||p.out)return {text:'',lv:0};
+  const r=curRoom(p);if(!r||!/대기실/.test(r))return {text:'',lv:0};
+  const lv=Math.floor(waitMsNow(p)/60000/LOBBY_ALERT_MIN);if(lv<1)return {text:'',lv:0};
+  const m=lv*LOBBY_ALERT_MIN,h=Math.floor(m/60),mm=m%60;
+  return {text:(h?h+'시간'+(mm?' '+mm+'분':''):mm+'분')+' 대기',lv};}
 const LOBBY_SENT={};
 function lobbyAlertScan(){
   if(!cloud.db||!cloud.patientsCol||!currentUser)return;
