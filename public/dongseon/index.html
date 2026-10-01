@@ -1168,6 +1168,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cm-reply button:hover{border-color:var(--blue);color:var(--t-bluesoft)}
   .rcount{color:var(--teal);font-weight:700;font-size:11px}
   .chat-badge{background:var(--red);color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:0 6px;margin-left:4px}
+  #chatBtn{position:relative}
+  #chatBtn .chat-badge{position:absolute;top:-7px;right:-7px;margin:0;min-width:20px;height:20px;line-height:20px;padding:0 5px;border-radius:999px;text-align:center;box-shadow:0 0 0 2px var(--bg,#fff)}   /* 전체알람 버튼 위 빨간 동그라미 (2026-10-01) */
   /* ── 통계 ── */
   .stat-tb{width:100%;border-collapse:collapse;font-size:13px}
   .stat-tb th,.stat-tb td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line2)}
@@ -4757,7 +4759,8 @@ function cloudSavePatient(p){
   /* update() 는 지운 필드(delete p.parking 등)를 서버에 반영하지 못하므로, 있는지 확인한 뒤 통째로 set 한다(트랜잭션) */
   const body=jclone(p);
   cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;
-      const sv=snap.data()||{};['waitAlert','routeNote'].forEach(k=>{if(sv[k]!==undefined&&body[k]===undefined)body[k]=sv[k];});   /* 다른 화면이 찍은 알림 표시를 이 화면의 옛 사본이 지우지 않게 (2026-10-01) */
+      const sv=snap.data()||{};['waitAlert','routeNote','lobbyAlert'].forEach(k=>{if(sv[k]!==undefined)body[k]=sv[k];});   /* 다른 화면이 찍은 알림 표시를 이 화면의 옛 사본이 지우지 않게 (2026-10-01).
+         이 두 칸은 알림 선점 트랜잭션만 쓰므로 언제나 서버 값을 따른다 — 전에는 옛 값이 남아 있으면 그대로 덮어써서 처방 변경 알림이 화면마다 한 번씩 갔다 */
       t.set(ref,body);return true;}))
     .then(ok=>{if(ok===false)ghostPatient(p.id,'저장 시 서버에 없음');})
     .catch(e=>{setSync('err');console.error(e);});
@@ -8012,7 +8015,7 @@ function renderChat(){
   const all=chatItems();const mine=all.filter(isMineItem);
   const undoneAll=all.filter(it=>!it.n.done).length, undoneMine=mine.filter(it=>!it.n.done).length;
   /* 버튼 배지 = 전체 미확인 수. 내 담당 방에 미확인이 있으면 배지를 주황으로 바꿔 '내 일'이 있음을 알린다 */
-  const b1=document.getElementById("chatBadge");if(b1)b1.innerHTML=undoneAll?`<span class="chat-badge"${undoneMine?' style="background:var(--orange)" title="내 담당 방 미확인 '+undoneMine+'건"':''}>${undoneAll}</span>`:"";
+  const b1=document.getElementById("chatBadge");if(b1)b1.innerHTML=undoneAll?`<span class="chat-badge"${undoneMine?' title="내 담당 방 미확인 '+undoneMine+'건"':''}>${undoneAll}</span>`:"";
   const tA=document.getElementById("chatTabAllN");if(tA)tA.innerHTML=undoneAll?` <span class="chat-badge">${undoneAll}</span>`:"";
   const tM=document.getElementById("chatTabMineN");if(tM)tM.innerHTML=undoneMine?` <span class="chat-badge">${undoneMine}</span>`:"";
   document.querySelectorAll("#chatTabAll,#chatTabMine").forEach(b=>b.classList.toggle("on",b.id===(CHAT_TAB==='mine'?'chatTabMine':'chatTabAll')));
@@ -9069,6 +9072,30 @@ function sendWaitAlert(p,w){
       try{audit('대기 '+(w.level*WAIT_ALERT_MIN)+'분 넘음 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+w.room);}catch(e){}})
     .catch(e=>console.warn('wait alert',e));}
 setInterval(()=>{try{if(currentUser)refreshWaitAlerts();}catch(e){}},20000);
+/* ═════ 대기실 30분 넘음 → 전체알람 (2026-10-01 요청) ═════
+   3층·4층 대기실에서 30분 넘게 기다리면 그 방 전달사항으로 '확인해 주세요' 한 줄을 남긴다 → 전체알람에 뜨고 버튼에 빨간 숫자.
+   대기실에 들어올 때마다 한 번만(같은 입실이면 다시 쓰지 않음). 여러 화면이 같이 쓰지 않도록 카드 문서 lobbyAlert 를 트랜잭션으로 선점 */
+var LOBBY_ALERT_MIN=30;
+const LOBBY_SENT={};
+function lobbyAlertScan(){
+  if(!cloud.db||!cloud.patientsCol||!currentUser)return;
+  data.forEach(p=>{
+    if(!p||p.discharged||p.out)return;
+    const r=curRoom(p);if(!r||!/대기실/.test(r))return;
+    const min=Math.floor(waitMsNow(p)/60000);if(min<LOBBY_ALERT_MIN)return;
+    const key=r+'|'+(p.enteredAt||'');
+    if(p.lobbyAlert===key||LOBBY_SENT[p.id+'#'+key])return;LOBBY_SENT[p.id+'#'+key]=1;
+    const note={at:new Date().toISOString(),by:'자동 알림',text:`${r}에서 ${LOBBY_ALERT_MIN}분 넘게 기다리고 있어요 — 확인해 주세요`};
+    const ref=cloud.patientsCol.doc(p.id);
+    cloud.db.runTransaction(t=>t.get(ref).then(sn=>{if(!sn.exists)return null;const d=sn.data()||{};
+        if(d.lobbyAlert===key||curRoomOf(d)!==r||d.enteredAt!==p.enteredAt)return null;
+        applyNoteAppend(d,r,note);t.update(ref,{lobbyAlert:key,notes:d.notes});return d.notes;}))
+      .then(notes=>{if(!notes)return;const q=data.find(x=>x.id===p.id);if(q){q.lobbyAlert=key;q.notes=notes;}
+        try{renderChat();scanAlarms();}catch(e){}
+        try{audit('대기실 '+LOBBY_ALERT_MIN+'분 넘음 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+r);}catch(e){}})
+      .catch(e=>console.warn('lobby alert',e));
+  });}
+setInterval(()=>{try{if(currentUser)lobbyAlertScan();}catch(e){}},30000);
 function fillBookedBox(p){
   const box=document.getElementById('bookedBox');if(!box)return;
   const hit=bookedFromSheet(p);
