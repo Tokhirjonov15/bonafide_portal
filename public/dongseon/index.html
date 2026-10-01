@@ -2283,6 +2283,8 @@ function rxLoopGuard(p){
 function applyRxRoute(p){
   if(!p||p.discharged||!Array.isArray(p.route)||!p.route.length)return false;
   const h=rxHashOf(p); if(!h||h===(p.routeRxHash||''))return false;
+  const _prevRx=String(p.routeRxHash||''), _rxEdit=!!_prevRx&&_prevRx.split('\n')[0]===RX_ROUTE_VER;   /* 같은 규칙 판에서 처방만 바뀜 = 원장님이 처방을 고침 */
+  const _oldRoute=p.route.slice();
   /* 더 새 판(RX_ROUTE_VER)이 이미 짠 동선은 옛 판 화면이 되돌리지 않는다 — 새로고침 안 한 화면이 새 화면과 싸우지 않게 */
   {const sv=String(p.routeRxHash||'').split('\n')[0]; if(sv&&sv>RX_ROUTE_VER)return false;}
   if(!rxLoopGuard(p))return false;
@@ -2332,6 +2334,7 @@ function applyRxRoute(p){
   p.routeRxHash=h; p.routeAuto=auto;
   const changed=JSON.stringify(next)!==JSON.stringify(p.route);
   if(changed){ p.route=next; const ns=next.indexOf(cur); if(ns>=0)p.step=ns;   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */ try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(mid.join(' → ')||'(추가 없음)'));}catch(e){} }
+  if(changed&&_rxEdit)routeChangeNotifyOnce(p,_oldRoute,next,'처방 변경');
   try{save(p);}catch(e){}
   return changed;
 }
@@ -4704,7 +4707,9 @@ function cloudSavePatient(p){
   if(!KNOWN_PIDS.has(p.id)){ref.set(jclone(p)).catch(e=>{setSync('err');console.error(e);});return;}   // 새 카드
   /* update() 는 지운 필드(delete p.parking 등)를 서버에 반영하지 못하므로, 있는지 확인한 뒤 통째로 set 한다(트랜잭션) */
   const body=jclone(p);
-  cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;t.set(ref,body);return true;}))
+  cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;
+      const sv=snap.data()||{};['waitAlert','routeNote'].forEach(k=>{if(sv[k]!==undefined&&body[k]===undefined)body[k]=sv[k];});   /* 다른 화면이 찍은 알림 표시를 이 화면의 옛 사본이 지우지 않게 (2026-10-01) */
+      t.set(ref,body);return true;}))
     .then(ok=>{if(ok===false)ghostPatient(p.id,'저장 시 서버에 없음');})
     .catch(e=>{setSync('err');console.error(e);});
 }
@@ -7318,7 +7323,14 @@ function rxRouteOff(p,room){
 function moveByDrag(pid,room){
   const p=data.find(x=>x.id===pid);if(!p)return;
   /* 2026-10-01 시트 요청: 처방 동선 밖으로 끌 때 뜨던 경고창은 없앤다 (빨간 카드 표시는 그대로) */
-  moveTo(pid,room);}
+  const _old=p.route.slice(), _st=p.step||0, _from=curRoom(p);
+  moveTo(pid,room);
+  /* 다음 차례가 아닌 방으로 옮겼으면 모두에게: 끼워 넣음(동선에 없던 방) 또는 건너뜀(사이 방을 지나침) */
+  const q=data.find(x=>x.id===pid);if(!q||_from===room)return;
+  const ni=_old.indexOf(room,_st+1);
+  if(ni<0)routeChangeNotify(q,_old,q.route,'끌어서 끼워 넣음 '+_from+' → '+room);
+  else if(ni>_st+1)routeChangeNotify(q,_old,q.route,'건너뜀 '+_old.slice(_st+1,ni).join(', '));
+}
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
   if(from===room)return;
@@ -7594,6 +7606,27 @@ function roomNotify(p,room,kind,extra){
    3층 = 3층 그룹 방 + 수납대기·수납완료.  4층 = 4층 그룹 방(3층 진료실은 빼고 — 그룹은 4층이지만 요청대로 어느 층에도 넣지 않음).
    층이 바뀌어 들어오면 '들어온 층' 알림 채널(봇 메뉴의 '3층 이동 알림'·'4층 이동 알림')로 "최다솜 5860 기본물리치료 → C-Arm 순서변동".
    옮긴 화면 하나만 보낸다(enteredRoom 은 옮긴 화면에서만 불린다). 이전 방 = 방금 끝낸 체류 기록(p.visits 마지막) */
+/* ═════ 동선 변경 → 봇 쓰는 모든 사람에게 (2026-10-01 요청) ═════
+   어느 방을 골랐든(예: x-ray실만) 모든 환자의 동선 변경·처방 D/C 를 받는다. 보내는 때:
+   ① 환자 정보 창에서 동선을 직접 고쳐 저장  ② 다음 차례가 아닌 방으로 카드를 끌어 옮김(끼워 넣기·건너뛰기)
+   ③ 원장님이 처방을 고쳐 자동 동선이 바뀜(처음 짤 때·규칙 판 변경 때는 보내지 않음 — 매 환자마다 오면 소음)
+   ①② 는 한 화면에서만 일어나므로 바로, ③ 은 모든 화면이 같이 계산하므로 카드 문서 routeNote 에 먼저 표시한 화면 하나만 보낸다 */
+function routeDiff(a,b){const cnt=x=>{const m={};x.forEach(r=>m[r]=(m[r]||0)+1);return m;};const A=cnt(a),B=cnt(b);
+  const add=[],rem=[];Object.keys(B).forEach(r=>{for(let i=(A[r]||0);i<B[r];i++)add.push(r);});Object.keys(A).forEach(r=>{for(let i=(B[r]||0);i<A[r];i++)rem.push(r);});
+  return {add,rem};}
+function routeChangeNotify(p,oldRoute,newRoute,why){
+  oldRoute=Array.isArray(oldRoute)?oldRoute:[];newRoute=Array.isArray(newRoute)?newRoute:[];
+  if(JSON.stringify(oldRoute)===JSON.stringify(newRoute)&&!/건너/.test(why||''))return;
+  const d=routeDiff(oldRoute,newRoute);
+  roomNotify(p,'__all__','route',{why:why||'변경',by:(currentUser&&currentUser.name)||'',added:d.add.join(', '),removed:d.rem.join(', '),to:newRoute.join(' → ')});
+  try{audit('동선 변경 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+(why||'')+' · '+newRoute.join(' → '));}catch(e){}
+}
+function routeChangeNotifyOnce(p,oldRoute,newRoute,why){
+  if(!cloud.db||!cloud.patientsCol||!currentUser)return;
+  const key=newRoute.join('>');const ref=cloud.patientsCol.doc(p.id);
+  cloud.db.runTransaction(t=>t.get(ref).then(sn=>{if(!sn.exists)return false;const d=sn.data()||{};if(d.routeNote===key)return false;t.update(ref,{routeNote:key});return true;}))
+    .then(won=>{if(won){p.routeNote=key;routeChangeNotify(p,oldRoute,newRoute,why);}}).catch(e=>console.warn('route note',e));
+}
 const FLOOR_ALARM_SKIP=['3층 진료실'];
 const FLOOR_CHANNEL={'3층':'3층 이동 알림','4층':'4층 이동 알림'};
 function alarmFloor(r){if(!r||FLOOR_ALARM_SKIP.includes(r))return '';if(isPayRoom(r))return '3층';
@@ -9040,8 +9073,8 @@ function toggleRxDc(pid,kEnc,el){
   apply(p);saveLocal();cloudPatientTxn(pid,apply);
   try{audit(on?'처방 D/C':'처방 D/C 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+label);}catch(e){}
   /* 알림의 처방 이름: 코드가 짧은 대문자 표기(C-ARM 등)면 그대로 읽히도록 '명칭' 우선, 없으면 코드 */
-  targets.forEach(room=>roomNotify(p,room,on?'dc':'dcundo',{item:label,by}));
-  try{toast(`${dispName(p.name)} 님 ${label} ${on?'D/C':'D/C 취소'} → ${targets.join(', ')||'알림 없음'}`);}catch(e){}
+  roomNotify(p,'__all__',on?'dc':'dcundo',{item:label,by,rooms:targets.join(', ')});   /* 모두에게 한 번 — 어느 방 처방인지는 본문에 (2026-10-01) */
+  try{toast(`${dispName(p.name)} 님 ${label} ${on?'D/C':'D/C 취소'} → 모두에게 알림`);}catch(e){}
   try{fillRxBox(p);}catch(e){}
   render();
 }
@@ -9823,7 +9856,7 @@ function savePatient(){
   if(editId){
     const p=data.find(x=>x.id===editId);
     if(mrn&&mrn!==p.mrn){const c=mrnConflict(mrn,name);if(c){alert(`병록번호 ${mrn}는 이미 '${c.name}'님으로 등록되어 있습니다. 다른 번호를 사용하세요.`);return;}}
-    const sameStart=p.route[p.step];
+    const sameStart=p.route[p.step];const _oldRoute=p.route.slice();
     if((p.extraFee||0)!==extra)p.paid=false;  // 금액 바뀌면 수납완료 해제
     p.mrn=mrn;p.name=name;p.birth=_birth;p.sex=_sex;p.extraFee=extra;p.route=[...routeDraft];p.tel=tel;p.smsOptOut=smsOptOut;p.doctor=doctor;p.chart=document.getElementById('f_chart').value;p.researchChart=document.getElementById('f_research').value;
     p.silbi=_silbi;p.silbiLimit=_silbiLimit;p.ins=_ins;
@@ -9834,6 +9867,7 @@ function savePatient(){
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     audit('환자수정',name+(mrn?' ('+mrn+')':''));
+    if(JSON.stringify(_oldRoute)!==JSON.stringify(p.route))routeChangeNotify(p,_oldRoute,p.route,'직접 수정');
     save(p);cloudSaveConfig();render();closeModal();return;
   }else{
     const c=mrnConflict(mrn,name);

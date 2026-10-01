@@ -571,10 +571,14 @@ async function dongseonNotify(request, env) {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
     const room = s(b.room), kind = s(b.kind);
-    if (!room || !["in", "out", "dc", "dcundo", "floor", "wait"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
+    if (!room || !["in", "out", "dc", "dcundo", "floor", "wait", "route"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
     if (!env.ROOM_BOT_TOKEN && !env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
     await ensureSchema(env);
-    const subs = ((await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || []).filter((r) => normRoom(r.room) === normRoom(room));
+    /* room '__all__' = 봇을 쓰는 모든 사람(어느 방을 골랐든) — 처방 D/C·동선 변경은 모두에게 (2026-10-01 요청) */
+    const allRows = (await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || [];
+    const subs = room === "__all__"
+      ? [...new Set(allRows.map((r) => String(r.chat_id)))].map((chat_id) => ({ chat_id }))
+      : allRows.filter((r) => normRoom(r.room) === normRoom(room));
     if (!subs.length) return json({ ok: true, sent: 0 });
     const email = await fbEmailFromRequest(request);
     if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
@@ -586,10 +590,17 @@ async function dongseonNotify(request, env) {
     const dcItem = s(b.item).slice(0, 80);
     /* 3층↔4층 이동 (2026-10-01): "최다솜 5860 기본물리치료 → C-Arm 순서변동" — room = '3층 이동 알림' / '4층 이동 알림' 채널 */
     /* 대기 30분 넘음 (2026-10-01): 진행을 안 눌러 대기가 몇 시간씩 쌓이는 것을 막으려고 — 그 방 구독자에게 */
-    const text = kind === "wait" ? `⏰ ${room} 대기 ${Number(b.min) || 30}분 넘음 · ${who} · 진행을 눌러 주세요`
+    /* 동선 변경 (2026-10-01): 누가 무엇을 바꿨는지 + 바뀐 동선 전체 */
+    const routeTxt = kind === "route"
+      ? `🔀 ${dcWho} 동선 변경 · ${s(b.why) || "변경"} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}` +
+        (s(b.added) ? `\n＋ ${s(b.added)}` : "") + (s(b.removed) ? `\n－ ${s(b.removed)}` : "") + (s(b.to) ? `\n→ ${s(b.to).slice(0, 300)}` : "")
+      : "";
+    const dcRooms = s(b.rooms) || room;
+    const text = kind === "route" ? routeTxt
+      : kind === "wait" ? `⏰ ${room} 대기 ${Number(b.min) || 30}분 넘음 · ${who} · 진행을 눌러 주세요`
       : kind === "floor" ? `🔀 ${dcWho} ${s(b.from)} → ${s(b.to)} 순서변동 · ${hm}`
-      : kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
-      : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${room} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      : kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
       : kind === "in"
       ? `🟢 ${room} 도착 · ${who} · ${hm}`
       : `⚪ ${room} 나감 · ${who} · ${hm}` + ((b.waitMs || b.activeMs) ? ` · 대기 ${fmtMin(b.waitMs)}${b.activeMs ? " · 진행 " + fmtMin(b.activeMs) : ""}` : "") + (s(b.next) ? ` → ${s(b.next)}` : "");
