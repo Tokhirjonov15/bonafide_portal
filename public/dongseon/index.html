@@ -393,6 +393,7 @@
   .owner.mine{outline:1px solid var(--blue);cursor:pointer}
   .owner .orole{font-size:9px;opacity:.85}
   .col-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px;display:flex;flex-direction:column;gap:10px}
+  .col-head.drop-top{box-shadow:inset 0 -3px 0 var(--accent,#6366f1);border-radius:10px}   /* 카드를 방 이름 위에 놓으면 맨 위로 */
   /* ── 스크롤바: 얇고 둥글게·은은하게(방 컬럼·보드 가로·모달·차트 공통) ── */
   .col-body,#board,.body,#editChartPast,.mr-list{scrollbar-width:thin;scrollbar-color:rgba(140,152,170,.38) transparent}
   .col-body::-webkit-scrollbar,#board::-webkit-scrollbar,.body::-webkit-scrollbar,#editChartPast::-webkit-scrollbar,.mr-list::-webkit-scrollbar{width:9px;height:9px}
@@ -5509,6 +5510,8 @@ function setConsultResult(pid,room,result){const p=data.find(x=>x.id===pid);if(!
 function consultAutoRoute(pid,fromRoom){
   const p=data.find(x=>x.id===pid);if(!p)return false;
   if(!isConsultRoom(fromRoom)||curRoom(p)!==fromRoom)return false;
+  /* 3층 진료 상담에서만 — 4층 상담(비급여)에서 [시행]을 눌러도 3층 C-Arm·Sono 방으로 되돌아가면 안 된다 (2026-10-01) */
+  if(roomFloor(fromRoom)==='4층')return false;
   const need=spaceRoomsFromRx(p);
   if(!need||!need.length)return false;          // 갈 곳이 없으면 상담실에 그대로
   delete p.spaceDone;                            // 이번엔 처음부터 — 해당하는 방 모두에 보이도록
@@ -5752,6 +5755,13 @@ function render(){
       const pid=draggedPid||e.dataTransfer.getData("text/plain");if(!pid)return;
       if(draggedRoom===room)moveToEnd(pid); else moveByDrag(pid,room);
       draggedPid=null;draggedRoom=null;});
+    /* 방 이름(칸 머리) 위에 놓기: 같은 방이면 맨 위로, 다른 방이면 그 방으로 (2026-10-01) */
+    if(!folded){const head=col.querySelector('.col-head');
+      if(head){head.addEventListener("dragover",e=>{if(draggedColRoom||!draggedPid)return;e.preventDefault();head.classList.add("drop-top");});
+        head.addEventListener("dragleave",()=>head.classList.remove("drop-top"));
+        head.addEventListener("drop",e=>{if(draggedColRoom||!draggedPid)return;e.preventDefault();e.stopPropagation();head.classList.remove("drop-top");
+          const pid=draggedPid;if(draggedRoom===room)moveToTop(pid);else moveByDrag(pid,room);
+          draggedPid=null;draggedRoom=null;});}}
     if(folded){   // 접힌 방: 본문이 숨겨져 있으므로 컬럼 자체가 놓기 대상. 클릭하면 펼침
       col.addEventListener("dragover",e=>{if(draggedColRoom)return;e.preventDefault();col.classList.add("drag-over")});
       col.addEventListener("dragleave",()=>col.classList.remove("drag-over"));
@@ -7115,16 +7125,17 @@ function tdragResolve(el){
   const chip=el.closest&&el.closest('#roomJump .rj[data-room]');if(chip)return {kind:'room',room:chip.dataset.room,el:chip};
   const card=el.closest&&el.closest('#board .card');
   if(card&&card!==TD.card&&!card.classList.contains('tdrag-ghost')){const id=card.dataset.pid||card.dataset.id||'';const pt=data.find(x=>x.id===id);if(pt)return {kind:'card',id,room:curRoom(pt),col:card.dataset.col||'',el:card};}
+  const head=el.closest&&el.closest('#board .col:not(.folded) .col-head');if(head&&head.parentElement.dataset.room)return {kind:'top',room:head.parentElement.dataset.room,el:head};
   const body=el.closest&&el.closest('#board .col-body[data-room]');if(body)return {kind:'body',room:body.dataset.room,el:body};
   return null;
 }
 function tdragClearMarks(){document.querySelectorAll('.card.drop-before,.card.drop-after').forEach(x=>x.classList.remove('drop-before','drop-after'));
-  document.querySelectorAll('.col-body.drag-over').forEach(x=>x.classList.remove('drag-over'));document.querySelectorAll('#roomJump .rj.drop').forEach(x=>x.classList.remove('drop'));}
+  document.querySelectorAll('.col-body.drag-over').forEach(x=>x.classList.remove('drag-over'));document.querySelectorAll('#roomJump .rj.drop').forEach(x=>x.classList.remove('drop'));document.querySelectorAll('.col-head.drop-top').forEach(x=>x.classList.remove('drop-top'));}
 function tdragMove(x,y){
   if(TD.ghost){TD.ghost.style.left=(x-TD.dx)+'px';TD.ghost.style.top=(y-TD.dy)+'px';}
   const el=document.elementFromPoint(x,y);const t=tdragResolve(el);TD.over=t;tdragClearMarks();
   if(t){if(t.kind==='card'){const r=t.el.getBoundingClientRect();t.before=y<r.top+r.height/2;t.el.classList.toggle('drop-before',t.before);t.el.classList.toggle('drop-after',!t.before);}
-    else if(t.kind==='body')t.el.classList.add('drag-over');else t.el.classList.add('drop');}
+    else if(t.kind==='body')t.el.classList.add('drag-over');else if(t.kind==='top')t.el.classList.add('drop-top');else t.el.classList.add('drop');}
   /* 가장자리 자동 스크롤: 보드 좌우, 방 목록 상하 */
   const b=document.getElementById('board');if(b){const r=b.getBoundingClientRect();const Z=48;
     let hx=0;if(x<r.left+Z)hx=-10;else if(x>r.right-Z)hx=10;
@@ -7136,6 +7147,7 @@ function tdragCommit(t){
   const pid=TD.pid,from=TD.room;if(!pid||!t)return false;
   if(t.kind==='card'){if(t.id===pid)return (TD.col&&t.col&&isSameSpace(TD.col,t.col))?spaceHandOff(pid,TD.col,t.col):false;
     if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveByDrag(pid,t.room);return true;}
+  if(t.kind==='top'){if(from===t.room)moveToTop(pid);else moveByDrag(pid,t.room);return true;}
   if(t.kind==='body'||t.kind==='room'){if(from===t.room){if(t.kind==='body')moveToEnd(pid);}else moveByDrag(pid,t.room);return true;}
   return false;
 }
@@ -7319,17 +7331,23 @@ function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;if(p.st
   applyStatus(p,st);saveLocal();render();
   cloudPatientTxn(pid,d=>applyStatus(d,st));}
 function moveToEnd(pid){const p=data.find(x=>x.id===pid);if(!p)return;p.ord=nextOrd();save(p);render();}
+/* 같은 방 안 순서 바꾸기: 화면에 보이는 순서(roomSort) 그대로 놓은 자리에 끼우고, 순서가 바뀐 카드만 ord 를 다시 매긴다 (2026-10-01).
+   예전엔 ord 의 중간값만 썼는데, 같은 ord 가 겹치면(여러 화면이 동시에 만든 카드) 한 칸밖에 안 올라갔다 */
 function reorderInData(draggedId,targetId,before){
   const dragged=data.find(x=>x.id===draggedId),target=data.find(x=>x.id===targetId);
   if(!dragged||!target||dragged===target)return;
   const room=curRoom(target);
-  const list=data.filter(p=>curRoom(p)===room&&p.id!==draggedId).sort((a,b)=>(a.ord||0)-(b.ord||0));
-  const ti=list.indexOf(target);let lo,hi;
-  if(before){hi=target.ord||0;lo=ti>0?(list[ti-1].ord||0):hi-2;}
-  else{lo=target.ord||0;hi=ti<list.length-1?(list[ti+1].ord||0):lo+2;}
-  dragged.ord=(lo+hi)/2;
-  save(dragged);render();
+  const list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room&&p.id!==draggedId).sort((a,b)=>roomSort(a,b,room));
+  const ti=list.indexOf(target);if(ti<0)return;
+  list.splice(before?ti:ti+1,0,dragged);
+  const base=Math.min(...list.map(p=>p.ord||0));
+  list.forEach((p,i)=>{const o=base+i;if(p.ord!==o){p.ord=o;save(p);}});
+  render();
 }
+/* 맨 위로: 방 이름(칸 머리) 위에 놓으면 그 방 맨 위로 */
+function moveToTop(pid){const p=data.find(x=>x.id===pid);if(!p)return;const room=curRoom(p);
+  const first=data.filter(x=>!x.discharged&&x.route.length&&curRoom(x)===room&&x.id!==pid).sort((a,b)=>roomSort(a,b,room))[0];
+  if(first)reorderInData(pid,first.id,true);}
 /* ── 대기실 카드 위/아래 한 칸 이동(▲▼) ──
    비트 캐스트 순서와 실제 도착 순서가 어긋날 때 직원이 바로잡기 위한 것. 지금은 '대기실'로 끝나는 방에서만,
    예약배치(resOrder)가 꺼진 방에서만 보인다(예약배치 방은 순서가 자동이라 ord 교환이 화면에 반영되지 않음).
@@ -10567,6 +10585,19 @@ document.getElementById('board').addEventListener('wheel',e=>{
    커서가 창 밖으로 나가도 마지막 방향으로 계속 밀며, 놓거나 드래그가 끝나면 멈춘다. */
 (function(){
   const ZONE=90, MAXSPEED=22; let dir=0, speed=0, raf=null;
+  /* 칸 안 세로 자동 스크롤 (2026-10-01): 카드가 커서 한 칸에 두세 장만 보이므로, 끌면서 칸 위·아래 끝에 가면 칸이 따라 움직인다 */
+  let vBody=null, vDir=0, vSpeed=0, vRaf=null; const VZONE=70;
+  function vTick(){ if(!vDir||!vBody||!dragging()){vRaf=null;vDir=0;return;} vBody.scrollTop+=vDir*vSpeed; vRaf=requestAnimationFrame(vTick); }
+  function setV(body,d,sp){ vBody=body; vDir=d; vSpeed=sp; if(vDir&&!vRaf)vRaf=requestAnimationFrame(vTick); }
+  document.addEventListener('dragover',e=>{
+    if(!draggedPid)return setV(null,0,0);
+    const col=e.target&&e.target.closest?e.target.closest('#board .col'):null; const body=col?col.querySelector('.col-body'):null;
+    if(!body)return setV(null,0,0);
+    const r=body.getBoundingClientRect(), y=e.clientY;
+    if(y<r.top+VZONE){ const k=Math.min(1,Math.max(0,(r.top+VZONE-y)/VZONE)); setV(body,-1,4+18*k); }
+    else if(y>r.bottom-VZONE){ const k=Math.min(1,Math.max(0,(y-(r.bottom-VZONE))/VZONE)); setV(body,1,4+18*k); }
+    else setV(null,0,0);
+  });
   const boardEl=()=>document.getElementById('board');
   const dragging=()=>!!(draggedPid||draggedColRoom);
   function tick(){ const b=boardEl(); if(!dir||!b||!dragging()){raf=null;dir=0;return;} b.scrollLeft+=dir*speed; raf=requestAnimationFrame(tick); }
@@ -10583,7 +10614,7 @@ document.getElementById('board').addEventListener('wheel',e=>{
     const b=boardEl(); if(!b)return; const r=b.getBoundingClientRect(); const x=e.clientX;
     if(x<=r.left+ZONE)setDir(-1,MAXSPEED); else if(x>=r.right-ZONE)setDir(1,MAXSPEED);
   });
-  ['dragend','drop'].forEach(ev=>document.addEventListener(ev,()=>setDir(0,0)));
+  ['dragend','drop'].forEach(ev=>document.addEventListener(ev,()=>{setDir(0,0);setV(null,0,0);}));
 })();
 
 boot();
