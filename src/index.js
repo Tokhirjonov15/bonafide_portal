@@ -877,22 +877,38 @@ async function handleApi(request, env, url, ident, ctx) {
   }
 
   /* 통계표(약품·물품 — 구글시트 '간호 재고파악' 틀) — 보기는 모두, 저장은 관리자만 (2026-09-27) */
+  /* 2026-10-01: 달마다 따로 저장 — 키 statsheet_{id}_{YYYY-MM}. month 를 안 주면 이번 달(한국 시각).
+     예전 표(월 구분 전, 키 statsheet_{id})는 저장된 달이 하나도 없을 때만 '기존 표'로 보여 준다 — 저장하면 그 달로 들어간다 */
   if (path === "/statsheet" && method === "GET") {
     const id = url.searchParams.get("id") === "goods" ? "goods" : "drug";
-    const row = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind("statsheet_" + id).first();
-    return json({ id, sheet: row ? JSON.parse(row.value) : null });
+    const kst = new Date(Date.now() + 9 * 3600 * 1000);
+    const cur = kst.getUTCFullYear() + "-" + String(kst.getUTCMonth() + 1).padStart(2, "0");
+    const qm = s(url.searchParams.get("month"));
+    const month = /^\d{4}-\d{2}$/.test(qm) ? qm : cur;
+    const pre = "statsheet_" + id + "_";
+    const keys = ((await env.DB.prepare(`SELECT key FROM meta WHERE key LIKE ?`).bind(pre + "%").all()).results || []).map((r) => r.key);
+    const months = keys.map((k) => k.slice(pre.length)).filter((m) => /^\d{4}-\d{2}$/.test(m)).sort();
+    const row = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind(pre + month).first();
+    let sheet = row ? JSON.parse(row.value) : null, legacy = false;
+    if (!sheet && !months.length) {
+      const old = await env.DB.prepare(`SELECT value FROM meta WHERE key=?`).bind("statsheet_" + id).first();
+      if (old) { sheet = JSON.parse(old.value); legacy = true; }
+    }
+    return json({ id, month, current: cur, months, sheet, legacy });
   }
   if (path === "/statsheet" && method === "POST") {
     if (!(staff && staff.admin)) return json({ error: "통계표 수정은 관리자만 할 수 있습니다." }, 403);
     const id = s(body.id) === "goods" ? "goods" : "drug";
+    const month = s(body.month);
+    if (!/^\d{4}-\d{2}$/.test(month)) return json({ error: "달(YYYY-MM)이 필요합니다." }, 400);
     const sheet = body.sheet;
     if (!sheet || !Array.isArray(sheet.cols) || !Array.isArray(sheet.rows))
       return json({ error: "표 내용이 올바르지 않습니다." }, 400);
-    const payload = JSON.stringify({ cols: sheet.cols, rows: sheet.rows, updatedAt: Date.now(), updatedBy: actor });
+    const payload = JSON.stringify({ cols: sheet.cols, rows: sheet.rows, widths: Array.isArray(sheet.widths) ? sheet.widths : undefined, updatedAt: Date.now(), updatedBy: actor });
     if (payload.length > 900000) return json({ error: "표가 너무 큽니다(900KB 초과)." }, 400);
     await env.DB.prepare(`INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
-      .bind("statsheet_" + id, payload).run();
-    return json({ ok: true });
+      .bind("statsheet_" + id + "_" + month, payload).run();
+    return json({ ok: true, month });
   }
 
   /* 품목 숨기기 / 되돌리기 — 관리자만 (2026-09-27) */
