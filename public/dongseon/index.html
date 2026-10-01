@@ -776,6 +776,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* 4층 예약 10분 전 깜빡임 (2026-10-01) */
   @keyframes ptBlink{0%,100%{box-shadow:0 0 0 0 rgba(234,88,12,0);border-color:var(--line)}50%{box-shadow:0 0 0 4px rgba(234,88,12,.55);border-color:#ea580c}}
   .card.pt-soon{animation:ptBlink 1.1s ease-in-out infinite;border:2px solid #ea580c}
+  /* 대기 30분 넘음 (2026-10-01) — 깜빡이지 않고 빨간 테두리만(4층 예약 깜빡임과 구별) */
+  .card.wait-over{border:2px solid #dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.18)}
+  .card.wait-over.pt-soon{border-color:#ea580c}
+  .wait-over-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(220,38,38,.1);color:#b91c1c;font-size:12.5px;font-weight:800}
   .pt-soon-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(234,88,12,.12);color:#c2410c;font-size:12.5px;font-weight:800}
   .slip-printed{display:inline-block;font-size:11px;font-weight:800;color:#047857;background:rgba(16,185,129,.14);border:1px solid rgba(16,185,129,.45);border-radius:6px;padding:0 6px;line-height:17px;white-space:nowrap}
   .slip-printed.stale{color:#b45309;background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.55)}
@@ -2582,6 +2586,7 @@ async function establishSession(){
     return;
   }
   currentUser=u; sessionEstablished=true;
+  showReconnecting(false);
   document.getElementById('loginOverlay').classList.remove('show');
   if(currentUser.super){try{await seedApp();await ensureAclShape();}catch(e){console.error('seed',e);}}
   audit('로그인');
@@ -2603,7 +2608,13 @@ function maybeBackupReminder(){if(!currentUser||!isAdmin())return;
   if(days>=7)warnToast(`마지막 백업이 ${last?days+'일 전':'아직 없음'}입니다. 데이터 보호를 위해 <b>계정 메뉴 → 전체 백업</b>을 받아 안전한 곳에 보관하세요.`);}
 function savePrefs(){localStorage.setItem('patientBoard_staffprefs',JSON.stringify(STAFF_PREFS));cloudSaveConfig();}
 
-function showLogin(){
+/* 새로고침 뒤 세션을 되찾는 동안 화면 위에 작게 — 로그인 창 대신 (2026-10-01) */
+function showReconnecting(on){let b=document.getElementById('reconnBanner');
+  if(!on){if(b)b.remove();return;}
+  if(b)return;b=document.createElement('div');b.id='reconnBanner';b.textContent='☁︎ 다시 연결 중…';
+  b.style.cssText='position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:250;background:#1e3a8a;color:#fff;font-size:13px;font-weight:700;padding:7px 16px;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+  document.body.appendChild(b);}
+function showLogin(){showReconnecting(false);
   const ov=document.getElementById('loginOverlay');ov.classList.add('show');
   document.getElementById('loginBody').innerHTML=`
     <div id="loginMsg" style="display:none;background:var(--red-bg);color:var(--red);font-size:13px;font-weight:600;padding:9px 12px;border-radius:8px;margin-bottom:12px"></div>
@@ -2629,7 +2640,7 @@ async function doLogin(){
     // 이후는 onAuthStateChanged → establishSession 이 처리
   }catch(e){loginMsg(authErrMsg(e));}
 }
-function finishLogin(){localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();if(BITRESV_MODE)openBitResvScreen();}
+function finishLogin(){showReconnecting(false);localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();if(BITRESV_MODE)openBitResvScreen();}
 /* ───── 비트플러스 접수 연동 ─────
    접수 PC의 감시 스크립트(tools/bitplus_watcher.ps1)가 비트 '접수' 창의 인적정보 패널을 읽어
    bitIntake/{날짜_병록번호} 문서로 올린다. 여기서는 오늘 문서만 구독해 보드 위에 '비트 접수 대기' 줄로 보여주고,
@@ -4832,7 +4843,12 @@ async function migrateIfNeeded(){
 }
 async function startHosted(){
   setSync('off');
-  showLogin(); setLoginReady(false);   // 로그인 폼 즉시 표시(체감 지연 제거) — 클라우드는 뒤에서 연결
+  /* 이 기기에서 이미 로그인해 있던 경우(새 버전 자동 새로고침 등)에는 로그인 화면을 띄우지 않는다 — 로그인 창이 잠깐 떴다가
+     저절로 다시 들어가는 것처럼 보였다(2026-10-01 제보). 대신 위에 '다시 연결 중…' 만 보이고, 세션이 정말 끝났거나 15초 안에
+     복구되지 않으면 그때 로그인 화면 */
+  if(localStorage.getItem(SESSION_KEY)){showReconnecting(true);
+    setTimeout(()=>{if(!currentUser&&!document.getElementById('loginBody').querySelector('#lg_name')){showReconnecting(false);showLogin();setLoginReady(!!cloud.db);}},15000);}
+  else {showLogin(); setLoginReady(false);}   // 로그인 폼 즉시 표시(체감 지연 제거) — 클라우드는 뒤에서 연결
   try{
     await loadFirebaseSdk();
     if(firebase.apps.length)await Promise.all(firebase.apps.map(a=>a.delete()));
@@ -6876,7 +6892,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(routeOutOfOrder(p)?" off-route":"")+(PT_SOON[p.id]?" pt-soon":"");c.draggable=true;
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(routeOutOfOrder(p)?" off-route":"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"");c.draggable=true;
   if(routeOutOfOrder(p))c.title="환자 동선 순서가 처방 순서와 다릅니다 — 카드를 눌러 동선을 확인해 주세요.";
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
@@ -6956,6 +6972,7 @@ function cardEl(p,colRoom){
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
     <div class="pt-soon-tag" style="${PT_SOON[p.id]?'':'display:none'}">${esc(ptSoonText(PT_SOON[p.id]))}</div>
+    <div class="wait-over-tag" style="${WAIT_OVER[p.id]?'':'display:none'}">${esc(waitOverText(WAIT_OVER[p.id]))}</div>
     <div class="status-row">
       ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
@@ -8891,6 +8908,42 @@ function refreshPtSoon(){
     c.classList.toggle('pt-soon',!!s);
     const tg=c.querySelector('.pt-soon-tag');if(tg){tg.style.display=s?'':'none';tg.textContent=ptSoonText(s);}});}
 setInterval(()=>{try{if(currentUser)refreshPtSoon();}catch(e){}},15000);
+/* ═════ 대기 30분 넘음 알림 (2026-10-01 요청) ═════
+   진료가 밀리면 [진행]을 안 눌러 대기 시간이 몇 시간씩 쌓였다. 치료 방에서 '대기' 30분이 넘으면
+   · 카드: 빨간 테두리 + '⏰ 대기 45분 — 진행을 눌러 주세요'
+   · 텔레그램: 그 방 구독자에게 30·60·90·120분에 한 번씩(그 뒤로는 그침). 여러 화면이 같이 보내지 않도록 카드 문서 waitAlert 에 먼저 표시한 화면만.
+   대기실·수납·진행 버튼이 없는 방은 오래 기다리는 게 정상이라 빼고 센다 */
+var WAIT_ALERT_MIN=30, WAIT_ALERT_MAX_LEVEL=4, WAIT_OVER={};
+const WAIT_SENT={};   // 이 화면이 이미 시도한 키 — 15초마다 트랜잭션을 다시 걸지 않게
+function waitAlertRoom(r){return !!r&&!/대기실/.test(r)&&!isPayRoom(r)&&!meta(r).noProg;}
+function waitAlertInfo(p){
+  if(!p||p.discharged||p.out||(p.status||'대기')!=='대기')return null;
+  const r=curRoom(p);if(!waitAlertRoom(r))return null;
+  const min=Math.floor(waitMsNow(p)/60000);if(min<WAIT_ALERT_MIN)return null;
+  return {room:r,min,level:Math.min(Math.floor(min/WAIT_ALERT_MIN),WAIT_ALERT_MAX_LEVEL)};}
+function waitOverText(w){return w?`⏰ 대기 ${w.min}분 — 진행을 눌러 주세요`:'';}
+function refreshWaitAlerts(){
+  const next={};
+  data.forEach(p=>{const w=waitAlertInfo(p);if(w)next[p.id]=w;});
+  WAIT_OVER=next;
+  document.querySelectorAll('.card[data-pid]').forEach(c=>{const w=WAIT_OVER[c.dataset.pid];
+    c.classList.toggle('wait-over',!!w);
+    const tg=c.querySelector('.wait-over-tag');if(tg){tg.style.display=w?'':'none';tg.textContent=waitOverText(w);}});
+  Object.keys(WAIT_OVER).forEach(pid=>{const p=data.find(x=>x.id===pid);if(p)sendWaitAlert(p,WAIT_OVER[pid]);});}
+function sendWaitAlert(p,w){
+  if(!cloud.db||!cloud.patientsCol||!currentUser)return;
+  const key=w.room+'|'+(p.enteredAt||'')+'|'+w.level;
+  if(WAIT_SENT[p.id+'#'+key])return;WAIT_SENT[p.id+'#'+key]=1;
+  if(p.waitAlert&&p.waitAlert.key===key)return;
+  const ref=cloud.patientsCol.doc(p.id);
+  cloud.db.runTransaction(t=>t.get(ref).then(sn=>{if(!sn.exists)return false;const d=sn.data()||{};
+      if(d.waitAlert&&d.waitAlert.key===key)return false;t.update(ref,{waitAlert:{key,at:Date.now()}});return true;}))
+    .then(won=>{if(!won)return;
+      const q=data.find(x=>x.id===p.id);if(q)q.waitAlert={key,at:Date.now()};
+      roomNotify(p,w.room,'wait',{min:w.level*WAIT_ALERT_MIN});
+      try{audit('대기 '+(w.level*WAIT_ALERT_MIN)+'분 넘음 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+w.room);}catch(e){}})
+    .catch(e=>console.warn('wait alert',e));}
+setInterval(()=>{try{if(currentUser)refreshWaitAlerts();}catch(e){}},20000);
 function fillBookedBox(p){
   const box=document.getElementById('bookedBox');if(!box)return;
   const hit=bookedFromSheet(p);
