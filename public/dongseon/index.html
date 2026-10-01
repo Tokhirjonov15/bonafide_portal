@@ -2203,36 +2203,43 @@ function isHandOffDrop(targetEl,p){   // 같은 환자 카드 위에 놓았는�
    · 방 순서는 ROUTE_ORDER. 처방에 없는 방이 손으로 들어가 있으면 그대로 둔다(자동으로 넣은 방만 다시 계산).
    · 직원이 [종결] 대신 다른 방으로 끌어다 놓아도(예: C-Arm → x-ray실) 그 방이 동선 사이에 끼어들고 나머지는 이어진다(moveTo 참고).
    · 낱말이나 방 순서가 바뀌면 여기만 고친다. */
-const ROUTE_ORDER=['x-ray실','CT실','진료 상담','C-Arm','Sono','근전도검사','처치실','4층 상담','물리치료','기본물리치료'];   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
+const ROUTE_ORDER=['x-ray실','CT실','진료 상담','근전도검사','C-Arm','Sono','처치실','4층 대기실','4층 상담','충격파','신장분사','SASO','자동차도수','물리치료','기본물리치료'];   /* 2026-10-01 '동선관리 로직' 시트: 근전도→C-arm→sono→처치, 4층은 4층 대기실 → 4층 상담 → 충격파·신장분사 → SASO·자동차도수 → 기본물리치료 */   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
 /* 진료 상담이 반드시 앞에 들어가야 하는 방들 — 이 중 하나라도 처방되면 상담을 먼저 거친다 (2026-09-26 지시) */
 const CONSULT_NEEDS=['C-Arm','Sono','근전도검사','처치실'];
 const PT_ROOMS=['물리치료','기본물리치료'];   // 수납대기가 이 방들 앞에 들어간다(4층 상담이 없을 때)
 function rxConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^진료\s*상담$/.test(r))||'';}
 function rxUpConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^4층\s*상담$/.test(r))||'';}
+/* 처치실로 보내는 처방코드 — '동선관리 로직.xlsx' 처치 칸(B열) 그대로, 소문자 (2026-10-01) */
+const RX_TREAT_CODES=new Set(["dressing", "d1850", "d1860", "d0002030", "d0002010", "d0002050", "d0002040", "d0002070", "d8413036", "d3230060", "d3250010", "d3230050", "d6802066z", "d6801046z", "d5874096z", "d6802026z", "d6801016z", "d5912036z", "d5913016z", "d013300hz", "d8070016z", "d8070026z", "d7951036z", "d5010010", "d5030010", "d4902020", "d7843006", "d7951036", "d7471010", "d7471020", "d8413026", "d5856000z", "d5851000z", "d5853000z", "d654219cz", "d654319cz", "d654209cz", "d654309cz", "d7460006z", "m0111", "m0121", "skycell", "a7", "sk", "gsk", "m0032", "c8140", "t6151", "t6155", "t6153", "t6154", "t6152", "b형간염", "sc031", "sb021", "sc021", "cefaze", "sb032", "crutch", "alle", "ttb", "ibn", "실린더", "장하지1", "pprol", "본큐어주", "terrosa", "evenity", "ev", "jx", "n0210", "coban1", "coban2", "coban3", "coban4", "coban5", "coolband1", "coolband2", "coolband3", "coolband4", "coolband5", "itl", "tsc", "zroid", "zlm", "atb", "mixinjection1", "mixinjection2", "mixinjection3", "mixinjection4", "mixinjection5", "mixinjection6", "mixinjection7", "mixinjection8", "mixinjection9", "rkarl", "wenuf", "pain", "pain4", "pain5", "pain8", "pain10", "genta", "dxmt", "triam", "dcf", "trol", "t6163", "t6162", "t6161", "peni", "conto", "n0234", "h9", "h92", "d5854", "n0215", "n0912", "n0200", "d1004", "d1005", "d1083", "d1121"]);
+/* 규칙: codes = 처방코드가 이 목록과 같으면, cod = 처방코드 모양, nam = 처방명칭 낱말, any = 코드+명칭 어디든.
+   not/notCod 에 걸리면 그 방은 아님. 시트의 '○○ 포함 항목' = 코드나 명칭에 그 낱말이 들어 있으면 (2026-10-01) */
 const ROUTE_RX_RULES=[
   {room:'x-ray실',    cod:/^g\d/i,      any:/x-?ray/i, not:/c\s*-?\s*arm/i},   // G+숫자만(genta 주사 제외), 'C-Arm 이용료(G0400)'는 C-Arm 으로
-  {room:'CT실',       any:/(^|[^a-z])ct($|[^a-z])/i},            // INJECTION 같은 단어 속 'ct' 는 제외
-  {room:'C-Arm',      any:/c\s*-?\s*arm/i},
-  {room:'Sono',       any:/sono/i},
-  {room:'처치실',      any:/처치|봉합술|부목|splint/i, notCod:/^g\d/i},   // 촬영 지시문의 'splint풀고'는 처치가 아님
-  {room:'근전도검사',   any:/근전도/},
+  {room:'CT실',       cod:/^ct$/i, any:/(^|[^a-z])ct($|[^a-z])/i},            // INJECTION 같은 단어 속 'ct' 는 제외
+  {room:'C-Arm',      codes:new Set(['c-arm','carm','g0400']), any:/c\s*-?\s*arm/i},
+  {room:'Sono',       codes:new Set(['sono','c010','c8140010','aatri','ssyno','hran','prolo']), any:/sono/i},
+  {room:'처치실',      codes:RX_TREAT_CODES, any:/처치|봉합술|부목|splint|메디폼|cbc/i, notCod:/^g\d/i},   // 촬영 지시문의 'splint풀고'는 처치가 아님
+  {room:'근전도검사',   cod:/^emg$/i, any:/근전도|(^|[^a-z])emg($|[^a-z])/i},
+  {room:'충격파',      cod:/^es\d+$/i, nam:/체외충격파(?!\s*상담)/},
+  {room:'신장분사',     cod:/^cryo\d+$/i, nam:/신장분사치료\s*\d/},
+  {room:'SASO',       cod:/^ss\d*$/i, nam:/saso/i},
+  {room:'자동차도수',   cod:/^(자도|kr006)$/i, nam:/자동차\s*도수/},
   {room:'물리치료',     any:/물리치료/, not:/기본물리치료/},
   {room:'4층 상담',    cod:/^cs\d*$/i},
-  {room:'기본물리치료', cod:/^mm\d/i, any:/기본물리치료/}
+  {room:'기본물리치료', cod:/^mm\d*$/i, any:/기본물리치료/}
 ];
+function rxRuleHit(r,cod,nam){const hay=cod+' '+nam;
+  if(r.not&&r.not.test(hay))return false;
+  if(r.notCod&&r.notCod.test(cod))return false;   // 코드로 제외(예: 처치 낱말이 촬영 지시문에 섞인 경우)
+  return !!((r.codes&&r.codes.has(cod.toLowerCase()))||(r.cod&&r.cod.test(cod))||(r.nam&&r.nam.test(nam))||(r.any&&r.any.test(hay)));}
 /* 처방에서 갈 방들(ROUTE_ORDER 순서). 처방이 아직 없으면 null, 있는데 해당 방이 없으면 [] */
 function rxRoomsFor(p){
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;
   if(!rx||!rx.items||!rx.items.length)return null;
   const hit=new Set();
   rx.items.forEach(it=>{
-    const cod=String(it.cod||'').trim(), nam=String(it.nam||'').trim(), hay=cod+' '+nam;
-    ROUTE_RX_RULES.forEach(r=>{
-      if(hit.has(r.room))return;
-      if(r.not&&r.not.test(hay))return;
-      if(r.notCod&&r.notCod.test(cod))return;   // 코드로 제외(예: 처치 낱말이 촬영 지시문에 섞인 경우)
-      if((r.cod&&r.cod.test(cod))||(r.nam&&r.nam.test(nam))||(r.any&&r.any.test(hay)))hit.add(r.room);
-    });
+    const cod=String(it.cod||'').trim(), nam=String(it.nam||'').trim();
+    ROUTE_RX_RULES.forEach(r=>{if(!hit.has(r.room)&&rxRuleHit(r,cod,nam))hit.add(r.room);});
   });
   const known=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:null;
   return ROUTE_ORDER.filter(r=>hit.has(r)&&(!known||known.includes(r)));
@@ -2244,7 +2251,7 @@ function spaceRoomsFromRx(p){
   return rooms.filter(r=>grp.includes(r));
 }
 /* 처방의 지문(코드·명칭) — 같은 처방을 두 번 반영하지 않으려고 */
-const RX_ROUTE_VER='2026-09-26a';   /* 동선 규칙 판(版). 규칙(순서·필수 방·수납 자리)을 고치면 이 값을 바꾼다 →
+const RX_ROUTE_VER='2026-10-01b';   /* 동선 규칙 판(版). 규칙(순서·필수 방·수납 자리)을 고치면 이 값을 바꾼다 →
    이미 동선이 짜인 환자도 한 번 다시 계산된다. 안 바꾸면 처방이 그대로인 환자는 옛 규칙의 동선을 그대로 쓴다 (2026-09-26) */
 function rxHashOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;if(!rx||!rx.items||!rx.items.length)return '';
   return RX_ROUTE_VER+'\n'+rx.items.map(x=>String(x.cod||'')+'|'+String(x.nam||'')).join('\n');}
@@ -2280,12 +2287,20 @@ function applyRxRoute(p){
   {const sv=String(p.routeRxHash||'').split('\n')[0]; if(sv&&sv>RX_ROUTE_VER)return false;}
   if(!rxLoopGuard(p))return false;
   let want=rxRoomsFor(p)||[];
+  /* 2026-10-01 '동선관리 로직' 시트
+     · MM(기본물리치료)만 있으면 → 수납대기 → 4층 대기실 → SASO → 기본물리치료 로 고정
+     · CS·SS·C-arm·sono·자동차도수 중 하나라도, 또는 4층 치료가 있으면 → 4층 대기실을 넣는다 */
+  if(want.length===1&&want[0]==='기본물리치료'&&ROOMS.includes('SASO'))want=['SASO','기본물리치료'];
+  const FLOOR4_ANY=['4층 상담','SASO','자동차도수','C-Arm','Sono','충격파','신장분사','물리치료','기본물리치료'];
+  if(ROOMS.includes('4층 대기실')&&!want.includes('4층 대기실')&&want.some(r=>FLOOR4_ANY.includes(r)))want=[...want,'4층 대기실'];
   /* 필수 상담 (2026-09-26 지시)
      · SONO·C-Arm·근전도·처치 중 하나라도 처방되면 → '진료 상담'을 그 방들 앞에 반드시
      · CS(신장분사치료 상담) 처방이면 → '4층 상담'을 반드시 (규칙이 이미 want 에 넣는다)
      이미 그 방을 지나온 환자라도, 동선에 없으면 기준 순서 자리(=지금 방보다 앞이라도)에 끼워 넣는다 */
   const consR=rxConsultRoom(), upR=rxUpConsultRoom();
-  const mustCons=!!(consR&&want.some(r=>CONSULT_NEEDS.includes(r)));
+  /* 2026-10-01 시트: '진료실 후에는 무조건 진료 상담' — 진료실을 거친 환자는 처방 내용과 상관없이 진료 상담. (진료실 없이 대기실에서 처방이 온 경우는 시술이 있을 때만) */
+  const seenDoc=p.route.slice(0,Math.max(0,Math.min(p.step||0,p.route.length-1))+1).some(r=>/진료실/.test(r)&&r!=='3층 진료실');
+  const mustCons=!!(consR&&(seenDoc||want.some(r=>CONSULT_NEEDS.includes(r))));
   const mustUp=!!(upR&&want.includes(upR));
   if(mustCons&&!want.includes(consR))want=[consR,...want];
   const step=Math.max(0,Math.min(p.step||0,p.route.length-1));
@@ -2300,11 +2315,18 @@ function applyRxRoute(p){
   /* 필수 상담 방이 원래 동선에 없었다면 기준 순서 자리로 옮겨 넣는다 — 이미 시술 방에 와 있어도 상담이 앞에 보이게 */
   if(mustCons&&!p.route.includes(consR)){const i=next.indexOf(consR);if(i>=0)next.splice(i,1);placeMustRoom(next,consR);}
   if(mustUp&&!p.route.includes(upR)){const i=next.indexOf(upR);if(i>=0)next.splice(i,1);placeMustRoom(next,upR);}
-  /* 수납대기 자리: 4층 상담이 있으면 그 뒤(맨 끝), 없으면 물리치료 바로 앞 — 치료 전에 수납 (2026-09-26 지시) */
+  /* CT 를 찍으면 결과를 보러 그 진료실로 다시 (시트: 진료실 → CT → 진료실). 지나온 진료실 중 마지막 */
+  {const ci=next.indexOf('CT실',prefix.length);const doc=[...prefix].reverse().find(r=>/진료실/.test(r)&&r!=='3층 진료실');
+   if(ci>=0&&doc&&next[ci+1]!==doc){next.splice(ci+1,0,doc);auto.push(doc);}}
+  /* 수납대기 자리 (2026-10-01 시트):
+     · 4층 상담이 있으면 → 4층 상담 뒤(치료까지 마친 맨 끝) — 2026-09-26 지시 'CS+MM → 4층 상담 → 기본물리치료 → 수납대기' 와 같은 뜻
+     · 4층 상담이 없으면 → 4층 대기실 바로 앞
+     · 4층으로 안 가면 → 맨 끝 */
   const pay=rest.find(isPayRoom)||(typeof payWaitRoom==='function'?payWaitRoom():'');
   if(pay&&!isPayRoom(cur)&&!next.includes(pay)){
-    const up=rxUpConsultRoom(), ptIdx=mid.findIndex(r=>PT_ROOMS.includes(r));
-    if((!up||!mid.includes(up))&&ptIdx>=0)next.splice(prefix.length+ptIdx,0,pay);
+    const up=rxUpConsultRoom(), f4=next.indexOf('4층 대기실',prefix.length);
+    if(up&&next.includes(up))next.push(pay);
+    else if(f4>=0)next.splice(f4,0,pay);
     else next.push(pay);
   }
   p.routeRxHash=h; p.routeAuto=auto;
@@ -7295,10 +7317,7 @@ function rxRouteOff(p,room){
 /* 끌어다 놓기로 옮길 때만 쓴다(비트·자동 이동은 그대로 moveTo). 동선을 벗어나면 안내하고, 그래도 옮길지 확인 */
 function moveByDrag(pid,room){
   const p=data.find(x=>x.id===pid);if(!p)return;
-  if(curRoom(p)!==room&&rxRouteOff(p,room)){
-    const nxt=p.route[Math.min((p.step||0)+1,p.route.length-1)]||'';
-    if(!confirm('처방에 따라 환자 동선이 정해져 있습니다'+(nxt?' (다음 방: '+nxt+')':'')+'.\n\n종결을 누르시거나, 클릭하여 환자 동선 순서를 조정하십시오.\n\n그래도 \''+room+'\' 로 옮기시겠습니까?'))return;
-  }
+  /* 2026-10-01 시트 요청: 처방 동선 밖으로 끌 때 뜨던 경고창은 없앤다 (빨간 카드 표시는 그대로) */
   moveTo(pid,room);}
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
@@ -9003,12 +9022,8 @@ function fillRxBox(p){
    방 규칙에 없는 처방(약 등)은 환자가 지금 있는 방으로. 체크를 풀면 "D/C 취소" 를 보낸다. */
 function rxDcKey(x){return String(x.t||'').trim()+'|'+String(x.cod||'').trim()+'|'+String(x.nam||'').trim().slice(0,30);}
 function rxItemRooms(x){
-  const cod=String(x.cod||'').trim(), nam=String(x.nam||'').trim(), hay=cod+' '+nam, out=[];
-  ROUTE_RX_RULES.forEach(r=>{
-    if(out.includes(r.room))return;
-    if(r.not&&r.not.test(hay))return;
-    if(r.notCod&&r.notCod.test(cod))return;
-    if((r.cod&&r.cod.test(cod))||(r.nam&&r.nam.test(nam))||(r.any&&r.any.test(hay)))out.push(r.room);});
+  const cod=String(x.cod||'').trim(), nam=String(x.nam||'').trim(), out=[];
+  ROUTE_RX_RULES.forEach(r=>{if(!out.includes(r.room)&&rxRuleHit(r,cod,nam))out.push(r.room);});
   return out.filter(r=>ROOMS.includes(r));}
 function toggleRxDc(pid,kEnc,el){
   const p=data.find(x=>x.id===pid);if(!p){if(el)el.checked=!el.checked;return;}
