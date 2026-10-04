@@ -64,6 +64,16 @@ const DDL = [
      added   INTEGER,
      PRIMARY KEY (chat_id, room)
    )`,
+  /* 대기 10분 알림 전용 봇(매니저용, 2026-10-04) — 구독자와 보낸 알림(여러 화면이 같은 알림을 보내도 한 번만) */
+  `CREATE TABLE IF NOT EXISTS wait_subs (
+     chat_id TEXT PRIMARY KEY,
+     name    TEXT DEFAULT '',
+     added   INTEGER
+   )`,
+  `CREATE TABLE IF NOT EXISTS wait_sent (
+     k  TEXT PRIMARY KEY,
+     at INTEGER
+   )`,
   /* 이메일로 전송된 발주서 PDF 보관함 (bytes = base64) */
   `CREATE TABLE IF NOT EXISTS order_pdfs (
      id     TEXT PRIMARY KEY,
@@ -574,6 +584,82 @@ async function roomBotUpdate(env, u) {
   }
   const menu = await roomBotMenu(env, chatId);
   await tgRoomApi(env, "sendMessage", Object.assign({ chat_id: chatId, text: menu.text }, menu.reply_markup ? { reply_markup: menu.reply_markup } : {}));
+}
+
+/* ============================================================
+   대기 10분 알림 전용 봇 (2026-10-04) — 원장님이 아니라 매니저가 받는다
+   · BotFather 로 새 봇 → Secrets: WAIT_BOT_TOKEN, WAIT_HOOK_SECRET(아무 긴 글자), 선택 WAIT_JOIN(가입 코드)
+   · 설정 1회: 배포 후  GET /api/waitbot/setup?s=<WAIT_HOOK_SECRET>
+   · 매니저: 봇에게 /start (WAIT_JOIN 을 정했으면 '/start 코드') → 구독, /stop → 해지
+   · 보내는 것: 동선관리 화면 아래 '대기 10분 넘음' 알림창과 같은 것 — 새로 뜬 환자, 확인 안 하면 10분마다 두 번 더, 사유를 골라 확인하면 그 결과
+   ============================================================ */
+async function tgWaitApi(env, method, payload) {
+  const res = await fetch(`https://api.telegram.org/bot${env.WAIT_BOT_TOKEN}/${method}`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
+  });
+  return await res.json().catch(() => ({}));
+}
+async function waitBotUpdate(env, u) {
+  const msg = u.message;
+  if (!msg || !msg.text) return;
+  const chatId = String(msg.chat.id), text = msg.text.trim();
+  const name = ((msg.from && (msg.from.first_name || "")) + " " + (msg.from && msg.from.last_name || "")).trim();
+  const subbed = !!(await env.DB.prepare(`SELECT 1 AS x FROM wait_subs WHERE chat_id=?`).bind(chatId).first());
+  if (/^\/stop\b/i.test(text)) {
+    await env.DB.prepare(`DELETE FROM wait_subs WHERE chat_id=?`).bind(chatId).run();
+    await tgWaitApi(env, "sendMessage", { chat_id: chatId, text: "대기 알림을 껐습니다. 다시 받으려면 /start 를 보내세요." });
+    return;
+  }
+  if (!subbed) {
+    const code = env.WAIT_JOIN || "";
+    if (code && !text.includes(code)) {
+      await tgWaitApi(env, "sendMessage", { chat_id: chatId, text: "반듯한정형외과 관리자용 대기 알림 봇입니다.\n관리자에게 받은 가입 코드와 함께 보내 주세요. 예) /start 코드" });
+      return;
+    }
+    await env.DB.prepare(`INSERT OR REPLACE INTO wait_subs (chat_id, name, added) VALUES (?,?,?)`).bind(chatId, name, Date.now()).run();
+    await tgWaitApi(env, "sendMessage", { chat_id: chatId, text: "✅ 대기 알림을 받습니다.\n동선관리에서 환자가 한 방에서 10분 넘게 기다리면 알려 드리고, 직원이 사유를 골라 확인하면 그 결과도 보내 드립니다.\n끄려면 /stop" });
+    return;
+  }
+  await tgWaitApi(env, "sendMessage", { chat_id: chatId, text: "대기 알림을 받는 중입니다. 끄려면 /stop" });
+}
+/* 동선관리 → 대기 알림 (POST, Firebase 로그인). kind 'alert' = 알림창에 새로 뜸/다시 알림, 'ack' = 사유 골라 확인.
+   key 가 같은 알림은 화면이 여러 개여도 한 번만 보낸다(wait_sent) */
+async function dongseonWaitAlert(request, env) {
+  try {
+    if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
+    const b = await request.json().catch(() => ({}));
+    const kind = s(b.kind), key = s(b.key).slice(0, 200);
+    if (!["alert", "ack"].includes(kind) || !key) return json({ error: "kind/key 필요" }, 400);
+    if (!env.WAIT_BOT_TOKEN) return json({ ok: true, sent: 0, off: true });
+    const email = await fbEmailFromRequest(request);
+    if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+    await ensureSchema(env);
+    const now = Date.now();
+    const ins = await env.DB.prepare(`INSERT OR IGNORE INTO wait_sent (k, at) VALUES (?,?)`).bind(kind + "|" + key, now).run();
+    if (!(ins.meta && ins.meta.changes)) return json({ ok: true, sent: 0, dup: true });
+    if (Math.random() < 0.05) await env.DB.prepare(`DELETE FROM wait_sent WHERE at < ?`).bind(now - 3 * 86400000).run();   // 사흘 지난 기록 정리
+    const subs = (await env.DB.prepare(`SELECT chat_id FROM wait_subs`).all()).results || [];
+    if (!subs.length) return json({ ok: true, sent: 0 });
+    const d = new Date(now + 9 * 3600 * 1000);
+    const hm = String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
+    /* 2026-10-04 요청 형식: 환자 이름 · 차트번호 · 방 · '대기 10분 넘음 — 확인 요망' · 지금 대기 알림 환자 수 */
+    const total = Number(b.total);
+    const totalLine = b.total !== undefined && Number.isFinite(total) ? `
+현재 대기 알림 환자: 총 ${total}명` : "";
+    const text = kind === "ack"
+      ? `✅ 대기 확인 완료 · ${hm}
+환자: ${s(b.name)} (차트 ${s(b.mrn) || "-"})
+위치: ${s(b.room)} · ${Number(b.min) || 0}분 대기
+사유: ${s(b.reason) || "-"} · 확인 ${s(b.by) || "-"}` + totalLine
+      : `⏰ 대기 10분 넘음 — 확인 요망${Number(b.rep) ? ` (다시 ${Number(b.rep)})` : ""} · ${hm}
+환자: ${s(b.name)} (차트 ${s(b.mrn) || "-"})
+위치: ${s(b.room)} · ${Number(b.min) || 10}분 대기` + totalLine;
+    let sent = 0;
+    for (const sub of subs) { const r = await tgWaitApi(env, "sendMessage", { chat_id: sub.chat_id, text }); if (r && r.ok) sent++; }
+    return json({ ok: true, sent });
+  } catch (err) {
+    return json({ error: err && err.message ? err.message : String(err) }, 500);
+  }
 }
 
 async function dongseonNotify(request, env) {
@@ -1468,6 +1554,23 @@ export default {
     }
     if (url.pathname.startsWith("/api/dongseon/admin/")) {   // 동선관리 계정 관리 — Firebase 로그인으로 따로 인증
       return dongseonApi(request, env, url);
+    }
+    if (url.pathname.startsWith("/api/waitbot/hook/")) {   // 대기 알림 봇 웹훅 (텔레그램 → 여기)
+      if (!env.WAIT_HOOK_SECRET || url.pathname !== "/api/waitbot/hook/" + env.WAIT_HOOK_SECRET) return json({ error: "not found" }, 404);
+      await ensureSchema(env);
+      const upd = await request.json().catch(() => ({}));
+      try { await waitBotUpdate(env, upd); } catch (e) { console.log("waitbot", e && e.message); }
+      return json({ ok: true });
+    }
+    if (url.pathname === "/api/waitbot/setup") {   // 1회: 웹훅 등록 (배포 후 브라우저로 연다)
+      if (!env.WAIT_HOOK_SECRET || url.searchParams.get("s") !== env.WAIT_HOOK_SECRET) return json({ error: "s(비밀값)가 다릅니다" }, 403);
+      if (!env.WAIT_BOT_TOKEN) return json({ error: "WAIT_BOT_TOKEN 이 없습니다" }, 400);
+      const hook = url.origin + "/api/waitbot/hook/" + env.WAIT_HOOK_SECRET;
+      const r = await tgWaitApi(env, "setWebhook", { url: hook, allowed_updates: ["message"] });
+      return json({ hook, telegram: r });
+    }
+    if (url.pathname === "/api/dongseon/waitalert") {   // 동선관리 대기 10분 알림 → 매니저 봇
+      return dongseonWaitAlert(request, env);
     }
     if (url.pathname.startsWith("/api/roombot/hook/")) {   // 방 알림 봇 웹훅 (텔레그램 → 여기)
       if (!env.ROOM_HOOK_SECRET || url.pathname !== "/api/roombot/hook/" + env.ROOM_HOOK_SECRET) return json({ error: "not found" }, 404);

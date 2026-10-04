@@ -9711,7 +9711,36 @@ function ackWaitPop(pid,reason){if(!reason)return;const p=data.find(x=>x.id===pi
   const key=waitPopKey(p),rec={reason,by:(currentUser&&currentUser.name)||'',at:new Date().toISOString(),min:Math.floor(waitMsNow(p)/60000)};
   const apply=d=>{d.waitAck=Object.assign({},d.waitAck||{});d.waitAck[key]=rec;return d;};
   apply(p);saveLocal();cloudPatientTxn(pid,apply);renderWaitPop();
-  try{audit('대기 '+WAIT_CARD_MIN+'분 확인',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p)+' · '+rec.min+'분 · '+reason);}catch(e){}}
+  try{audit('대기 '+WAIT_CARD_MIN+'분 확인',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p)+' · '+rec.min+'분 · '+reason);}catch(e){}
+  waitBotPost('ack',p.id+'|'+key+'|'+rec.at,{name:p.name||'',mrn:p.mrn||'',room:curRoom(p),min:rec.min,reason,by:rec.by,total:waitBotList().length});}
+/* ═════ 매니저 대기 알림 봇 (2026-10-04) ═════
+   알림창과 같은 환자를 텔레그램 '대기 알림' 봇으로 보낸다(원장님용 방 봇과 별개). 직원마다 다른 알림창 방 필터와 상관없이 모든 방을 본다.
+   한 번 확인 주기(문턱 T = 10분, 확인 뒤엔 확인한 분 + 10분)마다 T · T+10 · T+20 분에 최대 세 번. 화면이 여러 개여도 서버가 key 로 한 번만 보낸다 */
+const WAITBOT_SENT={};
+function waitBotPost(kind,key,extra){
+  try{if(!(window.firebase&&firebase.auth)||!firebase.auth().currentUser)return;
+    const body=Object.assign({kind,key},extra||{});
+    firebase.auth().currentUser.getIdToken().then(tok=>fetch('/api/dongseon/waitalert',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});
+  }catch(e){}}
+/* 지금 알림 대상(모든 방) — [{p, room, min, T}]. 개수 = 메시지의 '현재 대기 알림 환자 총 N명' */
+function waitBotList(){const out=[];
+  data.forEach(p=>{
+    if(!p||p._viewOnly||p.discharged||p.out||(p.status||'대기')!=='대기')return;
+    const r=curRoom(p);if(!r||r===PAY_DONE_NAME)return;
+    const min=Math.floor(waitMsNow(p)/60000);
+    const ack=p.waitAck&&p.waitAck[waitPopKey(p)];const T=ack?(Number(ack.min)||0)+WAIT_CARD_MIN:WAIT_CARD_MIN;
+    if(min>=T)out.push({p,room:r,min,T});});
+  return out;}
+function waitBotScan(){
+  if(!currentUser||SLIP_SOLO||(typeof waitOpen!=='undefined'&&waitOpen))return;
+  const L=waitBotList();
+  L.forEach(({p,room,min,T})=>{
+    const rep=Math.min(2,Math.floor((min-T)/WAIT_CARD_MIN));   // 0 = 처음, 1·2 = 다시
+    const key=p.id+'|'+waitPopKey(p)+'|'+T+'|'+rep;
+    if(WAITBOT_SENT[key])return;WAITBOT_SENT[key]=1;
+    waitBotPost('alert',key,{name:p.name||'',mrn:p.mrn||'',room,min,rep,total:L.length});
+  });}
+setInterval(()=>{try{waitBotScan();}catch(e){console.warn('waitbot',e);}},15000);
 setInterval(()=>{try{if(currentUser)renderWaitPop();}catch(e){}},2000);   // 10분 되는 즉시·다른 화면 확인도 곧바로 반영
 function waitOverText(w){return w?`⏰ 대기 ${w.min}분 — 진행을 눌러 주세요`:'';}
 function refreshWaitAlerts(){
