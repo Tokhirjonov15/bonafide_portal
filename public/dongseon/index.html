@@ -1432,6 +1432,32 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusBox .bn-sum{border-top:1px dashed var(--line);padding-top:6px}#bonusBox .bn-left{color:#b45309}
   #bonusBox .bn-btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}#bonusBox .bn-go{background:#fef3c7;border-color:#f59e0b;font-weight:800}
   #bonusBox .bn-use{margin-top:4px}
+  #bonusBox .bn-kiosk{margin:4px 0;padding:5px 8px;border-radius:8px;background:#eef2ff;color:#3730a3;font-size:12.5px}#bonusBox .bn-kiosk.on{background:#fef3c7;color:#92400e}#bonusBox .bn-kiosk.done{background:#dcfce7;color:#166534}
+  /* 환자용 보너스 화면 (?kiosk) */
+  body.kiosk-on{overflow:hidden}
+  #kiosk{position:fixed;inset:0;z-index:2147483000;background:linear-gradient(160deg,#f8fafc,#e0f2fe);color:#0f172a;display:flex;flex-direction:column;font-family:inherit}
+  #kiosk .ks-top{display:flex;justify-content:space-between;align-items:center;padding:18px 28px;font-size:22px;font-weight:800;color:#1d4ed8}
+  #kiosk .ks-clock{color:#64748b;font-weight:700}
+  #kiosk .ks-box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 24px 30px;text-align:center;gap:14px}
+  #kiosk .ks-center{display:flex;flex-direction:column;align-items:center;gap:14px}
+  #kiosk .ks-h1{font-size:clamp(26px,4vw,44px);font-weight:900;line-height:1.3}
+  #kiosk .ks-h2{font-size:clamp(18px,2.4vw,26px);color:#475569}
+  #kiosk .ks-ok{width:110px;height:110px;border-radius:50%;background:#16a34a;color:#fff;font-size:64px;line-height:110px;font-weight:900}
+  #kiosk .ks-cam{position:relative;width:min(640px,92vw,calc(54vh * 4 / 3));aspect-ratio:4/3;border-radius:22px;overflow:hidden;background:#0f172a;box-shadow:0 18px 50px rgba(15,23,42,.3)}
+  #kiosk .ks-cam video{width:100%;height:100%;object-fit:cover}#kiosk .ks-cam video.mirror{transform:scaleX(-1)}
+  #kiosk .ks-frame{position:absolute;inset:12% 18%;border:4px dashed rgba(255,255,255,.85);border-radius:18px}
+  #kiosk .ks-scan{position:absolute;left:18%;right:18%;top:12%;height:4px;background:#22d3ee;box-shadow:0 0 18px #22d3ee;display:none}
+  #kiosk .ks-scan.on{display:block;animation:ksScan 1.1s ease-in-out infinite alternate}
+  @keyframes ksScan{from{top:12%}to{top:86%}}
+  #kiosk .ks-scantxt{position:absolute;left:0;right:0;bottom:14px;color:#fff;font-size:22px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+  #kiosk .ks-note{font-size:18px;color:#475569}
+  #kiosk .ks-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  #kiosk .ks-btn{border:0;border-radius:18px;padding:18px 34px;font-size:24px;font-weight:900;cursor:pointer}
+  #kiosk .ks-main{background:#2563eb;color:#fff}#kiosk .ks-main[disabled]{opacity:.6}#kiosk .ks-sub{background:#e2e8f0;color:#334155}
+  #kiosk .ks-items{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+  #kiosk .ks-item{width:min(260px,80vw);min-height:180px;border:3px solid #bfdbfe;border-radius:24px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 30px rgba(37,99,235,.12)}
+  #kiosk .ks-item:active{transform:scale(.97);border-color:#2563eb}
+  #kiosk .ks-iname{font-size:36px;font-weight:900;color:#1d4ed8}#kiosk .ks-idesc{font-size:16px;color:#64748b;padding:0 10px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
   .cst-main{flex:1;min-width:0;font-size:13px}
@@ -3019,14 +3045,15 @@ function bitResvOpenCard(){
 }
 var SLIP_SOLO='';   // ?slip&solo=차트번호 — [창 띄우기]로 연 한 환자 전용 창 (2026-10-03)
 let SLIP_MODE=false, SLIP_ROOM='', slipOpen=false, slipSel='', slipLastSeen=0;   // ?slip 전용 창(태블릿) 모드 / 방 필터 / 화면 상태
-let RESV_MODE=false, resvOpen=false;   // ?resv 전용 창(직원용 예약관리 모니터) / 화면 상태
+let RESV_MODE=false, resvOpen=false;
+let KIOSK_MODE=false;   // ?kiosk — 환자용 보너스 화면(태블릿) (2026-10-04)   // ?resv 전용 창(직원용 예약관리 모니터) / 화면 상태
 const BIT_TTL_MIN=30;          // 이 시간 지나면 목록에서 자동 제거(무시로 간주)
 const BIT_STALE_SEC=750;       // 하트비트(v3.2부터 300초 주기, 그 전 60초)가 이보다 오래되면 '연결 끊김' — 2026-09-14 읽기 한도 사고 뒤 60→300초
 const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3.3부터 30분(1800초)마다만 신호 → 35분까지는 살아 있는 것으로 본다
 /* 이 화면의 역할 — 'staff'(직원 보드) · 'slip'(?slip 태블릿) · 'tv'(대기화면이 떠 있는 화면).
    Firestore 읽기는 "바뀐 문서 수 × 그 문서를 듣고 있는 화면 수"로 세므로 TV·태블릿은 필요 없는 컬렉션을 듣지 않는다.
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
-function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
+function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(KIOSK_MODE)return 'resv';   /* 환자용 태블릿 — 자동 처리 없음 */if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
 function bitUnsubAll(){['unsubSlipMark','unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
 /* ── 감시 PC 하트비트 읽기 ── 실시간(onSnapshot)으로 들으면 "하트비트 1건 = 듣는 화면 수만큼 읽기"라 PC 24대 × 5분 × 화면 10개 = 하루 7만 회에 달했다(2026-09-14·15 무료 한도 초과).
@@ -5108,7 +5135,7 @@ function showSelfTestReport(R,pass,fail){
   document.body.appendChild(ov);
 }
 function boot(){
-  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();SLIP_SOLO=SLIP_MODE?(sp.get('solo')||'').trim():'';if(SLIP_SOLO)document.body.classList.add('slip-solo');RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}
+  try{const sp=new URLSearchParams(location.search);KIOSK_MODE=sp.has('kiosk');SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();SLIP_SOLO=SLIP_MODE?(sp.get('solo')||'').trim():'';if(SLIP_SOLO)document.body.classList.add('slip-solo');RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}
   {const rb=document.getElementById('resvBtn');if(rb)rb.style.display=SHOW_RESV?'':'none';}   // 4층 비급여 치료 버튼 표시/숨김
   if(location.hash.indexOf('labelstation')>=0){   // 라벨 전용 창(무음 인쇄) 표지 — EMR 등 다른 용도 사용 방지
     const b=document.createElement('div');
@@ -5551,6 +5578,7 @@ function afterCloud(){
   renderThrottled();
   try{autoCloseDay();}catch(e){console.warn(e);}
   if(SLIP_MODE&&!slipOpen)openSlipScreen();
+  if(KIOSK_MODE)try{kioskStart();}catch(e){console.warn('kiosk',e);}
   if(RESV_MODE&&!resvOpen)openResvScreen();
 }
 
@@ -8143,7 +8171,7 @@ function bonusScanRx(){
     BONUS[mrn]=Object.assign({},b||{},{mrn,injDays:[...((b&&b.injDays)||[]),day]});   // 이 화면이 다시 쓰지 않게
     col.doc(mrn).set({mrn,name:(p&&p.name)||(b&&b.name)||'',injDays:firebase.firestore.FieldValue.arrayUnion(day),injWhat:{[day]:what}},{merge:true})
       .catch(e=>console.warn('bonus inj',e));});}
-function bonusSubscribe(){const col=bonusCol();if(!col||cloud.unsubBonus)return;
+function bonusSubscribe(){try{kioskSubscribe();}catch(e){}const col=bonusCol();if(!col||cloud.unsubBonus)return;
   cloud.unsubBonus=col.onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const mrn=normMrn(v.mrn||d.id);if(mrn)m[mrn]=v;});BONUS=m;
     try{renderThrottled();}catch(e){}try{if(editId)renderBonusSection();}catch(e){}},err=>console.warn('bonus',err));}
 function bonusTag(p){const m=normMrn(p&&p.mrn);if(!m)return '';const i=bonusInfo(m);
@@ -8165,31 +8193,23 @@ function renderBonusSection(){
   box.innerHTML=`<div class="bn-row"><span class="bn-k">네이버 리뷰</span>${rev}</div>
     <div class="bn-row"><span class="bn-k">주사</span><b>${i.inj}일</b> <span class="hint">(${esc(BONUS_START.slice(5).replace('-','/'))}부터 · ${nextT})</span><div class="bn-days">${injList}</div></div>
     <div class="bn-row bn-sum">받을 수 있는 무료 <b>${i.total}회</b> · 사용 <b>${i.used}</b> · <b class="${i.left?'bn-left':''}">남음 ${i.left}회</b></div>
+    ${kioskStatusHtml(mrn)}
     <div class="bn-btns">${BONUS_ITEMS.map(it=>`<button type="button" class="btn sm${i.left?' bn-go':''}" ${i.left?'':'disabled'} onclick="bonusUse('${it}')"><i data-lucide="gift"></i> ${it} 무료</button>`).join('')}</div>
     ${usesHtml}`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
-window.bonusReview=async function(on){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+window.bonusReview=async function(on){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(!on&&!isAdmin())return;
-  if(on&&!confirm(`'${p.name}'님의 네이버 리뷰를 확인하셨나요?\n확인하면 보너스(SASO·아쿠아·롤러 무료) 1회가 생깁니다.`))return;
+  if(on&&!confirm(`'${p.name}'님의 네이버 리뷰를 확인하셨나요?
+확인하면 보너스(SASO·아쿠아·롤러 무료) 1회가 생깁니다.`))return;
   if(!on&&!confirm('리뷰 확인을 취소할까요?'))return;
-  const rec=on?{at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}:null;
-  try{await col.doc(mrn).set({mrn,name:p.name||'',review:rec},{merge:true});
-    BONUS[mrn]=Object.assign({},BONUS[mrn]||{},{mrn,review:rec});
-    try{audit(on?'리뷰 보너스 확인':'리뷰 보너스 취소',(p.name||'')+' ('+mrn+')');}catch(e){}
-    renderBonusSection();render();}catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
-/* 보너스 사용 — 서버에서 남은 횟수를 다시 확인하고(두 화면이 동시에 눌러도 한 번만) 그 방을 동선에 넣는다 */
-window.bonusUse=async function(item){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+  try{await bonusReviewFor(mrn,p.name||'',on?{at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}:null);renderBonusSection();render();}
+  catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
+window.bonusUse=async function(item){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(!BONUS_ITEMS.includes(item))return;
-  if(!confirm(`'${p.name}'님 보너스로 ${item}을(를) 무료로 쓸까요?\n(남은 무료 횟수가 1 줄고, 동선에 ${item}이(가) 들어갑니다. 비트 수납에서 무료로 처리해 주세요)`))return;
-  const use={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||'',item,date:localYMD(new Date()),pid:p.id};
-  try{
-    const ok=await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
-      const tmp=BONUS[mrn];BONUS[mrn]=v;const left=bonusInfo(mrn).left;BONUS[mrn]=tmp;
-      if(left<1)return false;
-      t.set(ref,{mrn,name:p.name||'',uses:[...(Array.isArray(v.uses)?v.uses:[]),use]},{merge:true});return true;});
+  if(!confirm(`'${p.name}'님 보너스로 ${item}을(를) 무료로 쓸까요?
+(남은 무료 횟수가 1 줄고, 동선에 ${item}이(가) 들어갑니다. 비트 수납에서 무료로 처리해 주세요)`))return;
+  try{const ok=await bonusUseFor(p.id,mrn,p.name||'',item,(currentUser&&currentUser.name)||'');
     if(!ok){alert('남은 무료 횟수가 없습니다(다른 화면에서 방금 썼을 수 있습니다).');return;}
-    try{audit('보너스 사용',(p.name||'')+' ('+mrn+') · '+item+' 무료');}catch(e){}
-    bonusAddRoom(p.id,item);
     renderBonusSection();
   }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
 /* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
@@ -8208,6 +8228,124 @@ window.bonusUndo=async function(at){if(!isAdmin())return;const p=data.find(x=>x.
       t.set(ref,{uses:(Array.isArray(v.uses)?v.uses:[]).filter(u=>u.at!==at)},{merge:true});});
     try{audit('보너스 사용 취소',(p.name||'')+' ('+mrn+')');}catch(e){}
   }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
+/* ═════ 환자용 보너스 화면 (?kiosk) — 2026-10-04 요청 ═════
+   환자가 보너스(SASO·아쿠아·롤러)를 직접 고르고, 네이버 리뷰는 카메라에 보여 주면 '확인됨'으로 처리한다(실제로 읽지는 않음 — 리뷰는 보여 주면 준다).
+   · 카메라가 있는 태블릿(또는 환자 쪽 두 번째 모니터)에서 /dongseon/?kiosk 로 열어 둔다. 환자 이름·차트번호 등은 전혀 보이지 않는다.
+   · 직원은 환자 정보 창의 보너스 칸에서 [태블릿: 리뷰 확인] / [태블릿: 환자가 고르기] 를 누른다 → 설정 문서 kiosk/main 에 한 건 →
+     태블릿이 그 화면을 띄운다. 결과(리뷰 확인·고른 치료)는 태블릿이 바로 기록하고(보너스 문서·동선), 직원 화면에 상태가 보인다.
+   · 태블릿은 'resv' 역할로 돈다 — 접수 카드 만들기 같은 자동 처리는 하지 않는다 */
+let KIOSK=null, KIOSK_LOCAL={sid:'',phase:''}, KIOSK_STREAM=null, KIOSK_FACING='user', KIOSK_TIMER=null;
+const KIOSK_ITEM_INFO={};   // 치료 설명(선택) — 예: {'SASO':'…'}. 비워 두면 이름만
+function kioskCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('kiosk'):null;}
+function kioskSubscribe(){const c=kioskCol();if(!c||cloud.unsubKiosk)return;
+  cloud.unsubKiosk=c.doc('main').onSnapshot(sn=>{KIOSK=sn.exists?(sn.data()||null):null;
+    if(KIOSK_MODE)try{kioskRender();}catch(e){console.warn('kiosk',e);}
+    try{if(editId)renderBonusSection();}catch(e){}},e=>console.warn('kiosk',e));}
+function kioskActive(k){k=k||KIOSK;return !!(k&&k.state==='waiting'&&(Date.now()-new Date(k.at||0).getTime())<30*60000);}
+function kioskSet(fields){const c=kioskCol();if(!c)return Promise.resolve();return c.doc('main').set(fields,{merge:true}).catch(e=>console.warn('kiosk set',e));}
+
+/* 보너스 기록 — 직원 화면과 태블릿이 함께 쓴다 */
+async function bonusReviewFor(mrn,name,rec){const col=bonusCol();if(!col||!mrn)return false;
+  await col.doc(mrn).set({mrn,name:name||'',review:rec},{merge:true});
+  BONUS[mrn]=Object.assign({},BONUS[mrn]||{},{mrn,review:rec});
+  try{audit(rec?'리뷰 보너스 확인':'리뷰 보너스 취소',(name||'')+' ('+mrn+')'+(rec&&rec.by?' · '+rec.by:''));}catch(e){}
+  return true;}
+async function bonusUseFor(pid,mrn,name,item,by){const col=bonusCol();if(!col||!mrn||!BONUS_ITEMS.includes(item))return false;
+  const use={at:new Date().toISOString(),by:by||'',item,date:localYMD(new Date()),pid:pid||''};
+  const ok=await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
+    const tmp=BONUS[mrn];BONUS[mrn]=v;const left=bonusInfo(mrn).left;BONUS[mrn]=tmp;
+    if(left<1)return false;
+    t.set(ref,{mrn,name:name||'',uses:[...(Array.isArray(v.uses)?v.uses:[]),use]},{merge:true});return true;});
+  if(!ok)return false;
+  {const b=BONUS[mrn]||{};BONUS[mrn]=Object.assign({},b,{uses:[...(Array.isArray(b.uses)?b.uses:[]),use]});}
+  try{audit('보너스 사용',(name||'')+' ('+mrn+') · '+item+' 무료'+(by?' · '+by:''));}catch(e){}
+  if(pid)bonusAddRoom(pid,item);
+  return true;}
+
+/* ── 직원 화면: 태블릿으로 보내기 ── */
+window.kioskSend=async function(mode){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);if(!p||!mrn)return;
+  if(kioskActive()&&KIOSK.mrn!==mrn&&!confirm('태블릿이 다른 환자 화면을 띄우고 있습니다. 이 환자로 바꿀까요?'))return;
+  await kioskSet({sid:id(),pid:p.id,mrn,mode,state:'waiting',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||'',result:'',doneAt:''});
+  try{audit('보너스 태블릿',(p.name||'')+' ('+mrn+') · '+(mode==='review'?'리뷰 확인':'환자가 고르기'));}catch(e){}};
+window.kioskCancel=function(){kioskSet({state:'cancel',doneAt:new Date().toISOString()});};
+window.kioskOpenWin=function(){const w=window.open(location.pathname+'?kiosk','bonusKiosk','popup,width=1100,height=820');if(!w)alert('팝업이 막혀 있습니다 — 주소창 오른쪽의 팝업 차단을 풀어 주세요.');else try{w.focus();}catch(e){}};
+function kioskStatusHtml(mrn){const k=KIOSK;
+  const btns=`<div class="bn-btns">
+      ${(BONUS[mrn]||{}).review?'':`<button type="button" class="btn sm" onclick="kioskSend('review')" title="환자가 태블릿 카메라에 리뷰 화면을 보여 주면 '확인됨'으로 기록"><i data-lucide="camera"></i> 태블릿: 리뷰 확인</button>`}
+      ${bonusInfo(mrn).left?`<button type="button" class="btn sm" onclick="kioskSend('choose')" title="환자가 태블릿에서 SASO·아쿠아·롤러 중 하나를 직접 고름"><i data-lucide="hand"></i> 태블릿: 환자가 고르기</button>`:''}
+      <button type="button" class="btn sm" onclick="kioskOpenWin()" title="이 PC 에서 환자용 화면을 새 창으로 (두 번째 모니터용)"><i data-lucide="monitor"></i> 환자용 화면 열기</button></div>`;
+  let st='';
+  if(kioskActive(k)){
+    if(k.mrn===mrn)st=`<div class="bn-kiosk on"><i data-lucide="tablet"></i> 태블릿: <b>${k.mode==='review'?'리뷰 확인 중':'환자가 고르는 중'}</b> <button type="button" class="btn sm" onclick="kioskCancel()">취소</button></div>`;
+    else st=`<div class="bn-kiosk"><i data-lucide="tablet"></i> 태블릿이 다른 환자 화면을 띄우는 중</div>`;}
+  else if(k&&k.state==='done'&&k.mrn===mrn&&Date.now()-new Date(k.doneAt||0).getTime()<30*60000)
+    st=`<div class="bn-kiosk done"><i data-lucide="check-circle"></i> 태블릿 결과: <b>${esc(k.result==='review'?'리뷰 확인됨':(k.result==='none'?'남은 무료 없음':k.result+' 선택'))}</b></div>`;
+  return btns+st;}
+
+/* ── 태블릿 화면 ── */
+function kioskStart(){
+  document.body.classList.add('kiosk-on');
+  if(!document.getElementById('kiosk')){const d=document.createElement('div');d.id='kiosk';d.innerHTML='<div class="ks-top"><span class="ks-logo">반듯한정형외과</span><span class="ks-clock" id="ksClock"></span></div><div id="kioskBox" class="ks-box"></div>';document.body.appendChild(d);
+    setInterval(()=>{const c=document.getElementById('ksClock');if(c){const t=new Date();c.textContent=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');}},10000);}
+  kioskSubscribe();kioskRender();}
+function kioskCamStop(){if(KIOSK_STREAM){try{KIOSK_STREAM.getTracks().forEach(t=>t.stop());}catch(e){}KIOSK_STREAM=null;}}
+async function kioskCamStart(){
+  const v=document.getElementById('ksVideo');if(!v)return;
+  if(KIOSK_STREAM){v.srcObject=KIOSK_STREAM;return;}
+  try{KIOSK_STREAM=await navigator.mediaDevices.getUserMedia({video:{facingMode:KIOSK_FACING,width:{ideal:1280},height:{ideal:720}},audio:false});
+    const v2=document.getElementById('ksVideo');if(v2){v2.srcObject=KIOSK_STREAM;v2.classList.toggle('mirror',KIOSK_FACING==='user');}}
+  catch(e){const n=document.getElementById('ksCamNote');if(n)n.textContent='카메라를 켤 수 없습니다 — 화면을 직원에게 보여 주셔도 됩니다';console.warn('kiosk cam',e);}}
+window.kioskFlip=function(){KIOSK_FACING=KIOSK_FACING==='user'?'environment':'user';kioskCamStop();kioskCamStart();};
+function kioskRender(){
+  const box=document.getElementById('kioskBox');if(!box)return;
+  clearTimeout(KIOSK_TIMER);
+  const k=KIOSK;
+  if(!kioskActive(k)){
+    kioskCamStop();KIOSK_LOCAL={sid:'',phase:''};
+    const recent=k&&k.state==='done'&&Date.now()-new Date(k.doneAt||0).getTime()<12000;
+    if(recent){const r=k.result;
+      box.innerHTML=`<div class="ks-center"><div class="ks-ok">✔</div><div class="ks-h1">${r==='review'?'리뷰가 확인되었습니다':(r==='none'?'남은 무료 혜택이 없습니다':esc(r)+' 이(가) 선택되었습니다')}</div><div class="ks-h2">감사합니다. 직원이 안내해 드릴게요.</div></div>`;
+      KIOSK_TIMER=setTimeout(kioskRender,12500);}
+    else box.innerHTML=`<div class="ks-center"><div class="ks-h1">반듯한정형외과</div><div class="ks-h2">잠시만 기다려 주세요</div></div>`;
+    return;}
+  if(KIOSK_LOCAL.sid!==k.sid+'|'+k.mode)KIOSK_LOCAL={sid:k.sid+'|'+k.mode,phase:k.mode==='review'?'cam':'pick',pick:''};
+  const mrn=normMrn(k.mrn), left=bonusInfo(mrn).left;
+  if(k.mode==='review'){
+    const ph=KIOSK_LOCAL.phase;
+    if(ph==='ok'){kioskCamStop();box.innerHTML=`<div class="ks-center"><div class="ks-ok">✔</div><div class="ks-h1">리뷰가 확인되었습니다</div><div class="ks-h2">소중한 리뷰 감사합니다</div></div>`;return;}
+    if(!document.getElementById('ksVideo')||box.dataset.mode!=='review'){
+      box.dataset.mode='review';
+      box.innerHTML=`<div class="ks-h1">네이버 리뷰 화면을 카메라에 보여 주세요</div>
+        <div class="ks-cam"><video id="ksVideo" autoplay playsinline muted></video><div class="ks-frame"></div><div class="ks-scan" id="ksScan"></div><div class="ks-scantxt" id="ksScanTxt"></div></div>
+        <div class="ks-note" id="ksCamNote">휴대폰의 리뷰 화면이 네모 칸 안에 보이게 들어 주세요</div>
+        <div class="ks-btns"><button type="button" class="ks-btn ks-main" id="ksCheckBtn" onclick="kioskCheck()">리뷰 확인하기</button><button type="button" class="ks-btn ks-sub" onclick="kioskFlip()">카메라 전환</button></div>`;
+      kioskCamStart();}
+    return;}
+  /* 고르기 */
+  kioskCamStop();box.dataset.mode='choose';
+  if(left<1){box.innerHTML=`<div class="ks-center"><div class="ks-h1">남은 무료 혜택이 없습니다</div><div class="ks-h2">직원에게 문의해 주세요</div></div>`;return;}
+  const pick=KIOSK_LOCAL.pick;
+  if(pick){box.innerHTML=`<div class="ks-center"><div class="ks-h1"><b>${esc(pick)}</b> 을(를) 무료로 받으시겠어요?</div><div class="ks-h2">${esc(KIOSK_ITEM_INFO[pick]||'')}</div>
+      <div class="ks-btns"><button type="button" class="ks-btn ks-main" id="ksYes" onclick="kioskConfirm()">네, 받을게요</button><button type="button" class="ks-btn ks-sub" onclick="KIOSK_LOCAL.pick='';kioskRender()">다시 고르기</button></div></div>`;return;}
+  box.innerHTML=`<div class="ks-h1">무료로 받으실 치료를 하나 골라 주세요</div><div class="ks-h2">리뷰·주사 감사 혜택 · 남은 무료 <b>${left}회</b></div>
+    <div class="ks-items">${BONUS_ITEMS.map(it=>`<button type="button" class="ks-item" onclick="KIOSK_LOCAL.pick='${it}';kioskRender()"><span class="ks-iname">${esc(it)}</span><span class="ks-idesc">${esc(KIOSK_ITEM_INFO[it]||'')}</span></button>`).join('')}</div>`;}
+window.kioskCheck=function(){const k=KIOSK;if(!kioskActive(k)||k.mode!=='review'||KIOSK_LOCAL.phase!=='cam')return;
+  KIOSK_LOCAL.phase='scan';
+  const b=document.getElementById('ksCheckBtn');if(b){b.disabled=true;b.textContent='확인 중…';}
+  const sc=document.getElementById('ksScan');if(sc)sc.classList.add('on');
+  const tx=document.getElementById('ksScanTxt');if(tx)tx.textContent='리뷰를 확인하고 있습니다…';
+  setTimeout(async()=>{const k2=KIOSK;if(!kioskActive(k2)||k2.sid!==k.sid)return;
+    const mrn=normMrn(k2.mrn);const p=data.find(x=>x.id===k2.pid);
+    try{await bonusReviewFor(mrn,(p&&p.name)||((BONUS[mrn]||{}).name)||'',{at:new Date().toISOString(),by:'태블릿 확인'});}catch(e){console.warn('kiosk review',e);}
+    KIOSK_LOCAL.phase='ok';kioskRender();
+    setTimeout(()=>{const k3=KIOSK;if(!kioskActive(k3)||k3.sid!==k.sid)return;
+      if(bonusInfo(mrn).left>0)kioskSet({mode:'choose'});else kioskSet({state:'done',result:'review',doneAt:new Date().toISOString()});},2500);
+  },3200);};
+window.kioskConfirm=async function(){const k=KIOSK;const it=KIOSK_LOCAL.pick;if(!kioskActive(k)||k.mode!=='choose'||!it)return;
+  const b=document.getElementById('ksYes');if(b){b.disabled=true;b.textContent='저장 중…';}
+  const mrn=normMrn(k.mrn);const p=data.find(x=>x.id===k.pid);
+  let ok=false;try{ok=await bonusUseFor(k.pid,mrn,(p&&p.name)||((BONUS[mrn]||{}).name)||'',it,'환자 선택(태블릿)');}catch(e){console.warn('kiosk use',e);}
+  await kioskSet({state:'done',result:ok?it:'none',doneAt:new Date().toISOString()});};
 /* ───── 동선 이동 + 알람 ───── */
 function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   /* 진료 상담에서 [시행]으로 기록한 환자를 [종결]하면 처방 방(같은 공간)으로 — 다음 차례가 그 방들 중 하나면 평소대로, 아니면 처방 방으로 바로 (2026-10-01) */
@@ -9946,7 +10084,7 @@ function waitAlertInfo(p){
    사유(대기 길어짐 / 동선관리 미사용)를 골라 [확인]해야 사라진다. 확인은 카드 문서 waitAck[방|입실시각] 에 남겨 모든 화면에서 함께 사라진다(같은 입실엔 다시 안 뜸) */
 const WAIT_POP_REASONS=['대기 길어짐','동선관리 미사용','환자 체크 누락'];
 function waitPopKey(p){return curRoom(p)+'|'+(p.enteredAt||'');}
-function waitPopHidden(){if(SLIP_SOLO||slipOpen)return true;const st=document.getElementById('statsModal');return !!(st&&st.classList.contains('show'));}   // 슬립 화면(?slip 포함)·창 띄우기·통계에서는 안 띄운다 (2026-10-03)
+function waitPopHidden(){if(SLIP_SOLO||slipOpen||KIOSK_MODE)return true;const st=document.getElementById('statsModal');return !!(st&&st.classList.contains('show'));}   // 슬립 화면(?slip 포함)·창 띄우기·통계에서는 안 띄운다 (2026-10-03)
 /* 누가 어떤 방의 대기 알림을 보나 (2026-10-03 요청)
    admin = 모든 방 · 4층 직원(아래 명단) = 4층 쪽 방 · 의사(role doctor) = 없음 · 그 밖의 직원 = 3층 쪽 방 */
 const WAIT_POP_4F_STAFF=['서효성','김지은','허빈','한상훈','조현신','이세영','황지현','김건휘','김재하','신소현','고민정','박승규','임현주'];
@@ -10005,7 +10143,7 @@ function waitBotList(){const out=[];
     if(min>=T)out.push({p,room:r,min,T});});
   return out;}
 function waitBotScan(){
-  if(!currentUser||SLIP_SOLO||(typeof waitOpen!=='undefined'&&waitOpen))return;
+  if(!currentUser||SLIP_SOLO||KIOSK_MODE||(typeof waitOpen!=='undefined'&&waitOpen))return;
   const L=waitBotList();
   L.forEach(({p,room,min,T})=>{
     const rep=Math.min(2,Math.floor((min-T)/WAIT_CARD_MIN));   // 0 = 처음, 1·2 = 다시
