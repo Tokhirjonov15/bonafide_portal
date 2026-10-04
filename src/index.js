@@ -487,14 +487,21 @@ async function tgRoomApi(env, method, payload) {
   });
   return await res.json().catch(() => ({}));
 }
-async function roomBotRooms(env) {
+/* 봇 메뉴는 딱 두 개 (2026-10-03 요청): 엑스레이 = x-ray실 도착·나옴, 상담완료 = 진료 상담에서 나감(종결·다음 방).
+   방마다 고르던 예전 구독(3층 대기실 등)은 더 이상 메뉴에도 없고 알림도 가지 않는다. 모두에게 가는 알림(D/C·상담진행X)은 그대로 */
+const BOT_CHANNELS = [
+  { key: "엑스레이", match: (room, kind) => /x-?ray/i.test(room) && (kind === "in" || kind === "out") },
+  { key: "상담완료", match: (room, kind) => normRoom(room) === normRoom("진료 상담") && kind === "out" },
+];
+async function roomBotRooms(env) { return BOT_CHANNELS.map((c) => c.key); }
+async function roomBotRoomsOld(env) {
   const row = await env.DB.prepare(`SELECT value FROM meta WHERE key='dongseon_rooms'`).first();
   try { const a = JSON.parse(row && row.value || "[]"); return Array.isArray(a) ? a.filter(x => typeof x === "string" && x) : []; }
   catch (_) { return []; }
 }
 async function roomBotSubs(env, chatId) {
   const rows = (await env.DB.prepare(`SELECT room FROM room_subs WHERE chat_id=? AND room<>'#auth' ORDER BY room`).bind(chatId).all()).results || [];
-  return rows.map(r => r.room);
+  return rows.map(r => r.room).filter((r) => BOT_CHANNELS.some((c) => c.key === r));
 }
 async function roomBotMenu(env, chatId) {
   const rooms = await roomBotRooms(env);
@@ -506,7 +513,7 @@ async function roomBotMenu(env, chatId) {
   }
   kb.push([{ text: "🔕 모두 해제", callback_data: "r|__off" }, { text: "완료", callback_data: "r|__close" }]);
   const cur = subs.length ? "지금 알림 받는 방: " + subs.join(", ") : "아직 선택한 방이 없습니다.";
-  return { text: "알림 받을 방을 고르세요 (여러 개 가능).\n누르면 켜지고(✅), 다시 누르면 꺼집니다.\n\n" + cur, reply_markup: { inline_keyboard: kb } };
+  return { text: "받을 알림을 고르세요 (둘 다 가능).\n누르면 켜지고(✅), 다시 누르면 꺼집니다.\n\n" + cur, reply_markup: { inline_keyboard: kb } };
 }
 async function roomBotAuthorized(env, chatId) {
   return !!(await env.DB.prepare(`SELECT 1 AS x FROM room_subs WHERE chat_id=? LIMIT 1`).bind(chatId).first());
@@ -571,14 +578,15 @@ async function dongseonNotify(request, env) {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
     const room = s(b.room), kind = s(b.kind);
-    if (!room || !["in", "out", "dc", "dcundo", "floor", "wait", "route"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
+    if (!room || !["in", "out", "dc", "dcundo", "floor", "wait", "route", "consult"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
+    if (kind === "route") return json({ ok: true, skipped: "route alerts off (2026-10-03)" });   // 동선 변경·처방 변경 알림은 끔 — 새로고침 안 된 옛 화면이 보내도 서버에서 버린다
     if (!env.ROOM_BOT_TOKEN && !env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
     await ensureSchema(env);
     /* room '__all__' = 봇을 쓰는 모든 사람(어느 방을 골랐든) — 처방 D/C·동선 변경은 모두에게 (2026-10-01 요청) */
     const allRows = (await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || [];
     const subs = room === "__all__"
       ? [...new Set(allRows.map((r) => String(r.chat_id)))].map((chat_id) => ({ chat_id }))
-      : allRows.filter((r) => normRoom(r.room) === normRoom(room));
+      : allRows.filter((r) => { const c = BOT_CHANNELS.find((x) => x.key === r.room); return !!c && c.match(room, kind); });
     if (!subs.length) return json({ ok: true, sent: 0 });
     const email = await fbEmailFromRequest(request);
     if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
@@ -598,11 +606,16 @@ async function dongseonNotify(request, env) {
         (s(b.to) ? `\n\n→ ${s(b.to).slice(0, 300)}` : "")
       : "";
     const dcRooms = s(b.rooms) || room;
-    const text = kind === "route" ? routeTxt
+    const text = kind === "consult" ? `🙅 ${(s(b.mrn) ? s(b.mrn) + "." : "") + s(b.name)}님 상담진행X ${s(b.reason).slice(0, 60)}${s(b.consultRoom) ? " · " + s(b.consultRoom) : ""}${s(b.by) ? " · " + s(b.by) : ""}`   /* 상담 시행 안 함 + 사유 (2026-10-03) */
+      : kind === "route" ? routeTxt
       : kind === "wait" ? `⏰ ${room} 대기 ${Number(b.min) || 30}분 넘음 · ${who} · 진행을 눌러 주세요`
       : kind === "floor" ? `🔀 ${dcWho} ${s(b.from)} → ${s(b.to)} 순서변동 · ${hm}`
-      : kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      : kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}${s(b.reason) ? "\n사유: " + s(b.reason).slice(0, 80) : ""}`
       : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      /* x-ray실 (2026-10-03 요청): "1234 홍길동님 x-ray촬영 있습니다" / 종결·이동으로 나가면 "1234 홍길동님 x-ray 나왔습니다" */
+      : (/x-?ray/i.test(room) && kind === "in") ? `📷 ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 x-ray촬영 있습니다 · ${hm}`
+      : (/x-?ray/i.test(room) && kind === "out") ? `✅ ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 x-ray 나왔습니다 · ${hm}`
+      : (normRoom(room) === normRoom("진료 상담") && kind === "out") ? `✅ ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 상담 완료 · ${hm}${s(b.next) ? " → " + s(b.next) : ""}`
       : kind === "in"
       ? `🟢 ${room} 도착 · ${who} · ${hm}`
       : `⚪ ${room} 나감 · ${who} · ${hm}` + ((b.waitMs || b.activeMs) ? ` · 대기 ${fmtMin(b.waitMs)}${b.activeMs ? " · 진행 " + fmtMin(b.activeMs) : ""}` : "") + (s(b.next) ? ` → ${s(b.next)}` : "");

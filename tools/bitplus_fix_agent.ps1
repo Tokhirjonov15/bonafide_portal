@@ -19,7 +19,7 @@ $MAP = @{
 }
 function Say($s, $c = 'Gray') { Write-Host $s -ForegroundColor $c }
 $fail = @()
-$MIN_VER = 'db1.2'   # 이 버전보다 낮으면 옛 스크립트가 그대로 돌고 있는 것 — 1.1: 전화번호·내원 횟수·처방 (2026-09-23), 1.2: 처방 금액(비급여 동의서) (2026-10-01)
+$MIN_VER = 'db1.3'   # 이 버전보다 낮으면 옛 스크립트가 그대로 돌고 있는 것 — 1.1: 전화번호·내원 횟수·처방 (2026-09-23), 1.2: 처방 금액(비급여 동의서) (2026-10-01)
 
 # ── 1. 이 PC 알아내기 ──
 $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress } | Where-Object { $_ -like '192.168.*' })

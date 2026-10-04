@@ -50,7 +50,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.2'   # 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.3'   # 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -430,7 +430,7 @@ SELECT RTRIM(o.OdrOcmNum) AS k, RTRIM(o.OdrChtNum) AS mrn, o.OdrSeq AS seq,
        RTRIM(o.OdrCod) AS cod, RTRIM(o.OdrCodNam) AS nam,
        o.OdrQty AS qty, o.OdrTms AS tms, o.OdrDay AS dys,
        RTRIM(o.OdrUntCod) AS unt, RTRIM(u.UidNam) AS dr, RTRIM(o.OdrDtm) AS dtm,
-       o.OdrPrc AS prc, o.OdrAmt AS amt, RTRIM(o.OdrInsYon) AS ins
+       o.OdrPrc AS prc, o.OdrAmt AS amt, RTRIM(o.OdrInsYon) AS ins, RTRIM(m.OcmDgsNfs) AS nfs
 FROM OdrInf o WITH (NOLOCK)
 JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OdrDtrCod
@@ -450,7 +450,7 @@ function PollRx() {
   $byOcm = @{}
   foreach ($r in $rows.Rows) {
     $key = ([string]$r.k -replace '\D', ''); if (-not $key) { continue }
-    if (-not $byOcm.ContainsKey($key)) { $byOcm[$key] = @{ mrn = ([string]$r.mrn).Trim(); items = (New-Object System.Collections.ArrayList) } }
+    if (-not $byOcm.ContainsKey($key)) { $byOcm[$key] = @{ mrn = ([string]$r.mrn).Trim(); nfs = ([string]$r.nfs).Trim(); items = (New-Object System.Collections.ArrayList) } }   # nfs = 초/재진(OcmDgsNfs: 1 초진, 3 90일초진, 4 재진, 0 진찰료 산정, 7 물리치료내) — db1.3
     $dtm = ([string]$r.dtm).Trim()
     $it = [ordered]@{ cod = ([string]$r.cod).Trim(); nam = ([string]$r.nam).Trim()
                       qty = (NumTxt $r.qty); tms = (NumTxt $r.tms); day = (NumTxt $r.dys)
@@ -470,17 +470,17 @@ function PollRx() {
     $v = $byOcm[$key]
     # 금액(pay) — 자기 해시로 따로 쓴다. 담당이 아니어도 -PayAlways 면 쓴다(접수 PC 가 옛 빌드인 동안 개발 PC 가 채움)
     $pay = @(); if ($v.pay) { $pay = @($v.pay) }
-    $ph = (($pay | ForEach-Object { "$($_.cod)|$($_.prc)|$($_.amt)|$($_.ins)" }) -join "`n")
+    $ph = "nfs=$($v.nfs)`n" + (($pay | ForEach-Object { "$($_.cod)|$($_.prc)|$($_.amt)|$($_.ins)" }) -join "`n")
     if ($script:PayHash[$key] -ne $ph) {
       if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:PayHash[$key] = $ph }
-      else { try { FsPatch "bitRx/${day}_ocm$key" @{ pay = $pay; payAt = (NowIso); payPc = $Pc }; $script:PayHash[$key] = $ph } catch { Log "처방 금액 전송 오류 ${key}: $($_.Exception.Message)" } }
+      else { try { FsPatch "bitRx/${day}_ocm$key" @{ pay = $pay; nfs = $v.nfs; payAt = (NowIso); payPc = $Pc }; $script:PayHash[$key] = $ph } catch { Log "처방 금액 전송 오류 ${key}: $($_.Exception.Message)" } }
     }
     $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)" }) -join "`n")
     if ($script:RxHash[$key] -eq $h) { continue }
     if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }
     if (-not $script:IsLeader -and -not $RxAlways) { $script:RxHash[$key] = $h; continue }   # 대기 중엔 해시만 따라감
     try {
-      FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; mrn = $v.mrn; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$v.items.Count; items = @($v.items) }
+      FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; mrn = $v.mrn; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$v.items.Count; items = @($v.items); nfs = $v.nfs }
       $script:RxHash[$key] = $h; $sent++
     } catch { Log "처방 문서 전송 오류 ${key}: $($_.Exception.Message)" }
   }
