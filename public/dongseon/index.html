@@ -1421,6 +1421,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cst-doc .cd-t{font-weight:800;font-size:14px;margin:12px 0 5px;border-bottom:2px solid #1e3a5f;padding-bottom:3px;color:#1e3a5f}
   .cst-doc .c{text-align:center}.cst-doc .cd-priv{font-size:13px;margin:6px 0}.cst-doc .cd-foot{font-size:12px;color:var(--sub)}
   .cst-doc .cst-desc td{font-size:12.5px}
+  /* 리뷰·주사 보너스 (2026-10-04) */
+  .bonus-tag{display:inline-block;margin-left:4px;padding:0 6px;border-radius:999px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-size:11.5px;font-weight:800;vertical-align:middle}
+  .bonus-tag svg{width:12px;height:12px;vertical-align:-2px;margin-right:2px}
+  #bonusBox svg,#bonusSection .sect-t svg{width:15px;height:15px;vertical-align:-3px}
+  .bonus-tag.used{background:#dcfce7;color:#166534;border-color:#86efac}
+  #bonusBox{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--panel2);font-size:13px}
+  #bonusBox .bn-row{margin-bottom:6px}#bonusBox .bn-k{display:inline-block;min-width:74px;font-weight:800;color:var(--sub)}
+  #bonusBox .bn-days{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}#bonusBox .bn-day{background:#e0e7ff;color:#3730a3;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700}
+  #bonusBox .bn-sum{border-top:1px dashed var(--line);padding-top:6px}#bonusBox .bn-left{color:#b45309}
+  #bonusBox .bn-btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}#bonusBox .bn-go{background:#fef3c7;border-color:#f59e0b;font-weight:800}
+  #bonusBox .bn-use{margin-top:4px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
   .cst-main{flex:1;min-width:0;font-size:13px}
@@ -2057,6 +2068,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div id="pastConsultBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
 
+      <div id="bonusSection" style="margin-top:10px">
+        <div class="sect-t" style="margin-bottom:8px"><i data-lucide="gift"></i> 리뷰·주사 보너스 <span class="hint" style="font-weight:400">(SASO·아쿠아·롤러 중 무료)</span></div>
+        <div id="bonusBox"></div>
+      </div>
       <div id="consentSection" style="margin-top:10px">
         <div class="sect-t" style="margin-bottom:8px"><i data-lucide="file-signature"></i> 비급여 동의서</div>
         <div id="consentList"></div>
@@ -2245,14 +2260,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 /* 방 목록 (2026-09 지점 확정) — 3층 + 4층, 수납은 공용(그룹 없음 → 모든 층 탭에 표시) */
 const DEFAULT_ROOMS = [
   "3층 대기실","x-ray실","CT실","진료실1","진료 상담","C-Arm","Sono","근전도검사","물리치료","처치실",
-  "4층 대기실","기본물리치료","SASO","충격파","신장분사","자동차도수","아쿠아","4층 진료실",
+  "4층 대기실","기본물리치료","SASO","충격파","신장분사","자동차도수","아쿠아","롤러","4층 진료실",
   "수납대기","수납완료"
 ];
 const DEFAULT_ROOM_GROUPS = {
   "3층 대기실":"3층","x-ray실":"3층","CT실":"3층","진료실1":"3층","진료 상담":"3층",
   "C-Arm":"3층","Sono":"3층","근전도검사":"3층","물리치료":"3층","처치실":"3층",
   "4층 대기실":"4층","기본물리치료":"4층","SASO":"4층","충격파":"4층",
-  "신장분사":"4층","자동차도수":"4층","아쿠아":"4층","4층 진료실":"4층"
+  "신장분사":"4층","자동차도수":"4층","아쿠아":"4층","롤러":"4층","4층 진료실":"4층"
   /* 수납대기·수납완료 는 그룹 없음 → 3층·4층 탭에 똑같이 보인다 */
 };
 /* 거울 표시 규칙: 실제 위치(from)의 환자를 to 방에도 함께 표시
@@ -2386,7 +2401,7 @@ function rxLoopGuard(p){
    그 사이 다른 화면에서 [종결]로 옮긴 단계(step)가 옛 사본으로 되돌아갔다.
    이제 트랜잭션 안에서 서버의 최신 카드에 동선만 다시 짠다 — 단계·상태 등 다른 칸은 서버 값 그대로.
    서버 카드가 이미 같은 처방(지문)으로 짜였거나 더 새 처방(routeRxAt)으로 짜였으면 아무것도 쓰지 않는다 */
-function rxStampOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return rx?String(rx.updatedAt||''):'';}
+function rxStampOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return rx?String(rx.at||rx.updatedAt||''):'';}
 function rxRouteSkip(c,h,stamp){
   if(!c||c.discharged||!Array.isArray(c.route)||!c.route.length)return true;
   if(h===(c.routeRxHash||''))return true;
@@ -3071,6 +3086,7 @@ function subscribeBitIntake(){
           else{const tk=x=>String(x.t||'');BIT_RX_MRN[mrn]={ocm:o.ocm,ocms:[...(o.ocms||[o.ocm]),ocm],mrn,
             items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs};}}});
       try{applyRxRoutesAll();}catch(e){console.warn('rxRoutes',e);}   // 처방 → 동선 자동 채우기 (바뀐 카드가 있으면 안에서 다시 그림)
+      try{bonusScanRx();}catch(e){console.warn('bonusScan',e);}   // 주사 맞은 날 → 보너스 (2026-10-04)
       try{render();}catch(e){}
       if(editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}
     },err=>console.warn('bitRx',err));
@@ -5078,6 +5094,11 @@ function applyCfg(d){
     let i=ROOMS.indexOf('자동차도수');if(i<0){ROOMS.forEach((r,k)=>{if(meta(r).group==='4층')i=k;});}
     ROOMS.splice(i>=0?i+1:ROOMS.length,0,'아쿠아');meta('아쿠아').group='4층';meta('4층 대기실').seedAqua=true;
     setTimeout(()=>{try{saveRooms();}catch(e){}},0);}
+  /* 4층 '롤러' 방 (2026-10-04 요청: 리뷰·주사 보너스로 고를 수 있게) — 아쿠아 뒤에 한 번만 */
+  if(isAdmin()&&!ROOMS.includes('롤러')&&!meta('4층 대기실').seedRoller){   /* 설정 저장은 관리자 화면에서만 */
+    let i=ROOMS.indexOf('아쿠아');if(i<0)i=ROOMS.indexOf('자동차도수');if(i<0){ROOMS.forEach((r,k)=>{if(meta(r).group==='4층')i=k;});}
+    ROOMS.splice(i>=0?i+1:ROOMS.length,0,'롤러');meta('롤러').group='4층';meta('4층 대기실').seedRoller=true;
+    setTimeout(()=>{try{saveRooms();}catch(e){}},0);}
   /* 이름에 '상담'이 들어간 방은 상담 결과 기록칸을 기본으로 켬 (관리자가 명시적으로 껐으면 유지) */
   ROOMS.forEach(r=>{if(/상담/.test(r)&&!('consult' in (ROOM_META[r]||{})))meta(r).consult=true;});
   RAW_CFG_STAFF=Array.isArray(d.staff)?d.staff:[];
@@ -5409,6 +5430,7 @@ async function startHosted(){
         try{if(Object.keys(BIT_RX).length)applyRxRoutesAll();}catch(e){}   // 새로 생긴 카드에 이미 온 처방이 있으면 동선을 채운다
         try{healDupSeq();}catch(e){console.warn('healDupSeq',e);}   // 같은 번호 두 명이면 늦은 쪽을 끝 번호로 (2026-10-01)
       },err=>cloudErr(err));
+      try{bonusSubscribe();}catch(e){console.warn('bonusSubscribe',e);}   // 리뷰·주사 보너스 (2026-10-04)
       if(cloud.unsubPm)cloud.unsubPm();
       cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
         const m={};
@@ -7662,7 +7684,7 @@ function cardEl(p,colRoom){
   c.innerHTML=`
     <div class="card-top">
       ${''/* #번호는 카드에서 뺐다 (2026-10-01 요청) — 내원 목록·통계에는 그대로 */}
-      <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
+      <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${bonusTag(p)}${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       ${p.bitCancel?`<span class="bitcancel-mark" title="비트에서 접수가 취소된 환자입니다${p.bitCancel.at?' ('+hhmm(p.bitCancel.at)+')':''} — 확인 후 카드를 삭제하거나 비트에서 재접수하세요"><i data-lucide="circle-x"></i> 비트 접수취소</span>`:''}
       ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
@@ -8012,6 +8034,104 @@ function nudgeCard(pid,dir){
    직원이 카드를 지난 방으로 직접 끌어다 놓는 것은 그대로 된다 */
 function roomsDoneBefore(p){const s=new Set();(p&&Array.isArray(p.visits)?p.visits:[]).forEach(v=>{if(v&&v.room)s.add(v.room);});return s;}
 function repeatOk(r){return isPayRoom(r)||/진료실/.test(r||'')||r==='3층 대기실';}
+/* ═════ 리뷰·주사 보너스 (2026-10-04 요청) ═════
+   네이버 리뷰를 쓴 환자 또는 주사를 맞은 환자에게 SASO·아쿠아·롤러 중 하나를 무료로 —
+   · 리뷰(직원이 [리뷰 확인]) = 1회
+   · 주사 맞은 날(처방내역 기준, 2026-10-04부터) 1일↑ = 1회, 5일↑ = 2회, 10일↑ = 3회
+   · 둘 중 큰 쪽(최대 3회). 쓴 만큼 줄어든다.
+   주사 판정(처방내역 줄): 주사 행위 코드 KK…(신경간내·관절강내·피하근육내 주사), 신경차단술 LA…, 비급여 주사 PROLO·mixinject·pain·HID,
+   그리고 이름에 '주사'가 든 약(진찰료 AA… 제외). 마운자로·위고비 펜(집에서 맞는 약)은 넣지 않는다. 같은 날 여러 줄이어도 하루 1번.
+   저장: patientboard_v3/…/bonus/{차트번호} = {mrn, name, review:{at,by}, injDays:[날짜…], injWhat:{날짜:처방}, uses:[{at,by,item,date}]} */
+const BONUS_START='2026-10-04', BONUS_ITEMS=['SASO','아쿠아','롤러'];
+let BONUS={};   // 차트번호 → 문서
+function bonusCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('bonus'):null;}
+function isInjLine(x){const cod=String(x&&x.cod||'').trim(),nam=String(x&&x.nam||'').trim();
+  if(/^AA/i.test(cod))return false;                                    // 진찰료('재진-물리치료/주사등을 시술받은 경우')
+  if(/^(kk\d|la\d)/i.test(cod))return true;                            // 주사 행위료·신경차단술
+  if(/^(prolo|mixinject\d*|pain\d*|oppain|26evt\d*|vitamind|hid)$/i.test(cod))return true;   // 비급여 주사·수액
+  if(/(마운자로|위고비)/.test(nam))return false;                          // 집에서 맞는 펜
+  return /주사/.test(nam);}
+function bonusInfo(mrn){mrn=normMrn(mrn);const b=(mrn&&BONUS[mrn])||{};
+  const inj=(Array.isArray(b.injDays)?b.injDays:[]).length;
+  const injT=inj>=10?3:inj>=5?2:inj>=1?1:0, revT=b.review?1:0, total=Math.max(injT,revT);
+  const uses=Array.isArray(b.uses)?b.uses:[];
+  return {b,inj,injT,revT,total,used:uses.length,left:Math.max(0,total-uses.length),uses,today:uses.filter(u=>u.date===localYMD(new Date()))};}
+/* 오늘 처방에 주사가 있으면 그날을 기록 — 모든 화면이 같은 값을 arrayUnion 으로 넣으므로 겹쳐도 하루 한 번 */
+function bonusScanRx(){
+  const col=bonusCol();if(!col||!currentUser)return;
+  const day=localYMD(new Date());if(day<BONUS_START)return;
+  Object.keys(BIT_RX_MRN||{}).forEach(m=>{const mrn=normMrn(m);if(!mrn)return;const rx=BIT_RX_MRN[m];
+    const lines=(rx&&Array.isArray(rx.items)?rx.items:[]).filter(isInjLine);if(!lines.length)return;
+    const b=BONUS[mrn];if(b&&Array.isArray(b.injDays)&&b.injDays.includes(day))return;
+    const p=data.find(x=>normMrn(x.mrn)===mrn);const what=[...new Set(lines.map(x=>String(x.nam||x.cod||'').trim()))].slice(0,6).join(', ');
+    BONUS[mrn]=Object.assign({},b||{},{mrn,injDays:[...((b&&b.injDays)||[]),day]});   // 이 화면이 다시 쓰지 않게
+    col.doc(mrn).set({mrn,name:(p&&p.name)||(b&&b.name)||'',injDays:firebase.firestore.FieldValue.arrayUnion(day),injWhat:{[day]:what}},{merge:true})
+      .catch(e=>console.warn('bonus inj',e));});}
+function bonusSubscribe(){const col=bonusCol();if(!col||cloud.unsubBonus)return;
+  cloud.unsubBonus=col.onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const mrn=normMrn(v.mrn||d.id);if(mrn)m[mrn]=v;});BONUS=m;
+    try{renderThrottled();}catch(e){}try{if(editId)renderBonusSection();}catch(e){}},err=>console.warn('bonus',err));}
+function bonusTag(p){const m=normMrn(p&&p.mrn);if(!m)return '';const i=bonusInfo(m);
+  const t=i.today.length?` <span class="bonus-tag used" title="오늘 보너스 사용 — 무료: ${esc(i.today.map(u=>u.item).join(', '))}"><i data-lucide="gift"></i> 오늘 ${esc(i.today.map(u=>u.item).join('·'))} 무료</span>`:'';
+  return (i.left?` <span class="bonus-tag" title="리뷰·주사 보너스 — SASO·아쿠아·롤러 중 무료 ${i.left}회 남음"><i data-lucide="gift"></i> ${i.left}</span>`:'')+t;}
+/* 환자 정보 창의 보너스 칸 */
+function renderBonusSection(){
+  const box=document.getElementById('bonusBox');if(!box)return;
+  const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);
+  if(!p||!mrn){box.innerHTML='<div class="hint">차트번호가 있어야 보너스를 관리할 수 있습니다.</div>';return;}
+  if(!bonusCol()){box.innerHTML='<div class="hint">클라우드에 연결되면 표시됩니다.</div>';return;}
+  const i=bonusInfo(mrn),b=i.b;
+  const rev=b.review?`<b style="color:#047857">✔ 리뷰 확인</b> <span class="hint">${esc(hhmm(b.review.at))} · ${esc(b.review.by||'')}</span>${isAdmin()?` <button type="button" class="btn sm" onclick="bonusReview(false)">취소</button>`:''}`
+    :`<span class="hint">아직 없음</span> <button type="button" class="btn sm" onclick="bonusReview(true)">네이버 리뷰 확인</button>`;
+  const days=(Array.isArray(b.injDays)?b.injDays:[]).slice().sort();
+  const injList=days.length?days.map(d=>`<span class="bn-day" title="${esc((b.injWhat||{})[d]||'')}">${esc(d.slice(5).replace('-','/'))}</span>`).join(' '):'<span class="hint">없음</span>';
+  const nextT=i.inj<1?'1일이면 1회':i.inj<5?`${5-i.inj}일 더 맞으면 2회`:i.inj<10?`${10-i.inj}일 더 맞으면 3회`:'최대';
+  const usesHtml=i.uses.length?i.uses.slice().reverse().map((u,k)=>`<div class="bn-use"><i data-lucide="gift"></i> <b>${esc(u.item)}</b> <span class="hint">${esc(hhmm(u.at))} · ${esc(u.by||'')}</span>${isAdmin()?` <button type="button" class="btn sm" onclick="bonusUndo('${esc(u.at)}')">사용 취소</button>`:''}</div>`).join(''):'';
+  box.innerHTML=`<div class="bn-row"><span class="bn-k">네이버 리뷰</span>${rev}</div>
+    <div class="bn-row"><span class="bn-k">주사</span><b>${i.inj}일</b> <span class="hint">(${esc(BONUS_START.slice(5).replace('-','/'))}부터 · ${nextT})</span><div class="bn-days">${injList}</div></div>
+    <div class="bn-row bn-sum">받을 수 있는 무료 <b>${i.total}회</b> · 사용 <b>${i.used}</b> · <b class="${i.left?'bn-left':''}">남음 ${i.left}회</b></div>
+    <div class="bn-btns">${BONUS_ITEMS.map(it=>`<button type="button" class="btn sm${i.left?' bn-go':''}" ${i.left?'':'disabled'} onclick="bonusUse('${it}')"><i data-lucide="gift"></i> ${it} 무료</button>`).join('')}</div>
+    ${usesHtml}`;
+  if(window.lucide)try{lucide.createIcons();}catch(e){}}
+window.bonusReview=async function(on){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+  if(!on&&!isAdmin())return;
+  if(on&&!confirm(`'${p.name}'님의 네이버 리뷰를 확인하셨나요?\n확인하면 보너스(SASO·아쿠아·롤러 무료) 1회가 생깁니다.`))return;
+  if(!on&&!confirm('리뷰 확인을 취소할까요?'))return;
+  const rec=on?{at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}:null;
+  try{await col.doc(mrn).set({mrn,name:p.name||'',review:rec},{merge:true});
+    BONUS[mrn]=Object.assign({},BONUS[mrn]||{},{mrn,review:rec});
+    try{audit(on?'리뷰 보너스 확인':'리뷰 보너스 취소',(p.name||'')+' ('+mrn+')');}catch(e){}
+    renderBonusSection();render();}catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
+/* 보너스 사용 — 서버에서 남은 횟수를 다시 확인하고(두 화면이 동시에 눌러도 한 번만) 그 방을 동선에 넣는다 */
+window.bonusUse=async function(item){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+  if(!BONUS_ITEMS.includes(item))return;
+  if(!confirm(`'${p.name}'님 보너스로 ${item}을(를) 무료로 쓸까요?\n(남은 무료 횟수가 1 줄고, 동선에 ${item}이(가) 들어갑니다. 비트 수납에서 무료로 처리해 주세요)`))return;
+  const use={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||'',item,date:localYMD(new Date()),pid:p.id};
+  try{
+    const ok=await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
+      const tmp=BONUS[mrn];BONUS[mrn]=v;const left=bonusInfo(mrn).left;BONUS[mrn]=tmp;
+      if(left<1)return false;
+      t.set(ref,{mrn,name:p.name||'',uses:[...(Array.isArray(v.uses)?v.uses:[]),use]},{merge:true});return true;});
+    if(!ok){alert('남은 무료 횟수가 없습니다(다른 화면에서 방금 썼을 수 있습니다).');return;}
+    try{audit('보너스 사용',(p.name||'')+' ('+mrn+') · '+item+' 무료');}catch(e){}
+    bonusAddRoom(p.id,item);
+    renderBonusSection();
+  }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
+/* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
+function bonusAddRoom(pid,room){
+  if(!ROOMS.includes(room))return;
+  const add=d=>{if(!Array.isArray(d.route)||!d.route.length)return false;const st=Math.max(0,Math.min(d.step||0,d.route.length-1));
+    if(d.route.indexOf(room,st+1)>=0)return false;
+    const pi=d.route.findIndex((r,k)=>k>st&&isPayRoom(r));
+    if(pi>=0)d.route.splice(pi,0,room);else d.route.push(room);return d;};
+  const p=data.find(x=>x.id===pid);if(!p)return;
+  if(add(p)!==false){saveLocal();render();try{if(editId===pid&&typeof renderRouteRows==='function'){routeDraft=[...p.route];renderRouteRows();}}catch(e){}}
+  cloudPatientTxn(pid,add,{keepLocal:true});}
+window.bonusUndo=async function(at){if(!isAdmin())return;const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+  if(!confirm('이 보너스 사용을 취소할까요? (남은 횟수가 1 늘어납니다. 동선의 방은 그대로입니다)'))return;
+  try{await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
+      t.set(ref,{uses:(Array.isArray(v.uses)?v.uses:[]).filter(u=>u.at!==at)},{merge:true});});
+    try{audit('보너스 사용 취소',(p.name||'')+' ('+mrn+')');}catch(e){}
+  }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
 /* ───── 동선 이동 + 알람 ───── */
 function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   /* 진료 상담에서 [시행]으로 기록한 환자를 [종결]하면 처방 방(같은 공간)으로 — 다음 차례가 그 방들 중 하나면 평소대로, 아니면 처방 방으로 바로 (2026-10-01) */
@@ -9754,7 +9874,7 @@ function waitPopHidden(){if(SLIP_SOLO||slipOpen)return true;const st=document.ge
 /* 누가 어떤 방의 대기 알림을 보나 (2026-10-03 요청)
    admin = 모든 방 · 4층 직원(아래 명단) = 4층 쪽 방 · 의사(role doctor) = 없음 · 그 밖의 직원 = 3층 쪽 방 */
 const WAIT_POP_4F_STAFF=['서효성','김지은','허빈','한상훈','조현신','이세영','황지현','김건휘','김재하','신소현','고민정','박승규','임현주'];
-const WAIT_POP_4F_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','신장분사','충격파','아쿠아','3층 진료실'];
+const WAIT_POP_4F_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','신장분사','충격파','아쿠아','롤러','3층 진료실'];
 const WAIT_POP_3F_ROOMS=['3층 대기실','x-ray실','진료실1','진료실3','진료 상담','근전도검사','C-Arm','Sono','처치실','CT실','수납대기'];
 function waitPopRooms(){if(!currentUser)return [];if(isAdmin())return null;   // null = 모든 방
   const nm=String(currentUser.name||'').replace(/\s+/g,'');
@@ -10313,7 +10433,7 @@ function openEdit(pid){document.getElementById('modal').classList.remove('view-o
   updateEditActions(p);
   renderEditStatus();
   renderModalRail();
-  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();
+  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();try{renderBonusSection();}catch(e){console.warn('bonus',e);}
   showModal();
 }
 /* ═════ 비급여 동의서 (태블릿 서명) — 2026-09-26 요청 ═════
