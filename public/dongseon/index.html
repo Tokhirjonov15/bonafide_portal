@@ -2379,14 +2379,23 @@ function rxLoopGuard(p){
     return false;}
   return true;
 }
-function applyRxRoute(p){
-  if(!p||p.discharged||!Array.isArray(p.route)||!p.route.length)return false;
-  const h=rxHashOf(p); if(!h||h===(p.routeRxHash||''))return false;
+/* ═════ 처방 동선 — 서버 사본 위에서 다시 짜기 (2026-10-04: '종결 눌러도 환자가 되돌아온다' 제보) ═════
+   전에는 화면마다 자기 사본으로 동선을 짜고 save(p) 로 카드 전체를 덮어썼다. 처방이 화면마다 조금씩 늦게 도착하므로
+   새 처방을 본 화면과 옛 처방을 본 화면이 번갈아 덮어썼고(10/03 하루 '처방 동선 자동' 4,351번, 한 환자에 8개 화면이 1초 안에),
+   그 사이 다른 화면에서 [종결]로 옮긴 단계(step)가 옛 사본으로 되돌아갔다.
+   이제 트랜잭션 안에서 서버의 최신 카드에 동선만 다시 짠다 — 단계·상태 등 다른 칸은 서버 값 그대로.
+   서버 카드가 이미 같은 처방(지문)으로 짜였거나 더 새 처방(routeRxAt)으로 짜였으면 아무것도 쓰지 않는다 */
+function rxStampOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return rx?String(rx.updatedAt||''):'';}
+function rxRouteSkip(c,h,stamp){
+  if(!c||c.discharged||!Array.isArray(c.route)||!c.route.length)return true;
+  if(h===(c.routeRxHash||''))return true;
+  {const sv=String(c.routeRxHash||'').split('\n')[0]; if(sv&&sv>RX_ROUTE_VER)return true;}   // 더 새 판이 짠 동선은 옛 판 화면이 되돌리지 않는다
+  if(stamp&&c.routeRxAt&&String(c.routeRxAt)>stamp)return true;   // 이 화면이 가진 처방이 더 옛것
+  return false;}
+/* p 의 동선을 처방에 맞춰 다시 짠다(p 를 고친다). 반환: {changed, oldRoute, next, mid, rxEdit} */
+function rxRouteCompute(p,h,stamp){
   const _prevRx=String(p.routeRxHash||''), _rxEdit=!!_prevRx&&_prevRx.split('\n')[0]===RX_ROUTE_VER;   /* 같은 규칙 판에서 처방만 바뀜 = 원장님이 처방을 고침 */
   const _oldRoute=p.route.slice();
-  /* 더 새 판(RX_ROUTE_VER)이 이미 짠 동선은 옛 판 화면이 되돌리지 않는다 — 새로고침 안 한 화면이 새 화면과 싸우지 않게 */
-  {const sv=String(p.routeRxHash||'').split('\n')[0]; if(sv&&sv>RX_ROUTE_VER)return false;}
-  if(!rxLoopGuard(p))return false;
   let want=rxRoomsFor(p)||[];
   /* 2026-10-01 '동선관리 로직' 시트
      · MM(기본물리치료)만 있으면 → 수납대기 → 4층 대기실 → SASO → 기본물리치료 로 고정
@@ -2430,12 +2439,33 @@ function applyRxRoute(p){
     else if(f4>=0)next.splice(f4,0,pay);
     else next.push(pay);
   }
-  p.routeRxHash=h; p.routeAuto=auto;
+  p.routeRxHash=h; p.routeAuto=auto; if(stamp)p.routeRxAt=stamp;
   const changed=JSON.stringify(next)!==JSON.stringify(p.route);
-  if(changed){ p.route=next; const ns=next.indexOf(cur); if(ns>=0)p.step=ns;   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */ try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(mid.join(' → ')||'(추가 없음)'));}catch(e){} }
-  if(changed&&_rxEdit)routeChangeNotifyOnce(p,_oldRoute,next,'처방 변경');
-  try{save(p);}catch(e){}
-  return changed;
+  if(changed){ p.route=next; const ns=next.indexOf(cur); if(ns>=0)p.step=ns; }   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */
+  return {changed,oldRoute:_oldRoute,next,mid,rxEdit:_rxEdit};
+}
+function rxRouteAfter(p,r){
+  if(!r||!r.changed)return;
+  try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(r.mid.join(' → ')||'(추가 없음)'));}catch(e){}
+  if(r.rxEdit)routeChangeNotifyOnce(p,r.oldRoute,r.next,'처방 변경');}
+const RX_ROUTE_BUSY={};   // 카드 id → 트랜잭션 진행 중(같은 화면이 겹쳐 보내지 않게)
+function applyRxRoute(p){
+  if(!p)return false;
+  const h=rxHashOf(p); if(!h)return false;
+  const stamp=rxStampOf(p);
+  if(rxRouteSkip(p,h,stamp))return false;
+  if(RX_ROUTE_BUSY[p.id])return false;
+  if(!rxLoopGuard(p))return false;
+  if(!(cloud.active&&cloud.patientsCol&&cloud.db)||String(p.id).startsWith('view_')){   // 오프라인·보기용 카드 — 이 화면에서만
+    const r=rxRouteCompute(p,h,stamp);rxRouteAfter(p,r);try{saveLocal();}catch(e){}return r.changed;}
+  let info=null; RX_ROUTE_BUSY[p.id]=1;
+  cloudPatientTxn(p.id,d=>{info=null;if(rxRouteSkip(d,h,stamp))return false;info=rxRouteCompute(d,h,stamp);return d;})
+    .then(ok=>{
+      if(ok===true&&info){const q=data.find(x=>x.id===p.id)||p;rxRouteAfter(q,info);
+        if(info.changed){try{renderThrottled();}catch(e){}
+          if(editId===p.id&&typeof renderRouteRows==='function'){try{routeDraft=[...q.route];renderRouteRows();}catch(e){}}}}})
+    .finally(()=>{delete RX_ROUTE_BUSY[p.id];});
+  return false;   // 결과는 트랜잭션이 끝난 뒤 반영(위 then)
 }
 /* 보드의 모든 카드에 적용 — 처방 문서가 바뀔 때·카드가 새로 생길 때 부른다. 바뀐 카드가 있으면 다시 그린다 */
 function applyRxRoutesAll(){
@@ -3508,6 +3538,18 @@ function bitMergeMemo(mrn,name,parts,exclude){
 function bitMemoLineKey(s){return String(s||'').replace(/^[\s\-–—•·ㆍ*.]+/,'').replace(/[\s\/]+$/,'').replace(/\s+/g,' ').trim();}   // 비교용 정규화 — '+' 는 지우지 않는다(2026-10-01: '+' 도 뜻이 있다)
 function bitMemoCombined(r){const a=bitMemoClean(r.memoCont),b=bitMemoClean(r.memoRx);if(a&&b&&a!==b&&!a.includes(b))return a+'\n'+b;return a||b;}
 /* 이미 접수된 환자에게 원외처방 특이사항이 뒤늦게 도착하면 특이사항에 자동 보충 (비어 있으면 채우고, 있으면 없는 내용만 덧붙임) */
+/* 카드의 몇 칸만 서버에 쓴다 (2026-10-04) — 비트 보충은 모든 화면에서 돌므로 save(p)(카드 전체 덮어쓰기)를 쓰면
+   다른 화면이 방금 [종결]로 옮긴 단계가 되돌아갔다. top = 최상위 칸, bit = p.bit 안의 칸, cond(d) = 서버 카드에서 다시 확인할 조건 */
+function cardPatch(p,top,bit,cond){
+  if(!p)return;top=top||{};
+  Object.assign(p,top);if(bit&&p.bit)Object.assign(p.bit,bit);
+  try{saveLocal();}catch(e){}
+  cloudPatientTxn(p.id,d=>{
+    if(cond&&!cond(d))return false;
+    let ch=false;
+    Object.keys(top).forEach(k=>{if(JSON.stringify(d[k])!==JSON.stringify(top[k])){d[k]=top[k];ch=true;}});
+    if(bit&&d.bit){Object.keys(bit).forEach(k=>{if(JSON.stringify(d.bit[k])!==JSON.stringify(bit[k])){d.bit[k]=bit[k];ch=true;}});}
+    return ch?d:false;});}
 function bitBackfillMemo(){
   const memoAll={};   // mrn → {name, parts} — 아래에서 모아 환자마다 한 번만 bitMergeMemo
   BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수'&&r.status!=='수납완료')return;   // 수납완료 뒤에 오는 원외처방 특이사항도 명단에는 반영
@@ -3519,17 +3561,17 @@ function bitBackfillMemo(){
       const nt=full||cut;
       /* 카드 메모가 비트에서 자동으로 넣은 것(p.bit.memoSrc)이거나 잘린 캐스트 메모(8자 이하)면 비트 전체 문장으로 바꾼다. 직원이 손으로 바꾼 메모는 유지 */
       const autoMemo=!cur||cur===cut||nt.startsWith(cur)||(p.bit&&(cur===(p.bit.memoSrc||'')||(p.bit.auto&&cur.length<=8)));
-      if(nt&&nt!==cur&&autoMemo){p.memoToday=nt;if(p.bit)p.bit.memoSrc=nt;save(p);}
+      if(nt&&nt!==cur&&autoMemo){cardPatch(p,{memoToday:nt},p.bit?{memoSrc:nt}:null,d=>String(d.memoToday||'').trim()===cur);}   // 서버 메모가 그새 바뀌었으면(직원 수정) 두기
       /* 보험: 카드에 없고 문서(DB 에이전트 또는 조회 기록)에 있으면 채운다 — 차트번호가 처음부터 있는 DB 카드는 bitBackfillMrn 을 거치지 않아 빠져 있었다 (2026-09-17) */
-      if(!p.ins&&r.ins){const si=document.getElementById('f_ins');if(si&&[...si.options].some(o=>o.value===r.ins)){p.ins=r.ins;save(p);render();}}
+      if(!p.ins&&r.ins){const si=document.getElementById('f_ins');if(si&&[...si.options].some(o=>o.value===r.ins)){cardPatch(p,{ins:r.ins},null,d=>!d.ins);render();}}
       /* 전화: 카드에 없고 문서(DB 에이전트)에 있으면 채운다 — 문자 발송용. 직원이 손으로 넣은 번호는 유지 */
-      if(!(p.tel||'').trim()&&r.tel){const t=normTel(r.tel);if(t){p.tel=t;save(p);render();}}
+      if(!(p.tel||'').trim()&&r.tel){const t=normTel(r.tel);if(t){cardPatch(p,{tel:t},null,d=>!String(d.tel||'').trim());render();}}
       /* 내원 횟수·최초/직전 내원일(비트 DB 기준): 카드에 없으면 채운다 */
-      if(p.bit&&(r.visits||r.prevVisit||r.firstVisit)){let ch=false;
-        if(!p.bit.visits&&r.visits){p.bit.visits=Number(r.visits)||0;ch=true;}
-        if(!p.bit.prevVisit&&r.prevVisit){p.bit.prevVisit=r.prevVisit;ch=true;}
-        if(!p.bit.firstVisit&&r.firstVisit){p.bit.firstVisit=r.firstVisit;ch=true;}
-        if(ch)save(p);}
+      if(p.bit&&(r.visits||r.prevVisit||r.firstVisit)){const b={};
+        if(!p.bit.visits&&r.visits)b.visits=Number(r.visits)||0;
+        if(!p.bit.prevVisit&&r.prevVisit)b.prevVisit=r.prevVisit;
+        if(!p.bit.firstVisit&&r.firstVisit)b.firstVisit=r.firstVisit;
+        if(Object.keys(b).length)cardPatch(p,null,b);}
     }
     /* 특이사항(환자에게 따라다니는 메모): 비트 접수메모(연속) + 원외처방 특이사항. 원외처방 특이사항은 진료 뒤에 입력되므로
        카드가 이미 내보내진 뒤에 와도 명단(특이사항)에는 남긴다 — 다음 내원 때 보임 */
@@ -3890,11 +3932,12 @@ function bitBackfillMrn(){
     const mrn=String(r.mrn||'').trim(), ocm=String(r.ocmNum||'').trim();if(!mrn||!ocm)return;
     const p=data.find(x=>!x.discharged&&!(x.mrn||'').trim()&&x.bit&&String(x.bit.ocmNum||'')===ocm);if(!p)return;
     if(mrnConflict(mrn,p.name))return;
-    p.mrn=mrn;const rp=r.rrn7?parseRRN(r.rrn7):null;if(rp){p.birth=rp.birth;p.sex=rp.sex;}
-    {const si=document.getElementById('f_ins');if(!p.ins&&si&&r.ins&&[...si.options].some(o=>o.value===r.ins))p.ins=r.ins;}
+    const top={mrn};const rp=r.rrn7?parseRRN(r.rrn7):null;if(rp){top.birth=rp.birth;top.sex=rp.sex;}
+    {const si=document.getElementById('f_ins');if(!p.ins&&si&&r.ins&&[...si.options].some(o=>o.value===r.ins))top.ins=r.ins;}
+    cardPatch(p,top,null,d=>!String(d.mrn||'').trim());   // 차트번호 칸만 — 카드 전체를 덮지 않는다 (2026-10-04)
     regUpsert(mrn,p.name,p.birth,p.sex);
     try{if(r.memoCont)setRegCont(mrn,p.name,r.memoCont);const sp=bitMemoKeep(r.memoRx);if(sp&&!regMemo(mrn))setRegMemo(mrn,p.name,sp);}catch(e){}
-    save(p);render();console.log('비트 차트번호 보충',ocm);
+    render();console.log('비트 차트번호 보충',ocm);
   });
 }
 async function bitClaimAndCreate(r,name,reg){
@@ -5101,8 +5144,10 @@ function cloudPatientTxn(pid,mutate){
     if(!snap.exists){if(KNOWN_PIDS.has(pid))setTimeout(()=>ghostPatient(pid,'수정 시 서버에 없음'),0);return null;}
     const base=snap.data();
     if(!base)return null;
-    const d=jclone(base);mutate(d);tx.set(ref,jclone(d));return d;
+    const d=jclone(base);if(mutate(d)===false)return {__skip:true};   /* mutate 가 false = 바꿀 것 없음 → 쓰지 않는다 (2026-10-04) */
+    tx.set(ref,jclone(d));return d;
   })).then(d=>{
+    if(d&&d.__skip)return 'skip';
     if(d){const i=data.findIndex(x=>x.id===pid);if(i>=0)data[i]=d;}  // 서버 확정본을 로컬에 반영(onSnapshot가 곧 재확정)
     return true;
   }).catch(e=>{syncFail('카드 수정',e);return false;});
@@ -11313,12 +11358,20 @@ function slipLinesFor(p){
 }
 /* 슬립 목록을 '처치' 칸에 그대로 넣는다. 직원이 직접 고쳐 쓴 내용은 덮어쓰지 않는다
    (비어 있거나, 지난번에 자동으로 넣어 둔 값 그대로일 때만 새 목록으로 바꾼다) */
+/* 처치 칸만 서버 카드에 쓴다 (2026-10-04) — 카드 전체를 덮어쓰면 다른 화면이 방금 [종결]로 옮긴 단계가 되돌아간다.
+   onlyIfAuto = 자동 채우기: 서버 카드의 처치 칸을 직원이 직접 고쳐 두었으면 건드리지 않는다 */
+function rxProcSave(pid,slip,onlyIfAuto){
+  try{saveLocal();}catch(e){}
+  cloudPatientTxn(pid,d=>{const c=String(d.rxProc||'').trim(),a=String(d.rxAuto||'').trim();
+    if(onlyIfAuto&&c&&c!==a)return false;
+    if(d.rxProc===slip&&d.rxAuto===slip)return false;
+    d.rxProc=slip;d.rxAuto=slip;return d;});}
 function applySlipToRx(p){
   const slip=slipLinesFor(p);const hint=document.getElementById('rxSlipHint');
   if(!slip){if(hint)hint.style.display='none';return (p&&p.rxProc)||'';}
   const cur=String((p&&p.rxProc)||'').trim(), auto=String((p&&p.rxAuto)||'').trim();
   let val=cur;
-  if(!cur||cur===auto){ val=slip; if(p&&(p.rxProc!==slip||p.rxAuto!==slip)){p.rxProc=slip;p.rxAuto=slip;try{save(p);}catch(e){}} }
+  if(!cur||cur===auto){ val=slip; if(p&&(p.rxProc!==slip||p.rxAuto!==slip)){p.rxProc=slip;p.rxAuto=slip;rxProcSave(p.id,slip,true);} }
   if(hint){
     const same=String(val).trim()===slip.trim();
     hint.style.display='';
@@ -11330,7 +11383,7 @@ function applySlipToRx(p){
 }
 window.pullSlipToRx=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   const slip=slipLinesFor(p);if(!slip)return;
-  p.rxProc=slip;p.rxAuto=slip;try{save(p);}catch(e){}
+  p.rxProc=slip;p.rxAuto=slip;rxProcSave(p.id,slip,false);
   const ta=document.getElementById('rxProc');if(ta){ta.value=slip;rxGrow(ta);}
   try{fillRxSection(p);}catch(e){}};
 /* 처치·준비물 칸: 내용만큼 높이를 맞춘다(창이 아직 안 보이면 잠시 뒤 다시) — 슬립 처방이 길면 두 줄로는 안 보여서 (2026-09-23) */
