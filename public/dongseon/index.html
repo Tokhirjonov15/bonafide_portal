@@ -2460,7 +2460,7 @@ function applyRxRoute(p){
   if(!(cloud.active&&cloud.patientsCol&&cloud.db)||String(p.id).startsWith('view_')){   // 오프라인·보기용 카드 — 이 화면에서만
     const r=rxRouteCompute(p,h,stamp);rxRouteAfter(p,r);try{saveLocal();}catch(e){}return r.changed;}
   let info=null; RX_ROUTE_BUSY[p.id]=1;
-  cloudPatientTxn(p.id,d=>{info=null;if(rxRouteSkip(d,h,stamp))return false;info=rxRouteCompute(d,h,stamp);return d;})
+  cloudPatientTxn(p.id,d=>{info=null;if(rxRouteSkip(d,h,stamp))return false;info=rxRouteCompute(d,h,stamp);return d;},{keepLocal:true})
     .then(ok=>{
       if(ok===true&&info){const q=data.find(x=>x.id===p.id)||p;rxRouteAfter(q,info);
         if(info.changed){try{renderThrottled();}catch(e){}
@@ -3556,7 +3556,7 @@ function cardPatch(p,top,bit,cond){
     let ch=false;
     Object.keys(top).forEach(k=>{if(JSON.stringify(d[k])!==JSON.stringify(top[k])){d[k]=top[k];ch=true;}});
     if(bit&&d.bit){Object.keys(bit).forEach(k=>{if(JSON.stringify(d.bit[k])!==JSON.stringify(bit[k])){d.bit[k]=bit[k];ch=true;}});}
-    return ch?d:false;});}
+    return ch?d:false;},{keepLocal:true});}
 function bitBackfillMemo(){
   const memoAll={};   // mrn → {name, parts} — 아래에서 모아 환자마다 한 번만 bitMergeMemo
   BIT_INTAKE.forEach(r=>{if(r.status!=='접수'&&r.status!=='자동접수'&&r.status!=='수납완료')return;   // 수납완료 뒤에 오는 원외처방 특이사항도 명단에는 반영
@@ -3769,7 +3769,9 @@ async function healSeqGaps(){
 }
 setInterval(()=>{try{healSeqGaps();}catch(e){}},30000);
 const HEALED_SEQ=new Set();
+const HEAL_DUP_SEQ_ON=false;   /* 2026-10-04 11:17 화면끼리 서로 번호를 올려 주는 폭주(30분에 7,900번, #446까지)가 나서 끔 — 같은 번호는 보기만 겹칠 뿐 */
 function healDupSeq(){
+  if(!HEAL_DUP_SEQ_ON)return;
   if(!currentUser||!cloud.patientsCol)return;
   const t=localYMD(new Date());
   const today=data.filter(p=>!p.discharged&&typeof p.seq==='number'&&p.seq>0&&localYMD(new Date(p.arrivedAt||p.enteredAt||0))===t);
@@ -5142,7 +5144,7 @@ function cloudSavePatient(p){
     .catch(e=>{syncFail('카드 저장',e);});
 }
 /* 동시편집 안전 쓰기: 서버 최신본을 트랜잭션으로 다시 읽고 mutate만 적용 → 다른 기기가 바꾼 필드·노트를 덮어쓰지 않음. 오프라인이면 로컬만(이미 반영됨). */
-function cloudPatientTxn(pid,mutate){
+function cloudPatientTxn(pid,mutate,opts){
   if(String(pid||'').startsWith('view_'))return Promise.resolve(false);   // 보기용 임시 카드는 서버에 쓰지 않는다
   if(!cloud.active||!cloud.patientsCol||!cloud.db||!pid)return Promise.resolve(false);
   const ref=cloud.patientsCol.doc(pid);
@@ -5155,7 +5157,7 @@ function cloudPatientTxn(pid,mutate){
     tx.set(ref,jclone(d));return d;
   })).then(d=>{
     if(d&&d.__skip)return 'skip';
-    if(d){const i=data.findIndex(x=>x.id===pid);if(i>=0)data[i]=d;}  // 서버 확정본을 로컬에 반영(onSnapshot가 곧 재확정)
+    if(d&&!(opts&&opts.keepLocal)){const i=data.findIndex(x=>x.id===pid);if(i>=0)data[i]=d;}   /* 자동 작업(keepLocal)은 로컬 카드를 바꾸지 않는다 — 그 사이 바뀐 칸이 옛 값으로 돌아가 번호 폭주가 났다 (2026-10-04) */  // 서버 확정본을 로컬에 반영(onSnapshot가 곧 재확정)
     return true;
   }).catch(e=>{syncFail('카드 수정',e);return false;});
 }
@@ -11372,7 +11374,7 @@ function rxProcSave(pid,slip,onlyIfAuto){
   cloudPatientTxn(pid,d=>{const c=String(d.rxProc||'').trim(),a=String(d.rxAuto||'').trim();
     if(onlyIfAuto&&c&&c!==a)return false;
     if(d.rxProc===slip&&d.rxAuto===slip)return false;
-    d.rxProc=slip;d.rxAuto=slip;return d;});}
+    d.rxProc=slip;d.rxAuto=slip;return d;},{keepLocal:true});}
 function applySlipToRx(p){
   const slip=slipLinesFor(p);const hint=document.getElementById('rxSlipHint');
   if(!slip){if(hint)hint.style.display='none';return (p&&p.rxProc)||'';}
