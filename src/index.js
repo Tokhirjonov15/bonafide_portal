@@ -593,6 +593,9 @@ async function roomBotUpdate(env, u) {
    · 매니저: 봇에게 /start (WAIT_JOIN 을 정했으면 '/start 코드') → 구독, /stop → 해지
    · 보내는 것: 동선관리 화면 아래 '대기 10분 넘음' 알림창과 같은 것 — 새로 뜬 환자, 확인 안 하면 10분마다 두 번 더, 사유를 골라 확인하면 그 결과
    ============================================================ */
+/* 2026-10-04 요청: 대기 알림 봇은 잠시 끈다(나중에 다시 켤 수 있게). true 로 바꾸고 배포하면 다시 보낸다.
+   꺼도 봇 토큰·구독자·웹훅은 그대로 — /start·/stop 은 계속 받는다 */
+const WAIT_BOT_ON = false;
 async function tgWaitApi(env, method, payload) {
   const res = await fetch(`https://api.telegram.org/bot${env.WAIT_BOT_TOKEN}/${method}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload)
@@ -630,7 +633,7 @@ async function dongseonWaitAlert(request, env) {
     const b = await request.json().catch(() => ({}));
     const kind = s(b.kind), key = s(b.key).slice(0, 200);
     if (!["alert", "ack"].includes(kind) || !key) return json({ error: "kind/key 필요" }, 400);
-    if (!env.WAIT_BOT_TOKEN) return json({ ok: true, sent: 0, off: true });
+    if (!WAIT_BOT_ON || !env.WAIT_BOT_TOKEN) return json({ ok: true, sent: 0, off: true });
     const email = await fbEmailFromRequest(request);
     if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
     await ensureSchema(env);
