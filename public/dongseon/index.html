@@ -3119,11 +3119,16 @@ async function bitCleanupOld(){
    접수 문서 → 카드 찾기는 모두 bitCardFor 한 곳에서: ① 문서에 적힌 카드 id ② 접수번호 ③ 같은 차트번호 + 보험이 맞는 카드 */
 function bitInsOf(x){return String((x&&((x.bit&&x.bit.ins)||x.ins))||'').trim();}
 function bitInsOk(a,b){a=String(a||'').trim();b=String(b||'').trim();return !a||!b||a===b;}
+/* 하루에 여러 번 접수 (2026-10-04 요청): 접수번호(ocmNum)가 다른 접수는 다른 방문 — 같은 차트번호 카드가 보드에 있어도 새 카드로.
+   같은 카드로 묶는 것은 ① 접수번호가 없는 문서(캐스트 등) ② 카드에 접수번호가 없음(손으로 만든 카드) ③ 같은 접수번호
+   ④ 카드의 접수가 비트에서 취소됨(과·담당의를 바꿔 다시 접수 = 취소 후 새 접수) */
+function bitOcmCancelled(o){o=String(o||'').trim();return !!o&&BIT_INTAKE.some(d=>String(d.ocmNum||'').trim()===o&&(d.status==='취소'||d.cancelled));}
+function bitSameIntake(x,ocm){const xo=String((x.bit&&x.bit.ocmNum)||'').trim();return !ocm||!xo||xo===ocm||bitOcmCancelled(xo);}
 function bitCardFor(r,pred){const ok=x=>!x.discharged&&(!pred||pred(x));
   const mrn=normMrn(r&&r.mrn), ocm=String((r&&r.ocmNum)||'').trim();
   return (r&&r.patientId&&data.find(x=>ok(x)&&x.id===r.patientId))
     ||(ocm&&data.find(x=>ok(x)&&x.bit&&String(x.bit.ocmNum||'')===ocm))
-    ||(mrn&&data.find(x=>ok(x)&&normMrn(x.mrn)===mrn&&bitInsOk(bitInsOf(x),r.ins)))
+    ||(mrn&&data.find(x=>ok(x)&&normMrn(x.mrn)===mrn&&bitInsOk(bitInsOf(x),r.ins)&&bitSameIntake(x,ocm)))
     ||null;}
 /* 같은 차트번호의 카드가 보드에 둘 이상인가 — 카드에 보험 표시·처방을 접수별로 보여 줄 때 */
 function mrnTwins(p){const m=normMrn(p&&p.mrn);return !!m&&data.filter(x=>!x.discharged&&normMrn(x.mrn)===m).length>1;}
@@ -3613,7 +3618,9 @@ let _bitRetryT=null,BIT_AUTO_BUSY=false;
 function bitCoveredByVisit(r,mrn){
   const t=new Date(r.registeredAt||r.seenAt||r.eventAt||0).getTime();if(!t||isNaN(t))return false;
   const today=localYMD(new Date());
+  const ro=String(r.ocmNum||'').trim();
   return (Array.isArray(VISITS)?VISITS:[]).some(v=>{if(normMrn(v.mrn)!==normMrn(mrn)||!bitInsOk(v.ins,r.ins))return false;   // 보험이 다른 접수는 다른 방문
+    {const vo=String((v.bit&&v.bit.ocmNum)||'').trim();if(ro&&vo&&ro!==vo&&!bitOcmCancelled(vo))return false;}   // 접수번호가 다른 접수 = 다른 방문 (하루 여러 번 접수, 2026-10-04)
     const a=new Date(v.arrivedAt||0).getTime(),d=new Date(v.dischargedAt||0).getTime();
     return !isNaN(a)&&!isNaN(d)&&localYMD(new Date(d))===today&&a<=t+60000&&d>=t;});}
 function bitArrivalMin(r){if(typeof r.hourMin==='number'&&r.hourMin>=0)return r.hourMin;const t=new Date(r.seenAt||0);return isNaN(t)?9999:t.getHours()*60+t.getMinutes();}
