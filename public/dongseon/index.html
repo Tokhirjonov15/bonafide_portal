@@ -841,7 +841,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
   .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
-  .sd-drug{background:#dbeafe;color:#1d4ed8;border:1.5px solid #93c5fd;border-radius:6px;padding:0 5px;margin:0 1px;text-decoration:none;display:inline-block;line-height:1.25}   /* 약물 약어 (2026-10-04) */
+  .sd-drug{font-weight:900}   /* 약물 약어 (2026-10-04) */
   .sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}   /* 놓치면 안 되는 줄 강조 — slipHot() 참고 (2026-09-28 neuropathic pain, 2026-09-29 reduction) */
   .sd-btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.sd-btns .btn{font-size:16px;padding:10px 18px}
   .slip-empty{padding:24px;color:var(--muted);font-size:15px}
@@ -1666,6 +1666,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="slip-search"><i data-lucide="search"></i><input id="slipQ" type="search" name="ds-slip-find" placeholder="환자 성함·차트번호 검색" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" oninput="slipSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';slipSearch('');}"></div>
     <div class="spacer"></div>
     <a class="btn sm" href="?slip" target="_blank" rel="noopener" title="태블릿·별도 창용 주소 (뒤에 &room=물리치료 를 붙이면 그 방 동선의 환자만)"><i data-lucide="external-link"></i> 새 창</a>
+    <button class="btn sm" id="slipWordsBtn" style="display:none" onclick="openSlipWords()" title="슬립에서 빨갛게 강조할 낱말 — 더하고 지우기"><i data-lucide="highlighter"></i> 강조 낱말</button>
     <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()"><i data-lucide="x"></i> 닫기</button>
   </div>
   <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-detail" id="slipDetail"></div></div>
@@ -3227,12 +3228,54 @@ function rxParse(rx){
    · reduction — 골절·탈구 정복. 'reduction' 한 줄로도, 'Lt. wrist reduction' 처럼 부위와 함께도 온다 (2026-09-29 요청)
    · dressing / dr — 상처 소독. 'EOD dressing'·'simple dressing'·'dressing + culture' 처럼 온다. 'dr' 는 낱말 하나일 때만(\bdr\b) —
      pdrn·druj 같은 약·부위 이름 안의 dr 은 잡지 않는다 (2026-09-30 요청. 실제 처방 921건에서 낱말 'dr' 단독은 아직 0건) */
-function slipHot(l){return /neuropathic\s*pain|reduction|dressing|\bdr\b/i.test(String(l||''));}
-/* 약물 강조 (2026-10-04 요청: 기·기D·기T·D·파·기PDRN 등 모든 약물) — 줄 안의 약물 약어만 따로 칠한다.
-   실제 슬립(9/30~10/4, 2,445줄)에서 쓰는 표기: 기, 기d, 기t, pdrn기, 기 x pdrn, 파, 파기, 파/기, 기(소량), 기&at …
-   '/ & , + 공백 ( ) [ ]' 로 나눈 낱말이 통째로 약물 약어일 때만 칠한다 — '기능'·'파스' 같은 낱말은 건드리지 않는다 */
-function slipDrugTok(t){return /^(pdrn)?[기파리]{1,2}(d|t|pdrn)?(x\d+)?$/i.test(t)||/^(D|PDRN|pdrn)$/.test(t);}
-function slipLineHtml(l){return String(l||'').split(/([\/&,+\s()\[\]]+)/).map((t,i)=>(i%2===0&&t&&slipDrugTok(t))?`<b class="sd-drug">${esc(t)}</b>`:esc(t)).join('');}
+/* ═════ 슬립 강조 낱말 (2026-10-04) — 누구나 고치는 목록 하나로 ═════
+   전에는 neuropathic pain·reduction·dressing·dr·약물(기·기d·기t·파·D·PDRN·dexa·라이넥·AT)이 코드에 박혀 있어 지울 수 없었다.
+   이제 모두 아래 기본 목록에서 시작하는 '강조 낱말' 목록 하나 — 슬립 화면 위 [강조 낱말]에서 누구나 더하고 지운다(설정 문서 slipWords).
+   맞추는 법: 한 줄에 하나(띄어쓴 말도 됨). 앞뒤가 띄어쓰기·기호( / & , + ( ) [ ] : . ; - )이거나 줄 끝일 때만 — '기'를 적어도 '기능'은 아님.
+   · 대소문자는 가리지 않는다. 단, 대문자로 적은 1~2글자 영문(D·AT)은 대문자만 — 영어 'at'(…injection at …)이 걸리지 않게
+   · 끝에 * 를 붙이면 그 말로 시작하는 낱말 모두(예: 프롤로* → 프롤로테라피·프롤로주사)
+   맞는 말이 하나라도 있는 줄은 빨갛게(neuropathic pain 처럼), 그 말은 굵게 */
+const SLIP_DEFAULT_WORDS=['neuropathic pain','reduction','dressing','dr','기','기d','기t','기x*','기pdrn','pdrn기','파','파기','리','pdrn','D','dexa','라이넥','AT'];
+let SLIP_WORDS=SLIP_DEFAULT_WORDS.slice(), SLIP_RES=null, SLIP_WORDS_KEY='';
+const SLIP_WORD_EDGE='[\\/&,+\\s()\\[\\]:.;\\-]';
+function slipWordCase(w){return /^[A-Z]{1,2}$/.test(w);}   // 대문자 1~2글자 영문 = 대소문자 그대로
+function slipWordRe(words,flags){
+  const esc1=w=>w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
+  const alts=words.slice().sort((a,b)=>b.length-a.length).map(w=>{const pre=/\*$/.test(w);const b=w.replace(/\*+$/,'').trim();if(!b)return '';
+    return esc1(b)+(pre?'[^\\/&,+\\s()\\[\\]:.;\\-]*':'');}).filter(Boolean);
+  return alts.length?new RegExp('(^|'+SLIP_WORD_EDGE+')('+alts.join('|')+')(?=$|'+SLIP_WORD_EDGE+')',flags):null;}
+function slipRes(){const k=SLIP_WORDS.join('\u0001');if(SLIP_RES&&k===SLIP_WORDS_KEY)return SLIP_RES;SLIP_WORDS_KEY=k;
+  SLIP_RES=[slipWordRe(SLIP_WORDS.filter(w=>!slipWordCase(w)),'gi'),slipWordRe(SLIP_WORDS.filter(slipWordCase),'g')].filter(Boolean);return SLIP_RES;}
+/* 줄 안에서 강조할 구간들 [시작, 끝) — 겹치면 앞의 것 */
+function slipRanges(l){const out=[];slipRes().forEach(re=>{re.lastIndex=0;let m;
+    while((m=re.exec(l))){const st=m.index+m[1].length,en=st+m[2].length;if(en<=st){re.lastIndex=m.index+1;continue;}out.push([st,en]);re.lastIndex=en;}});
+  out.sort((a,b)=>a[0]-b[0]||b[1]-a[1]);const merged=[];out.forEach(r=>{const p=merged[merged.length-1];if(p&&r[0]<p[1])return;merged.push(r);});return merged;}
+function slipHot(l){return slipRanges(String(l||'')).length>0;}
+function slipLineHtml(l){l=String(l||'');let out='',last=0;
+  slipRanges(l).forEach(([st,en])=>{out+=esc(l.slice(last,st))+`<b class="sd-drug">${esc(l.slice(st,en))}</b>`;last=en;});
+  return out+esc(l.slice(last));}
+/* 강조 낱말 설정 창 — 로그인한 직원 누구나 */
+window.openSlipWords=function(){if(!currentUser)return;
+  let ov=document.getElementById('slipWordsPop');
+  if(!ov){ov=document.createElement('div');ov.id='slipWordsPop';ov.className='cst-info-pop';document.body.appendChild(ov);}
+  ov.innerHTML=`<div class="cip-box"><div class="cip-head"><b>슬립 강조 낱말</b><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="document.getElementById('slipWordsPop').classList.remove('show')">닫기</button></div>
+    <div class="hint" style="line-height:1.6;margin-bottom:8px">한 줄에 하나씩 적으세요(띄어쓴 말도 됩니다). 이 말이 든 줄은 <b style="color:#d92d20">빨갛게</b>, 그 말은 굵게 보입니다. 줄을 지우면 그 말은 더 이상 강조하지 않습니다.<br>
+      · 앞뒤가 띄어쓰기·기호( / & , + ( ) : . - )일 때만 맞춥니다 — <b>기</b>를 적어도 '기능'은 강조하지 않습니다.<br>
+      · 대소문자는 가리지 않습니다. 단, 대문자로 적은 1~2글자 영문(예: <b>D</b>, <b>AT</b>)은 대문자만 — 영어 'at'은 걸리지 않게.<br>
+      · 끝에 <b>*</b> 를 붙이면 그 말로 시작하는 낱말 모두 — 예: <b>프롤로*</b> → 프롤로테라피·프롤로주사</div>
+    <textarea id="slipWordsTa" rows="12" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:inherit">${esc(SLIP_WORDS.join('\n'))}</textarea>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><button type="button" class="btn sm" onclick="document.getElementById('slipWordsTa').value=SLIP_DEFAULT_WORDS.join('\\n')" title="처음 목록(neuropathic pain·reduction·dressing·dr·약물)으로 — 저장을 눌러야 바뀝니다">기본값으로</button>
+      <span class="cst-spacer"></span><button type="button" class="btn" onclick="document.getElementById('slipWordsPop').classList.remove('show')">취소</button><button type="button" class="btn primary" onclick="saveSlipWords()">저장</button></div></div>`;
+  ov.classList.add('show');setTimeout(()=>{const t=document.getElementById('slipWordsTa');if(t)t.focus();},50);};
+window.saveSlipWords=function(){if(!currentUser)return;const t=document.getElementById('slipWordsTa');if(!t)return;
+  const seen=new Set();const list=String(t.value||'').split(/\r?\n/).map(x=>x.trim().slice(0,40)).filter(x=>{const k=slipWordCase(x)?x:x.toLowerCase();if(!x||seen.has(k))return false;seen.add(k);return true;}).slice(0,150);
+  const before=SLIP_WORDS.slice();
+  SLIP_WORDS=list;SLIP_RES=null;
+  try{cloudSaveConfig();}catch(e){}
+  const add=list.filter(x=>!before.includes(x)),del=before.filter(x=>!list.includes(x));
+  try{audit('슬립 강조 낱말',(add.length?'추가 '+add.join(', '):'')+(add.length&&del.length?' / ':'')+(del.length?'삭제 '+del.join(', '):'')||'(변경 없음)');}catch(e){}
+  document.getElementById('slipWordsPop').classList.remove('show');
+  try{renderSlipScreen();slipPopRender();}catch(e){}};
 /* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
 function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
   const nm=String((p&&p.name)||'').trim();if(!nm)return null;const c=BIT_NOTES.filter(n=>String(n.name||'').trim()===nm);return c.length===1?c[0]:null;}
@@ -3291,13 +3334,21 @@ function slipHeaderInfo(it){const p=it.p,n=it.note;
   return {sexAge,doc,cur,nxt,hm,birth,pc:n.pc||'',sx,clinic:slipClinicOf(it),f4:slipFloor4Of(it)};
 }
 function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=document.getElementById('slipScreen');if(el)el.classList.add('show');
-  const cb=document.getElementById('slipCloseBtn');if(cb)cb.style.display=SLIP_MODE?'none':'';renderSlipScreen();try{renderWaitPop();}catch(e){}}
+  const cb=document.getElementById('slipCloseBtn');if(cb)cb.style.display=SLIP_MODE?'none':'';
+  {const wb=document.getElementById('slipWordsBtn');if(wb)wb.style.display=currentUser?'':'none';}
+  renderSlipScreen();try{renderWaitPop();}catch(e){}}
 function closeSlipScreen(){slipOpen=false;const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
 /* 슬립 화면 환자 검색 (2026-10-01 요청): 성함·차트번호 일부로 왼쪽 목록을 거른다. 검색 중에는 새 처방이 와도 선택이 옮겨 가지 않는다 */
 var SLIP_Q='';
 /* 검색 칸 자동 채움 막기: 직원이 이 칸에 키를 누르거나 붙여넣지 않았는데 글자가 들어 있으면 브라우저 자동 채움(로그인 아이디)으로 보고 지운다 */
 function guardAutofill(el,onClear){if(!el)return;let typed=false;
   el.addEventListener("keydown",()=>{typed=true;});el.addEventListener("paste",()=>{typed=true;});
+  /* 휴대폰 키보드(특히 한글)는 keydown 을 보내지 않아 직접 친 글자를 자동 채움으로 보고 지웠다 — 검색 칸에 글자가 안 써짐 (2026-10-04).
+     입력 종류(inputType)로 직접 입력을 알아본다: 글자·한글 조합·지우기·붙여넣기 = 직접 입력, 자동 채움(insertReplacementText·종류 없음)만 지운다 */
+  const userInput=e=>!!(e&&(e.isComposing||(e.inputType&&e.inputType!=='insertReplacementText')));
+  el.addEventListener("compositionstart",()=>{typed=true;});
+  el.addEventListener("beforeinput",e=>{if(userInput(e))typed=true;});
+  el.addEventListener("input",e=>{if(userInput(e))typed=true;},true);
   const unfill=()=>{if(!typed&&el.value){el.value='';try{onClear&&onClear();}catch(e){}}};
   el.addEventListener("input",()=>{if(!el.value)typed=false;else if(!typed)setTimeout(unfill,0);});   // 칸을 비우면 다시 감시
   setInterval(unfill,1500);}
@@ -3313,7 +3364,7 @@ const SLIP_POP_CSS='*{box-sizing:border-box}body{margin:0;padding:20px 24px;back
   +'.sd-meta{font-size:16px;color:#4b5563;margin-top:5px}.sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}.sd-badge{background:#eef2ff;color:#3730a3;border-radius:999px;padding:2px 10px;font-size:14px;font-weight:800}'
   +'.rb-4f{display:inline-block;background:rgba(13,148,136,.13);color:#0f766e;border-radius:999px;padding:1px 9px;font-weight:800}'
   +'.sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid #111827}.sd-lines li{font-size:26px;font-weight:700;padding:10px 4px;border-bottom:1px dashed #d1d5db}'
-  +'.sd-drug{background:#dbeafe;color:#1d4ed8;border:1.5px solid #93c5fd;border-radius:6px;padding:0 5px;margin:0 1px;display:inline-block;line-height:1.25}'
+  +'.sd-drug{font-weight:900}'
   +'.sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}.empty{color:#6b7280;font-size:18px;padding:30px 0}';
 function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록에 없습니다</div>';const h=slipHeaderInfo(it);
   const meta=[h.birth?esc(h.birth):'',h.doc?'담당의 <b>'+esc(h.doc)+'</b>':'',h.clinic?'<b>'+esc(h.clinic)+'</b>':'',h.hm,h.f4.length?`<span class="rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''].filter(Boolean).join(' · ');
@@ -3839,9 +3890,25 @@ function holdCardEl(p,room){const c=document.createElement('div');c.className='c
   c.addEventListener('click',()=>openEdit(p.id));
   return c;}
 setInterval(()=>{try{document.querySelectorAll('.hold-clock[data-since]').forEach(el=>{const t=new Date(el.dataset.since).getTime();if(t)el.textContent=fmtClock(Date.now()-t);});}catch(e){}},1000);
+/* ═════ 접수보류 + 담당의 → 그 원장님 진료실로 (2026-10-04 요청) ═════
+   비트 접수보류(WH) 환자에게 담당의가 붙어 있으면(나중에 붙거나 바뀌어도) 카드를 그 원장님 진료실(진료실 관리의 진료의 지정)로 옮긴다.
+   아직 대기 중인 카드만(첫 방 또는 3층 대기실) — 진료·치료 중인 환자는 건드리지 않는다. 한 원장님에 한 번, 여러 화면 중 한 화면만(카드 문서 holdDocMoved 로 선점) */
+const HOLD_DOC_DONE={};
+function holdDocMove(p,doc){
+  const room=docRoomOf(doc);if(!room)return;
+  const key=doc+'|'+room, lk=p.id+'|'+key;
+  if(p.holdDocMoved===key||HOLD_DOC_DONE[lk])return;
+  const cur=curRoom(p);if(cur===room)return;
+  if(!((p.step||0)===0||cur==='3층 대기실'))return;
+  HOLD_DOC_DONE[lk]=1;
+  cloudPatientTxn(p.id,d=>{if(d.holdDocMoved===key)return false;d.holdDocMoved=key;return d;},{keepLocal:true}).then(ok=>{
+    if(ok!==true)return;   // 다른 화면이 이미 옮김
+    const q=data.find(x=>x.id===p.id);if(!q||q.discharged||curRoom(q)===room)return;
+    q.holdDocMoved=key;moveTo(q.id,room);
+    try{audit('접수보류 → 담당의 진료실',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+doc+' → '+room);}catch(e){}});}
 function bitApplyHold(){
   if(!currentUser||!cloud.intakeCol||!cloud.ready.pts)return;
-  const want={},wantAt={};   // 카드 id → 보류 방('' = 보류 아님) / 비트가 보류를 보낸 시각
+  const want={},wantAt={},wantDoc={};   // 카드 id → 보류 방('' = 보류 아님) / 비트가 보류를 보낸 시각 / 접수보류의 담당의
   BIT_INTAKE.forEach(r=>{
     const stt=String(r.stt||'').trim();if(!stt||r.status==='취소')return;
     const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
@@ -3849,6 +3916,7 @@ function bitApplyHold(){
     if(!p)return;
     const h=HOLD_ROOM[stt]||'';
     if(h||!(p.id in want)){want[p.id]=h;if(h)wantAt[p.id]=(r.command===13&&r.eventAt)?r.eventAt:'';}   // 같은 환자의 접수가 둘이면 보류 쪽을 따른다
+    if(h===HOLD_ROOM.WH&&String(r.doctor||'').trim())wantDoc[p.id]=String(r.doctor).trim();
   });
   data.forEach(p=>{if(p.discharged)return;
     const h=(p.id in want)?want[p.id]:(p.bitHold&&!BIT_INTAKE.length?p.bitHold:'');
@@ -3861,6 +3929,7 @@ function bitApplyHold(){
     try{audit(h?('비트 '+h):'비트 보류 해제',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
     /* 2026-10-03 요청: 보류 알림(토스트)은 띄우지 않는다 — 보류 칸 표시와 기록만 */
   });
+  Object.keys(wantDoc).forEach(pid=>{const p=data.find(x=>x.id===pid);if(p&&!p.discharged)try{holdDocMove(p,wantDoc[pid]);}catch(e){console.warn('holdDocMove',e);}});
 }
 function bitApplyReceiveEnd(){
   if(!currentUser||!cloud.intakeCol||!cloud.ready.pts)return;
@@ -4680,9 +4749,14 @@ async function runSelfTest(){
      ok('rxParse: med 없이 중간 줄에 neuropathic pain → 처방 아님', rxParse('PT는 우측 어깨로\nneuropathic pain c-mbb').valid===false);
      eq('rxParse: 구버전 감시 스크립트 호환 — neuropathic pain 으로 시작하는 블록은 배지 없이 처방', (r=>[r.valid,r.lines.length,r.badges.length])(rxParse('neuropathic pain c-mbb\nGreen')), [true,2,0]);
      ok('rxParse: 목록 첫 줄이 med 줄', rxParse('med g\nneuropathic pain x\nGreen').lines[0]==='med g');
-     eq('slipHot: 강조할 줄 — neuropathic pain, reduction(부위와 함께도), dressing, 낱말 dr / 그 밖은 강조 안 함(pdrn·druj 안의 dr 포함)',
-        ['neuropathic pain IA','reduction','Lt. wrist reduction','Rt. foot 2nd toe reduction','REDUCTION','EOD dressing','simple dressing','dr','Dr change','c-mbb rt 345','med g','Green','12.14 tfcc pdrn, druj, pronator q inj.'].map(slipHot),
-        [true,true,true,true,true,true,true,true,true,false,false,false,false]);
+     {const _sw=SLIP_WORDS;SLIP_WORDS=SLIP_DEFAULT_WORDS.slice();SLIP_RES=null;   // 강조 낱말은 직원이 바꾸므로 시험은 기본 목록으로
+     eq('slipHot: 강조할 줄 — neuropathic pain, reduction(부위와 함께도), dressing, 낱말 dr, 약물 줄(2026-10-04: pdrn 도 약물) / 그 밖은 강조 안 함(druj 안의 dr 포함)',
+        ['neuropathic pain IA','reduction','Lt. wrist reduction','Rt. foot 2nd toe reduction','REDUCTION','EOD dressing','simple dressing','dr','Dr change','c-mbb rt 345','med g','Green','12.14 tfcc pdrn, druj, pronator q inj.','12.14 tfcc, druj, pronator q inj.'].map(slipHot),
+        [true,true,true,true,true,true,true,true,true,false,false,false,true,false]);
+     eq('slipHot: 약물 줄 — 기·기d·파·dexa·기+라이넥·AT, 영어 at·기능·보조기는 아님 (2026-10-04)',
+        ['c-mbb rt 456 / lt 456 (기d x 1)','neuropathic 파/기','Caudal block - dexa 1 개','IA (기+라이넥)','ia/am/al/AT','perineural injection at B sup cluneal n.','목 통증 · 기능 회복','보조기 착용'].map(slipHot),
+        [true,true,true,true,true,false,false,false]);
+     SLIP_WORDS=_sw;SLIP_RES=null;}
      ok('슬립 인쇄: reduction 줄에도 강조(np) 클래스', (()=>{const _n=BIT_NOTES;BIT_NOTES=[{docId:'r1',mrn:'296',name:'정복환자',rx:'med\nneuropathic pain\nLt. wrist reduction',updatedAt:new Date().toISOString()}];
         const it=slipItems().find(x=>x.mrn==='296');const h=it?slipHTML(it):'';BIT_NOTES=_n;return /<li class="np">Lt\. wrist reduction<\/li>/.test(h);})());
      {const _n=BIT_NOTES;BIT_NOTES=[{docId:'x',mrn:'555',name:'이름연결',rx:'med\nneuropathic pain z',updatedAt:new Date().toISOString()}];
@@ -5074,7 +5148,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, bkRoster:BK_ROSTER_TEXT, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, slipWords:SLIP_WORDS, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, bkRoster:BK_ROSTER_TEXT, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -5115,6 +5189,8 @@ function applyCfg(d){
   PROC_MATERIALS=(d.procMaterials&&typeof d.procMaterials==='object')?d.procMaterials:{};localStorage.setItem(PROCMAT_STORE,JSON.stringify(PROC_MATERIALS));
   PREP_ITEMS=Array.isArray(d.prepItems)?d.prepItems:DEFAULT_PREP_ITEMS.slice();localStorage.setItem(PREPITEMS_STORE,JSON.stringify(PREP_ITEMS));
   PROC_SET=Array.isArray(d.procSet)?d.procSet:DEFAULT_PROC_SET.slice();localStorage.setItem(PROCSET_STORE,JSON.stringify(PROC_SET));
+  SLIP_WORDS=Array.isArray(d.slipWords)?d.slipWords.map(x=>String(x||'').trim()).filter(Boolean):SLIP_DEFAULT_WORDS.slice();SLIP_RES=null;   // 슬립 강조 낱말(누구나 설정) — 아직 저장 전이면 기본 목록
+  try{renderSlipScreen();slipPopRender();}catch(e){}
   ROUTINES=(Array.isArray(d.routines)&&d.routines.length)?d.routines:DEFAULT_ROUTINES();   // 데모: 비어 있으면 예시 루틴 표시 (지점 확정 후 이 fallback 제거)
   PAY_ROOM=d.payRoom||"";localStorage.setItem("patientBoard_payroom",PAY_ROOM);
   if(typeof d.punctEarly==='number'){PUNCT_EARLY=d.punctEarly;localStorage.setItem("patientBoard_punctearly",String(PUNCT_EARLY));}
@@ -5165,7 +5241,7 @@ function cloudSavePatient(p){
   /* update() 는 지운 필드(delete p.parking 등)를 서버에 반영하지 못하므로, 있는지 확인한 뒤 통째로 set 한다(트랜잭션) */
   const body=jclone(p);
   cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;
-      const sv=snap.data()||{};['waitAlert','routeNote','lobbyAlert','bitHold','bitHoldAt'].forEach(k=>{if(sv[k]!==undefined)body[k]=sv[k];});
+      const sv=snap.data()||{};['waitAlert','routeNote','lobbyAlert','bitHold','bitHoldAt','holdDocMoved'].forEach(k=>{if(sv[k]!==undefined)body[k]=sv[k];});
       if(sv.waitAck)body.waitAck=Object.assign({},sv.waitAck,body.waitAck||{});   /* 대기 확인(사유)은 다른 화면 것도 합친다 */   /* 다른 화면이 찍은 알림 표시를 이 화면의 옛 사본이 지우지 않게 (2026-10-01).
          이 두 칸은 알림 선점 트랜잭션만 쓰므로 언제나 서버 값을 따른다 — 전에는 옛 값이 남아 있으면 그대로 덮어써서 처방 변경 알림이 화면마다 한 번씩 갔다 */
       t.set(ref,body);return true;}))
