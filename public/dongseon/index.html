@@ -9755,7 +9755,7 @@ function waitPopHidden(){if(SLIP_SOLO||slipOpen)return true;const st=document.ge
    admin = 모든 방 · 4층 직원(아래 명단) = 4층 쪽 방 · 의사(role doctor) = 없음 · 그 밖의 직원 = 3층 쪽 방 */
 const WAIT_POP_4F_STAFF=['서효성','김지은','허빈','한상훈','조현신','이세영','황지현','김건휘','김재하','신소현','고민정','박승규','임현주'];
 const WAIT_POP_4F_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','신장분사','충격파','아쿠아','3층 진료실'];
-const WAIT_POP_3F_ROOMS=['3층 대기실','x-ray실','진료실1','진료실3','진료실4','진료 상담','근전도검사','C-Arm','Sono','처치실','CT실','수납대기'];
+const WAIT_POP_3F_ROOMS=['3층 대기실','x-ray실','진료실1','진료실3','진료 상담','근전도검사','C-Arm','Sono','처치실','CT실','수납대기'];
 function waitPopRooms(){if(!currentUser)return [];if(isAdmin())return null;   // null = 모든 방
   const nm=String(currentUser.name||'').replace(/\s+/g,'');
   if(WAIT_POP_4F_STAFF.some(n=>nm.includes(n)))return WAIT_POP_4F_ROOMS;   /* '김지은 선생님'처럼 붙어 있어도 */
@@ -11510,9 +11510,16 @@ function deleteRoom(i){
   const room=ROOMS[i];const dest=ROOMS[i===0?1:0];
   const n=data.filter(p=>p.route.includes(room)).length;
   if(!confirm(n>0?`'${room}' 방을 삭제하면 환자 ${n}명의 동선에서 이 방이 제거됩니다. 진행할까요?`:`'${room}' 방을 삭제할까요?`))return;
-  data.forEach(p=>{p.route=p.route.filter(r=>r!==room);if(!p.route.length)p.route=[dest];if(p.step>p.route.length-1)p.step=p.route.length-1;
-    if(p.notes&&p.notes[room])delete p.notes[room];
-    if(p.consults&&p.consults[room])delete p.consults[room];});                            // 상담결과 키 정리
+  /* 2026-10-04: 그 방이 들어 있는 카드만, 동선·노트·상담 칸만 서버 최신본에 고친다 — 전에는 모든 카드를 통째로 다시 써서
+     다른 화면이 방금 옮긴 단계가 되돌아갈 수 있었다 */
+  const fixRoom=d=>{if(!Array.isArray(d.route))return false;const had=d.route.includes(room)||(d.notes&&d.notes[room])||(d.consults&&d.consults[room]);if(!had)return false;
+    const cur=d.route[Math.max(0,Math.min(d.step||0,d.route.length-1))];
+    d.route=d.route.filter(r=>r!==room);if(!d.route.length)d.route=[dest];
+    {const ns=d.route.indexOf(cur);d.step=ns>=0?ns:Math.min(d.step||0,d.route.length-1);}
+    if(d.notes&&d.notes[room])delete d.notes[room];
+    if(d.consults&&d.consults[room])delete d.consults[room];
+    return d;};
+  const touched=data.filter(p=>fixRoom(p)!==false).map(p=>p.id);
   ROUTINES.forEach(rt=>{if(Array.isArray(rt.rooms))rt.rooms=rt.rooms.filter(r=>r!==room);}); // 루틴 동선에서 제거
   if(PAY_ROOM===room){PAY_ROOM="";localStorage.setItem("patientBoard_payroom","");}          // 수납 방 해제
   ROOMS.splice(i,1);delete ROOM_META[room];
@@ -11520,7 +11527,7 @@ function deleteRoom(i){
     if(Array.isArray(pr.hiddenRooms))pr.hiddenRooms=pr.hiddenRooms.filter(r=>r!==room);
     if(Array.isArray(pr.roomOrder))pr.roomOrder=pr.roomOrder.filter(r=>r!==room);});
   rebuildStaff();savePrefs();
-  localStorage.setItem(STORE,JSON.stringify(data));localStorage.setItem(ROUTINE_STORE,JSON.stringify(ROUTINES));data.forEach(cloudSavePatient);  // 모든 환자 동선 갱신
+  localStorage.setItem(STORE,JSON.stringify(data));localStorage.setItem(ROUTINE_STORE,JSON.stringify(ROUTINES));touched.forEach(pid=>cloudPatientTxn(pid,fixRoom,{keepLocal:true}));   // 그 방이 있던 카드만
   saveRooms();render();renderRoomsList();
 }
 
