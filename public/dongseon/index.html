@@ -8297,7 +8297,7 @@ function pbRender(){
   if(left<1){PB.pick='';PB.phase='done';pbRender();return;}
   if(PB.pick){box.innerHTML=`<div class="ks-center"><div class="ks-h1"><b>${esc(PB.pick)}</b> 을(를) 무료로 받으시겠어요?</div>${PB_ITEM_INFO[PB.pick]?`<div class="ks-h2">${esc(PB_ITEM_INFO[PB.pick])}</div>`:''}
       <div class="ks-btns"><button type="button" class="ks-btn ks-main" id="pbYes" onclick="pbConfirm()">네, 받을게요</button><button type="button" class="ks-btn ks-sub" onclick="PB.pick='';pbRender()">다시 고르기</button></div></div>`;return;}
-  box.innerHTML=`<div class="ks-h1">무료로 받으실 치료를 하나 골라 주세요</div><div class="ks-h2">리뷰·주사 감사 혜택 · 남은 무료 <b>${left}회</b></div>
+  box.innerHTML=`<div class="ks-h1">받으실 치료를 하나 골라 주세요</div><div class="ks-h2">리뷰·주사 감사 혜택 · 남은 무료 <b>${left}회</b></div>
     <div class="ks-items">${BONUS_ITEMS.map(it=>`<button type="button" class="ks-item" onclick="PB.pick='${it}';pbRender()"><span class="ks-iname">${esc(it)}</span>${PB_ITEM_INFO[it]?`<span class="ks-idesc">${esc(PB_ITEM_INFO[it])}</span>`:''}</button>`).join('')}</div>`;}
 window.pbCheck=function(){if(PB.mode!=='review'||PB.phase!=='cam')return;PB.phase='scan';
   const b=document.getElementById('pbCheckBtn');if(b){b.disabled=true;b.textContent='확인 중…';}
