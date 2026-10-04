@@ -138,6 +138,18 @@
   .shx{cursor:pointer; color:var(--warn); font-weight:800; padding:0 6px; font-size:12px}
   .shtb th{padding-right:2px}
   .shtb th .shcell{display:inline-block}
+  /* 층별 구역·약품/물품 (2026-10-04) */
+  .secrow td{background:#eef4fb; cursor:pointer; user-select:none; padding:8px 12px; border-top:2px solid #c9d8ec; font-size:14px}
+  .secrow .chev{display:inline-block; transition:transform .15s; margin-right:4px}
+  .secrow .chev.open{transform:rotate(90deg)}
+  .secrow .secbtn{float:right}
+  .kseg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--card)}
+  .kseg button{border:0; background:none; padding:8px 13px; font:inherit; font-size:13px; font-weight:700; cursor:pointer; color:var(--sub,#555)}
+  .kseg button+button{border-left:1px solid var(--line)}
+  .kseg button.on{background:#1d5fb8; color:#fff}
+  .kbadge{display:inline-block; font-size:12px; margin-right:3px}
+  .kbadge.auto{opacity:.55}
+  .bulktools{display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap}
   .lowgrp td{background:var(--warn-bg); cursor:pointer; user-select:none; padding:9px 12px}
   .lowgrp b{color:var(--warn)}
   .lowgrp .chev{display:inline-block; transition:transform .15s; margin-right:4px}
@@ -396,11 +408,17 @@
       <button class="btn ghost" id="reloadBtn" title="다시 불러오기"><i data-lucide="refresh-cw"></i></button>
       <button class="btn ghost" id="todayLabelBtn" title="오늘 추가된 모든 품목의 라벨을 한 번에 인쇄"><i data-lucide="tags"></i> 오늘 품목 라벨</button>
       <button class="btn ghost" id="bulkDelBtn" style="display:none;color:var(--warn)" onclick="bulkDelete()" title="체크한 품목을 한꺼번에 삭제 (관리자)"><i data-lucide="trash-2"></i> 선택 삭제 <span id="bulkCnt"></span></button>
+      <span id="bulkTools" class="bulktools" style="display:none">
+        <button class="btn ghost" onclick="selClear()" title="체크한 품목 모두 해제"><i data-lucide="x"></i> 선택 해제</button>
+        <select class="fsel" title="체크한 품목의 층(보관 위치)을 한꺼번에" onchange="bulkSet('loc',this.value);this.value=''"><option value="">층 지정…</option><option value="3층">3층</option><option value="4층">4층</option><option value="10층">10층</option><option value="__none__">위치 비우기</option></select>
+        <select class="fsel" title="체크한 품목을 약품/물품으로" onchange="bulkSet('kind',this.value);this.value=''"><option value="">약품/물품…</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option><option value="__auto__">자동 판정으로</option></select>
+      </span>
       <button class="btn ghost" id="hiddenBtn" style="display:none" onclick="openHidden()" title="숨긴 품목 보기·되돌리기 (관리자)"><i data-lucide="eye-off"></i> 숨긴 목록 <span id="hiddenCnt"></span></button>
       <button class="btn" id="addBtn"><i data-lucide="plus"></i> 품목 추가</button>
     </div>
     <div class="bar" style="margin-top:-4px">
-      <select id="catFilter" class="fsel"><option value="">전체 분류</option></select>
+      <span class="kseg" id="kindSeg"></span>
+      <select id="catFilter" class="fsel" style="display:none"><option value="">전체 분류</option></select>
       <span class="selwrap"><i data-lucide="map-pin" class="selicon"></i><select id="locFilter" class="fsel"><option value="">전체 위치</option></select></span>
       <select id="stateFilter" class="fsel">
         <option value="">전체 상태</option>
@@ -446,6 +464,7 @@
         <input type="month" id="shMonth" onchange="sheetPickMonth(this.value)" style="padding:5px 8px;border:1px solid var(--line);border-radius:8px;font:inherit"></label>
       <span id="shMonths" style="display:inline-flex;flex-wrap:wrap;gap:4px"></span>
       <button class="btn ghost small" id="shCopyPrev" onclick="sheetCopyPrev()" style="display:none"><i data-lucide="copy"></i> 지난달 표 복사해서 시작</button>
+      <button class="btn ghost small" id="shRxBtn" onclick="xlFillRx(false)" title="비트 처방내역에서 이 달 처방코드별 처방량을 가져와 '처방량' 칸에 넣습니다"><i data-lucide="pill"></i> 비트 처방량</button>
       <span class="muted" id="shInfo" style="margin-left:auto"></span>
     </div>
     <div class="xl" id="xlBox">
@@ -542,6 +561,10 @@
   <div class="mrow">
     <div><label>카테고리</label><input id="pCat" list="catList" placeholder="예) 소모품"><datalist id="catList"></datalist></div>
     <div><label>처방코드 (비트)</label><input id="pRx" placeholder="예) sono3, MM085"><datalist id="locList"></datalist></div>
+  </div>
+  <div class="mrow">
+    <div><label>약품 / 물품</label><select id="pKind" class="fsel" style="width:100%"><option value="">자동</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option></select></div>
+    <div></div>
   </div>
   <div class="mrow">
     <div><label>단위</label><input id="pUnit" placeholder="예) 박스"></div>
@@ -792,6 +815,7 @@ window.openHidden=function(){ if(!(ME&&ME.admin)) return; renderHiddenList(); $(
 /* 선택 삭제 — 관리자만 (서버도 확인) */
 function syncBulkUI(){
   const b=$("bulkDelBtn"); if(b){ b.style.display=(ME&&ME.admin&&SEL.size)?"":"none"; $("bulkCnt").textContent=SEL.size?`(${SEL.size})`:""; }
+  const t=$("bulkTools"); if(t) t.style.display=(ME&&ME.admin&&SEL.size)?"":"none";
   const a=$("selAll"); if(a){ const n=VISIBLE_IDS.filter(id=>SEL.has(id)).length;
     a.checked=VISIBLE_IDS.length>0&&n===VISIBLE_IDS.length; a.indeterminate=n>0&&n<VISIBLE_IDS.length; }
 }
@@ -855,7 +879,9 @@ const DRUG_CATS=new Set(["예방주사","독감","골다공증","연골주사","
   "진해거담제","진경제","항응고제","소염진통","소화기","조영제","항생제","항히스타민",
   "주사MIX","수액바탕","수액","멸균증류수","수액MIX","로션","다이어트","연고","마취크림","소독","보톡스"]);
 const DRUG_VENDORS=new Set(["한대표님","블루팜"]);
-function kindOf(p){
+/* 약품/물품 (2026-10-04): 품목에 직접 지정한 값(kind)이 있으면 그것, 없으면 카테고리·거래처로 자동 판정 */
+function kindOf(p){ return (p&&(p.kind==="약품"||p.kind==="물품"))?p.kind:kindAuto(p); }
+function kindAuto(p){
   if(DRUG_CATS.has((p.cat||"").trim())) return "약품";
   if(DRUG_VENDORS.has((p.vendor||"").trim())) return "약품";
   return "물품";
@@ -894,6 +920,45 @@ function matchState(p, sel){
   if(sel==="ok") return !st.low && !st.expired && !st.soon;
   return true;
 }
+/* ═════ 층별 구역 (2026-10-04 요청: 층 구분) ═════
+   품목의 보관 위치(loc)에 든 층(3층·4층·10층)으로 묶어 구역마다 머리줄을 단다. 그 밖의 위치는 이름순, 위치가 없으면 '위치 미지정'.
+   머리줄을 누르면 접고 펼친다(이 기기에 기억). 관리자는 '이 구역 전체 선택' 후 위 막대에서 층·약품/물품을 한꺼번에 바꾼다 */
+let SEC_CLOSED={}; try{SEC_CLOSED=JSON.parse(localStorage.getItem("jaego_sec_closed")||"{}")||{};}catch(_){}
+let SEC_KEYS=[], SEC_LISTS=[];
+function floorKeyOf(p){ const l=String(p.loc||"").trim(); if(!l) return ""; return FLOORS.find(f=>l.includes(f))||l; }
+function secHtml(list, ADM, rowFn){
+  const cols=ADM?10:9, groups=new Map();
+  list.forEach(p=>{ const k=floorKeyOf(p); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(p); });
+  SEC_KEYS=[...FLOORS.filter(f=>groups.has(f)), ...[...groups.keys()].filter(k=>k&&!FLOORS.includes(k)).sort((a,b)=>a.localeCompare(b,"ko")), ...(groups.has("")?[""]:[])];
+  SEC_LISTS=SEC_KEYS.map(k=>groups.get(k));
+  VISIBLE_IDS=[];
+  return SEC_KEYS.map((k,i)=>{
+    const L=SEC_LISTS[i], closed=!!SEC_CLOSED[k||"__none__"], nDrug=L.filter(p=>kindOf(p)==="약품").length;
+    if(!closed) L.forEach(p=>VISIBLE_IDS.push(p.id));
+    return `<tr class="secrow" onclick="toggleSec(${i})"><td colspan="${cols}"><span class="chev ${closed?"":"open"}">▶</span>
+        <b><i data-lucide="map-pin"></i> ${k?esc(k):"위치 미지정"}</b> <span class="muted">${L.length}품목 · 💊 약품 ${nDrug} · 📦 물품 ${L.length-nDrug}${closed?" · 접힘":""}</span>
+        ${ADM?`<button class="btn small ghost secbtn" onclick="event.stopPropagation();selectSec(${i})" title="이 구역 품목을 모두 체크">이 구역 전체 선택</button>`:""}</td></tr>`
+      +(closed?"":L.map(rowFn).join(""));
+  }).join("");
+}
+window.toggleSec=function(i){ const k=SEC_KEYS[i]; if(k===undefined) return; const key=k||"__none__";
+  if(SEC_CLOSED[key]) delete SEC_CLOSED[key]; else SEC_CLOSED[key]=1;
+  try{localStorage.setItem("jaego_sec_closed",JSON.stringify(SEC_CLOSED));}catch(_){}
+  render(); };
+window.selectSec=function(i){ (SEC_LISTS[i]||[]).forEach(p=>SEL.add(p.id)); render(); };
+window.selClear=function(){ SEL.clear(); render(); };
+/* 체크한 품목의 층·약품/물품 한꺼번에 (관리자) */
+window.bulkSet=async function(field, v){
+  if(!v) return;
+  if(!(ME&&ME.admin)){alert("관리자만 할 수 있습니다.");return;}
+  const list=PRODUCTS.filter(p=>SEL.has(p.id)); if(!list.length) return;
+  const val=(v==="__none__"||v==="__auto__")?"":v;
+  const what=field==="loc"?(val?`층을 '${val}'(으)로`:"위치를 비우기로"):(val?`'${val}'(으)로`:"자동 판정으로");
+  if(!confirm(`체크한 ${list.length}개 품목의 ${what} 바꿉니다.`)) return;
+  try{ await API.call("/product/bulk-update",{ids:list.map(p=>p.id),[field]:val});
+    await refresh(true);
+  }catch(err){ alert("바꾸지 못했습니다: "+err.message); }
+};
 function render(){
   const q=($("q").value||"").trim().toLowerCase();
   const locSel=$("locFilter").value, catSel=$("catFilter").value,
@@ -952,7 +1017,7 @@ function render(){
         ${ADM?`<th class="selcol"><input type="checkbox" id="selAll" title="보이는 품목 전체 선택" onchange="selectAllVisible(this.checked)"></th>`:""}<th class="namecol">품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
         <th>유통기한</th><th>입출고</th>
-      </tr></thead><tbody>${lowGroupRow}${(VISIBLE_IDS=rows.filter(p=>lowOpenT||!isLow(p)).map(p=>p.id), rows.filter(p=>lowOpenT||!isLow(p))).map(p=>{
+      </tr></thead><tbody>${lowGroupRow}${secHtml(rows.filter(p=>lowOpenT||!isLow(p)), ADM, p=>{
         const ls=lotsOf(p.id);
         const open=!!LOT_OPEN[p.id];
         const expCell = !ls.length ? "—"
@@ -968,7 +1033,7 @@ function render(){
           }).join("")}</td></tr>` : "";
         return `<tr class="${isLow(p)?"low":""}${SEL.has(p.id)?" selrow":""}">
           ${ADM?`<td class="selcol"><input type="checkbox" ${SEL.has(p.id)?"checked":""} onclick="event.stopPropagation()" onchange="selToggle('${p.id}',this.checked)"></td>`:""}
-          <td class="namecol">${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}${isLow(p)&&ME&&ME.admin?` <button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
+          <td class="namecol">${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<span class="kbadge${p.kind?"":" auto"}" title="${kindOf(p)}${p.kind?"":" (자동 판정)"}">${kindOf(p)==="약품"?"💊":"📦"}</span><b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}${isLow(p)&&ME&&ME.admin?` <button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
           <td class="hidem muted" style="white-space:nowrap">${esc(p.loc||"")}</td>
@@ -995,7 +1060,7 @@ function render(){
             </div>
           </td>
         </tr>${lotDetail}`;
-      }).join("")}</tbody></table>`;
+      })}</tbody></table>`;
 
   /* 담당 표시: 직원에게는 아이디만, 관리자에게는 "아이디 (이름)" */
   const whoDisp=w=>{
@@ -1044,6 +1109,9 @@ function render(){
     `<option value="약품">💊 약품 (${nDrug})</option>`+
     `<option value="물품">📦 물품 (${PRODUCTS.length-nDrug})</option>`;
   $("catFilter").value=keepCat; if($("catFilter").selectedIndex<0) $("catFilter").value="";
+  {const cur=$("catFilter").value;
+   $("kindSeg").innerHTML=[["","전체",PRODUCTS.length],["약품","💊 약품",nDrug],["물품","📦 물품",PRODUCTS.length-nDrug]]
+     .map(([v,t,n])=>`<button type="button" class="${cur===v?"on":""}" onclick="$('catFilter').value='${v}';render()">${t} <span style="opacity:.75">${n}</span></button>`).join("");}
 
   const vens=[...new Set(PRODUCTS.map(p=>(p.vendor||"미지정").trim()||"미지정"))].sort((a,b)=>a.localeCompare(b,"ko"));
   const keepVen=venSel;
@@ -1132,11 +1200,60 @@ async function xlLoad(month){
     SHEET_MONTH=r.month; SHEET_META={months:r.months||[],current:r.current||'',from:r.from||''};
     BOOK=r.book&&Array.isArray(r.book.sheets)&&r.book.sheets.length?r.book:xlSeedBook();
     if(r.from!=='book')BOOK.updatedAt=0;
-    CUR=0; SHEET_DIRTY=false; XL_SEL=null;
+    CUR=0; SHEET_DIRTY=false; XL_SEL=null; XL_RX=null;
     renderXl();
+    xlFillRx(true);   /* 비트 처방량 — 새 자료가 있으면 저절로 채운다 */
   }catch(err){ $("sheetWrap").innerHTML=`<div class="errbox">불러오지 못했습니다: ${esc(err.message)}</div>`; }
   finally{ sheetBusy=false; }
 }
+/* ═════ 비트 처방량 (2026-10-04 요청) ═════
+   DB 에이전트(db1.4)가 그 달 처방을 처방코드별로 센다: 이번 달은 30분마다(진행 중), 달이 바뀌면 지난달을 마지막 날 진료 마감까지 다시 세어 '확정'.
+   각 시트에서 머리글이 '처방량'·'처방코드'인 열을 찾아, 처방코드 칸의 코드('/' 나 ',' 로 여러 개)의 합을 처방량 칸에 넣는다.
+   · '처방용량' 열이 있는 시트(약품통계) = 처방 건수 — 표의 '처방x용량 = 사용갯수' 식이 건수 기준이라서 (예: dxmt 57건 × 0.03)
+   · 없는 시트(물품통계) = 총투여량(수량×횟수×일수) — 코반 2개 처방 같은 것을 그대로 센다
+   코드가 비트에 없으면: 띄어쓰기 없는 코드 모양이면 0, 설명 글('코드x', '… 같이확인')이면 칸을 건드리지 않는다.
+   열 때 자동으로 채우되 같은 자료(at)로 이미 채운 문서는 다시 채우지 않는다. 관리자가 저장해야 보관된다 */
+let XL_RX=null;
+function xlNormH(h){return String(h||'').replace(/\s+/g,'');}
+window.xlFillRx=async function(auto){
+  if(!BOOK||!SHEET_MONTH)return;
+  const month=SHEET_MONTH;
+  let d;
+  try{ d=await API.call("/rxmonth?month="+encodeURIComponent(month)); }
+  catch(err){ if(!auto)alert("비트 처방량을 불러오지 못했습니다: "+err.message); return; }
+  if(month!==SHEET_MONTH)return;   // 그새 다른 달로 넘어갔으면 버린다
+  XL_RX=d; xlInfo();
+  if(!d.found){ if(!auto)alert(`${month} 비트 처방 합계가 아직 없습니다.\n(처방 연동 프로그램 db1.4 가 켜져 있어야 30분마다 만들어집니다)`); return; }
+  if(auto&&BOOK.rxFill&&BOOK.rxFill.at===d.at)return;   // 같은 자료로 이미 채움
+  const byCod={};
+  (d.rows||[]).forEach(r=>{const k=String(r.cod||'').trim().toLowerCase();if(!k)return;
+    const o=byCod[k]||(byCod[k]={n:0,tot:0});o.n+=Number(r.n)||0;o.tot+=Number(r.tot)||0;});
+  xlCapture();
+  let filled=0,zero=0,skipped=0;
+  BOOK.sheets.forEach(sh=>{
+    const H=(sh.cols||[]).map(xlNormH);
+    const ci=H.indexOf('처방량'), cc=H.indexOf('처방코드'); if(ci<0||cc<0)return;
+    const useN=H.indexOf('처방용량')>=0;
+    (sh.rows||[]).forEach(row=>{
+      const raw=String(row[cc]==null?'':row[cc]).trim(); if(!raw)return;
+      const toks=raw.split(/[\/,，]/).map(t=>t.trim()).filter(Boolean);
+      let hit=false,sum=0;
+      toks.forEach(t=>{const o=byCod[t.toLowerCase()];if(o){hit=true;sum+=useN?o.n:o.tot;}});
+      let v;
+      if(hit)v=sum;
+      else if(toks.every(t=>/^\S+$/.test(t)&&!/^코드x$/i.test(t)))v=0;   // 코드 모양인데 이 달 처방이 없음
+      else {skipped++;return;}
+      while(row.length<=ci)row.push('');
+      row[ci]=String(Math.round(v*100)/100);
+      if(v)filled++;else zero++;
+    });
+  });
+  BOOK.rxFill={month,at:d.at,final:!!d.final,upto:d.upto||''};
+  if(xlAdm())SHEET_DIRTY=true;
+  xlRenderGrid(); xlInfo();
+  const msg=`비트 처방량 반영: ${filled}칸${zero?` · 이 달 처방 없음(0) ${zero}칸`:''}${skipped?` · 코드가 아닌 칸 ${skipped}개는 그대로`:''} — ${d.final?d.upto+' 기준 확정':d.upto+' 기준(진행 중)'}${xlAdm()?'\n저장을 눌러야 보관됩니다.':''}`;
+  if(auto){ const el=$("shInfo"); if(el)el.title=msg; } else alert(msg);
+};
 let XL_BUILDING=false;   /* 표를 새로 그리는 동안(저장된 서식·병합을 다시 입힐 때) 생기는 변경 알림은 수정으로 치지 않는다 */
 function xlDirty(){if(XL_BUILDING||SHEET_DIRTY)return;SHEET_DIRTY=true;xlInfo();}
 function prevSavedMonth(){return (SHEET_META.months||[]).filter(m=>m<SHEET_MONTH).slice(-1)[0]||'';}
@@ -1147,6 +1264,7 @@ function xlInfo(){
   else if(BOOK.copiedFrom) info=`${BOOK.copiedFrom} 문서를 복사했습니다 — 저장해야 ${SHEET_MONTH} 로 보관됩니다`;
   else if(SHEET_META.from==='old') info=`예전 표를 불러왔습니다 — 저장하면 ${SHEET_MONTH} 통합문서로 보관됩니다`;
   else info=`${SHEET_MONTH} — 아직 저장된 문서가 없습니다`;
+  if(XL_RX&&XL_RX.found) info+=` · 처방량: 비트 ${XL_RX.final?`${XL_RX.upto} 기준 (확정)`:`${XL_RX.upto} 기준 (진행 중)`}`;
   if(!adm) info+="  (수정은 관리자만)";
   if(SHEET_DIRTY) info="● 저장 안 됨 · "+info;
   $("shInfo").textContent=info;
@@ -1304,7 +1422,7 @@ window.sheetSave=async function(){
   const btn=$("xlSaveBtn");if(btn)btn.disabled=true;
   try{
     const sheets=BOOK.sheets.map(s=>({name:s.name,cols:s.cols,rows:s.rows,widths:s.widths,style:s.style,merge:s.merge,comments:s.comments}));
-    await API.call("/statbook",{month:SHEET_MONTH, book:{sheets}});
+    await API.call("/statbook",{month:SHEET_MONTH, book:{sheets, rxFill:BOOK.rxFill}});
     BOOK.updatedAt=Date.now(); BOOK.updatedBy=ME.email; delete BOOK.copiedFrom;
     SHEET_META.from='book';
     if(!SHEET_META.months.includes(SHEET_MONTH))SHEET_META.months=[...SHEET_META.months,SHEET_MONTH].sort();
@@ -2131,6 +2249,7 @@ window.openProd=function(id){
   $("prodTitle").textContent=p?"품목 수정":"품목 추가";
   $("pName").value=p?p.name:""; $("pCat").value=p?(p.cat||""):"";
   $("pRx").value=p?(p.rx||""):""; $("pUnit").value=p?(p.unit||""):"";
+  $("pKind").options[0].textContent=p?`자동 (지금: ${kindAuto(p)})`:"자동 (카테고리·거래처로 판정)"; $("pKind").value=p?(p.kind||""):"";
   $("pMin").value=p?(p.min||0):0; $("pBar").value=p?(p.bar||""):"";
   $("pPar").value=p?(p.par||0):0; $("pAlt").value=p?(p.alt||""):"";
   $("pPrice").value=p?(p.price||0):0; $("pVendor").value=p?(p.vendor||""):"";
@@ -2209,7 +2328,7 @@ $("prodSave").onclick=async()=>{
   const name=$("pName").value.trim();
   if(!name){ alert("품목명을 입력하세요."); return; }
   const payload={ id:editId||undefined, name,
-    cat:$("pCat").value.trim(), unit:$("pUnit").value.trim(), rx:$("pRx").value.trim(),
+    cat:$("pCat").value.trim(), unit:$("pUnit").value.trim(), rx:$("pRx").value.trim(), kind:$("pKind").value,
     /* 층(3·4·10층)은 팝업에서 바꾸지 않는다 — 새 품목은 이 기기의 층, 수정은 원래 층 그대로 (2026-09-27) */
     loc: editId ? ((PRODUCTS.find(x=>x.id===editId)||{}).loc||"") : ($("scanLoc").value||"10층"),
     bar:$("pBar").value.trim(), min:+$("pMin").value||0,

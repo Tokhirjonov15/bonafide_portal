@@ -84,6 +84,7 @@ const MIGRATIONS = [
   `ALTER TABLE products  ADD COLUMN order_group TEXT DEFAULT ''`,
   `ALTER TABLE products  ADD COLUMN rx_code TEXT DEFAULT ''`,   // 비트 처방코드 (2026-09-27)
   `ALTER TABLE products  ADD COLUMN hidden  INTEGER DEFAULT 0`,  // 안 쓰는 품목 숨김 — 관리자만 (2026-09-27)
+  `ALTER TABLE products  ADD COLUMN kind    TEXT DEFAULT ''`,     // 약품/물품 직접 지정 (2026-10-04). '' = 카테고리·거래처로 자동 판정
   `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`
 ];
@@ -165,12 +166,14 @@ function normDate(v) {
   return `${y}-${m}-${d}`;
 }
 
+const kindVal = (v) => { v = s(v); return v === "약품" || v === "물품" ? v : ""; };   // 약품/물품 직접 지정 — 그 밖의 값은 '자동'
+
 /* ---------- 조회 ---------- */
 async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
            p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
-           p.order_unit AS ounit, p.order_group AS ogrp, p.rx_code AS rx, COALESCE(p.hidden,0) AS hidden, p.created_at,
+           p.order_unit AS ounit, p.order_group AS ogrp, p.rx_code AS rx, COALESCE(p.hidden,0) AS hidden, COALESCE(p.kind,'') AS kind, p.created_at,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -937,7 +940,9 @@ async function handleApi(request, env, url, ident, ctx) {
       style: x.style && typeof x.style === "object" ? x.style : undefined,
       merge: x.merge && typeof x.merge === "object" ? x.merge : undefined,
       comments: x.comments && typeof x.comments === "object" ? x.comments : undefined }));
-    const payload = JSON.stringify({ sheets: clean, updatedAt: Date.now(), updatedBy: actor });
+    /* 비트 처방량을 어떤 자료로 채웠는지(같은 자료로 다시 채우지 않게) — 2026-10-04 */
+    const rf = book.rxFill && typeof book.rxFill === "object" ? { month: s(book.rxFill.month), at: s(book.rxFill.at), final: !!book.rxFill.final, upto: s(book.rxFill.upto) } : undefined;
+    const payload = JSON.stringify({ sheets: clean, rxFill: rf, updatedAt: Date.now(), updatedBy: actor });
     if (payload.length > 1800000) return json({ error: "통합문서가 너무 큽니다(1.8MB 초과). 시트를 나누어 주세요." }, 400);
     await env.DB.prepare(`INSERT INTO meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
       .bind("statbook_" + month, payload).run();
@@ -994,21 +999,21 @@ async function handleApi(request, env, url, ident, ctx) {
 
     if (body.id) {
       await env.DB.prepare(
-        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=?, rx_code=COALESCE(?, rx_code) WHERE id=?`
+        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=?, rx_code=COALESCE(?, rx_code), kind=COALESCE(?, kind) WHERE id=?`
       ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), body.rx === undefined ? null : s(body.rx), s(body.id)).run();
+             n(body.ounit), s(body.ogrp), body.rx === undefined ? null : s(body.rx), body.kind === undefined ? null : kindVal(body.kind), s(body.id)).run();
       return json({ ok: true, id: body.id });
     }
 
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,kind,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), s(body.rx), Date.now())
+             n(body.ounit), s(body.ogrp), s(body.rx), kindVal(body.kind), Date.now())
     ];
     const init = n(body.init);
     if (init > 0) {
@@ -1018,6 +1023,40 @@ async function handleApi(request, env, url, ident, ctx) {
     }
     await env.DB.batch(stmts);
     return json({ ok: true, id });
+  }
+
+  /* 여러 품목의 층(위치)·약품/물품 한꺼번에 바꾸기 — 관리자만 (2026-10-04). loc·kind 중 준 것만 바꾼다 */
+  if (path === "/product/bulk-update" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "관리자만 한꺼번에 바꿀 수 있습니다." }, 403);
+    const ids = (Array.isArray(body.ids) ? body.ids : []).map(s).filter(Boolean).slice(0, 1000);
+    if (!ids.length) return json({ error: "바꿀 품목이 없습니다." }, 400);
+    const setLoc = body.loc !== undefined, setKind = body.kind !== undefined;
+    if (!setLoc && !setKind) return json({ error: "바꿀 항목(loc 또는 kind)이 없습니다." }, 400);
+    const stmts = ids.map((id) => setLoc && setKind
+      ? env.DB.prepare(`UPDATE products SET loc=?, kind=? WHERE id=?`).bind(s(body.loc), kindVal(body.kind), id)
+      : setLoc ? env.DB.prepare(`UPDATE products SET loc=? WHERE id=?`).bind(s(body.loc), id)
+      : env.DB.prepare(`UPDATE products SET kind=? WHERE id=?`).bind(kindVal(body.kind), id));
+    await env.DB.batch(stmts);
+    return json({ ok: true, updated: ids.length });
+  }
+
+  /* 비트 한 달 처방 합계 (2026-10-04) — DB 에이전트(db1.4)가 bitRx/_month_YYYY-MM 에 코드별 건수(n)·총투여량(tot)을 쓴다.
+     통계표의 '처방량' 칸을 처방코드로 채우는 데 쓴다. Firestore 는 서비스 계정(FIREBASE_SA)으로 읽는다 */
+  if (path === "/rxmonth" && method === "GET") {
+    const month = s(url.searchParams.get("month"));
+    if (!/^\d{4}-\d{2}$/.test(month)) return json({ error: "month=YYYY-MM 이 필요합니다." }, 400);
+    try {
+      const tok = await saAccessToken(env);
+      const r = await fetch(`https://firestore.googleapis.com/v1/projects/${saCache.pid}/databases/(default)/documents/bitRx/_month_${month}`, { headers: { authorization: "Bearer " + tok } });
+      if (r.status === 404) return json({ ok: true, month, found: false });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return json({ error: "Firestore 읽기 실패: " + ((d.error && d.error.message) || r.status) }, 502);
+      const f = d.fields || {};
+      const str = (v) => (v && (v.stringValue !== undefined ? v.stringValue : v.integerValue !== undefined ? String(v.integerValue) : v.doubleValue !== undefined ? String(v.doubleValue) : "")) || "";
+      const num = (v) => Number(str(v)) || 0;
+      const rows = (((f.rows || {}).arrayValue || {}).values || []).map((x) => { const g = (x.mapValue || {}).fields || {}; return { cod: str(g.cod), n: num(g.n), tot: num(g.tot) }; });
+      return json({ ok: true, month, found: true, final: !!(f.final && f.final.booleanValue), upto: str(f.upto), at: str(f.at), pc: str(f.pc), rows });
+    } catch (e) { return json({ error: e.message || String(e) }, 500); }
   }
 
   /* 여러 품목 한꺼번에 삭제 — 관리자만 (2026-09-27). 입출고 기록도 함께 지운다 */

@@ -34,6 +34,7 @@ param(
   [int]$RecentMin = 30,                     # 시작 스냅샷이라도 이 시간 안에 접수된 환자는 보낸다(아침에 PC 가 켜지기 전 접수된 환자가 빠지지 않도록, 2026-09-17). 0 = 끔
   [int]$ResvDays = 7,                       # 진료 예약(RsvInf)을 오늘부터 며칠치 올릴지 → bitResv/{날짜}. 0 = 예약 연동 끔
   [int]$ResvEvery = 2,                      # 예약은 몇 주기마다 읽을지(2 = 8초). 바뀐 날짜의 문서만 다시 쓴다
+  [int]$RxMonthMin = 30,                    # 재고 통계표용 한 달 처방 합계(코드별 건수·총투여량)를 몇 분마다 다시 셀지. 0 = 끔 (db1.4)
   [int]$RxEvery = 3,                        # 처방(OdrInf)을 몇 주기마다 읽을지(3 = 12초). 0 = 처방 연동 끔. 바뀐 접수건만 다시 쓴다
   [switch]$RxAlways,
   [switch]$PayAlways,                       # 대기(standby)여도 처방 금액(pay)은 쓴다 — 접수 PC 가 db1.2 전인 동안 개발 PC 에서 (2026-10-01)                        # 대기(standby)여도 처방 문서는 쓴다 — 담당 PC 가 처방 기능이 없는 옛 버전인 동안
@@ -50,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.3'   # 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.4'   # 1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -154,11 +155,11 @@ function AssertReadonlySql($sql) {
   if ($sql.Contains(';')) { throw "읽기 전용 검사 실패: 문장 구분자(;)" }
   if ($u -match '\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|GRANT|REVOKE|INTO|BULK|OPENROWSET|XP_\w+|SP_\w+)\b') { throw "읽기 전용 검사 실패: 금지 단어 $($Matches[1])" }
 }
-function SqlRows($sql) {   # 폴링마다 열고 닫음(연결 유지 안 함). NOLOCK + READ UNCOMMITTED + LOCK_TIMEOUT 3초 → 비트 작업을 기다리게 하지 않음
+function SqlRows($sql, $timeoutSec = 10) {   # 폴링마다 열고 닫음(연결 유지 안 함). NOLOCK + READ UNCOMMITTED + LOCK_TIMEOUT 3초 → 비트 작업을 기다리게 하지 않음
   AssertReadonlySql $sql
   $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$SqlPassword;Connect Timeout=8;ApplicationIntent=ReadOnly")
   try {
-    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = 10
+    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = $timeoutSec
     $c.CommandText = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET LOCK_TIMEOUT 3000"; [void]$c.ExecuteNonQuery()
     $c.CommandText = $sql; $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close(); return ,$t
   } finally { $cn.Close() }
@@ -487,6 +488,45 @@ function PollRx() {
   if ($sent) { Log "처방 문서: $sent 건 갱신 (오늘 접수 $($byOcm.Count)건 / 줄 $($rows.Rows.Count)개)" }
 }
 
+# ── 한 달 처방 합계 → bitRx/_month_YYYY-MM (db1.4, 2026-10-04) ──
+#  재고 통계표의 '처방량' 칸(처방코드별)을 채운다. 코드별 건수(n)와 총투여량(tot = 수량×횟수×일수)만 — 환자 정보는 없다.
+#  이번 달은 RxMonthMin 분마다 다시 세고(final=false), 달이 바뀌면 지난달을 한 번 더 세어 final=true 로 쓴다(마지막 날 진료 마감까지 전부).
+#  담당 PC 가 아니어도 -PayAlways/-RxAlways 면 쓴다(개발 PC). 같은 내용이면 다시 쓰지 않는다. 문서 id 가 '_month_' 라 날짜·차트번호 조회에는 걸리지 않는다
+$RX_MONTH_QUERY = @"
+SELECT RTRIM(o.OdrCod) AS cod, COUNT(*) AS n,
+       SUM(CAST(o.OdrQty AS float) * CAST(o.OdrTms AS float) * CAST(o.OdrDay AS float)) AS tot
+FROM OdrInf o WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+WHERE m.OcmAcpDtm >= '{0}' AND m.OcmAcpDtm < '{1}' AND o.OdrDelFlg <> 'C'
+GROUP BY RTRIM(o.OdrCod)
+"@
+$script:RxMonthAt = [DateTime]::MinValue; $script:RxMonthHash = @{}; $script:RxMonthFinal = @{}
+function WriteRxMonth($first, $final) {   # $first = 그 달 1일(DateTime)
+  $ym = $first.ToString('yyyy-MM'); $from = $first.ToString('yyyyMMdd'); $to = $first.AddMonths(1).ToString('yyyyMMdd')
+  $t = SqlRows ($RX_MONTH_QUERY -f $from, $to) 60
+  $rows = New-Object System.Collections.ArrayList
+  foreach ($r in $t.Rows) { $cod = ([string]$r.cod).Trim(); if (-not $cod) { continue }
+    [void]$rows.Add([ordered]@{ cod = $cod; n = [int]$r.n; tot = (NumTxt $r.tot) }) }
+  $h = "final=$final`n" + (($rows | Sort-Object { $_.cod } | ForEach-Object { "$($_.cod)|$($_.n)|$($_.tot)" }) -join "`n")
+  if ($script:RxMonthHash[$ym] -eq $h) { return }
+  $upto = $(if ($final) { $first.AddMonths(1).AddDays(-1).ToString('yyyy-MM-dd') + ' 마감' } else { (Get-Date).ToString('yyyy-MM-dd HH:mm') })
+  if ($DryRun) { Log "한 달 처방 합계(시험): $ym 코드 $($rows.Count)개 final=$final"; $script:RxMonthHash[$ym] = $h; return }
+  FsPatch "bitRx/_month_$ym" @{ ym = $ym; final = [bool]$final; upto = $upto; at = (NowIso); pc = $Pc; count = [int]$rows.Count; rows = @($rows) }
+  $script:RxMonthHash[$ym] = $h
+  Log "한 달 처방 합계: $ym 코드 $($rows.Count)개 $(if ($final) { '(확정)' } else { "($upto 기준)" })"
+}
+function PollRxMonth() {
+  if ($RxMonthMin -le 0) { return }
+  if (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways) { return }
+  $now = Get-Date; $thisFirst = Get-Date -Year $now.Year -Month $now.Month -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
+  $prevFirst = $thisFirst.AddMonths(-1); $pym = $prevFirst.ToString('yyyy-MM')
+  if (($now - $script:RxMonthAt).TotalMinutes -lt $RxMonthMin) { return }   # 실패해도 RxMonthMin 분 뒤에 다시(매 주기 재시도 안 함)
+  $script:RxMonthAt = $now
+  if (-not $script:RxMonthFinal[$pym] -and $now.Day -le 10) {   # 지난달 확정본 — 이 에이전트가 켜진 뒤 한 번(달 초 열흘 안)
+    WriteRxMonth $prevFirst $true; $script:RxMonthFinal[$pym] = $true }
+  WriteRxMonth $thisFirst $false
+}
+
 # ── 메인 ──
 Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
 AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
@@ -504,6 +544,7 @@ while ($true) {
     $script:LastDbOk = Get-Date
     if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
     if ($RxEvery -gt 0 -and ($RxEvery -le 1 -or ($cyc % $RxEvery) -eq 0)) { try { PollRx } catch { Log "처방 조회 오류: $($_.Exception.Message)" } }
+    try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st
     if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }
