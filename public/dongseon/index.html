@@ -841,6 +841,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
   .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
+  .sd-drug{background:#dbeafe;color:#1d4ed8;border:1.5px solid #93c5fd;border-radius:6px;padding:0 5px;margin:0 1px;text-decoration:none;display:inline-block;line-height:1.25}   /* 약물 약어 (2026-10-04) */
   .sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}   /* 놓치면 안 되는 줄 강조 — slipHot() 참고 (2026-09-28 neuropathic pain, 2026-09-29 reduction) */
   .sd-btns{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}.sd-btns .btn{font-size:16px;padding:10px 18px}
   .slip-empty{padding:24px;color:var(--muted);font-size:15px}
@@ -3205,6 +3206,11 @@ function rxParse(rx){
    · dressing / dr — 상처 소독. 'EOD dressing'·'simple dressing'·'dressing + culture' 처럼 온다. 'dr' 는 낱말 하나일 때만(\bdr\b) —
      pdrn·druj 같은 약·부위 이름 안의 dr 은 잡지 않는다 (2026-09-30 요청. 실제 처방 921건에서 낱말 'dr' 단독은 아직 0건) */
 function slipHot(l){return /neuropathic\s*pain|reduction|dressing|\bdr\b/i.test(String(l||''));}
+/* 약물 강조 (2026-10-04 요청: 기·기D·기T·D·파·기PDRN 등 모든 약물) — 줄 안의 약물 약어만 따로 칠한다.
+   실제 슬립(9/30~10/4, 2,445줄)에서 쓰는 표기: 기, 기d, 기t, pdrn기, 기 x pdrn, 파, 파기, 파/기, 기(소량), 기&at …
+   '/ & , + 공백 ( ) [ ]' 로 나눈 낱말이 통째로 약물 약어일 때만 칠한다 — '기능'·'파스' 같은 낱말은 건드리지 않는다 */
+function slipDrugTok(t){return /^(pdrn)?[기파리]{1,2}(d|t|pdrn)?(x\d+)?$/i.test(t)||/^(D|PDRN|pdrn)$/.test(t);}
+function slipLineHtml(l){return String(l||'').split(/([\/&,+\s()\[\]]+)/).map((t,i)=>(i%2===0&&t&&slipDrugTok(t))?`<b class="sd-drug">${esc(t)}</b>`:esc(t)).join('');}
 /* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
 function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
   const nm=String((p&&p.name)||'').trim();if(!nm)return null;const c=BIT_NOTES.filter(n=>String(n.name||'').trim()===nm);return c.length===1?c[0]:null;}
@@ -3285,13 +3291,14 @@ const SLIP_POP_CSS='*{box-sizing:border-box}body{margin:0;padding:20px 24px;back
   +'.sd-meta{font-size:16px;color:#4b5563;margin-top:5px}.sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}.sd-badge{background:#eef2ff;color:#3730a3;border-radius:999px;padding:2px 10px;font-size:14px;font-weight:800}'
   +'.rb-4f{display:inline-block;background:rgba(13,148,136,.13);color:#0f766e;border-radius:999px;padding:1px 9px;font-weight:800}'
   +'.sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid #111827}.sd-lines li{font-size:26px;font-weight:700;padding:10px 4px;border-bottom:1px dashed #d1d5db}'
+  +'.sd-drug{background:#dbeafe;color:#1d4ed8;border:1.5px solid #93c5fd;border-radius:6px;padding:0 5px;margin:0 1px;display:inline-block;line-height:1.25}'
   +'.sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}.empty{color:#6b7280;font-size:18px;padding:30px 0}';
 function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록에 없습니다</div>';const h=slipHeaderInfo(it);
   const meta=[h.birth?esc(h.birth):'',h.doc?'담당의 <b>'+esc(h.doc)+'</b>':'',h.clinic?'<b>'+esc(h.clinic)+'</b>':'',h.hm,h.f4.length?`<span class="rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''].filter(Boolean).join(' · ');
   return `<div class="sd-name">${esc(slipMaskName(it.name))}<span class="sd-sa">${esc(h.sexAge)}</span></div>
     ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
     <div class="sd-meta">${meta}</div>${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
-    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>`;}
+    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>`;}
 function slipPopRender(){if(!SLIP_POP||SLIP_POP.closed||!SLIP_POP_MRN)return;
   try{const it=slipItems().find(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const d=SLIP_POP.document;
     const html=slipPopHtml(it);if(d.body.dataset.h===html)return;d.body.dataset.h=html;d.body.innerHTML=html;
@@ -3326,7 +3333,7 @@ function renderSlipScreen(){
       <div class="sd-meta">${SLIP_SOLO?'':`차트 <b>${esc(it.mrn)}</b>`}${h.birth?(SLIP_SOLO?'':' · ')+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
-    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${esc(l)}</li>`).join('')}</ol>
+    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
       <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button>${SLIP_SOLO?'':`<button class="btn" onclick="popSlipSolo('${esc(it.mrn)}')" title="이 환자 화면만 따로 띄웁니다 (차트번호 없이, 이름 가운데 가림)"><i data-lucide="external-link"></i> 창 띄우기</button>`}</div>`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
