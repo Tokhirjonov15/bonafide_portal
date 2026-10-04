@@ -860,14 +860,18 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
   .modal-bg.show{display:flex}
   #historyModal.over-resv{z-index:500}
-  #waitPop{position:fixed;left:16px;right:16px;bottom:16px;z-index:4000;max-height:46vh;overflow:auto;background:#fff;border:5px solid #dc2626;border-radius:18px;box-shadow:0 -10px 60px rgba(220,38,38,.45);padding:14px 20px 18px;color:#111;animation:wpPulse 1.6s ease-in-out infinite}
-  @keyframes wpPulse{0%,100%{box-shadow:0 -10px 60px rgba(220,38,38,.35)}50%{box-shadow:0 0 0 10px rgba(220,38,38,.25),0 -10px 60px rgba(220,38,38,.6)}}
-  #waitPop .wp-h{font-size:30px;font-weight:900;color:#b91c1c;margin-bottom:12px}#waitPop .wp-h b{background:#dc2626;color:#fff;border-radius:999px;padding:1px 14px;margin-left:8px}
-  #waitPop .wp-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:12px}
-  #waitPop .wp-row{border:3px solid #fecaca;background:#fff5f5;border-radius:14px;padding:12px 14px}#waitPop .wp-t{font-size:23px;line-height:1.35}#waitPop .wp-mrn{color:#6b7280;font-size:18px}
-  #waitPop .wp-a{display:flex;gap:10px;margin-top:10px}#waitPop select{flex:1;padding:10px 12px;border:2px solid #d1d5db;border-radius:10px;font-size:22px;background:#fff}
-  #waitPop button{padding:10px 26px;border:0;border-radius:10px;background:#dc2626;color:#fff;font-size:22px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
-  @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-t{font-size:20px}}
+  /* 2026-10-04: 원장님들 요청으로 높이를 반으로 — 환자 한 명 = 한 줄(이름·방·분 | 사유 | 확인), 글자·여백 줄임. 너비는 그대로 */
+  #waitPop{position:fixed;left:16px;right:16px;bottom:12px;z-index:4000;max-height:30vh;overflow:auto;background:#fff;border:4px solid #dc2626;border-radius:14px;box-shadow:0 -8px 40px rgba(220,38,38,.4);padding:7px 14px 9px;color:#111;animation:wpPulse 1.6s ease-in-out infinite}
+  @keyframes wpPulse{0%,100%{box-shadow:0 -8px 40px rgba(220,38,38,.3)}50%{box-shadow:0 0 0 7px rgba(220,38,38,.22),0 -8px 40px rgba(220,38,38,.55)}}
+  #waitPop .wp-h{font-size:18px;font-weight:900;color:#b91c1c;margin-bottom:5px}#waitPop .wp-h b{background:#dc2626;color:#fff;border-radius:999px;padding:0 10px;margin-left:6px}
+  #waitPop .wp-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(370px,1fr));gap:6px}
+  #waitPop .wp-row{display:flex;align-items:center;gap:8px;border:2px solid #fecaca;background:#fff5f5;border-radius:10px;padding:5px 9px}
+  #waitPop .wp-t{flex:1;min-width:0;display:flex;align-items:baseline;gap:5px;font-size:16.5px;line-height:1.3;white-space:nowrap}
+  #waitPop .wp-nm,#waitPop .wp-min{flex:none}#waitPop .wp-min{color:#b91c1c}
+  #waitPop .wp-room{min-width:0;overflow:hidden;text-overflow:ellipsis}   /* 좁으면 방 이름만 줄이고 이름·분은 늘 보이게 */
+  #waitPop .wp-a{display:flex;gap:6px;flex:0 0 auto}#waitPop select{width:128px;padding:5px 8px;border:2px solid #d1d5db;border-radius:8px;font-size:15px;background:#fff}
+  #waitPop button{padding:5px 14px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:15px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
+  @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-row{flex-wrap:wrap}#waitPop .wp-t{font-size:15px;white-space:normal}}
   #modal.view-only button[onclick="savePatient()"],#modal.view-only #delBtn,#modal.view-only #editStatusRow,#modal.view-only #modalRail{display:none !important}   /* 보기 전용 — 저장·삭제·상태 단추 숨김 */
   #modal.over-resv{z-index:500}   /* 4층 비급여 치료 화면(300) 위에서 열릴 때 */
   .modal-back{margin-right:6px;flex-shrink:0}
@@ -9699,7 +9703,7 @@ function renderWaitPop(){
   box.dataset.sig=sig;box.dataset.ids=ids;const keepTop=box.scrollTop;   // 다시 그려도 스크롤 위치 유지
   const keep={};box.querySelectorAll('select[data-pid]').forEach(sel=>{keep[sel.dataset.pid]=sel.value;});   // 고르던 사유 유지
   box.innerHTML=`<div class="wp-h">⏰ 대기 ${WAIT_CARD_MIN}분 넘음 — 확인 요망 <b>${L.length}</b></div><div class="wp-list">`+L.map(p=>{const min=Math.floor(waitMsNow(p)/60000);
-    return `<div class="wp-row"><div class="wp-t"><b>${esc(dispName(p.name))}</b>님 · <b>${esc(curRoom(p))}</b>에서 <b>${min}분</b> 대기${p.mrn?` <span class="wp-mrn">${esc(p.mrn)}</span>`:''}</div>
+    return `<div class="wp-row" title="${esc((p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p)+'에서 '+min+'분 대기')}"><div class="wp-t"><b class="wp-nm">${esc(dispName(p.name))}</b><span class="wp-room">· ${esc(curRoom(p))}</span><b class="wp-min">${min}분</b></div>
       <div class="wp-a"><select data-pid="${esc(p.id)}" onchange="this.nextElementSibling.disabled=!this.value"><option value="">사유 선택</option>${WAIT_POP_REASONS.map(r=>`<option${keep[p.id]===r?' selected':''}>${esc(r)}</option>`).join('')}</select><button type="button" ${keep[p.id]?'':'disabled'} onclick="ackWaitPop('${esc(p.id)}',this.previousElementSibling.value)">확인</button></div></div>`;}).join('')+'</div>';box.scrollTop=keepTop;waitPopPad();}
 function waitPopPad(){const b=document.getElementById('waitPop');if(!b)return;document.body.classList.add('wp-on');document.documentElement.style.setProperty('--wpPad',(b.offsetHeight+28)+'px');}
 window.addEventListener('resize',()=>{try{waitPopPad();}catch(e){}});
