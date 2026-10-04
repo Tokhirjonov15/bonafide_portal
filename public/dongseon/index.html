@@ -1424,21 +1424,21 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* 리뷰·주사 보너스 (2026-10-04) */
   .bonus-tag{display:inline-block;margin-left:4px;padding:0 6px;border-radius:999px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-size:11.5px;font-weight:800;vertical-align:middle}
   .bonus-tag svg{width:12px;height:12px;vertical-align:-2px;margin-right:2px}
-  #bonusBox svg,#bonusSection .sect-t svg{width:15px;height:15px;vertical-align:-3px}
+  .bnbox svg,#bonusSection .sect-t svg{width:15px;height:15px;vertical-align:-3px}
   .bonus-tag.used{background:#dcfce7;color:#166534;border-color:#86efac}
-  #bonusBox{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--panel2);font-size:13px}
-  #bonusBox .bn-row{margin-bottom:6px}#bonusBox .bn-k{display:inline-block;min-width:74px;font-weight:800;color:var(--sub)}
-  #bonusBox .bn-days{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}#bonusBox .bn-day{background:#e0e7ff;color:#3730a3;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700}
-  #bonusBox .bn-sum{border-top:1px dashed var(--line);padding-top:6px}#bonusBox .bn-left{color:#b45309}
-  #bonusBox .bn-btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}#bonusBox .bn-go{background:#fef3c7;border-color:#f59e0b;font-weight:800}
-  #bonusBox .bn-use{margin-top:4px}
+  .bnbox{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--panel2);font-size:13px}
+  .bnbox .bn-row{margin-bottom:6px}.bnbox .bn-k{display:inline-block;min-width:74px;font-weight:800;color:var(--sub)}
+  .bnbox .bn-days{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}.bnbox .bn-day{background:#e0e7ff;color:#3730a3;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700}
+  .bnbox .bn-sum{border-top:1px dashed var(--line);padding-top:6px}.bnbox .bn-left{color:#b45309}
+  .bnbox .bn-btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.bnbox .bn-go{background:#fef3c7;border-color:#f59e0b;font-weight:800}
+  .bnbox .bn-use{margin-top:4px}
   /* 환자에게 보여 주는 보너스 화면 */
   body.pb-on{overflow:hidden}
   #pbScreen{position:fixed;inset:0;z-index:2147483000;display:none;background:linear-gradient(160deg,#f8fafc,#e0f2fe);color:#0f172a;flex-direction:column;font-family:inherit}
   #pbScreen .ks-top{display:flex;justify-content:space-between;align-items:center;padding:18px 28px;font-size:22px;font-weight:800;color:#1d4ed8}
   #pbScreen.show{display:flex}
   #pbScreen .ks-x{border:0;background:#e2e8f0;color:#334155;border-radius:12px;padding:8px 14px;font-size:18px;font-weight:800;cursor:pointer}
-  #bonusBox .bn-pb{margin-top:0}#bonusBox .bn-cam,#bonusBox .bn-pick{font-weight:800}
+  .bnbox .bn-pb{margin-top:0}.bnbox .bn-cam,.bnbox .bn-pick{font-weight:800}
   #pbScreen .ks-box{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 24px 30px;text-align:center;gap:14px}
   #pbScreen .ks-center{display:flex;flex-direction:column;align-items:center;gap:14px}
   #pbScreen .ks-h1{font-size:clamp(26px,4vw,44px);font-weight:900;line-height:1.3}
@@ -1459,6 +1459,14 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #pbScreen .ks-item{width:min(260px,80vw);min-height:180px;border:3px solid #bfdbfe;border-radius:24px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 30px rgba(37,99,235,.12)}
   #pbScreen .ks-item:active{transform:scale(.97);border-color:#2563eb}
   #pbScreen .ks-iname{font-size:36px;font-weight:900;color:#1d4ed8}#pbScreen .ks-idesc{font-size:16px;color:#64748b;padding:0 10px}
+  /* 혜택 관리 */
+  #bonusMgr .bm-box{max-width:760px;max-height:88vh;display:flex;flex-direction:column}
+  #bonusMgr .cip-head svg{width:18px;height:18px;color:#d97706}
+  #bonusMgr .bm-list{overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;padding:4px 2px}
+  #bonusMgr .bm-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:12px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);font:inherit;font-size:17px;font-weight:800;cursor:pointer;text-align:left;color:inherit}
+  #bonusMgr .bm-item.has{border-color:#fcd34d;background:#fffbeb}
+  #bonusMgr .bm-left{font-size:13px;color:#92400e;white-space:nowrap}#bonusMgr .bm-left svg{width:13px;height:13px;vertical-align:-2px}
+  #bonusMgr .bm-one{overflow:auto}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
   .cst-main{flex:1;min-width:0;font-size:13px}
@@ -1503,6 +1511,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
+    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="리뷰·주사 보너스 — 환자 이름만(가려서) 보고 혜택을 관리"><i data-lucide="gift"></i> 혜택 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="calendar-off"></i> 휴무 관리</button>
   </div>
   <div class="user-pill" id="userPill" style="display:none" onclick="openAccount()">
@@ -2096,10 +2105,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div id="pastConsultBody" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--panel2)"></div>
       </div>
 
-      <div id="bonusSection" style="margin-top:10px">
-        <div class="sect-t" style="margin-bottom:8px"><i data-lucide="gift"></i> 리뷰·주사 보너스 <span class="hint" style="font-weight:400">(SASO·아쿠아·롤러 중 무료)</span></div>
-        <div id="bonusBox"></div>
-      </div>
       <div id="consentSection" style="margin-top:10px">
         <div class="sect-t" style="margin-bottom:8px"><i data-lucide="file-signature"></i> 비급여 동의서</div>
         <div id="consentList"></div>
@@ -8172,14 +8177,16 @@ function bonusScanRx(){
       .catch(e=>console.warn('bonus inj',e));});}
 function bonusSubscribe(){const col=bonusCol();if(!col||cloud.unsubBonus)return;
   cloud.unsubBonus=col.onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const mrn=normMrn(v.mrn||d.id);if(mrn)m[mrn]=v;});BONUS=m;
-    try{renderThrottled();}catch(e){}try{if(editId)renderBonusSection();}catch(e){}},err=>console.warn('bonus',err));}
+    try{renderThrottled();}catch(e){}try{if(BONUS_PID||editId)renderBonusSection();}catch(e){}try{if(BONUS_MGR_OPEN)renderBonusMgr();}catch(e){}},err=>console.warn('bonus',err));}
 function bonusTag(p){const m=normMrn(p&&p.mrn);if(!m)return '';const i=bonusInfo(m);
   const t=i.today.length?` <span class="bonus-tag used" title="오늘 보너스 사용 — 무료: ${esc(i.today.map(u=>u.item).join(', '))}"><i data-lucide="gift"></i> 오늘 ${esc(i.today.map(u=>u.item).join('·'))} 무료</span>`:'';
   return (i.left?` <span class="bonus-tag" title="리뷰·주사 보너스 — SASO·아쿠아·롤러 중 무료 ${i.left}회 남음"><i data-lucide="gift"></i> ${i.left}</span>`:'')+t;}
 /* 환자 정보 창의 보너스 칸 */
+let BONUS_PID='';   // 혜택 관리 화면에서 고른 환자(카드 id) — 비어 있으면 열린 환자 정보 창의 환자
+function bonusCurPid(){return BONUS_PID||editId;}
 function renderBonusSection(){
-  const box=document.getElementById('bonusBox');if(!box)return;
-  const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);
+  const box=document.getElementById(BONUS_PID?'bonusBox2':'bonusBox');if(!box)return;
+  const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);
   if(!p||!mrn){box.innerHTML='<div class="hint">차트번호가 있어야 보너스를 관리할 수 있습니다.</div>';return;}
   if(!bonusCol()){box.innerHTML='<div class="hint">클라우드에 연결되면 표시됩니다.</div>';return;}
   const i=bonusInfo(mrn),b=i.b;
@@ -8191,25 +8198,56 @@ function renderBonusSection(){
   const usesHtml=i.uses.length?i.uses.slice().reverse().map((u,k)=>`<div class="bn-use"><i data-lucide="gift"></i> <b>${esc(u.item)}</b> <span class="hint">${esc(hhmm(u.at))} · ${esc(u.by||'')}</span>${isAdmin()?` <button type="button" class="btn sm" onclick="bonusUndo('${esc(u.at)}')">사용 취소</button>`:''}</div>`).join(''):'';
   box.innerHTML=pbButtonsHtml(mrn)+`<div class="bn-row"><span class="bn-k">네이버 리뷰</span>${rev}</div>
     <div class="bn-row"><span class="bn-k">주사</span><b>${i.inj}일</b> <span class="hint">(${esc(BONUS_START.slice(5).replace('-','/'))}부터 · ${nextT})</span><div class="bn-days">${injList}</div></div>
-    <div class="bn-row bn-sum">받을 수 있는 무료 <b>${i.total}회</b> · 사용 <b>${i.used}</b> · <b class="${i.left?'bn-left':''}">남음 ${i.left}회</b></div>
+    <div class="bn-row bn-sum">혜택 <b>${i.total}회</b> · 사용 <b>${i.used}</b> · <b class="${i.left?'bn-left':''}">남음 ${i.left}회</b></div>
     <div class="bn-btns">${BONUS_ITEMS.map(it=>`<button type="button" class="btn sm${i.left?' bn-go':''}" ${i.left?'':'disabled'} onclick="bonusUse('${it}')"><i data-lucide="gift"></i> ${it} 무료</button>`).join('')}</div>
     ${usesHtml}`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
-window.bonusReview=async function(on){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
+window.bonusReview=async function(on){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(!on&&!isAdmin())return;
-  if(on&&!confirm(`'${p.name}'님의 네이버 리뷰를 확인하셨나요?
+  if(on&&!confirm(`'${BONUS_PID?bonusMaskName(p.name):p.name}'님의 네이버 리뷰를 확인하셨나요?
 확인하면 보너스(SASO·아쿠아·롤러 무료) 1회가 생깁니다.`))return;
   if(!on&&!confirm('리뷰 확인을 취소할까요?'))return;
   try{await bonusReviewFor(mrn,p.name||'',on?{at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}:null);renderBonusSection();render();}
   catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
-window.bonusUse=async function(item){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
+window.bonusUse=async function(item){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(!BONUS_ITEMS.includes(item))return;
-  if(!confirm(`'${p.name}'님 보너스로 ${item}을(를) 무료로 쓸까요?
+  if(!confirm(`'${BONUS_PID?bonusMaskName(p.name):p.name}'님 보너스로 ${item}을(를) 무료로 쓸까요?
 (남은 무료 횟수가 1 줄고, 동선에 ${item}이(가) 들어갑니다. 비트 수납에서 무료로 처리해 주세요)`))return;
   try{const ok=await bonusUseFor(p.id,mrn,p.name||'',item,(currentUser&&currentUser.name)||'');
     if(!ok){alert('남은 무료 횟수가 없습니다(다른 화면에서 방금 썼을 수 있습니다).');return;}
     renderBonusSection();
   }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
+/* ═════ 혜택 관리 (2026-10-04 요청) ═════
+   [진료실 관리] 옆 [혜택 관리] — 지금 보드에 있는 환자 목록을 이름만(가운데를 가려서) 보여 주고, 누르면 그 환자의 보너스 칸(카메라·환자 선택·리뷰·주사·혜택)을 띄운다.
+   이름 가리기: 한글 최다솜 → 최 O 솜, 최이아솜 → 최 O O 솜, 두 글자 김철 → 김 O. 영문 등 외국 이름은 앞 10글자 + '...' */
+let BONUS_MGR_OPEN=false;
+function bonusMaskName(n){n=String(n||'').trim();if(!n)return '';
+  if(/[A-Za-z]/.test(n))return n.length>10?n.slice(0,10)+'...':n;
+  const a=[...n.replace(/\s+/g,'')];if(a.length<=1)return a.join('');if(a.length===2)return a[0]+' O';
+  return a[0]+' '+Array(a.length-2).fill('O').join(' ')+' '+a[a.length-1];}
+function bonusMgrList(){return data.filter(p=>p&&!p._viewOnly&&!p.discharged&&normMrn(p.mrn)).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
+window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
+  let ov=document.getElementById('bonusMgr');
+  if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
+    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>혜택 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
+      <div id="bonusMgrList" class="bm-list"></div>
+      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
+    document.body.appendChild(ov);}
+  BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';
+  ov.classList.add('show');renderBonusMgr();};
+window.closeBonusMgr=function(){BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');};
+window.bonusMgrBack=function(){BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';renderBonusMgr();};
+window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;BONUS_PID=pid;
+  document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name);
+  document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';
+  renderBonusSection();};
+function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!box)return;
+  if(BONUS_PID){const p=data.find(x=>x.id===BONUS_PID);if(!p||p.discharged){bonusMgrBack();return;}renderBonusSection();return;}
+  const L=bonusMgrList();
+  box.innerHTML=L.length?L.map(p=>{const i=bonusInfo(p.mrn);
+      return `<button type="button" class="bm-item${i.left?' has':''}" onclick="bonusMgrPick('${esc(p.id)}')"><span class="bm-name">${esc(bonusMaskName(p.name))}</span>${i.left?`<span class="bm-left"><i data-lucide="gift"></i> ${i.left}</span>`:''}</button>`;}).join('')
+    :'<div class="hint" style="padding:20px">지금 보드에 환자가 없습니다.</div>';
+  if(window.lucide)try{lucide.createIcons();}catch(e){}}
 /* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
 function bonusAddRoom(pid,room){
   if(!ROOMS.includes(room))return;
@@ -8220,10 +8258,12 @@ function bonusAddRoom(pid,room){
   const p=data.find(x=>x.id===pid);if(!p)return;
   if(add(p)!==false){saveLocal();render();try{if(editId===pid&&typeof renderRouteRows==='function'){routeDraft=[...p.route];renderRouteRows();}}catch(e){}}
   cloudPatientTxn(pid,add,{keepLocal:true});}
-window.bonusUndo=async function(at){if(!isAdmin())return;const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+window.bonusUndo=async function(at){if(!isAdmin())return;const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
   if(!confirm('이 보너스 사용을 취소할까요? (남은 횟수가 1 늘어납니다. 동선의 방은 그대로입니다)'))return;
   try{await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
       t.set(ref,{uses:(Array.isArray(v.uses)?v.uses:[]).filter(u=>u.at!==at)},{merge:true});});
+    {const b=BONUS[mrn]||{};BONUS[mrn]=Object.assign({},b,{uses:(Array.isArray(b.uses)?b.uses:[]).filter(u=>u.at!==at)});}   /* 화면에 바로 반영 (2026-10-04: 새로고침해야 보였다) */
+    renderBonusSection();render();
     try{audit('보너스 사용 취소',(p.name||'')+' ('+mrn+')');}catch(e){}
   }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
 /* ═════ 환자에게 보여 주는 보너스 화면 (2026-10-04) ═════
@@ -8259,7 +8299,7 @@ function pbButtonsHtml(mrn){const i=bonusInfo(mrn);
     <button type="button" class="btn sm bn-cam" onclick="pbOpen('review')" title="환자가 네이버 리뷰 화면을 카메라에 보여 주면 '확인됨'으로 기록"><i data-lucide="camera"></i> 카메라 (리뷰 확인)</button>
     <button type="button" class="btn sm bn-pick" ${i.left?'':'disabled'} onclick="pbOpen('choose')" title="환자가 직접 SASO·아쿠아·롤러 중 하나를 고름"><i data-lucide="hand"></i> 환자 선택</button></div>`;}
 
-window.pbOpen=function(mode){const p=data.find(x=>x.id===editId);const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
+window.pbOpen=function(mode){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(mode==='choose'&&bonusInfo(mrn).left<1){alert('남은 무료 횟수가 없습니다.');return;}
   PB={pid:p.id,mrn,name:p.name||'',mode,phase:mode==='review'?'cam':'pick',pick:''};
   let d=document.getElementById('pbScreen');
@@ -8295,9 +8335,9 @@ function pbRender(){
   /* 고르기 */
   pbCamStop();box.dataset.mode='choose';
   if(left<1){PB.pick='';PB.phase='done';pbRender();return;}
-  if(PB.pick){box.innerHTML=`<div class="ks-center"><div class="ks-h1"><b>${esc(PB.pick)}</b> 을(를) 무료로 받으시겠어요?</div>${PB_ITEM_INFO[PB.pick]?`<div class="ks-h2">${esc(PB_ITEM_INFO[PB.pick])}</div>`:''}
+  if(PB.pick){box.innerHTML=`<div class="ks-center"><div class="ks-h1"><b>${esc(PB.pick)}</b> 을(를) 받으시겠어요?</div>${PB_ITEM_INFO[PB.pick]?`<div class="ks-h2">${esc(PB_ITEM_INFO[PB.pick])}</div>`:''}
       <div class="ks-btns"><button type="button" class="ks-btn ks-main" id="pbYes" onclick="pbConfirm()">네, 받을게요</button><button type="button" class="ks-btn ks-sub" onclick="PB.pick='';pbRender()">다시 고르기</button></div></div>`;return;}
-  box.innerHTML=`<div class="ks-h1">받으실 치료를 하나 골라 주세요</div><div class="ks-h2">리뷰·주사 감사 혜택 · 남은 무료 <b>${left}회</b></div>
+  box.innerHTML=`<div class="ks-h1">받으실 치료를 하나 골라 주세요</div><div class="ks-h2">리뷰·주사 감사 혜택 · 총 혜택 <b>${left}회</b></div>
     <div class="ks-items">${BONUS_ITEMS.map(it=>`<button type="button" class="ks-item" onclick="PB.pick='${it}';pbRender()"><span class="ks-iname">${esc(it)}</span>${PB_ITEM_INFO[it]?`<span class="ks-idesc">${esc(PB_ITEM_INFO[it])}</span>`:''}</button>`).join('')}</div>`;}
 window.pbCheck=function(){if(PB.mode!=='review'||PB.phase!=='cam')return;PB.phase='scan';
   const b=document.getElementById('pbCheckBtn');if(b){b.disabled=true;b.textContent='확인 중…';}
@@ -10614,7 +10654,7 @@ function openEdit(pid){document.getElementById('modal').classList.remove('view-o
   updateEditActions(p);
   renderEditStatus();
   renderModalRail();
-  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();try{renderBonusSection();}catch(e){console.warn('bonus',e);}
+  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();   /* 보너스 칸은 [혜택 관리]에서만 (2026-10-04) */
   showModal();
 }
 /* ═════ 비급여 동의서 (태블릿 서명) — 2026-09-26 요청 ═════
