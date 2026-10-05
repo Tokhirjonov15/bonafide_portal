@@ -1137,7 +1137,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sdir-n{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-weight:600}
   .sp-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);display:flex;flex-direction:column;gap:5px}
   .sp-head{cursor:pointer;font-size:15px}
-  .sp-dc{color:var(--red);font-size:13.5px}
+  .sp-dc{color:var(--red);font-size:13.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .sp-ok{margin-left:auto;border:1px solid var(--blue);background:var(--blue);color:#fff;border-radius:7px;padding:3px 12px;font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+  .sp-ok.on{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.55);color:var(--t-green)}
+  .st-btn.sp-locked{opacity:.45;filter:grayscale(1)}
   .sp-chtext{white-space:pre-wrap;word-break:break-all;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;font-size:13px;max-height:170px;overflow:auto}
   .sdir-x{border:0;background:transparent;color:var(--sub);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
   .sdir-x:hover{color:var(--red)}
@@ -7858,7 +7861,7 @@ function cardEl(p,colRoom){
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
-      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
+      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
@@ -8524,6 +8527,8 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     try{audit('수납 이동',p.name+(p.mrn?' ('+p.mrn+')':'')+' '+from+' → '+pay);}catch(e){}
     try{toast(dispName(p.name)+' 님 → '+pay+' (계산 후 수납완료)');}catch(e){}
     return;}
+  {const pend=supportPending(p);   // 진료지원 창의 D/C·차팅 확인이 끝나야 수납완료·내보내기 (2026-10-05 요청)
+   if(pend.length){alert(`'${p.name}'님은 진료지원 확인이 남아 있습니다.\n\n${pend.map(x=>'· '+x).join('\n')}\n\n상단 [진료지원] 창에서 [확인]을 눌러 주세요.`);try{openSupport();const ss=document.getElementById('supportSearch');if(ss){ss.value=p.mrn||p.name||'';renderSupport();}}catch(e){}return;}}
   if(needsPayDone(p)){const done=payDoneRoom();const from=curRoom(p);moveTo(pid,done);
     try{audit('수납완료 이동',p.name+(p.mrn?' ('+p.mrn+')':'')+' '+from+' → '+done);}catch(e){}
     try{toast(dispName(p.name)+' 님 → '+done);}catch(e){}
@@ -8600,7 +8605,7 @@ function archiveVisit(p){
     roomRads:JSON.parse(JSON.stringify(p.roomRads||{})),
     notes:JSON.parse(JSON.stringify(p.notes||{})),
     consults:JSON.parse(JSON.stringify(p.consults||{})),
-    chart:p.chart||"",chartAt:p.chartAt||"",chartBy:p.chartBy||"",   // 오늘 새로 쓴 차팅 시각 — 진료지원 창 (2026-10-05)
+    chart:p.chart||"",chartAt:p.chartAt||"",chartBy:p.chartBy||"",chartOk:p.chartOk||null,   // 오늘 새로 쓴 차팅 시각·확인 — 진료지원 창 (2026-10-05)
     rxDc:JSON.parse(JSON.stringify(p.rxDc||{})),                       // 처방 D/C — 내보낸 뒤에도 진료지원 창에 남게
     researchChart:p.researchChart||"",
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
@@ -11289,7 +11294,7 @@ function renderEditStatus(){
         ${(!_rm.noProg&&_rm.prep)?`<button type="button" class="st-btn prep ${st==='준비'?'on':''}" onclick="editSetStatus('준비')">준비</button>`:''}
         ${!_rm.noProg?`<button type="button" class="st-btn prog ${st==='진행'?'on':''}" onclick="editSetStatus('진행')">진행</button>`:''}
         <span class="es-sep"></span>
-        <button type="button" class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}" title="${last?exitTitle(p):'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?exitLabel(p):'종결'} <span class="es-kbd">${MOD}→</span></button>
+        <button type="button" class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):'현재 방 종결 후 다음 방으로'} (${MOD}→)" onclick="editNextStep()">${last?exitLabel(p):'종결'} <span class="es-kbd">${MOD}→</span></button>
       </div>
     </div>${routeTimelineHtml(p)}`;
 }
@@ -11758,13 +11763,36 @@ window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자
 let SUPPORT_OPEN=false;
 window.openSupport=function(){SUPPORT_OPEN=true;renderSupport();document.getElementById('supportModal').classList.add('show');};
 window.closeSupport=function(){SUPPORT_OPEN=false;document.getElementById('supportModal').classList.remove('show');};
+/* 확인 (2026-10-05 요청): D/C 는 p.rxDc[키].ok, 차팅은 p.chartOk={at,by,chartAt} — 차팅을 다시 고치면(chartAt 이 바뀌면) 다시 확인해야 한다.
+   확인이 남은 환자는 수납완료·내보내기를 막는다(finishPatient). 오늘 것만 따진다 */
+function spIsToday(t){if(!t)return false;const d=new Date(t);return !isNaN(d)&&localYMD(d)===localYMD(new Date());}
+function spChartOk(p){return !!(p.chartOk&&p.chartOk.chartAt===p.chartAt);}
+function supportPending(p){if(!p)return [];const out=[];
+  Object.values(p.rxDc||{}).forEach(d=>{if(d&&spIsToday(d.at)&&!d.ok)out.push('D/C 확인: '+(d.nam||d.cod||''));});
+  if(spIsToday(p.chartAt)&&String(p.chart||'').trim()&&!spChartOk(p))out.push('오늘 차팅 확인');
+  return out;}
+function spLocked(p){try{return !needsPay(p)&&supportPending(p).length>0;}catch(e){return false;}}
+window.supportOkDc=function(pid,kEnc,on){const p=data.find(x=>x.id===pid);if(!p)return;const k=decodeURIComponent(kEnc);
+  if(!on&&!confirm('D/C 확인을 취소할까요?'))return;
+  const rec={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''};
+  const apply=d=>{if(d.rxDc&&d.rxDc[k]){d.rxDc=Object.assign({},d.rxDc);d.rxDc[k]=Object.assign({},d.rxDc[k]);if(on)d.rxDc[k].ok=rec;else delete d.rxDc[k].ok;}return d;};
+  apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  try{audit(on?'D/C 확인':'D/C 확인 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+(((p.rxDc||{})[k]||{}).nam||''));}catch(e){}
+  render();};
+window.supportOkChart=function(pid,on){const p=data.find(x=>x.id===pid);if(!p)return;
+  if(!on&&!confirm('차팅 확인을 취소할까요?'))return;
+  const rec={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||'',chartAt:p.chartAt||''};
+  const apply=d=>{if(on)d.chartOk=rec;else delete d.chartOk;return d;};
+  apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  try{audit(on?'차팅 확인':'차팅 확인 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}
+  render();};
 function supportRows(){
-  const today=localYMD(new Date());const isT=t=>{if(!t)return false;const d=new Date(t);return !isNaN(d)&&localYMD(d)===today;};
+  const isT=spIsToday;
   const src=[...data.filter(p=>p&&!p._viewOnly).map(p=>({p,live:!p.discharged})),...(VISITS||[]).filter(v=>v&&isT(v.dischargedAt)).map(p=>({p,live:false}))];
   const by=new Map();
   src.forEach(({p,live})=>{
-    const dcs=Object.values(p.rxDc||{}).filter(d=>d&&isT(d.at));
-    const ch=(isT(p.chartAt)&&String(p.chart||'').trim())?{text:p.chart,at:p.chartAt,by:p.chartBy||''}:null;
+    const dcs=Object.entries(p.rxDc||{}).filter(([k,d])=>d&&isT(d.at)).map(([k,d])=>Object.assign({k,pid:live?p.id:''},d));
+    const ch=(isT(p.chartAt)&&String(p.chart||'').trim())?{text:p.chart,at:p.chartAt,by:p.chartBy||'',ok:spChartOk(p)?p.chartOk:null,pid:live?p.id:''}:null;
     if(!dcs.length&&!ch)return;
     const k=pKey(p.mrn,p.name);let r=by.get(k);
     if(!r){r={name:p.name||'',mrn:p.mrn||'',pid:'',dcs:[],charts:[],last:''};by.set(k,r);}
@@ -11774,6 +11802,10 @@ function supportRows(){
   });
   return [...by.values()].sort((a,b)=>b.last.localeCompare(a.last));
 }
+/* 확인 단추: 확인 전 = [확인], 확인 후 = '✔ 확인 이름 시각'(누르면 취소). 내보낸 환자(call 없음)는 표시만 */
+function spOkBtn(ok,call){
+  if(ok)return call?`<button type="button" class="sp-ok on" onclick="event.stopPropagation();${call}false)" title="누르면 확인 취소">✔ 확인 ${esc(ok.by||'')} ${hhmm(ok.at)}</button>`:`<span class="sp-ok on">✔ 확인 ${esc(ok.by||'')}</span>`;
+  return call?`<button type="button" class="sp-ok" onclick="event.stopPropagation();${call}true)">확인</button>`:'';}
 function renderSupport(){
   const box=document.getElementById('supportList');if(!box)return;
   const q=((document.getElementById('supportSearch')||{}).value||'').trim().toLowerCase();
@@ -11783,8 +11815,8 @@ function renderSupport(){
   const sum=document.getElementById('supportSum');if(sum)sum.textContent=`오늘 · D/C ${nDc}건 · 차팅 ${nCh}명`;
   box.innerHTML=rows.map(r=>`<div class="sp-card">
       <div class="sp-head"${r.pid?` onclick="closeSupport();openEdit('${esc(r.pid)}')" title="누르면 환자 정보 창"`:''}><b>${esc(r.name)}</b> <span class="hint">${esc(r.mrn)}</span>${r.pid?'':' <span class="hint">(내보냄)</span>'}</div>
-      ${r.dcs.sort((a,b)=>String(a.at).localeCompare(String(b.at))).map(d=>`<div class="sp-dc">⛔ <b>${esc(d.nam||d.cod||'')}</b> D/C <span class="hint">${hhmm(d.at)}${d.by?' · '+esc(d.by):''}${d.reason?' · 사유 '+esc(d.reason):''}</span></div>`).join('')}
-      ${r.charts.map(c=>`<div class="sp-ch"><div class="hint">📝 오늘 차팅 ${hhmm(c.at)}${c.by?' · '+esc(c.by):''}</div><div class="sp-chtext">${esc(c.text)}</div></div>`).join('')}
+      ${r.dcs.sort((a,b)=>String(a.at).localeCompare(String(b.at))).map(d=>`<div class="sp-dc">⛔ <b>${esc(d.nam||d.cod||'')}</b> D/C <span class="hint">${hhmm(d.at)}${d.by?' · '+esc(d.by):''}${d.reason?' · 사유 '+esc(d.reason):''}</span>${spOkBtn(d.ok,d.pid?`supportOkDc('${esc(d.pid)}','${encodeURIComponent(d.k)}',`:'')}</div>`).join('')}
+      ${r.charts.map(c=>`<div class="sp-ch"><div class="hint" style="display:flex;align-items:center;gap:6px">📝 오늘 차팅 ${hhmm(c.at)}${c.by?' · '+esc(c.by):''}${spOkBtn(c.ok,c.pid?`supportOkChart('${esc(c.pid)}',`:'')}</div><div class="sp-chtext">${esc(c.text)}</div></div>`).join('')}
     </div>`).join('')||`<p class="hint">${q?'검색 결과가 없습니다.':'오늘은 아직 D/C 나 새로 쓴 차팅이 없습니다.'}</p>`;
 }
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
