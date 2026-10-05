@@ -5278,7 +5278,9 @@ function cloudSaveConfig(){if(cloud.active&&cloud.ref){const c=cfgBundle();c.upd
 const KNOWN_PIDS=new Set();
 const REMOVED_PIDS=new Set();   /* 이 화면이 '지워짐'을 본 카드 id — 같은 id 가 다시 생기면 옛 판 화면이 되살린 유령이다 */
 let _ghostReloadT=null;
+const NEW_PENDING=new Set();   // 첫 저장이 아직 서버에 닿지 않은 새 카드 id — 유령으로 보지 않는다 (2026-10-05)
 function ghostPatient(pid,why){
+  if(NEW_PENDING.has(pid)){console.warn('새 카드 저장 중 — 유령 처리 안 함',pid,why);return;}
   const i=data.findIndex(x=>x.id===pid);const nm=i>=0?(data[i].name||''):'';
   if(i>=0){data.splice(i,1);saveLocal();try{render();}catch(e){}}
   console.warn('유령 카드',pid,why);
@@ -5297,7 +5299,10 @@ const KNOWN_GONE=new Set();   // 카드 구독이 '지워짐'으로 알려 준 i
 function cloudSavePatient(p){
   if(!(cloud.active&&cloud.patientsCol&&p&&p.id))return;
   const ref=cloud.patientsCol.doc(p.id);
-  if(!KNOWN_PIDS.has(p.id)){ref.set(jclone(p)).catch(e=>{syncFail('새 카드 저장',e);});return;}   // 새 카드
+  /* 새 카드 — 첫 set() 이 서버에 닿기 전에는(NEW_PENDING) 다시 저장해도 set() 으로. 트랜잭션으로 가면 서버에 아직 없어 유령으로 지워졌다
+     (2026-10-05: 재진 환자를 추가하면 카드가 떴다가 사라짐 — 추가 직후 자동 저장이 한 번 더 일어나는 경우) */
+  if(!KNOWN_PIDS.has(p.id)||NEW_PENDING.has(p.id)){const pid=p.id;NEW_PENDING.add(pid);
+    ref.set(jclone(p)).then(()=>{NEW_PENDING.delete(pid);}).catch(e=>{NEW_PENDING.delete(pid);syncFail('새 카드 저장',e);});return;}
   /* update() 는 지운 필드(delete p.parking 등)를 서버에 반영하지 못하므로, 있는지 확인한 뒤 통째로 set 한다(트랜잭션) */
   const body=jclone(p);
   cloud.db.runTransaction(t=>t.get(ref).then(snap=>{if(!snap.exists)return false;
@@ -5315,7 +5320,9 @@ function cloudPatientTxn(pid,mutate,opts){
   const ref=cloud.patientsCol.doc(pid);
   return cloud.db.runTransaction(tx=>tx.get(ref).then(snap=>{
     /* 서버에 문서가 없으면 로컬 복사본으로 되살리지 않는다 — 다른 화면에서 이미 내보낸 유령 카드 (2026-09-30) */
-    if(!snap.exists){if(KNOWN_PIDS.has(pid))setTimeout(()=>ghostPatient(pid,'수정 시 서버에 없음'),0);return null;}
+    if(!snap.exists){
+      if(NEW_PENDING.has(pid)){setTimeout(()=>cloudPatientTxn(pid,mutate,opts),1500);return null;}   // 방금 만든 카드 — 첫 저장이 닿은 뒤 다시
+      if(KNOWN_PIDS.has(pid))setTimeout(()=>ghostPatient(pid,'수정 시 서버에 없음'),0);return null;}
     const base=snap.data();
     if(!base)return null;
     const d=jclone(base);if(mutate(d)===false)return {__skip:true};   /* mutate 가 false = 바꿀 것 없음 → 쓰지 않는다 (2026-10-04) */
