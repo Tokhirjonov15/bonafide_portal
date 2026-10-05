@@ -3801,9 +3801,9 @@ function bitApplyCancels(){
       if(Date.now()-seen<BIT_CANCEL_GRACE){clearTimeout(_bitCancelT);_bitCancelT=setTimeout(bitApplyCancels,BIT_CANCEL_GRACE+500);return;}
     }
     const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
-    /* 이미 처리한 취소(done)는 그 접수의 카드(문서에 적힌 카드 id·접수번호)만 — 차트번호로 찾으면 같은 날 나중에 손으로 다시 추가한
-       같은 환자 카드를 30초마다 지웠다 (2026-10-05: 테스트 26431 이 추가하자마자 사라짐) */
-    const p=done?((r.patientId&&data.find(x=>!x.discharged&&x.id===r.patientId))||(ocm&&data.find(x=>!x.discharged&&x.bit&&String(x.bit.ocmNum||'').trim()===ocm))||null):bitCardFor(r);
+    /* 취소는 그 접수의 카드(문서에 적힌 카드 id·접수번호)만 지운다 — 차트번호로 찾으면(bitCardFor) 같은 날 손으로 다시 추가한
+       같은 환자 카드를 계속 지웠다 (2026-10-05: 테스트 26431 이 추가하자마자 사라짐). 비트 접수로 만든 카드는 늘 id·접수번호가 이어져 있다 */
+    const p=(r.patientId&&data.find(x=>!x.discharged&&x.id===r.patientId))||(ocm&&data.find(x=>!x.discharged&&x.bit&&String(x.bit.ocmNum||'').trim()===ocm))||null;
     if(!done){
       BIT_CLAIMING[r.docId]=1;
       cloud.intakeCol.doc(r.docId).set({status:'취소',handledBy:currentUser.name||'',handledAt:new Date().toISOString()},{merge:true})
@@ -4161,6 +4161,7 @@ function bitCreatePatient(r,name,reg){
 function bitAfterSave(p){
   const pf=BIT_PREFILL;BIT_PREFILL=null;if(!pf||!p)return;
   const r=pf.rec;if(String(r.mrn||'').trim()!==String(p.mrn||'').trim())return;
+  if(r.cancelled||r.status==='취소'||BIT_INTAKE.some(d=>d.docId===pf.docId&&(d.cancelled||d.status==='취소')))return;   // 취소된 접수에 새 카드를 잇지 않는다 — 이으면 취소 처리가 그 카드를 지운다 (2026-10-05)
   try{if(r.guardian&&r.relation&&r.relation!=='본인'&&!regFamily(p.mrn))setRegFamily(p.mrn,p.name,r.guardian+'('+r.relation+')');}catch(e){}
   p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||''};
   try{cloud.intakeCol.doc(pf.docId).set({status:'접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString(),patientId:p.id,seq:(typeof p.seq==='number'?p.seq:null)},{merge:true});}catch(e){}
