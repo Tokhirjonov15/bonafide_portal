@@ -11678,7 +11678,15 @@ window.bulkCreateStaff=async function(){
    로그인 계정과 따로 두는 파트별 명단 — 설정 문서 staffRoster = {파트:[이름…]}. 처음엔 STAFF_ROSTER_DEFAULT.
    퇴사자는 [✕] 로 빼고, 새 직원은 파트마다 [+ 추가] (관리자). 로그인 계정은 건드리지 않는다(계정 삭제는 계정 관리에서) */
 function staffPart(t){t=String(t||'').trim();if(t==='간호')return '간호사';if(t==='방사선')return '방사선사';if(t==='행정실')return '행정';return STAFF_TEAMS.includes(t)?t:'';}
-function partOf(m){return staffPart(m&&m.team)||((m&&m.role==='doctor')?'의사':'');}
+/* 계정의 파트: 직원 목록(파트별 명단)에 이름이 있으면 그 파트가 먼저 — 한글 이름·영문 이름·'한글 (영문)' 어느 것으로 만든 계정이든 맞춘다.
+   명단에 없으면 계정의 팀, 그것도 없으면 원장님 계정은 의사 */
+function rosterKeys(entry){const e=String(entry||'');const m=/^(.*?)\s*\((.*)\)\s*$/.exec(e);const norm=x=>String(x||'').replace(/\s+/g,'').toLowerCase();
+  return [norm(e),m?norm(m[1]):'',m?norm(m[2]):''].filter(Boolean);}
+function rosterPart(name){const k=String(name||'').replace(/\s+/g,'').toLowerCase();if(!k)return '';const R=staffRoster();
+  for(const g of STAFF_TEAMS){if((R[g]||[]).some(e=>rosterKeys(e).includes(k)))return g;}
+  const m=/^(.*?)\((.*)\)$/.exec(k);if(m)for(const g of STAFF_TEAMS){if((R[g]||[]).some(e=>{const ks=rosterKeys(e);return ks.includes(m[1])||ks.includes(m[2]);}))return g;}
+  return '';}
+function partOf(m){return rosterPart(m&&m.name)||staffPart(m&&m.team)||((m&&m.role==='doctor')?'의사':'');}
 const STAFF_ROSTER_DEFAULT={
   '의사':['김현우 (Ethan)','채상훈 (Hun)','정상민 (Jamie)','백민철 (Min)','박초롱'],
   '물리치료사':['서효성 (Jack)','김지은 (Jennie)','이지연 (Teemo)','허 빈 (Hannah)','한상훈 (Look)','조현신 (Zoe)','이세영 (Ahri)','황지현 (Wendy)','김건휘 (Kevin)','김재하 (Jay)','신소현 (Olly)','박승규 (Kai)','임현주 (Lena)'],
@@ -11706,13 +11714,13 @@ window.rosterAdd=function(gi){if(!isAdmin()){alert('명단 수정은 관리자�
   const g=STAFF_TEAMS[gi],inp=document.getElementById('sdirIn'+gi);if(!g||!inp)return;
   const n=inp.value.trim().replace(/\s*\(\s*/,' (').replace(/\s*\)\s*$/,')');   // '김민수(Min)' → '김민수 (Min)'if(!n){inp.focus();return;}
   const R=staffRoster();if(R[g].includes(n)){alert('이미 '+g+' 명단에 있습니다.');return;}
-  R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();
+  R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}
   const ni=document.getElementById('sdirIn'+gi);if(ni)ni.focus();};
 window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
   const g=STAFF_TEAMS[gi],R=staffRoster(),n=g&&R[g][i];if(!n)return;
   if(!confirm(`'${n}' 님을 ${g} 명단에서 뺄까요? (퇴사)
 로그인 계정은 그대로 남습니다 — 계정 삭제는 계정 관리에서 하세요.`))return;
-  R[g].splice(i,1);audit('직원 삭제',g+' · '+n);cloudSaveConfig();renderStaffDir();};
+  R[g].splice(i,1);audit('직원 삭제',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}};
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
 function allProcNames(){const set=[];ROOMS.forEach(r=>{(meta(r).procs||[]).forEach(pr=>{if(pr&&!set.includes(pr))set.push(pr);});});return set;}
