@@ -6647,7 +6647,7 @@ let waitHideControls=localStorage.getItem("patientBoard_waithide")==="1";
 /* 이름 마스킹: 김민수 → 김O수 (가운데 가림, 환자 프라이버시) */
 /* 카드 표시용 이름: 한글은 전체 표시, 외국인(라틴 문자) 이름만 최대 12자로 줄임 */
 function dispName(n){n=(n||"").trim();return (/[A-Za-z]/.test(n)&&n.length>12)?n.slice(0,12)+"…":n;}
-/* 이름 마스킹 (2026-10-05 변경): 2·4·6·8… 번째 글자만 O, 마지막 글자는 남김 — 2자 '이 O' · 3자 '장 O 규' · 4자 '스 O 파 니' · 5자 '강 O 원 O 남'
+/* 이름 마스킹 (2026-10-05 변경): 2·4·6·8… 번째 글자는 O (마지막 글자라도) — 2자 '이 O' · 3자 '장 O 규' · 4자 '스 O 파 O' · 5자 '강 O 원 O 남'
    외국인(라틴 문자)도 같은 규칙, 띄우지 않고 최대 12자 — 'AOlOf' */
 function maskName(n){
   n=(n||"").trim();
@@ -6657,7 +6657,7 @@ function maskName(n){
   if(latin&&ch.length>12){ch=ch.slice(0,12);cut=true;}
   if(ch.length<=1)return n;
   if(ch.length===2)return ch[0]+(latin?"O":" O");
-  const out=ch.map((c,i)=>(i%2===1&&i<ch.length-1&&c.trim())?"O":c);
+  const out=ch.map((c,i)=>(i%2===1&&c.trim())?"O":c);
   return latin?out.join("")+(cut?"…":""):out.join(" ");
 }
 // 휴대폰 번호 정규화(하이픈 자동)·마스킹
