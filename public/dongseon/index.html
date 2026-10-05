@@ -1133,6 +1133,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .role-tag.admin{background:var(--amber-bg);color:var(--orange)}
   .role-tag.staff{background:var(--teal-bg);color:var(--teal)}
   .role-tag.chief{background:var(--blue-bg,#e8f0fe);color:var(--blue)}
+  .sdir-names{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .sdir-n{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-weight:600}
+  .sdir-sel{font-size:12px;padding:1px 4px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--muted)}
   .team-tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;background:var(--blue-bg);color:var(--t-bluesoft)}
   /* 계정 모달 */
   .staff-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
@@ -1516,7 +1519,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="리뷰·주사 보너스 — 환자 이름만(가려서) 보고 혜택을 관리"><i data-lucide="gift"></i> 혜택 관리</button>
-    <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="calendar-off"></i> 휴무 관리</button>
+    <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
   </div>
   <div class="user-pill" id="userPill" style="display:none" onclick="openAccount()">
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
@@ -1894,12 +1897,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="modal">
     <h3>계정</h3>
     <div class="body" id="accountBody"></div>
-    <!-- 내 휴무·근무시간 — 이름을 누르면 바로 내 것만 고친다 (2026-10-01 요청: 휴무 관리 목록에서 남의 줄을 잘못 누르는 일 방지) -->
-    <div class="body" id="accountOffWrap" style="padding-top:0">
-      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="calendar-off"></i> 내 휴무·근무시간 <span class="hint" style="font-weight:400">(누르면 바로 저장)</span></div>
-      <p class="hint" style="margin:0 0 8px">요일 버튼 = 매주 쉬는 요일 · 하루 휴무 = 그날만 · 근무시간 = 요일별 출퇴근 시간(비우면 종일)</p>
-      <div id="accountOffList"></div>
-    </div>
     <div class="foot">
       <button class="btn" style="margin-left:auto" onclick="closeAccount()">닫기</button>
     </div>
@@ -1937,7 +1934,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="fld"><label>아이디 (이름)</label><input id="s_name" placeholder="이름" autocomplete="off" data-lpignore="true"></div>
       <div class="row2">
         <div class="fld"><label>권한</label><select id="s_role"><option value="staff">직원</option><option value="chief">주임 (통계 열람)</option><option value="doctor">원장님 (통계 열람)</option><option value="office">행정실 (통계 열람)</option><option value="admin">관리자</option></select></div>
-        <div class="fld"><label>팀 (선택)</label><select id="s_team"></select></div>
+        <div class="fld"><label>파트</label><select id="s_team"></select></div>
       </div>
       <div class="fld"><label id="s_pwlabel">비밀번호</label><input id="s_pw" type="password" placeholder="비밀번호" autocomplete="new-password"></div>
       <p class="hint" id="s_hint"></p>
@@ -2193,20 +2190,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   </div>
 </div>
 
-<!-- 휴무 관리 모달 (직원 모두) -->
+<!-- 직원 목록 모달 (예전 휴무 관리 — 2026-10-05 요청으로 휴무를 없애고 파트별 목록만) -->
 <div class="modal-bg" id="offModal">
   <div class="modal" style="width:620px">
-    <h3><i data-lucide="calendar-off"></i> 휴무 관리</h3>
+    <h3><i data-lucide="users"></i> 직원 목록</h3>
     <div class="body">
-      <p class="hint">병원은 연중무휴 — 직원별 휴무·근무시간을 지정하세요. <b>휴무이거나 근무시간 밖인 직원은</b> 진료의/간호사 선택 목록에서 빠지고 자동 지정되지 않습니다.<br>
-      · 요일 버튼 = 매주 반복 휴무 · 하루 휴무 = 그날만 휴무<br>
-      · 근무시간 = 요일별로 몇 시부터 몇 시까지 일하는지 (비우면 종일). 날짜별 근무시간을 넣으면 그날은 그 시간이 우선<br>
-      · <b>직원 모두 고칠 수 있습니다</b> — 저장 버튼 없이 바로 반영되고, 누가 언제 바꿨는지는 접근 기록에 남습니다</p>
+      <p class="hint">직원을 파트별(의사·물리치료사·간호사·진료지원·방사선사)로 보여 줍니다. 파트는 관리자가 이름 옆 칸에서 바로 바꿀 수 있습니다.</p>
       <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)">
-        <i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderOffList()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
+        <i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderStaffDir()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
       </div>
       <div id="offList" style="display:flex;flex-direction:column;gap:12px"></div>
-      <p class="hint" id="offEmpty" style="display:none">아직 등록된 진료의/간호사가 없습니다. 진료실 관리에서 방에 진료의·간호사를 먼저 입력하세요.</p>
+      <p class="hint" id="offEmpty" style="display:none">아직 등록된 직원이 없습니다.</p>
     </div>
     <div class="foot"><button class="btn primary" onclick="closeOff()">닫기</button></div>
   </div>
@@ -2558,14 +2552,16 @@ const SHOW_OWNERS = false;
        hours:{요일:'HH:MM-HH:MM'}, dateHours:{'YYYY-MM-DD':'HH:MM-HH:MM'}}} — 병원은 연중무휴, 직원별로 관리
    · hours/dateHours 가 없으면 종일 근무. 날짜별 근무시간이 요일 근무시간보다 우선 ── */
 let OFF_SCHED = {};
-function isOffOn(name,ymd){const s=OFF_SCHED[name];if(!s)return false;
+/* 휴무·근무시간 기능은 없앴다 (2026-10-05 요청) — 아무도 휴무·근무 외로 보지 않는다. 저장돼 있던 OFF_SCHED 는 지우지 않고 쓰지만 않는다 */
+const OFF_DISABLED=true;
+function isOffOn(name,ymd){if(OFF_DISABLED)return false;const s=OFF_SCHED[name];if(!s)return false;
   const d=new Date(ymd+"T12:00:00");
   if(Array.isArray(s.weekly)&&s.weekly.includes(d.getDay()))return true;
   if(Array.isArray(s.dates)&&s.dates.includes(ymd))return true;
   return false;}
 function parseHours(v){const m=/^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(v||"");return m?{from:m[1],to:m[2]}:null;}
 /* 그날 근무시간 — null 이면 종일 */
-function workHoursOn(name,ymd){const s=OFF_SCHED[name];if(!s)return null;
+function workHoursOn(name,ymd){if(OFF_DISABLED)return null;const s=OFF_SCHED[name];if(!s)return null;
   const dh=s.dateHours&&s.dateHours[ymd];if(dh)return parseHours(dh);
   const d=new Date(ymd+"T12:00:00");const wh=s.hours&&s.hours[d.getDay()];
   return wh?parseHours(wh):null;}
@@ -4166,9 +4162,8 @@ function updateUserPill(){
 
 /* 계정 모달 */
 function openAccount(){renderAccount();
-  OFF_SELF=true;OFF_HOURS_EDIT=null;try{renderOffList();}catch(e){console.warn('내 휴무',e);}   // 내 휴무·근무시간 (2026-10-01)
   document.getElementById('accountModal').classList.add('show');}
-function closeAccount(){OFF_SELF=false;OFF_HOURS_EDIT=null;document.getElementById('accountModal').classList.remove('show');}
+function closeAccount(){document.getElementById('accountModal').classList.remove('show');}
 function renderAccount(){
   if(!currentUser)return;
   const box=document.getElementById('accountBody');
@@ -4285,14 +4280,15 @@ function renderAccount(){
 function renderStaffList(){
   const box=document.getElementById('staffList');if(!box)return;
   const rk=m=>m.role==='admin'?0:['chief','doctor','office'].includes(m.role)?1:2;
-  const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>rk(a)-rk(b)||String(a.name||'').localeCompare(String(b.name||'')));
+  const po=m=>{const i=STAFF_TEAMS.indexOf(partOf(m));return i<0?99:i;};   // 파트별로 묶는다 (2026-10-05)
+  const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>po(a)-po(b)||rk(a)-rk(b)||String(a.name||'').localeCompare(String(b.name||'')));
   if(!list.length){box.innerHTML=`<div class="route-empty">등록된 계정이 없습니다.</div>`;return;}
   const meEm=(currentUser&&currentUser.email)||'';
-  box.innerHTML=list.map(m=>`
+  box.innerHTML=list.map((m,i)=>`${(i===0||po(list[i-1])!==po(m))?`<div class="sect-t" style="margin:10px 0 2px">${esc(partOf(m)||'파트 미지정')}</div>`:''}
     <div class="staff-row">
       <span class="sn">${esc(m.name||'')}</span>
       <span class="role-tag ${roleCls(m)}">${roleLabel(m)}</span>
-      ${m.team?`<span class="team-tag">${esc(m.team)}</span>`:''}
+      ${(m.team&&!partOf(m))?`<span class="team-tag">${esc(m.team)}</span>`:''}
       ${m.email===meEm?`<span class="hint">(나)</span>`:`<span class="tools">
         <button class="btn sm" type="button" onclick="openStaffEdit('${esc(m.email)}')" title="권한·팀 수정"><i data-lucide="pencil"></i></button>
         <button class="btn sm" type="button" onclick="adminResetPw('${esc(m.email)}')" title="비밀번호 재설정(새 비밀번호 발급)"><i data-lucide="key-round"></i> 비밀번호</button>
@@ -4358,7 +4354,7 @@ function openStaffEdit(sid){
   const nm=document.getElementById('s_name');
   nm.value=s?s.name:''; nm.readOnly=!!s;   // 수정 시 이름(=로그인 아이디) 고정
   document.getElementById('s_role').value=s?s.role:'staff';
-  {const cur=s?(s.team||''):'';const opts=STAFF_TEAMS.includes(cur)||!cur?STAFF_TEAMS:[...STAFF_TEAMS,cur];   // 예전에 적어 둔 다른 팀 이름은 그대로 남겨 둔다
+  {const cur=s?(staffPart(s.team)||s.team||''):'';const opts=STAFF_TEAMS.includes(cur)||!cur?STAFF_TEAMS:[...STAFF_TEAMS,cur];   // 예전에 적어 둔 다른 팀 이름은 그대로 남겨 둔다
    const sel=document.getElementById('s_team');sel.innerHTML='<option value="">(없음)</option>'+opts.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');sel.value=cur;}
   document.getElementById('s_pw').value='';
   const pwRow=document.getElementById('s_pw').closest('.fld')||document.getElementById('s_pw').parentElement;
@@ -4422,7 +4418,7 @@ async function bulkAddRun(){
   document.getElementById('bk_names').value='';
   try{renderStaffList();}catch(e){}
 }
-const STAFF_TEAMS=['물리치료사','행정실','간호','진료지원','방사선'];   // 계정의 팀 (2026-10-03 요청)
+const STAFF_TEAMS=['의사','물리치료사','간호사','진료지원','방사선사'];   // 계정의 팀 = 파트 (2026-10-05 요청 — 예전 '간호'·'방사선'은 staffPart 가 새 이름으로 읽음)
 function teamNames(){const set=new Set();STAFF.forEach(s=>{if(s.team)set.add(s.team);});return [...set];}
 async function saveStaff(){
   if(!isAdmin()){alert('계정 추가·수정은 관리자만 가능합니다.');return;}
@@ -6370,7 +6366,7 @@ function render(){
   if(_wy&&Math.abs((window.scrollY||0)-_wy)>2)try{window.scrollTo(window.scrollX||0,_wy);}catch(e){}
   const sb=document.getElementById("statsBtn");if(sb)sb.style.display=canStats()?"":"none";
   const rb=document.getElementById("roomsBtn");if(rb)rb.style.display=isAdmin()?"":"none";
-  const ob=document.getElementById("offBtn");if(ob)ob.style.display=isAdmin()?"":"none";   /* 전 직원 휴무 목록은 관리자만. 직원은 이름(계정 창)에서 자기 것만 고친다 (2026-10-01 요청) */
+  const ob=document.getElementById("offBtn");if(ob)ob.style.display="";   /* 직원 목록(파트별)은 모두 볼 수 있다 — 파트 변경만 관리자 (2026-10-05) */
   const rtb=document.getElementById("routinesBtn");if(rtb)rtb.style.display=isAdmin()?"":"none";
 }
 /* 휴대폰 방 바로가기 — 보이는 방(현재 층 탭 기준)마다 칩 하나(환자 수 포함). 넓은 화면에서는 CSS로 숨김 */
@@ -11673,114 +11669,37 @@ window.bulkCreateStaff=async function(){
   alert(`완료\n생성: ${made.length}개\n건너뜀(이미 있음): ${skipped.length}개${failed.length?'\n실패: '+failed.join(', '):''}`);
   try{renderStaffList();}catch(e){}
 };
-/* ───── 휴무 관리 (직원 모두 — 버튼도 모두에게 보인다) ───── */
-let OFF_NAMES=[];   // renderOffList가 채움 — 인라인 핸들러는 인덱스로 참조(한글 이름 따옴표 문제 회피)
-function offNames(){const s2=new Set();
-  DOCTORS.forEach(n=>{if(n)s2.add(n);});
-  ROOMS.forEach(r=>{(meta(r).doctors||[]).forEach(n=>s2.add(n));(meta(r).nurses||[]).forEach(n=>s2.add(n));(meta(r).rads||[]).forEach(n=>s2.add(n));});
-  Object.keys(OFF_SCHED).forEach(n=>s2.add(n));
-  return [...s2].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));}
-function offOf(n){const o=OFF_SCHED[n]||(OFF_SCHED[n]={});if(!Array.isArray(o.weekly))o.weekly=[];if(!Array.isArray(o.dates))o.dates=[];
-  if(!o.hours||typeof o.hours!=='object')o.hours={};if(!o.dateHours||typeof o.dateHours!=='object')o.dateHours={};return o;}
-let OFF_HOURS_EDIT=null;   // {name, di} — 지금 편집 중인 요일 근무시간
-/* 휴무 관리는 직원 모두가 열고 고친다 (2026-09-29 요청). 누가 무엇을 바꿨는지는 audit('휴무변경'·'근무시간변경') 에 남는다 */
-window.openOff=function(){OFF_SELF=false;OFF_HOURS_EDIT=null;renderOffList();document.getElementById("offModal").classList.add("show");};
+/* ───── 직원 목록 (2026-10-05 요청: 휴무 관리를 없애고 직원을 파트별로만) ─────
+   파트 = 계정의 '팀'. 예전 값 간호·방사선은 간호사·방사선사로 읽고, 팀이 비어 있는 원장님 계정은 의사.
+   계정이 없는 진료의(진료실 관리의 진료의 명단)도 의사에 넣는다. 관리자는 여기서 바로 파트를 고친다 */
+function staffPart(t){t=String(t||'').trim();if(t==='간호')return '간호사';if(t==='방사선')return '방사선사';return STAFF_TEAMS.includes(t)?t:'';}
+function partOf(m){return staffPart(m&&m.team)||((m&&m.role==='doctor')?'의사':'');}
+function staffDirRows(){
+  const rows=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).map(m=>({name:String(m.name||'').trim(),email:m.email,part:partOf(m)}));
+  const have=new Set(rows.map(r=>r.name));
+  DOCTORS.forEach(n=>{n=String(n||'').trim();if(n&&!have.has(n)){have.add(n);rows.push({name:n,email:'',part:'의사'});}});
+  return rows;}
+window.openOff=function(){renderStaffDir();document.getElementById("offModal").classList.add("show");};
 window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
-const OFF_DAYS=["일","월","화","수","목","금","토"];
-/* OFF_SELF: 계정 창(이름 클릭)에서 '내 것만' 그릴 때 true — 같은 편집 함수들이 이 값으로 그릴 곳을 고른다 (2026-10-01) */
-var OFF_SELF=false;
-function renderOffList(){
-  if(OFF_SELF){
-    const box=document.getElementById("accountOffList");if(!box)return;
-    const me=String((currentUser&&currentUser.name)||'').trim();
-    OFF_NAMES=me?[me]:[];
-    if(!OFF_NAMES.length){box.innerHTML='<p class="hint">로그인한 이름을 찾지 못했습니다.</p>';return;}
-    box.innerHTML='';renderOffRows(box);return;
-  }
-  OFF_NAMES=offNames();
+function renderStaffDir(){
+  const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");if(!box)return;
   const q=((document.getElementById("offSearch")||{}).value||"").trim().toLowerCase();
-  if(q)OFF_NAMES=OFF_NAMES.filter(n=>n.toLowerCase().includes(q));
-  const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");
-  if(!OFF_NAMES.length){box.innerHTML=q?'<p class="hint">검색 결과가 없습니다.</p>':"";emp.style.display=q?"none":"";return;}
-  emp.style.display="none";
-  renderOffRows(box);
+  const rows=staffDirRows().filter(r=>!q||r.name.toLowerCase().includes(q));
+  if(emp)emp.style.display=(!rows.length&&!q)?"":"none";
+  if(!rows.length){box.innerHTML=q?'<p class="hint">검색 결과가 없습니다.</p>':'';return;}
+  const adm=isAdmin();
+  const sel=r=>(adm&&r.email)?`<select class="sdir-sel" title="파트 바꾸기" onchange="setStaffPart('${esc(r.email)}',this.value)"><option value="">(미지정)</option>${STAFF_TEAMS.map(t=>`<option value="${esc(t)}"${t===r.part?' selected':''}>${esc(t)}</option>`).join('')}</select>`:'';
+  box.innerHTML=[...STAFF_TEAMS,''].map(g=>{
+    const list=rows.filter(r=>r.part===g).sort((x,y)=>x.name.localeCompare(y.name,'ko'));if(!list.length)return '';
+    return `<div class="sdir-grp"><div class="sect-t">${esc(g||'파트 미지정')} <span class="hint" style="font-weight:400">${list.length}명</span></div>
+      <div class="sdir-names">${list.map(r=>`<span class="sdir-n">${esc(r.name)}${sel(r)}</span>`).join('')}</div></div>`;}).join('');
 }
-function renderOffRows(box){
-  const today=new Date().getDay(), todayYmd=localYMD(new Date());
-  const inp='padding:4px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;background:var(--panel);color:var(--text)';
-  box.innerHTML=OFF_NAMES.map((n,i)=>{const o=offOf(n);
-    const days=OFF_DAYS.map((d,di)=>`<button type="button" class="offday${o.weekly.includes(di)?' on':''}${di===today?' today':''}" onclick="toggleOffDay(${i},${di})" title="매주 ${d}요일 휴무">${d}</button>`).join("");
-    const dates=o.dates.map(dt=>`<span class="offdate">${dt}<button type="button" onclick="delOffDate(${i},'${dt}')" title="삭제">✕</button></span>`).join("");
-    /* 요일별 근무시간 칩: 휴무 요일은 표시 안 함, 비어 있으면 종일 */
-    const hourChips=OFF_DAYS.map((d,di)=>{if(o.weekly.includes(di))return '';const h=parseHours(o.hours[di]);
-      const ed=OFF_HOURS_EDIT&&OFF_HOURS_EDIT.name===n&&OFF_HOURS_EDIT.di===di;
-      return `<button type="button" class="offhour${h?' on':''}${ed?' editing':''}${di===today?' today':''}" onclick="editOffHours(${i},${di})" title="${d}요일 근무시간 (누르면 수정)">${d} ${h?h.from+'~'+h.to:'종일'}</button>`;}).join("");
-    const ed=OFF_HOURS_EDIT&&OFF_HOURS_EDIT.name===n?OFF_HOURS_EDIT.di:-1;
-    const edH=ed>=0?parseHours(o.hours[ed]):null;
-    const editor=ed>=0?`<div class="offhour-edit">
-        <b>${OFF_DAYS[ed]}요일 근무시간</b>
-        <input type="time" id="offHf${i}" value="${edH?edH.from:'09:00'}" style="${inp}"> ~ <input type="time" id="offHt${i}" value="${edH?edH.to:'18:00'}" style="${inp}">
-        <button type="button" class="mini" onclick="saveOffHours(${i},${ed})">저장</button>
-        <button type="button" class="mini" onclick="clearOffHours(${i},${ed})">종일로</button>
-        <button type="button" class="mini" onclick="editOffHours(-1,-1)">취소</button>
-      </div>`:'';
-    const dateHours=Object.keys(o.dateHours).sort().map(dt=>{const h=parseHours(o.dateHours[dt]);return h?`<span class="offdate hrs">${dt} ${h.from}~${h.to}<button type="button" onclick="delOffDateHours(${i},'${dt}')" title="삭제">✕</button></span>`:'';}).join("");
-    const lab=offLabel(n);const th=workHoursOn(n,todayYmd);
-    const tag=lab==='휴무'?'<span class="offtag">오늘 휴무</span>':(th?`<span class="offtag hrs">오늘 ${th.from}~${th.to}${lab?' · '+lab:' · 근무 중'}</span>`:'');
-    return `<div class="offrow${lab?' off-today':''}">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <b style="min-width:70px">${esc(n)}</b>${tag}
-        <span class="offdays">${days}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
-        <input type="date" id="offDate${i}" style="${inp}">
-        <button type="button" class="mini" onclick="addOffDate(${i})">+ 하루 휴무 추가</button>
-        ${dates}
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:8px">
-        <span class="hint" style="min-width:64px">근무시간</span>${hourChips}
-      </div>
-      ${editor}
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">
-        <input type="date" id="offDhDate${i}" style="${inp}">
-        <input type="time" id="offDhF${i}" value="09:00" style="${inp}"> ~ <input type="time" id="offDhT${i}" value="13:00" style="${inp}">
-        <button type="button" class="mini" onclick="addOffDateHours(${i})">+ 날짜별 근무시간</button>
-        ${dateHours}
-      </div>
-    </div>`;}).join("");
-}
-/* ── 근무시간 편집 ── */
-window.editOffHours=function(i,di){const n=OFF_NAMES[i];
-  if(!n||di<0||(OFF_HOURS_EDIT&&OFF_HOURS_EDIT.name===n&&OFF_HOURS_EDIT.di===di))OFF_HOURS_EDIT=null;else OFF_HOURS_EDIT={name:n,di};
-  renderOffList();};
-function validHours(f,t){if(!f||!t){alert("시작·종료 시간을 모두 입력하세요.");return false;}if(f>=t){alert("종료 시간은 시작 시간보다 늦어야 합니다.");return false;}return true;}
-window.saveOffHours=function(i,di){const n=OFF_NAMES[i];if(!n)return;
-  const f=(document.getElementById("offHf"+i)||{}).value,t=(document.getElementById("offHt"+i)||{}).value;
-  if(!validHours(f,t))return;
-  offOf(n).hours[di]=f+"-"+t;OFF_HOURS_EDIT=null;
-  audit('근무시간변경',n+' '+OFF_DAYS[di]+' '+f+'~'+t);cloudSaveConfig();renderOffList();render();};
-window.clearOffHours=function(i,di){const n=OFF_NAMES[i];if(!n)return;
-  delete offOf(n).hours[di];OFF_HOURS_EDIT=null;
-  audit('근무시간변경',n+' '+OFF_DAYS[di]+' 종일');cloudSaveConfig();renderOffList();render();};
-window.addOffDateHours=function(i){const n=OFF_NAMES[i];if(!n)return;
-  const v=(document.getElementById("offDhDate"+i)||{}).value;if(!v){alert("날짜를 선택하세요.");return;}
-  const f=(document.getElementById("offDhF"+i)||{}).value,t=(document.getElementById("offDhT"+i)||{}).value;
-  if(!validHours(f,t))return;
-  offOf(n).dateHours[v]=f+"-"+t;
-  audit('근무시간변경',n+' '+v+' '+f+'~'+t);cloudSaveConfig();renderOffList();render();};
-window.delOffDateHours=function(i,v){const n=OFF_NAMES[i];if(!n)return;
-  delete offOf(n).dateHours[v];
-  audit('근무시간변경',n+' '+v+' 근무시간 취소');cloudSaveConfig();renderOffList();render();};
-window.toggleOffDay=function(i,di){const n=OFF_NAMES[i];if(!n)return;const o=offOf(n);
-  const k=o.weekly.indexOf(di);if(k>=0)o.weekly.splice(k,1);else o.weekly.push(di);
-  audit('휴무변경',n+' 요일 '+OFF_DAYS[di]);cloudSaveConfig();renderOffList();render();};
-window.addOffDate=function(i){const n=OFF_NAMES[i];if(!n)return;
-  const v=document.getElementById("offDate"+i).value;if(!v)return;
-  const o=offOf(n);if(!o.dates.includes(v)){o.dates.push(v);o.dates.sort();}
-  audit('휴무변경',n+' '+v);cloudSaveConfig();renderOffList();render();};
-window.delOffDate=function(i,v){const n=OFF_NAMES[i];if(!n)return;
-  const o=offOf(n);o.dates=o.dates.filter(x=>x!==v);
-  audit('휴무변경',n+' '+v+' 취소');cloudSaveConfig();renderOffList();render();};
+window.setStaffPart=async function(email,part){if(!isAdmin()){alert('파트 변경은 관리자만 가능합니다.');return;}
+  const m=memByEmail(email);if(!m||m.super)return;
+  try{await mutateAcl(members=>{const t=members.find(x=>x.email===email);if(t)t.team=part;return members;});m.team=part;}
+  catch(e){alert('저장 실패: '+((e&&e.message)||e));renderStaffDir();return;}
+  try{audit('파트변경',(m.name||'')+' → '+(part||'(미지정)'));}catch(e){}
+  renderStaffDir();try{renderStaffList();}catch(e){}};
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
 function allProcNames(){const set=[];ROOMS.forEach(r=>{(meta(r).procs||[]).forEach(pr=>{if(pr&&!set.includes(pr))set.push(pr);});});return set;}
