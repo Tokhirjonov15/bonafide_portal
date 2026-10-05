@@ -1450,6 +1450,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #pbScreen .ks-frame{position:absolute;inset:12% 18%;border:4px dashed rgba(255,255,255,.85);border-radius:18px}
   #pbScreen .ks-scan{position:absolute;left:18%;right:18%;top:12%;height:4px;background:#22d3ee;box-shadow:0 0 18px #22d3ee;display:none}
   #pbScreen .ks-scan.on{display:block;animation:ksScan 1.1s ease-in-out infinite alternate}
+  #pbScreen .ks-flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+  #pbScreen .ks-flash.on{animation:ksFlash .45s ease-out}
+  @keyframes ksFlash{0%{opacity:.95}100%{opacity:0}}
   @keyframes ksScan{from{top:12%}to{top:86%}}
   #pbScreen .ks-scantxt{position:absolute;left:0;right:0;bottom:14px;color:#fff;font-size:22px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.6)}
   #pbScreen .ks-note{font-size:18px;color:#475569}
@@ -8332,7 +8335,7 @@ function pbRender(){
     if(box.dataset.mode!=='review'||!document.getElementById('pbVideo')){
       box.dataset.mode='review';
       box.innerHTML=`<div class="ks-h1">네이버 리뷰 화면을 카메라에 보여 주세요</div>
-        <div class="ks-cam"><video id="pbVideo" autoplay playsinline muted></video><div class="ks-frame"></div><div class="ks-scan" id="pbScan"></div><div class="ks-scantxt" id="pbScanTxt"></div></div>
+        <div class="ks-cam"><video id="pbVideo" autoplay playsinline muted></video><div class="ks-frame"></div><div class="ks-scan" id="pbScan"></div><div class="ks-scantxt" id="pbScanTxt"></div><div class="ks-flash" id="pbFlash"></div></div>
         <div class="ks-note" id="pbCamNote">휴대폰의 리뷰 화면이 네모 칸 안에 보이게 해 주세요</div>
         <div class="ks-btns"><button type="button" class="ks-btn ks-main" id="pbCheckBtn" onclick="pbCheck()">리뷰 확인하기</button><button type="button" class="ks-btn ks-sub" onclick="pbFlip()">카메라 전환</button></div>`;
       pbCamStart();}
@@ -8344,7 +8347,33 @@ function pbRender(){
       <div class="ks-btns"><button type="button" class="ks-btn ks-main" id="pbYes" onclick="pbConfirm()">네, 받을게요</button><button type="button" class="ks-btn ks-sub" onclick="PB.pick='';pbRender()">다시 고르기</button></div></div>`;return;}
   box.innerHTML=`<div class="ks-h1">받으실 치료를 하나 골라 주세요</div><div class="ks-h2">리뷰·주사 감사 혜택 · 총 혜택 <b>${left}회</b></div>
     <div class="ks-items">${BONUS_ITEMS.map(it=>`<button type="button" class="ks-item" onclick="PB.pick='${it}';pbRender()"><span class="ks-iname">${esc(it)}</span>${PB_ITEM_INFO[it]?`<span class="ks-idesc">${esc(PB_ITEM_INFO[it])}</span>`:''}</button>`).join('')}</div>`;}
-window.pbCheck=function(){if(PB.mode!=='review'||PB.phase!=='cam')return;PB.phase='scan';
+/* 리뷰 확인 때 카메라 화면을 실제로 찍어 이 기기에 저장 (2026-10-05 요청) — 찰칵 소리·번쩍임.
+   PC·안드로이드: 다운로드 폴더(안드로이드는 갤러리의 '다운로드' 앨범에도 보임). 아이패드·아이폰: 공유 창 → [이미지 저장] 을 누르면 사진 앱.
+   서버에는 올리지 않는다 */
+function pbShutter(){
+  const f=document.getElementById('pbFlash');if(f){f.classList.remove('on');void f.offsetWidth;f.classList.add('on');}
+  try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;const ac=new AC();
+    const len=Math.floor(ac.sampleRate*0.09),buf=ac.createBuffer(1,len,ac.sampleRate),ch=buf.getChannelData(0);
+    for(let i=0;i<len;i++){const t=i/len;ch[i]=(Math.random()*2-1)*Math.pow(1-t,3)*(t<0.35||t>0.5?1:0.25);}   // 찰-칵 두 번 끊기는 소리
+    const src=ac.createBufferSource(),gn=ac.createGain();gn.gain.value=0.6;src.buffer=buf;src.connect(gn);gn.connect(ac.destination);src.start();
+    setTimeout(()=>{try{ac.close();}catch(e){}},400);}catch(e){}}
+function pbSnap(){
+  const v=document.getElementById('pbVideo');if(!v||!PB_STREAM||!v.videoWidth)return false;
+  const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);   // 원본 프레임 = 글자가 바로 읽힘(화면의 셀카 좌우 반전은 미리보기에만)
+  pbShutter();
+  const d=new Date(),z=n=>String(n).padStart(2,'0');
+  const fname=`리뷰_${PB.mrn||'환자'}_${localYMD(d)}_${z(d.getHours())}${z(d.getMinutes())}${z(d.getSeconds())}.jpg`;
+  const url=c.toDataURL('image/jpeg',0.9);
+  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(ios&&navigator.canShare){try{const bin=atob(url.split(',')[1]),arr=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const f=new File([arr],fname,{type:'image/jpeg'});
+    if(navigator.canShare({files:[f]})){navigator.share({files:[f]}).catch(e=>console.warn('review photo share',e));return true;}}catch(e){console.warn('review photo',e);}}
+  const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();
+  return true;}
+window.pbCheck=function(){if(PB.mode!=='review'||PB.phase!=='cam')return;
+  try{pbSnap();}catch(e){console.warn('review photo',e);}
+  PB.phase='scan';
   const b=document.getElementById('pbCheckBtn');if(b){b.disabled=true;b.textContent='확인 중…';}
   const sc=document.getElementById('pbScan');if(sc)sc.classList.add('on');
   const tx=document.getElementById('pbScanTxt');if(tx)tx.textContent='리뷰를 확인하고 있습니다…';
