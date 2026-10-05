@@ -1135,7 +1135,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .role-tag.chief{background:var(--blue-bg,#e8f0fe);color:var(--blue)}
   .sdir-names{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .sdir-n{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-weight:600}
-  .sdir-sel{font-size:12px;padding:1px 4px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--muted)}
+  .sdir-x{border:0;background:transparent;color:var(--sub);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
+  .sdir-x:hover{color:var(--red)}
+  .sdir-add{display:inline-flex;align-items:center;gap:4px}
+  .sdir-add input{width:130px;padding:5px 8px;border:1px dashed var(--line);border-radius:8px;font-size:13px;background:var(--panel);color:var(--text)}
   .team-tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:20px;background:var(--blue-bg);color:var(--t-bluesoft)}
   /* 계정 모달 */
   .staff-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
@@ -2195,7 +2198,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="modal" style="width:620px">
     <h3><i data-lucide="users"></i> 직원 목록</h3>
     <div class="body">
-      <p class="hint">직원을 파트별(의사·물리치료사·간호사·진료지원·방사선사)로 보여 줍니다. 파트는 관리자가 이름 옆 칸에서 바로 바꿀 수 있습니다.</p>
+      <p class="hint">파트별(의사·물리치료사·간호사·진료지원·방사선사·행정) 직원 명단입니다. 관리자는 퇴사자를 이름 옆 <b>✕</b> 로 빼고, 새 직원을 파트마다 <b>+ 추가</b> 로 넣습니다. (로그인 계정과는 따로입니다)</p>
       <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)">
         <i data-lucide="search"></i><input id="offSearch" placeholder="이름 검색" oninput="renderStaffDir()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
       </div>
@@ -2552,6 +2555,7 @@ const SHOW_OWNERS = false;
        hours:{요일:'HH:MM-HH:MM'}, dateHours:{'YYYY-MM-DD':'HH:MM-HH:MM'}}} — 병원은 연중무휴, 직원별로 관리
    · hours/dateHours 가 없으면 종일 근무. 날짜별 근무시간이 요일 근무시간보다 우선 ── */
 let OFF_SCHED = {};
+let STAFF_ROSTER=null;   // 직원 목록(파트별 명단, 설정 문서 staffRoster) — 없으면 STAFF_ROSTER_DEFAULT (2026-10-05)
 /* 휴무·근무시간 기능은 없앴다 (2026-10-05 요청) — 아무도 휴무·근무 외로 보지 않는다. 저장돼 있던 OFF_SCHED 는 지우지 않고 쓰지만 않는다 */
 const OFF_DISABLED=true;
 function isOffOn(name,ymd){if(OFF_DISABLED)return false;const s=OFF_SCHED[name];if(!s)return false;
@@ -4418,7 +4422,7 @@ async function bulkAddRun(){
   document.getElementById('bk_names').value='';
   try{renderStaffList();}catch(e){}
 }
-const STAFF_TEAMS=['의사','물리치료사','간호사','진료지원','방사선사'];   // 계정의 팀 = 파트 (2026-10-05 요청 — 예전 '간호'·'방사선'은 staffPart 가 새 이름으로 읽음)
+const STAFF_TEAMS=['의사','물리치료사','간호사','진료지원','방사선사','행정'];   // 계정의 팀 = 파트 (2026-10-05 요청 — 예전 '간호'·'방사선'·'행정실'은 staffPart 가 새 이름으로 읽음)
 function teamNames(){const set=new Set();STAFF.forEach(s=>{if(s.team)set.add(s.team);});return [...set];}
 async function saveStaff(){
   if(!isAdmin()){alert('계정 추가·수정은 관리자만 가능합니다.');return;}
@@ -5180,7 +5184,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, slipWords:SLIP_WORDS, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, bkRoster:BK_ROSTER_TEXT, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, slipWords:SLIP_WORDS, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, staffRoster:STAFF_ROSTER, bkRoster:BK_ROSTER_TEXT, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -5214,6 +5218,7 @@ function applyCfg(d){
   REGISTRY=capRegistry((Array.isArray(d.registry)?d.registry:[]).map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})));
   DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
   OFF_SCHED=(d.offSched&&typeof d.offSched==='object')?d.offSched:{};
+  if(d.staffRoster&&typeof d.staffRoster==='object'){STAFF_ROSTER=d.staffRoster;try{const om=document.getElementById('offModal');if(om&&om.classList.contains('show'))renderStaffDir();}catch(e){}}   // 직원 목록 (2026-10-05)
   if(typeof d.bkRoster==='string')BK_ROSTER_TEXT=d.bkRoster;   // 4층 치료사 명단 (2026-10-03)
   SHEET_NOTES=(d.sheetNotes&&typeof d.sheetNotes==='object')?d.sheetNotes:{};
   SHEET_STAFF_HIST=(d.sheetStaffHist&&typeof d.sheetStaffHist==='object')?d.sheetStaffHist:{};
@@ -11670,36 +11675,44 @@ window.bulkCreateStaff=async function(){
   try{renderStaffList();}catch(e){}
 };
 /* ───── 직원 목록 (2026-10-05 요청: 휴무 관리를 없애고 직원을 파트별로만) ─────
-   파트 = 계정의 '팀'. 예전 값 간호·방사선은 간호사·방사선사로 읽고, 팀이 비어 있는 원장님 계정은 의사.
-   계정이 없는 진료의(진료실 관리의 진료의 명단)도 의사에 넣는다. 관리자는 여기서 바로 파트를 고친다 */
-function staffPart(t){t=String(t||'').trim();if(t==='간호')return '간호사';if(t==='방사선')return '방사선사';return STAFF_TEAMS.includes(t)?t:'';}
+   로그인 계정과 따로 두는 파트별 명단 — 설정 문서 staffRoster = {파트:[이름…]}. 처음엔 STAFF_ROSTER_DEFAULT.
+   퇴사자는 [✕] 로 빼고, 새 직원은 파트마다 [+ 추가] (관리자). 로그인 계정은 건드리지 않는다(계정 삭제는 계정 관리에서) */
+function staffPart(t){t=String(t||'').trim();if(t==='간호')return '간호사';if(t==='방사선')return '방사선사';if(t==='행정실')return '행정';return STAFF_TEAMS.includes(t)?t:'';}
 function partOf(m){return staffPart(m&&m.team)||((m&&m.role==='doctor')?'의사':'');}
-function staffDirRows(){
-  const rows=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).map(m=>({name:String(m.name||'').trim(),email:m.email,part:partOf(m)}));
-  const have=new Set(rows.map(r=>r.name));
-  DOCTORS.forEach(n=>{n=String(n||'').trim();if(n&&!have.has(n)){have.add(n);rows.push({name:n,email:'',part:'의사'});}});
-  return rows;}
+const STAFF_ROSTER_DEFAULT={
+  '의사':['김현우 (Ethan)','채상훈 (Hun)','정상민 (Jamie)','백민철 (Min)','박초롱'],
+  '물리치료사':['서효성 (Jack)','김지은 (Jennie)','이지연 (Teemo)','허 빈 (Hannah)','한상훈 (Look)','조현신 (Zoe)','이세영 (Ahri)','황지현 (Wendy)','김건휘 (Kevin)','김재하 (Jay)','신소현 (Olly)','박승규 (Kai)','임현주 (Lena)'],
+  '간호사':['우성복 (Veronica)','이은지 (Majorika)','김소은 (Lily)','장현규 (Charlie)','김나연 (Luna)','부경지 (Ivy)','최민지 (Amy)','서세리 (Sherry)','조아람 (Ana)','곽민솔 (Sol)'],
+  '진료지원':['이아람 (Audrey)','한효주 (Lux)','김현지 (I)','최미서 (Lucy)'],
+  '방사선사':['김진규 (Andy)','조선형 (Sun)','김예슬 (Roa)','정미경 (Eve)'],
+  '행정':['현예나 (Yena)','박진영 (Sona)','윤새한 (Evan)']};
+function staffRoster(){if(!STAFF_ROSTER||typeof STAFF_ROSTER!=='object')STAFF_ROSTER=JSON.parse(JSON.stringify(STAFF_ROSTER_DEFAULT));
+  STAFF_TEAMS.forEach(t=>{if(!Array.isArray(STAFF_ROSTER[t]))STAFF_ROSTER[t]=[];});return STAFF_ROSTER;}
 window.openOff=function(){renderStaffDir();document.getElementById("offModal").classList.add("show");};
 window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
 function renderStaffDir(){
   const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");if(!box)return;
   const q=((document.getElementById("offSearch")||{}).value||"").trim().toLowerCase();
-  const rows=staffDirRows().filter(r=>!q||r.name.toLowerCase().includes(q));
-  if(emp)emp.style.display=(!rows.length&&!q)?"":"none";
-  if(!rows.length){box.innerHTML=q?'<p class="hint">검색 결과가 없습니다.</p>':'';return;}
-  const adm=isAdmin();
-  const sel=r=>(adm&&r.email)?`<select class="sdir-sel" title="파트 바꾸기" onchange="setStaffPart('${esc(r.email)}',this.value)"><option value="">(미지정)</option>${STAFF_TEAMS.map(t=>`<option value="${esc(t)}"${t===r.part?' selected':''}>${esc(t)}</option>`).join('')}</select>`:'';
-  box.innerHTML=[...STAFF_TEAMS,''].map(g=>{
-    const list=rows.filter(r=>r.part===g).sort((x,y)=>x.name.localeCompare(y.name,'ko'));if(!list.length)return '';
-    return `<div class="sdir-grp"><div class="sect-t">${esc(g||'파트 미지정')} <span class="hint" style="font-weight:400">${list.length}명</span></div>
-      <div class="sdir-names">${list.map(r=>`<span class="sdir-n">${esc(r.name)}${sel(r)}</span>`).join('')}</div></div>`;}).join('');
+  const R=staffRoster(),adm=isAdmin();if(emp)emp.style.display="none";
+  const html=STAFF_TEAMS.map((g,gi)=>{
+    const list=R[g].map((n,i)=>({n,i})).filter(x=>!q||x.n.toLowerCase().includes(q));
+    if(q&&!list.length)return '';
+    return `<div class="sdir-grp"><div class="sect-t">${esc(g)} <span class="hint" style="font-weight:400">${R[g].length}명</span></div>
+      <div class="sdir-names">${list.map(x=>`<span class="sdir-n">${esc(x.n)}${adm?`<button type="button" class="sdir-x" title="명단에서 빼기 (퇴사)" onclick="rosterDel(${gi},${x.i})">✕</button>`:''}</span>`).join('')||'<span class="hint">없음</span>'}
+      ${adm&&!q?`<span class="sdir-add"><input id="sdirIn${gi}" placeholder="이름 (영문)" maxlength="40" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)rosterAdd(${gi})"><button type="button" class="btn sm" onclick="rosterAdd(${gi})">+ 추가</button></span>`:''}</div></div>`;}).join('');
+  box.innerHTML=html||'<p class="hint">검색 결과가 없습니다.</p>';
 }
-window.setStaffPart=async function(email,part){if(!isAdmin()){alert('파트 변경은 관리자만 가능합니다.');return;}
-  const m=memByEmail(email);if(!m||m.super)return;
-  try{await mutateAcl(members=>{const t=members.find(x=>x.email===email);if(t)t.team=part;return members;});m.team=part;}
-  catch(e){alert('저장 실패: '+((e&&e.message)||e));renderStaffDir();return;}
-  try{audit('파트변경',(m.name||'')+' → '+(part||'(미지정)'));}catch(e){}
-  renderStaffDir();try{renderStaffList();}catch(e){}};
+window.rosterAdd=function(gi){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
+  const g=STAFF_TEAMS[gi],inp=document.getElementById('sdirIn'+gi);if(!g||!inp)return;
+  const n=inp.value.trim().replace(/\s*\(\s*/,' (').replace(/\s*\)\s*$/,')');   // '김민수(Min)' → '김민수 (Min)'if(!n){inp.focus();return;}
+  const R=staffRoster();if(R[g].includes(n)){alert('이미 '+g+' 명단에 있습니다.');return;}
+  R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();
+  const ni=document.getElementById('sdirIn'+gi);if(ni)ni.focus();};
+window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
+  const g=STAFF_TEAMS[gi],R=staffRoster(),n=g&&R[g][i];if(!n)return;
+  if(!confirm(`'${n}' 님을 ${g} 명단에서 뺄까요? (퇴사)
+로그인 계정은 그대로 남습니다 — 계정 삭제는 계정 관리에서 하세요.`))return;
+  R[g].splice(i,1);audit('직원 삭제',g+' · '+n);cloudSaveConfig();renderStaffDir();};
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
 function allProcNames(){const set=[];ROOMS.forEach(r=>{(meta(r).procs||[]).forEach(pr=>{if(pr&&!set.includes(pr))set.push(pr);});});return set;}
