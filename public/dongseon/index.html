@@ -1135,6 +1135,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .role-tag.chief{background:var(--blue-bg,#e8f0fe);color:var(--blue)}
   .sdir-names{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .sdir-n{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-weight:600}
+  .sp-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);display:flex;flex-direction:column;gap:5px}
+  .sp-head{cursor:pointer;font-size:15px}
+  .sp-dc{color:var(--red);font-size:13.5px}
+  .sp-chtext{white-space:pre-wrap;word-break:break-all;background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:6px 9px;font-size:13px;max-height:170px;overflow:auto}
   .sdir-x{border:0;background:transparent;color:var(--sub);cursor:pointer;font-size:12px;padding:0 2px;line-height:1}
   .sdir-x:hover{color:var(--red)}
   .sdir-add{display:inline-flex;align-items:center;gap:4px}
@@ -1523,6 +1527,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="리뷰·주사 보너스 — 환자 이름만(가려서) 보고 혜택을 관리"><i data-lucide="gift"></i> 혜택 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
+    <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
   </div>
   <div class="user-pill" id="userPill" style="display:none" onclick="openAccount()">
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
@@ -2194,6 +2199,19 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 </div>
 
 <!-- 직원 목록 모달 (예전 휴무 관리 — 2026-10-05 요청으로 휴무를 없애고 파트별 목록만) -->
+<!-- 진료지원 모달 (2026-10-05): 오늘 처방 D/C · 오늘 새로 쓴 차팅을 환자별로 — 직원 모두 -->
+<div class="modal-bg" id="supportModal">
+  <div class="modal" style="width:760px">
+    <h3><i data-lucide="clipboard-check"></i> 진료지원 <span class="hint" id="supportSum" style="font-weight:400;margin-left:6px"></span></h3>
+    <div class="body">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;max-width:260px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--panel)">
+        <i data-lucide="search"></i><input id="supportSearch" placeholder="이름·차트번호 검색" oninput="renderSupport()" style="border:0;outline:0;background:transparent;color:var(--text);font-size:13px;width:100%;padding:0">
+      </div>
+      <div id="supportList" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+    <div class="foot"><button class="btn primary" onclick="closeSupport()">닫기</button></div>
+  </div>
+</div>
 <div class="modal-bg" id="offModal">
   <div class="modal" style="width:620px">
     <h3><i data-lucide="users"></i> 직원 목록</h3>
@@ -6245,6 +6263,7 @@ function applyColFilters(){
 var LAST_SEARCH_Q='';
 function render(){
   normalizeData();
+  try{if(SUPPORT_OPEN)renderSupport();}catch(e){}   // 진료지원 창이 열려 있으면 함께 갱신 (2026-10-05)
   const board=document.getElementById("board");
   const q=document.getElementById("search").value.trim();
   /* 스크롤 위치 보존 — 카드 안에서 선택(상담 결과·사유·원장님 등)만 바꿔도 전체를 다시 그리므로,
@@ -8581,7 +8600,8 @@ function archiveVisit(p){
     roomRads:JSON.parse(JSON.stringify(p.roomRads||{})),
     notes:JSON.parse(JSON.stringify(p.notes||{})),
     consults:JSON.parse(JSON.stringify(p.consults||{})),
-    chart:p.chart||"",
+    chart:p.chart||"",chartAt:p.chartAt||"",chartBy:p.chartBy||"",   // 오늘 새로 쓴 차팅 시각 — 진료지원 창 (2026-10-05)
+    rxDc:JSON.parse(JSON.stringify(p.rxDc||{})),                       // 처방 D/C — 내보낸 뒤에도 진료지원 창에 남게
     researchChart:p.researchChart||"",
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
     silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,ins:p.ins||"",
@@ -9761,8 +9781,16 @@ function visitDetailHtml(v){
 function chartBoxHtml(cid, text){
   return `<textarea class="chart-box" data-cid="${esc(cid)}" placeholder="이 내원의 차팅을 입력하세요…" onchange="saveChart('${esc(cid)}',this.value)" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">${esc(text||'')}</textarea>`;
 }
+/* 오늘 차팅을 새로 썼는지 (2026-10-05, 진료지원 창): 비어 있던 칸에 자동으로 복사돼 들어간 직전 차트를 그대로 저장한 것은 빼고,
+   내용이 바뀌었을 때만 p.chartAt·chartBy 를 남긴다 */
+function markChartWritten(p,text){
+  text=String(text||'');if(!p||!text.trim()||text===(p.chart||''))return;
+  const key=pKey(p.mrn,p.name);
+  const prev=VISITS.filter(v=>pKey(v.mrn,v.name)===key&&(v.chart||'').trim()).sort((a,b)=>new Date(b.dischargedAt)-new Date(a.dischargedAt))[0];
+  if(prev&&String(prev.chart).trim()===text.trim())return;
+  p.chartAt=new Date().toISOString();p.chartBy=(currentUser&&currentUser.name)||'';}
 function saveChart(cid, text){
-  if(cid.indexOf('live:')===0){ const pid=cid.slice(5); const p=data.find(x=>x.id===pid); if(!p)return; p.chart=text; audit('차팅수정',p.name); save(p); }
+  if(cid.indexOf('live:')===0){ const pid=cid.slice(5); const p=data.find(x=>x.id===pid); if(!p)return; markChartWritten(p,text); p.chart=text; audit('차팅수정',p.name); save(p); }
   else if(cid.indexOf('v:')===0){ const vid=cid.slice(2); const v=VISITS.find(x=>x.id===vid); if(!v)return; v.chart=text; audit('차팅수정(과거)',v.name+' '+ymd(v.dischargedAt).slice(0,10)); cloudAddVisit(v); localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS)); }
 }
 /* 🔬 연구용 차팅 저장 — saveChart와 동일 구조, researchChart 필드에 기록 */
@@ -11376,7 +11404,7 @@ function savePatient(){
     if(mrn&&mrn!==p.mrn){const c=mrnConflict(mrn,name);if(c){alert(`병록번호 ${mrn}는 이미 '${c.name}'님으로 등록되어 있습니다. 다른 번호를 사용하세요.`);return;}}
     const sameStart=p.route[p.step];const _oldRoute=p.route.slice();
     if((p.extraFee||0)!==extra)p.paid=false;  // 금액 바뀌면 수납완료 해제
-    p.mrn=mrn;p.name=name;p.birth=_birth;p.sex=_sex;p.extraFee=extra;p.route=[...routeDraft];p.tel=tel;p.smsOptOut=smsOptOut;p.doctor=doctor;p.chart=document.getElementById('f_chart').value;p.researchChart=document.getElementById('f_research').value;
+    p.mrn=mrn;p.name=name;p.birth=_birth;p.sex=_sex;p.extraFee=extra;p.route=[...routeDraft];p.tel=tel;p.smsOptOut=smsOptOut;p.doctor=doctor;markChartWritten(p,document.getElementById('f_chart').value);p.chart=document.getElementById('f_chart').value;p.researchChart=document.getElementById('f_research').value;
     p.silbi=_silbi;p.silbiLimit=_silbiLimit;p.ins=_ins;
     p.rxProc=get('rxProc');p.rxItems=get('rxItems');
     p.reserveAt=get("f_reserve")||"";p.receiveAt=get("f_receive")||"";
@@ -11395,6 +11423,7 @@ function savePatient(){
     if(dup){alert(`'${dup.name}'님은 이미 접수되어 동선에 있습니다. (현재 위치: ${curRoom(dup)||'보드'}${dup.out?' · 외출 중':''})\n중복 접수는 할 수 없습니다.`+(!mrn?`\n※ 동명이인이라면 병록번호를 입력해 구분해 주세요.`:''));return;}
     const _now=new Date().toISOString();
     const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,ins:_ins,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:(_vc&&_vc.notes)||{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
+    {const t=p.chart;p.chart='';markChartWritten(p,t);p.chart=t;}   // 추가 창에서 바로 쓴 차팅도 진료지원 창에
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     autoAssignRoomStaff(p);   // 첫 방에 전담 진료의/간호사가 1명이면 즉시 지정
@@ -11723,6 +11752,41 @@ window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자
   if(!confirm(`'${n}' 님을 ${g} 명단에서 뺄까요? (퇴사)
 로그인 계정은 그대로 남습니다 — 계정 삭제는 계정 관리에서 하세요.`))return;
   R[g].splice(i,1);audit('직원 삭제',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}};
+/* ───── 진료지원 창 (2026-10-05 요청) ─────
+   오늘 처방 D/C(p.rxDc) 와 오늘 새로 쓴 차팅(p.chartAt — markChartWritten) 을 환자별로 모아 최근 것부터. 직원 모두.
+   보드 카드 + 오늘 내보낸 내원 기록(VISITS — archiveVisit 이 rxDc·chartAt 을 함께 보관). 창이 열려 있으면 render() 때마다 다시 그린다 */
+let SUPPORT_OPEN=false;
+window.openSupport=function(){SUPPORT_OPEN=true;renderSupport();document.getElementById('supportModal').classList.add('show');};
+window.closeSupport=function(){SUPPORT_OPEN=false;document.getElementById('supportModal').classList.remove('show');};
+function supportRows(){
+  const today=localYMD(new Date());const isT=t=>{if(!t)return false;const d=new Date(t);return !isNaN(d)&&localYMD(d)===today;};
+  const src=[...data.filter(p=>p&&!p._viewOnly).map(p=>({p,live:!p.discharged})),...(VISITS||[]).filter(v=>v&&isT(v.dischargedAt)).map(p=>({p,live:false}))];
+  const by=new Map();
+  src.forEach(({p,live})=>{
+    const dcs=Object.values(p.rxDc||{}).filter(d=>d&&isT(d.at));
+    const ch=(isT(p.chartAt)&&String(p.chart||'').trim())?{text:p.chart,at:p.chartAt,by:p.chartBy||''}:null;
+    if(!dcs.length&&!ch)return;
+    const k=pKey(p.mrn,p.name);let r=by.get(k);
+    if(!r){r={name:p.name||'',mrn:p.mrn||'',pid:'',dcs:[],charts:[],last:''};by.set(k,r);}
+    if(live)r.pid=p.id;
+    r.dcs.push(...dcs);if(ch)r.charts.push(ch);
+    [...dcs.map(d=>d.at),ch&&ch.at].filter(Boolean).forEach(t=>{if(String(t)>r.last)r.last=String(t);});
+  });
+  return [...by.values()].sort((a,b)=>b.last.localeCompare(a.last));
+}
+function renderSupport(){
+  const box=document.getElementById('supportList');if(!box)return;
+  const q=((document.getElementById('supportSearch')||{}).value||'').trim().toLowerCase();
+  const all=supportRows();
+  const rows=all.filter(r=>!q||r.name.toLowerCase().includes(q)||String(r.mrn).startsWith(q));
+  const nDc=all.reduce((s,r)=>s+r.dcs.length,0),nCh=all.filter(r=>r.charts.length).length;
+  const sum=document.getElementById('supportSum');if(sum)sum.textContent=`오늘 · D/C ${nDc}건 · 차팅 ${nCh}명`;
+  box.innerHTML=rows.map(r=>`<div class="sp-card">
+      <div class="sp-head"${r.pid?` onclick="closeSupport();openEdit('${esc(r.pid)}')" title="누르면 환자 정보 창"`:''}><b>${esc(r.name)}</b> <span class="hint">${esc(r.mrn)}</span>${r.pid?'':' <span class="hint">(내보냄)</span>'}</div>
+      ${r.dcs.sort((a,b)=>String(a.at).localeCompare(String(b.at))).map(d=>`<div class="sp-dc">⛔ <b>${esc(d.nam||d.cod||'')}</b> D/C <span class="hint">${hhmm(d.at)}${d.by?' · '+esc(d.by):''}${d.reason?' · 사유 '+esc(d.reason):''}</span></div>`).join('')}
+      ${r.charts.map(c=>`<div class="sp-ch"><div class="hint">📝 오늘 차팅 ${hhmm(c.at)}${c.by?' · '+esc(c.by):''}</div><div class="sp-chtext">${esc(c.text)}</div></div>`).join('')}
+    </div>`).join('')||`<p class="hint">${q?'검색 결과가 없습니다.':'오늘은 아직 D/C 나 새로 쓴 차팅이 없습니다.'}</p>`;
+}
 function setRoomProcs(i,v){if(!isAdmin())return;meta(ROOMS[i]).procs=v.split(",").map(s=>s.trim()).filter(Boolean);saveRooms();render();renderRoomsList();}
 /* ── 처치별 준비 재료 ── */
 function allProcNames(){const set=[];ROOMS.forEach(r=>{(meta(r).procs||[]).forEach(pr=>{if(pr&&!set.includes(pr))set.push(pr);});});return set;}
