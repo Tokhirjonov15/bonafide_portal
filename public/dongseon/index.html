@@ -10349,6 +10349,11 @@ function rxItemRooms(x){
   return out.filter(r=>ROOMS.includes(r));}
 /* D/C 사유 고르기 (2026-10-01 요청): 1 시간부족 2 원치않음 3 효과없음 4 비용부담 5 알수없음 6 기타(직접 입력). 숫자키 1~6, Enter=확인, Esc=취소 */
 const DC_REASONS=['시간부족','원치않음','효과없음','비용부담','알수없음','기타'];
+/* 사유를 묻지 않고 바로 D/C 하는 처방코드 (2026-10-05 요청) — 처치·봉합·드레싱 포함 항목 등. 대소문자 무시 */
+const DC_NO_REASON=new Set(['dressing','D1850','D1860','D0002030','D0002010','D0002050','D0002040','D0002070','D8413036','D3230060','D3250010','D3230050',
+  'D6802066Z','D6801046Z','D5874096Z','D6802026Z','D6801016Z','D5912036Z','D5913016Z','D013300HZ','D8070016Z','D8070026Z','D7951036Z','D5010010','D5030010',
+  'D4902020','D7843006','D7951036','D7471010','D7471020','D8413026','D5856000Z','D5851000Z','D5853000Z','d654219cz','d654319cz','d654209cz','d654309cz',
+  'D7460006Z','M0111','m0121'].map(c=>c.toUpperCase()));
 function askDcReason(label,targets){return new Promise(res=>{
   const old=document.getElementById('dcReasonDlg');if(old)old.remove();
   const w=document.createElement('div');w.id='dcReasonDlg';w.className='dcr-back';
@@ -10394,6 +10399,7 @@ function toggleRxDc(pid,kEnc,el){
   const on=!!(el&&el.checked);
   const label=String(it.nam||'').trim()||String(it.cod||'').trim();
   const rooms=rxItemRooms(it);const targets=rooms.length?rooms:[curRoom(p)].filter(Boolean);
+  if(on&&DC_NO_REASON.has(String(it.cod||'').trim().toUpperCase())){rxDcCommit(p,pid,k,it,label,targets,true,'');return;}   // 사유 없이 바로 D/C·알림
   if(on){askDcReason(label,targets).then(reason=>{if(!reason){if(el)el.checked=false;return;}rxDcCommit(p,pid,k,it,label,targets,true,reason);});return;}
   if(!confirm(`'${label}' 의 D/C 표시를 취소할까요?\n(취소 알림이 갑니다)`)){if(el)el.checked=true;return;}
   rxDcCommit(p,pid,k,it,label,targets,false,'');
