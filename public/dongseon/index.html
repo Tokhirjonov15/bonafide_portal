@@ -2910,7 +2910,7 @@ var BIT_RESV_ROOM='';   // 진료 예약 화면에서 고른 진료실('' = 전�
 function bitResvRooms(items){const n=r=>{const m=/(\d+)/.exec(r||'');return m?+m[1]:999;};
   return [...new Set((items||[]).filter(x=>!x.block&&x.room).map(x=>String(x.room)))].sort((a,b)=>n(a)-n(b)||a.localeCompare(b));}
 function setBitResvRoom(r){BIT_RESV_ROOM=r||'';renderBitResvScreen();}
-/* 진료실별 예약 명단 인쇄 (2026-10-03 요청): 차트번호 · 성함 · 생년월일 · 비트메모 · 예약시간. 취소·예약금지는 뺀다. 전체면 진료실마다 쪽을 나눈다 */
+/* 진료실별 예약 명단 인쇄 (2026-10-03 요청): 차트번호 · 성함 · 예약시간 · 비트메모 · 수기메모(빈칸, 비트메모와 같은 폭 — 2026-10-05). 취소·예약금지는 뺀다. 전체면 진료실마다 쪽을 나눈다 */
 function printBitResv(){
   const D=bitResvDate||localYMD(new Date());const st=bitResvStats(D);
   const live=st.items.filter(x=>!x.block&&!(x.sts==='OC'||x.ostt==='CN'));
@@ -2919,13 +2919,15 @@ function printBitResv(){
   const wd=['일','월','화','수','목','금','토'][new Date(D+'T12:00:00').getDay()];
   const sect=rooms.map((r,i)=>{const rs=live.filter(x=>x.room===r).sort((a,b)=>String(a.t).localeCompare(String(b.t)));
     return `<section${i?' class="pb"':''}><h2>${esc(r)} 진료 예약 <small>${esc(D)} (${wd}) · ${rs.length}명</small></h2>
-      <table><thead><tr><th class="c">차트번호</th><th class="n">성함</th><th class="b">생년월일</th><th>비트메모</th><th class="t">예약시간</th></tr></thead>
-      <tbody>${rs.map(x=>`<tr><td class="c">${esc(x.mrn||'')}</td><td class="n">${esc(x.name||'')}</td><td class="b">${esc(x.birth||'')}</td><td class="m">${esc(x.memo||'')}</td><td class="t">${esc(x.t||'')}</td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center">예약 없음</td></tr>'}</tbody></table></section>`;}).join('');
+      <table><colgroup><col class="c"><col class="n"><col class="t"><col class="m"><col class="m"></colgroup>
+      <thead><tr><th>차트번호</th><th>성함</th><th>예약시간</th><th>비트메모</th><th>수기메모</th></tr></thead>
+      <tbody>${rs.map(x=>`<tr><td class="c">${esc(x.mrn||'')}</td><td class="n">${esc(x.name||'')}</td><td class="t">${esc(x.t||'')}</td><td class="m">${esc(x.memo||'')}</td><td class="m"></td></tr>`).join('')||'<tr><td colspan="5" style="text-align:center">예약 없음</td></tr>'}</tbody></table></section>`;}).join('');
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>진료 예약 ${esc(D)}</title><style>
     @page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;color:#000;margin:0}
     h2{font-size:16pt;margin:0 0 6px}h2 small{font-size:10.5pt;font-weight:400;color:#333;margin-left:6px}
-    table{width:100%;border-collapse:collapse;font-size:10.5pt}th,td{border:1px solid #888;padding:4px 6px;vertical-align:top}th{background:#eee}
-    td.c,td.b,td.t{white-space:nowrap}td.n{white-space:nowrap;font-weight:700}td.m{word-break:break-all}.t{text-align:center}
+    table{width:100%;border-collapse:collapse;font-size:10.5pt;table-layout:fixed}th,td{border:1px solid #888;padding:4px 6px;vertical-align:top}th{background:#eee}
+    col.c{width:10%}col.n{width:15%}col.t{width:9%}col.m{width:33%}
+    td.c,td.t{white-space:nowrap}td.n{font-weight:700;word-break:break-all}td.m{word-break:break-all}.t{text-align:center}
     .pb{page-break-before:always}tr{page-break-inside:avoid}
   </style></head><body>${sect}<script>window.onload=function(){setTimeout(function(){window.print();},200);};<\/script></body></html>`;
   try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
