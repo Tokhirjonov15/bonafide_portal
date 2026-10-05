@@ -550,10 +550,11 @@
   .modal-x{display:none;position:absolute;top:8px;right:10px;z-index:6;width:36px;height:36px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;font-size:16px;cursor:pointer;align-items:center;justify-content:center;line-height:1}
   .modal-x:hover{color:var(--red)}
   /* 환자 추가 모드 — 2열(정보·동선 | 특이사항), 준비지시·차팅 등은 숨김 */
-  #modal.adding .modal{width:min(1120px,96vw)}
-  #modal.adding .body{display:grid;grid-template-columns:1fr 1fr}
-  #modal.adding .body>.pcol:nth-child(3){display:none}
-  #modal.adding .body>.pcol:nth-child(2)>*:not(#pmemoBox):not(#callsBox):not(#familyBox):not(#routeSection){display:none}
+  #modal.adding:not(.add-full) .modal{width:min(1120px,96vw)}
+  #modal.adding:not(.add-full) .body{display:grid;grid-template-columns:1fr 1fr}
+  #modal.adding:not(.add-full) .body>.pcol:nth-child(3){display:none}
+  #modal.adding:not(.add-full) .body>.pcol:nth-child(2)>*:not(#pmemoBox):not(#callsBox):not(#familyBox):not(#routeSection){display:none}
+  /* 추가 창에서 재진 환자를 고르면(.add-full, 2026-10-05) 환자 정보 창처럼 3단 — 특이사항·사진·준비지시·상담·동의서·차팅·지난 기록·예약·처방내역. 동선은 계속 숨김 */
   /* 추가(접수) 모드 간소화: 문자수신·예약/접수시간·추가수납·동선 숨김 — 수정 모드에서는 그대로 표시 */
   #modal.adding #smsOptWrap,#modal.adding #rowTimes,#modal.adding #fldExtra,#modal.adding #routeSection{display:none!important}
   .desig-btn{margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--sub);border-radius:7px;padding:2px 9px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0}
@@ -1975,7 +1976,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div class="pcol">
       <div id="reloadSection" class="fld" style="background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px">
         <label style="color:var(--teal)"><i data-lucide="repeat"></i> 재진 환자 불러오기 (병록번호·이름 검색)</label>
-        <input id="f_reload" list="regOpts" placeholder="이름 또는 병록번호를 입력해 검색" oninput="onReloadInput()">
+        <input id="f_reload" list="regOpts" placeholder="이름 또는 병록번호를 입력해 검색" oninput="onReloadInput()" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();reloadEnter();}">
         <datalist id="regOpts"></datalist>
         <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
           <button type="button" class="btn sm" id="reloadHistBtn" onclick="toggleReloadHist()"><i data-lucide="folder-open"></i> <span id="reloadHistLbl">이 환자 과거 기록 보기 ▾</span></button>
@@ -10557,7 +10558,33 @@ function changeRad(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;con
   p.roomRads=p.roomRads||{};
   p.roomRads[room]=nv;     // '' 도 그대로 = 일부러 미지정 (2026-09-24)
   audit('방사선변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
-function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");if(!editId)try{fillRxHist({mrn:r.mrn||""},'rxHistAdd');}catch(e){}fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});}if(reloadHistOpen)renderReloadHistory();}
+/* 재진 검색 칸에서 Enter: 이름·병록번호가 정확히 한 명과 맞으면 그 환자를 고른 것으로 (목록에서 안 골라도 되게) */
+function reloadEnter(){const inp=document.getElementById("f_reload");const v=inp.value.trim();if(!v)return;
+  const all=regAll();if(all.some(x=>((x.name||'')+' '+(x.mrn||''))===v)){onReloadPick();return;}
+  let hits=all.filter(x=>(x.name||'').trim()===v||(x.mrn||'')===v);
+  if(!hits.length)hits=all.filter(x=>((x.name||'')+' '+(x.mrn||'')).includes(v)).slice(0,2);
+  if(hits.length===1){inp.value=(hits[0].name||'')+' '+(hits[0].mrn||'');onReloadPick();}
+  else if(hits.length>1)toast('같은 이름이 여러 명입니다 — 목록에서 병록번호로 골라 주세요.');}
+function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);
+  /* 오늘 보드에 있는 환자면 그 카드의 환자 정보 창으로 바꿔 연다 (2026-10-05 요청 — 동선·처방내역까지 그대로) */
+  if(r&&normMrn(r.mrn)){const bc=data.find(x=>!x._viewOnly&&!x.discharged&&normMrn(x.mrn)===normMrn(r.mrn));if(bc){openEdit(bc.id);return;}}
+  if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");if(!editId)try{fillRxHist({mrn:r.mrn||""},'rxHistAdd');}catch(e){}fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});addLoadFull(r);}if(reloadHistOpen)renderReloadHistory();}
+/* 환자 추가 창 — 재진 환자를 고르면 환자 정보 창의 2·3단을 그 환자 것으로 채워 펼친다 (2026-10-05 요청).
+   각 칸이 editId 로 환자를 찾으므로 보기용 임시 카드(_viewOnly — 서버·보드에 안 나감)에 담는다. [저장]은 그대로 새 카드 추가(savePatient) */
+function addLoadFull(r){
+  const md=document.getElementById('modal');if(!md.classList.contains('adding'))return;
+  data=data.filter(x=>!x._viewOnly);
+  const now=new Date().toISOString();const m=normMrn(r.mrn);
+  const p={id:'view_'+(m||String(r.name||'').replace(/\s+/g,'')),_viewOnly:true,discharged:true,mrn:m,name:r.name||'',birth:r.birth||'',sex:r.sex||'',
+    route:[],step:0,status:'대기',enteredAt:now,statusSince:now,arrivedAt:now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',doctor:'',ins:'',smsHistory:[]};
+  data.push(p);VIEW_CARD=p;editId=p.id;noteRoomSel='';
+  document.getElementById('notesSection').style.display='';
+  try{fillScribeNotes(p.mrn);}catch(e){}
+  fillRxSection(p);fillEditChart(p);switchPastTab('clinical');
+  renderNotesEditor();initPastConsults(p);renderConsentSection();
+  md.classList.add('add-full');
+  if(window.lucide)try{lucide.createIcons();}catch(e){}
+}
 /* 환자 추가 창 — 재진 검색한 환자의 과거 기록 인라인 펼침 */
 let reloadHistOpen=false;
 function reloadTarget(){
@@ -10588,7 +10615,8 @@ function renderReloadHistory(){
     </div><div class="hv-detail">${visitDetailHtml(v)}</div></div>`).join("");
 }
 function openAdd(){
-  document.getElementById('modal').classList.remove('view-only');   // 보기 전용(이미 나간 환자 정보)에서 돌아옴
+  document.getElementById('modal').classList.remove('view-only','add-full');   // 보기 전용(이미 나간 환자 정보)·재진 펼침에서 돌아옴
+  data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;
   editId=null;routeDraft=[];noteRoomSel="";
   document.getElementById("modalTitle").textContent="환자 추가";
   document.getElementById("delBtn").style.display="none";
@@ -10624,7 +10652,7 @@ function openAdd(){
   updateEditActions(null);
   showModal();
 }
-function openEdit(pid){document.getElementById('modal').classList.remove('view-only');
+function openEdit(pid){document.getElementById('modal').classList.remove('view-only','add-full');
   const p=data.find(x=>x.id===pid);if(!p)return;
   try{autoAssignViewer(p);}catch(e){console.warn('autoAssignViewer',e);}   // 진료의 본인이 열면 이 방 담당으로 자동 지정
   editId=pid;routeDraft=[...p.route];noteRoomSel=p.route[p.step]||p.route[0]||"";
@@ -11252,7 +11280,7 @@ function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard
 applyCompact();
 try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의 명단을 EMR 확장에 1회 전달(로그인 전 캐시)
 function showModal(){document.getElementById("modal").classList.add("show")}
-function closeModal(){data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("view-only");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
+function closeModal(){data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("view-only","add-full");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
 /* 4층 비급여 치료 표의 칸(빈 곳)에서 환자 정보 창 열기: 화면(z-index 300) 위에 뜨도록 하고, 머리에 '← 4층 비급여 치료' 단추 — 닫으면 표가 그대로 남아 있다 (2026-09-20) */
 window.openEditFromResv=function(pid,backLabel){const p=data.find(x=>x.id===pid);if(!p)return;
   try{openEdit(pid);}catch(e){console.warn(e);return;}
@@ -11300,7 +11328,8 @@ function savePatient(){
   const _silbi=!!(document.getElementById("f_silbi")&&document.getElementById("f_silbi").checked);   // 실비보험 유무(기본: 없음)
   const _silbiLimit=_silbi?Number(get("f_silbiLimit")||0):0;
   const _ins=(get("f_ins")||"").trim();   // 공공보험 종류(빈값=없음)
-  if(editId){
+  const _vc=(editId&&VIEW_CARD&&VIEW_CARD.id===editId&&document.getElementById('modal').classList.contains('adding'))?VIEW_CARD:null;   // 추가 창에서 재진 환자 정보를 펼친 임시 카드 — 수정이 아니라 새 카드 추가
+  if(editId&&!_vc){
     const p=data.find(x=>x.id===editId);
     if(mrn&&mrn!==p.mrn){const c=mrnConflict(mrn,name);if(c){alert(`병록번호 ${mrn}는 이미 '${c.name}'님으로 등록되어 있습니다. 다른 번호를 사용하세요.`);return;}}
     const sameStart=p.route[p.step];const _oldRoute=p.route.slice();
@@ -11323,7 +11352,7 @@ function savePatient(){
     const dup=data.find(x=>!x.discharged && ( (mrn&&(x.mrn||"").trim()===mrn) || (!mrn&&!(x.mrn||"").trim()&&(x.name||"").trim()===name) ));
     if(dup){alert(`'${dup.name}'님은 이미 접수되어 동선에 있습니다. (현재 위치: ${curRoom(dup)||'보드'}${dup.out?' · 외출 중':''})\n중복 접수는 할 수 없습니다.`+(!mrn?`\n※ 동명이인이라면 병록번호를 입력해 구분해 주세요.`:''));return;}
     const _now=new Date().toISOString();
-    const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,ins:_ins,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
+    const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth:_birth,sex:_sex,tel,smsOptOut,doctor,extraFee:extra,silbi:_silbi,silbiLimit:_silbiLimit,ins:_ins,reserveAt:get("f_reserve")||"",receiveAt:get("f_receive")||nowHM(),route:[...routeDraft],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:(_vc&&_vc.notes)||{},chart:document.getElementById('f_chart').value,researchChart:document.getElementById('f_research').value,rxProc:get('rxProc'),rxItems:get('rxItems'),smsHistory:[]};
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     autoAssignRoomStaff(p);   // 첫 방에 전담 진료의/간호사가 1명이면 즉시 지정
