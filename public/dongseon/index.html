@@ -8489,18 +8489,20 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
   {const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';BV=null;}
   ov.classList.add('bm-full');   // 혜택 관리는 어느 화면에서든 꽉 차게 (2026-10-06 요청 — 터치 화면 판정이 안 맞는 태블릿이 있었다)
-  ov.classList.add('show');renderBonusMgr();try{renderWaitPop();}catch(e){}};
+  ov.classList.add('show');renderBonusMgr();bmCloseLabel();try{renderWaitPop();}catch(e){}};
 /* 이름 목록 화면에만 병원 배경 사진 (2026-10-06 요청) — 환자를 고른 화면은 그대로 */
 function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b){b.classList.toggle('bm-listing',!!on);b.classList.toggle('bm-photo',!on);}}   // 목록 = 기둥 사진, 본인 확인·혜택 화면 = 대기용 사진(화병) (2026-10-06)
-window.closeBonusMgr=function(){if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');try{renderWaitPop();}catch(e){}};
-window.bonusMgrBack=function(){BONUS_PID='';BV=null;{const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';}document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();};
+/* [닫기]: 본인 확인·혜택 화면에서는 혜택 관리 첫 화면으로만 — 보드(동선 카드)로 나가는 건 첫 화면의 [닫기]뿐 (2026-10-06 요청) */
+function bmCloseLabel(){const b=document.querySelector('#bonusMgr .cip-head button[onclick="closeBonusMgr()"]');if(b)b.textContent=(BONUS_PID||BV)?'← 처음으로':'닫기';}
+window.closeBonusMgr=function(){if(BONUS_PID||BV){bonusMgrBack();return;}if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');try{renderWaitPop();}catch(e){}};
+window.bonusMgrBack=function(){BONUS_PID='';BV=null;{const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';}document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();bmCloseLabel();};
 /* 이름을 누르면 먼저 본인 확인 (2026-10-06 요청): 생년월일 앞 6자리(YYMMDD)를 숫자판으로 — 맞으면 혜택 화면으로.
    5번 틀리면 목록으로. 카드에 생년월일이 없으면 직원이 확인하고 넘길 수 있다. 실물 키보드 숫자도 된다 */
 let BV=null;   // {pid, d:'입력한 숫자', miss:틀린 횟수}
 window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   BV={pid,d:'',miss:0};
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
-  document.getElementById('bonusMgrVerify').style.display='';bmListing(false);renderBonusVerify('');};
+  document.getElementById('bonusMgrVerify').style.display='';bmListing(false);renderBonusVerify('');bmCloseLabel();};
 function bvBirth(p){const d=String((p&&p.birth)||'').replace(/\D/g,'');return d.length>=8?d.slice(2,8):'';}
 function renderBonusVerify(err){const box=document.getElementById('bonusMgrVerify');if(!box||!BV)return;
   const p=data.find(x=>x.id===BV.pid);if(!p){bonusMgrBack();return;}
@@ -8532,7 +8534,7 @@ function bonusMgrOpenOne(p){BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name);
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';bmListing(false);
-  renderBonusSection();}
+  renderBonusSection();bmCloseLabel();}
 function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!box)return;
   if(BONUS_PID){const p=data.find(x=>x.id===BONUS_PID);if(!p||p.discharged){bonusMgrBack();return;}renderBonusSection();return;}
   const L=bonusMgrList();
@@ -8598,7 +8600,9 @@ window.pbOpen=function(mode){const p=data.find(x=>x.id===bonusCurPid());const mr
   if(!d){d=document.createElement('div');d.id='pbScreen';d.innerHTML='<div class="ks-top"><span class="ks-logo">반듯한정형외과</span><button type="button" class="ks-x" onclick="pbClose()" title="닫기">✕</button></div><div id="pbBox" class="ks-box"></div>';document.body.appendChild(d);}
   d.classList.add('show');document.body.classList.add('pb-on');pbRender();};
 window.pbClose=function(){clearTimeout(PB_TIMER);pbCamStop();const d=document.getElementById('pbScreen');if(d)d.classList.remove('show');document.body.classList.remove('pb-on');
-  PB={pid:'',mrn:'',name:'',mode:'',phase:'',pick:''};try{renderBonusSection();render();}catch(e){}};
+  PB={pid:'',mrn:'',name:'',mode:'',phase:'',pick:''};try{renderBonusSection();render();}catch(e){}
+  /* 혜택 관리에서 띄운 화면이면 닫을 때 혜택 관리 첫 화면(이름 목록)으로 — 환자 전용 화면이라 다른 환자 정보·보드가 보이면 안 된다 (2026-10-06) */
+  if(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN)try{bonusMgrBack();}catch(e){}};
 function pbCamStop(){if(PB_STREAM){try{PB_STREAM.getTracks().forEach(t=>t.stop());}catch(e){}PB_STREAM=null;}}
 async function pbCamStart(){
   const v=document.getElementById('pbVideo');if(!v)return;
