@@ -1669,7 +1669,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
-    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="리뷰·주사 보너스 — 환자 이름만(가려서) 보고 혜택을 관리"><i data-lucide="gift"></i> 혜택 관리</button>
+    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="4층 관리 — 오늘 주사를 맞고 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 4층 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
   </div>
@@ -8517,14 +8517,17 @@ function bonusMaskName(n){n=String(n||'').trim();if(!n)return '';
   return a[0]+' '+Array(a.length-2).fill('O').join(' ')+' '+a[a.length-1];}
 /* 혜택 관리 목록 (2026-10-06 요청): 지금 4층 방(보드 [4층] 탭의 방 — 수납대기·수납완료 제외)에 있고 오늘 주사를 맞은 환자만.
    혜택 횟수는 예전처럼 누적(주사 날수 1·5·10일 → 1·2·3회, 리뷰 1회) */
+/* 4층 방 (2026-10-06 요청으로 직접 정함) — 이 방에 있는 환자만 4층 관리 목록에 */
+const FLOOR4_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','아쿠아','롤러','신장분사','충격파'];
+function isFloor4Room(r){const k=x=>String(x||'').replace(/\s+/g,'').toLowerCase();const rr=k(r);return !!rr&&FLOOR4_ROOMS.some(x=>k(x)===rr);}
 function bonusMgrList(){const today=localYMD(new Date());
   return data.filter(p=>{if(!p||p._viewOnly||p.discharged)return false;const mrn=normMrn(p.mrn);if(!mrn)return false;
-    const r=curRoom(p);if(!r||isPayRoom(r)||(meta(r).group||'')!=='4층')return false;
+    const r=curRoom(p);if(!isFloor4Room(r))return false;
     const b=BONUS[mrn]||{};return Array.isArray(b.injDays)&&b.injDays.includes(today);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
 window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   let ov=document.getElementById('bonusMgr');
   if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
-    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>혜택 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
+    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
