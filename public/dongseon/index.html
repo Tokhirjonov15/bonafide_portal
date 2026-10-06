@@ -1584,6 +1584,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bv-top{align-self:flex-start}
   #bonusMgr .bv-card{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:28px;padding:26px 44px 30px;box-shadow:0 10px 40px rgba(60,50,40,.15)}
   #bonusMgr .c4-card{max-width:min(980px,94vw)}
+  #bonusMgr .bk-skip{margin-top:1.4vh;background:rgba(255,255,255,.55);color:#57534e;border:2px solid rgba(87,83,78,.35);border-radius:999px;padding:1.6vh 5vh;font:inherit;font-size:clamp(20px,3vh,34px);font-weight:800;cursor:pointer;touch-action:manipulation}
+  #bonusMgr .bk-skip:active{transform:scale(.97)}
   #bonusMgr .bk-next{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
   #bonusMgr .c4-title{font-size:clamp(24px,3.4vh,40px);font-weight:800;color:#57534e;letter-spacing:2px}
   #bonusMgr .c4-chk{display:flex;align-items:center;gap:2.4vh;text-align:left;background:#fff;border:4px solid #d6d3d1;border-radius:26px;padding:3vh 3.4vh;font:inherit;cursor:pointer;touch-action:manipulation;box-shadow:0 8px 26px rgba(60,50,40,.12)}
@@ -8520,9 +8522,14 @@ function renderBonusSection(){
         :`<div class="bk-msg">네이버 리뷰를 준비해 주시고,<br><b>리뷰 확인</b> 버튼을 눌러 주세요.</div><div class="bk-sub">AI가 확인하겠습니다.</div>
           <button type="button" class="bk-btn" onclick="pbOpen('review')"><i data-lucide="camera"></i> 리뷰 확인</button>`}
       ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}
-      ${c4Need(p)?`<button type="button" class="bk-btn bk-btn2 bk-next" onclick="c4Open(data.find(x=>x.id===BONUS_PID))">다음: 치료 동의 →</button>`:''}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
+      ${(!b.review||i.left)?`<button type="button" class="bk-skip" onclick="bonusSkip()">혜택 안 받기</button>`
+        :c4Need(p)?`<button type="button" class="bk-btn bk-btn2 bk-next" onclick="c4Open(data.find(x=>x.id===BONUS_PID))">다음: 치료 동의 →</button>`:''}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 let BK_STAFF_OPEN=false;
+/* [혜택 안 받기] (2026-10-06 요청) — 리뷰를 쓰기 싫은 환자: 보너스 없이 치료 동의로(동의가 필요 없으면 목록으로) */
+window.bonusSkip=function(){const p=data.find(x=>x.id===BONUS_PID);if(!p){bonusMgrBack();return;}
+  try{audit('4층 혜택 안 받기',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}
+  if(c4Need(p))c4Open(p);else bonusMgrBack();};
 window.bonusReview=async function(on){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(!on&&!isAdmin())return;
   if(on&&!confirm(`'${BONUS_PID?bonusMaskName(p.name):p.name}'님의 네이버 리뷰를 확인하셨나요?
@@ -8562,7 +8569,7 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
     ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">치료 동의 · 리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
-      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">오늘 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료를 서비스로</b> 진행해 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
+      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">오늘 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료 혜택을</b> 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
   {const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';BV=null;}
