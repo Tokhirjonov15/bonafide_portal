@@ -36,10 +36,13 @@ if (-not $script:Mtx.WaitOne(0)) { exit }
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type -Namespace SlipCap -Name U -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(System.IntPtr v);
 [DllImport("user32.dll")] public static extern bool ReleaseCapture();
 [DllImport("user32.dll")] public static extern System.IntPtr SendMessage(System.IntPtr h, int m, int w, int l);
 '@
-[void][SlipCap.U]::SetProcessDPIAware()   # 배율(125%·150%) 화면에서도 캡처 좌표가 실제 픽셀과 맞도록
+# 배율(125%·150%) 화면에서도 캡처 좌표가 실제 픽셀과 맞도록 — 모니터마다 배율이 달라도 맞게(모니터별 v2, Windows 10 1703+). 안 되면 예전 방식
+$dpiOk = $false; try { $dpiOk = [SlipCap.U]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
+if (-not $dpiOk) { [void][SlipCap.U]::SetProcessDPIAware() }
 [Windows.Forms.Application]::EnableVisualStyles()
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 if (-not (Test-Path $SecretFile)) { [Windows.Forms.MessageBox]::Show("비밀번호 파일이 없습니다:`n$SecretFile`n`n먼저 감시 스크립트(bitplus_install.ps1)를 설치하세요.", '슬립 캡처') | Out-Null; exit 1 }
@@ -216,7 +219,7 @@ function SelectRegion($who) {
   $font = New-Object Drawing.Font 'Malgun Gothic', 16, ([Drawing.FontStyle]::Bold)
   $tagBg = New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb(220, 30, 64, 175))   # 누구 슬립인지 띠
   $f.Add_Paint({ param($s, $e)
-    $g = $e.Graphics; $g.DrawImageUnscaled($bmp, 0, 0); $g.FillRectangle($dim, 0, 0, $s.Width, $s.Height)
+    $g = $e.Graphics; $g.DrawImage($bmp, 0, 0, $bmp.Width, $bmp.Height); $g.FillRectangle($dim, 0, 0, $s.Width, $s.Height)   # 크기를 픽셀로 못 박는다 — DrawImageUnscaled 는 배율(125%·150%) 화면에서 사진을 확대해 그렸다(2026-10-06)
     if ($script:SelRect) { $r = $script:SelRect; $g.DrawImage($bmp, $r, $r, [Drawing.GraphicsUnit]::Pixel); $g.DrawRectangle($pen, $r)
       $g.DrawString("$($r.Width) × $($r.Height)", $font, [Drawing.Brushes]::White, [float]$r.X, [float]([Math]::Max(0, $r.Y - 32))) }
     $g.FillRectangle($tagBg, 20, 20, 900, 44)
