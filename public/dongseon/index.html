@@ -3895,8 +3895,11 @@ function bitCoveredByVisit(r,mrn){
   const t=new Date(r.registeredAt||r.seenAt||r.eventAt||0).getTime();if(!t||isNaN(t))return false;
   const today=localYMD(new Date());
   const ro=String(r.ocmNum||'').trim();
+  const test=/^테스트/.test(String(r.name||'').trim());   // 테스트 환자는 이 규칙에서 뺀다(다시 접수해 시험)
   return (Array.isArray(VISITS)?VISITS:[]).some(v=>{if(normMrn(v.mrn)!==normMrn(mrn)||!bitInsOk(v.ins,r.ins))return false;   // 보험이 다른 접수는 다른 방문
-    {const vo=String((v.bit&&v.bit.ocmNum)||'').trim();if(ro&&vo&&ro!==vo&&!bitOcmCancelled(vo))return false;}   // 접수번호가 다른 접수 = 다른 방문 (하루 여러 번 접수, 2026-10-04)
+    {const vo=String((v.bit&&v.bit.ocmNum)||'').trim();if(ro&&vo&&ro!==vo&&!bitOcmCancelled(vo))return false;   // 접수번호가 다른 접수 = 다른 방문 (하루 여러 번 접수, 2026-10-04)
+     /* 같은 접수번호의 내원이 오늘 이미 끝났으면 — 시각과 상관없이 같은 방문(이미 동선 끝). 비트가 그 접수를 뒤늦게 다시 보내도 새 카드를 만들지 않는다 (2026-10-06) */
+     if(!test&&ro&&vo&&ro===vo&&localYMD(new Date(v.dischargedAt||0))===today)return true;}
     const a=new Date(v.arrivedAt||0).getTime(),d=new Date(v.dischargedAt||0).getTime();
     return !isNaN(a)&&!isNaN(d)&&localYMD(new Date(d))===today&&a<=t+60000&&d>=t;});}
 function bitArrivalMin(r){if(typeof r.hourMin==='number'&&r.hourMin>=0)return r.hourMin;const t=new Date(r.seenAt||0);return isNaN(t)?9999:t.getHours()*60+t.getMinutes();}
@@ -4192,22 +4195,8 @@ function bitApplyRestore(){
         .catch(e=>console.warn('bit unpaid',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
       return;
     }
-    const today=localYMD(new Date());
-    const v=VISITS.slice().reverse().find(x=>x.bit&&String(x.bit.ocmNum||'')===ocm&&localYMD(new Date(x.dischargedAt||0))===today);
-    if(!v)return;
-    BIT_CLAIMING[r.docId]=1;
-    const ref=cloud.intakeCol.doc(r.docId);
-    cloud.db.runTransaction(async t=>{const d=await t.get(ref);const x=d.exists?(d.data()||{}):null;if(!x||x.status!=='수납완료')return false;
-        t.update(ref,{status:'자동접수',handledBy:currentUser?currentUser.name:'',handledAt:new Date().toISOString()});return true;})
-      .then(won=>{
-        if(!won)return;
-        if(!VISITS.some(x=>x.id===v.id))return;   // 그 사이 다른 화면이 되돌림
-        const p=restoreVisitCore(v);
-        try{ref.set({patientId:p.id},{merge:true});}catch(e){}
-        audit('환자복귀(비트 수납취소)',p.name+(p.mrn?' ('+p.mrn+')':''));
-        try{toast('비트 '+(r.commandName||'수납취소')+' → '+dispName(p.name)+' 님 '+curRoom(p)+' 복귀');}catch(e){}
-      })
-      .catch(e=>console.warn('bit restore',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
+    /* 이미 내보낸 환자는 비트 수납취소·수납대기로 보드에 되살리지 않는다 (2026-10-06 요청: 동선이 끝난 환자가 다시 들어와 헷갈림).
+       잘못 내보냈으면 직원이 [내원 목록]에서 직접 되돌린다 */
   });
 }
 /* 차트번호 없는 캐스트 문서에 오늘 접수 창 조회 기록(bitLookup)을 이름으로 붙인다 — 화면 메모리에서만(문서는 바꾸지 않음).
@@ -8427,7 +8416,7 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
-  {let touch=false;try{touch=matchMedia('(pointer:coarse)').matches;}catch(e){}ov.classList.toggle('bm-full',BONUS_MODE||touch);}
+  ov.classList.add('bm-full');   // 혜택 관리는 어느 화면에서든 꽉 차게 (2026-10-06 요청 — 터치 화면 판정이 안 맞는 태블릿이 있었다)
   ov.classList.add('show');renderBonusMgr();try{renderWaitPop();}catch(e){}};
 /* 이름 목록 화면에만 병원 배경 사진 (2026-10-06 요청) — 환자를 고른 화면은 그대로 */
 function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b)b.classList.toggle('bm-listing',!!on);}
