@@ -10324,9 +10324,11 @@ var WAIT_ALERT_MIN=30, WAIT_ALERT_MAX_LEVEL=4, WAIT_OVER={};   // WAIT_ALERT_MIN
 var WAIT_CARD_MIN=10;   // 2026-10-03 요청: 카드 '진행을 눌러 주세요'·화면 알림창은 10분부터
 const WAIT_SENT={};   // 이 화면이 이미 시도한 키 — 15초마다 트랜잭션을 다시 걸지 않게
 function waitAlertRoom(r){return !!r&&!/대기실/.test(r)&&!isPayRoom(r)&&!meta(r).noProg;}
+/* 진료실(진료실1·2·3…) 대기는 알리지 않는다 (2026-10-06 요청) — 카드 표시·텔레그램·확인 요망 창 모두 */
+function waitNoAlertRoom(r){return /^진료실\s*\d/.test(String(r||'').trim());}
 function waitAlertInfo(p){
   if(!p||p.discharged||p.out||(p.status||'대기')!=='대기')return null;
-  const r=curRoom(p);if(!r||r===PAY_DONE_NAME)return null;   // 카드 '진행을 눌러 주세요'는 수납완료 빼고 모든 방 (2026-10-03)
+  const r=curRoom(p);if(!r||r===PAY_DONE_NAME||waitNoAlertRoom(r))return null;   // 카드 '진행을 눌러 주세요'는 수납완료 빼고 모든 방 (2026-10-03)
   const min=Math.floor(waitMsNow(p)/60000);if(min<WAIT_CARD_MIN)return null;
   return {room:r,min,tg:waitAlertRoom(r),level:Math.min(Math.floor(min/WAIT_ALERT_MIN),WAIT_ALERT_MAX_LEVEL)};}   // level 0 = 아직 텔레그램 단계 전(10~29분)
 /* ═════ 대기 10분 넘음 → 끌 수 없는 알림창 (2026-10-03 요청) ═════
@@ -10348,7 +10350,7 @@ function waitPopRooms(){if(!currentUser)return [];if(isAdmin())return null;   //
 function waitPopRoomOk(r){const L=waitPopRooms();if(L===null)return true;const k=x=>String(x||'').replace(/\s+/g,'').toLowerCase();const rr=k(r);return L.some(x=>k(x)===rr);}
 function waitPopList(){if(!currentUser||waitPopHidden()||(typeof waitOpen!=='undefined'&&waitOpen))return [];
   return data.filter(p=>{if(!p||p._viewOnly||p.discharged||p.out||(p.status||'대기')!=='대기')return false;   // 비트 보류 중인 환자도 알린다(2026-10-03: 보류 환자가 빠져 이름이 안 뜬다고 함)
-    const r=curRoom(p);if(!r||r===PAY_DONE_NAME||!waitPopRoomOk(r))return false;
+    const r=curRoom(p);if(!r||r===PAY_DONE_NAME||waitNoAlertRoom(r)||!waitPopRoomOk(r))return false;
     const min=Math.floor(waitMsNow(p)/60000);if(min<WAIT_CARD_MIN)return false;
     const ack=p.waitAck&&p.waitAck[waitPopKey(p)];   // 확인한 뒤에도 계속 대기면 10분마다 다시 (2026-10-03 요청)
     return !ack||min>=(Number(ack.min)||0)+WAIT_CARD_MIN;});}
@@ -10387,7 +10389,7 @@ function waitBotPost(kind,key,extra){
 function waitBotList(){const out=[];
   data.forEach(p=>{
     if(!p||p._viewOnly||p.discharged||p.out||(p.status||'대기')!=='대기')return;
-    const r=curRoom(p);if(!r||r===PAY_DONE_NAME)return;
+    const r=curRoom(p);if(!r||r===PAY_DONE_NAME||waitNoAlertRoom(r))return;
     const min=Math.floor(waitMsNow(p)/60000);
     const ack=p.waitAck&&p.waitAck[waitPopKey(p)];const T=ack?(Number(ack.min)||0)+WAIT_CARD_MIN:WAIT_CARD_MIN;
     if(min>=T)out.push({p,room:r,min,T});});
