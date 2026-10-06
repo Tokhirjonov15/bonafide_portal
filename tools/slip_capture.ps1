@@ -9,13 +9,18 @@
 #  설치: slip_capture_install.ps1 (진료실 PC, 감시 스크립트가 설치된 뒤)
 #  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
 # ─────────────────────────────────────────────────────────────
-param([string]$Pc = $env:COMPUTERNAME)
+#  환자 정하기: ① 비트 외래진료실 창에 지금 열린 환자(차트번호) ② 없으면 동선관리에서 이 진료실($Room)에 '진행' 중인 카드
+#             캡처 화면 위에 누구 슬립으로 가는지 이름을 크게 보여 준다.
+param([string]$Pc = $env:COMPUTERNAME,
+      [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
 $BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'bitbot'
 $MaxSide   = 2400   # 잘라 낸 사진의 긴 변 최대(px) — 엑스레이 세부가 보이도록 넉넉히
+$BoardDoc  = 'patientboard_v3/' + [Uri]::EscapeDataString('반듯한정형외과')   # 동선관리 보드 문서(카드: …/patients)
+if (-not $Room -and $Pc -match '^진료실') { $Room = $Pc }
 $SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret'
 $TokenFile  = Join-Path $PSScriptRoot 'slip_capture.token'
 $LogDir = Join-Path $env:LOCALAPPDATA 'bitplus_watcher'; New-Item -ItemType Directory -Force $LogDir | Out-Null
@@ -179,8 +184,25 @@ function UploadShot([byte[]]$bytes, $mrn, $name, $w, $h) {
   Log "올림 $mrn $name ${w}x$h $path"
 }
 
+# ── 동선관리에서 이 진료실에 '진행' 중인 카드 (비트 창에 환자가 없을 때만, [캡처]를 누른 순간 한 번 읽는다) ──
+function FsVal($v) { if ($null -eq $v) { return $null }; if ($null -ne $v.stringValue) { return $v.stringValue }; if ($null -ne $v.integerValue) { return [int]$v.integerValue }; if ($null -ne $v.booleanValue) { return [bool]$v.booleanValue }; return $null }
+function BoardPatient() {
+  if (-not $Room) { return $null }
+  $tok = FbToken
+  $r = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/patients?pageSize=300" -Headers @{ Authorization = "Bearer $tok" }
+  $hits = @()
+  foreach ($d in @($r.documents)) { if (-not $d) { continue }; $f = $d.fields
+    if (FsVal $f.discharged) { continue }
+    $route = @(); if ($f.route -and $f.route.arrayValue -and $f.route.arrayValue.values) { $route = @($f.route.arrayValue.values | ForEach-Object { $_.stringValue }) }
+    if (-not $route.Count) { continue }
+    $st = [int](FsVal $f.step); if ($st -lt 0) { $st = 0 }; if ($st -ge $route.Count) { $st = $route.Count - 1 }
+    if ($route[$st] -ne $Room -or (FsVal $f.status) -ne '진행') { continue }
+    $hits += [pscustomobject]@{ mrn = ([string](FsVal $f.mrn)).Trim(); name = [string](FsVal $f.name); since = [string](FsVal $f.statusSince) } }
+  return ($hits | Sort-Object since -Descending | Select-Object -First 1)   # 둘 이상이면 가장 최근에 [진행]을 누른 환자
+}
+
 # ── 화면 전체를 찍고, 어둡게 덮은 창에서 끌어 고른 네모를 돌려준다 (취소 = $null) ──
-function SelectRegion() {
+function SelectRegion($who) {
   $vs = [Windows.Forms.SystemInformation]::VirtualScreen
   $bmp = New-Object Drawing.Bitmap $vs.Width, $vs.Height
   $g0 = [Drawing.Graphics]::FromImage($bmp); $g0.CopyFromScreen($vs.Left, $vs.Top, 0, 0, $bmp.Size); $g0.Dispose()
@@ -192,11 +214,13 @@ function SelectRegion() {
   $dim = New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb(120, 0, 0, 0))
   $pen = New-Object Drawing.Pen ([Drawing.Color]::FromArgb(255, 59, 130, 246)), 3
   $font = New-Object Drawing.Font 'Malgun Gothic', 16, ([Drawing.FontStyle]::Bold)
+  $tagBg = New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb(220, 30, 64, 175))   # 누구 슬립인지 띠
   $f.Add_Paint({ param($s, $e)
     $g = $e.Graphics; $g.DrawImageUnscaled($bmp, 0, 0); $g.FillRectangle($dim, 0, 0, $s.Width, $s.Height)
     if ($script:SelRect) { $r = $script:SelRect; $g.DrawImage($bmp, $r, $r, [Drawing.GraphicsUnit]::Pixel); $g.DrawRectangle($pen, $r)
       $g.DrawString("$($r.Width) × $($r.Height)", $font, [Drawing.Brushes]::White, [float]$r.X, [float]([Math]::Max(0, $r.Y - 32))) }
-    else { $g.DrawString("슬립에 올릴 부분을 끌어서 고르세요  ·  Esc = 취소", $font, [Drawing.Brushes]::White, 30, 30) } })
+    $g.FillRectangle($tagBg, 20, 20, 900, 44)
+    $g.DrawString("→ $who  슬립에 올립니다  ·  끌어서 고르기  ·  Esc = 취소", $font, [Drawing.Brushes]::White, 30, 27) })
   $f.Add_MouseDown({ param($s, $e) if ($e.Button -eq 'Right') { $s.Close(); return }; $script:SelP0 = $e.Location })
   $f.Add_MouseMove({ param($s, $e) if ($null -eq $script:SelP0) { return }
     $x = [Math]::Min($script:SelP0.X, $e.X); $y = [Math]::Min($script:SelP0.Y, $e.Y)
@@ -247,20 +271,29 @@ function ReadPatient() {
   $mrn = ''; $name = ''
   try { $h = FindDoctorWindow; if ($h) { $d = ReadDoctor $h; if ($d) { $mrn = [string]$d.mrn; $name = [string]$d.name } } } catch { Log "창 읽기 오류: $($_.Exception.Message)" }
   $script:CurMrn = $mrn; $script:CurName = $name
-  $btn.Enabled = [bool]$mrn
+  $btn.Enabled = [bool]$mrn -or [bool]$Room
   if ($mrn) { $lbl.ForeColor = [Drawing.Color]::White; $lbl.Text = "$name  ·  $mrn" }
+  elseif ($Room) { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = "비트 환자 없음 → $Room 진행 환자로" }
   else { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = '비트 외래진료실에 환자 없음' }
 }
 $btn.Add_Click({
-  $mrn = $script:CurMrn; $name = $script:CurName
-  if (-not $mrn) { return }
+  $mrn = $script:CurMrn; $name = $script:CurName; $src = '비트'
+  if (-not $mrn) {   # 비트 창에 환자가 없으면 동선관리에서 이 진료실의 [진행] 카드
+    if (-not $Room) { return }
+    SetStatus "동선관리에서 $Room 진행 환자 찾는 중…" ([Drawing.Color]::FromArgb(253, 224, 71)) 30; [Windows.Forms.Application]::DoEvents()
+    $bp = $null; try { $bp = BoardPatient } catch { Log "동선관리 읽기 실패: $($_.Exception.Message)" }
+    if (-not $bp) { SetStatus "✖ $Room 에 진행 중인 환자가 없습니다" ([Drawing.Color]::FromArgb(252, 165, 165)) 6; return }
+    if (-not $bp.mrn) { SetStatus "✖ $($bp.name) 카드에 차트번호가 없습니다" ([Drawing.Color]::FromArgb(252, 165, 165)) 6; return }
+    $mrn = $bp.mrn; $name = $bp.name; $src = '동선관리'
+    $script:HoldUntil = [DateTime]::MinValue
+  }
   $bar.Hide(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 250
   $shot = $null
-  try { $shot = SelectRegion } catch { Log "캡처 오류: $($_.Exception.Message)" }
+  try { $shot = SelectRegion "$name ($mrn)" } catch { Log "캡처 오류: $($_.Exception.Message)" }
   $bar.Show(); $bar.TopMost = $true
   if (-not $shot) { return }
   SetStatus "올리는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 60; [Windows.Forms.Application]::DoEvents()
-  try { UploadShot $shot.bytes $mrn $name $shot.w $shot.h; SetStatus "✔ 슬립에 올림  ·  $name" ([Drawing.Color]::FromArgb(134, 239, 172)) 4 }
+  try { UploadShot $shot.bytes $mrn $name $shot.w $shot.h; Log "환자 출처: $src"; SetStatus "✔ 슬립에 올림  ·  $name" ([Drawing.Color]::FromArgb(134, 239, 172)) 4 }
   catch { $m = $_.Exception.Message; Log "올리기 실패 $mrn : $m"; SetStatus "✖ 올리기 실패 — 다시 눌러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 8
     [Windows.Forms.MessageBox]::Show("슬립에 올리지 못했습니다.`n`n$m`n`n로그: $LogFile", '슬립 캡처') | Out-Null }
 })
