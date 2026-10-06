@@ -1583,6 +1583,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bm-verify{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;overflow:auto}
   #bonusMgr .bv-top{align-self:flex-start}
   #bonusMgr .bv-card{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:28px;padding:26px 44px 30px;box-shadow:0 10px 40px rgba(60,50,40,.15)}
+  #bonusMgr .c4-card{max-width:min(980px,94vw)}
+  #bonusMgr .c4-title{font-size:clamp(24px,3.4vh,40px);font-weight:800;color:#57534e;letter-spacing:2px}
+  #bonusMgr .c4-chk{display:flex;align-items:center;gap:2.4vh;text-align:left;background:#fff;border:4px solid #d6d3d1;border-radius:26px;padding:3vh 3.4vh;font:inherit;cursor:pointer;touch-action:manipulation;box-shadow:0 8px 26px rgba(60,50,40,.12)}
+  #bonusMgr .c4-chk.on{border-color:#2563eb;background:#eff6ff}
+  #bonusMgr .c4-box{flex:none;width:clamp(56px,8vh,90px);height:clamp(56px,8vh,90px);border:5px solid #78716c;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:clamp(40px,6vh,70px);font-weight:900;color:#fff;line-height:1}
+  #bonusMgr .c4-chk.on .c4-box{background:#2563eb;border-color:#2563eb}
+  #bonusMgr .c4-text{font-size:clamp(26px,3.9vh,46px);font-weight:800;line-height:1.45;word-break:keep-all;color:#1f2937}
+  #bonusMgr .c4-ok[disabled]{opacity:.45;cursor:default}
+  #bonusMgr .c4-hint{font-size:clamp(18px,2.6vh,30px);font-weight:700;color:#b45309;min-height:1.4em}
+  #bonusMgr .c4-done{font-size:clamp(70px,12vh,140px);font-weight:900;color:#16a34a;line-height:1}
   #bonusMgr .bv-name{font-size:40px;font-weight:800;letter-spacing:3px;color:#1f2937}
   #bonusMgr .bv-msg{font-size:32px;font-weight:800;line-height:1.45;word-break:keep-all;color:#1f2937}
   #bonusMgr .bv-sub{font-size:18px;color:#57534e;word-break:keep-all}
@@ -8543,11 +8553,11 @@ function isFloor4Room(r){const k=x=>String(x||'').replace(/\s+/g,'').toLowerCase
 function bonusMgrList(){const today=localYMD(new Date());
   return data.filter(p=>{if(!p||p._viewOnly||p.discharged)return false;const mrn=normMrn(p.mrn);if(!mrn)return false;
     const r=curRoom(p);if(!isFloor4Room(r))return false;
-    const b=BONUS[mrn]||{};return Array.isArray(b.injDays)&&b.injDays.includes(today);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
+    const b=BONUS[mrn]||{};return (Array.isArray(b.injDays)&&b.injDays.includes(today))||c4Need(p);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
 window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   let ov=document.getElementById('bonusMgr');
   if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
-    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
+    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">치료 동의 · 리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">오늘 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료를 서비스로</b> 진행해 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
@@ -8559,12 +8569,63 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
 /* 이름 목록 화면에만 병원 배경 사진 (2026-10-06 요청) — 환자를 고른 화면은 그대로 */
 function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b){b.classList.toggle('bm-listing',!!on);b.classList.toggle('bm-photo',!on);}}   // 목록 = 기둥 사진, 본인 확인·혜택 화면 = 대기용 사진(화병) (2026-10-06)
 /* [닫기]: 본인 확인·혜택 화면에서는 혜택 관리 첫 화면으로만 — 보드(동선 카드)로 나가는 건 첫 화면의 [닫기]뿐 (2026-10-06 요청) */
-function bmCloseLabel(){const b=document.querySelector('#bonusMgr .cip-head button[onclick="closeBonusMgr()"]');if(b)b.textContent=(BONUS_PID||BV)?'← 처음으로':'닫기';}
-window.closeBonusMgr=function(){if(BONUS_PID||BV){bonusMgrBack();return;}if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');try{renderWaitPop();}catch(e){}};
-window.bonusMgrBack=function(){BONUS_PID='';BV=null;{const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';}document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();bmCloseLabel();};
+function bmCloseLabel(){const b=document.querySelector('#bonusMgr .cip-head button[onclick="closeBonusMgr()"]');if(b)b.textContent=(BONUS_PID||BV||C4)?'← 처음으로':'닫기';}
+window.closeBonusMgr=function(){if(BONUS_PID||BV||C4){bonusMgrBack();return;}if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');try{renderWaitPop();}catch(e){}};
+window.bonusMgrBack=function(){BONUS_PID='';BV=null;C4=null;clearTimeout(C4_TIMER);{const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';}document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();bmCloseLabel();};
 /* 이름을 누르면 먼저 본인 확인 (2026-10-06 요청): 생년월일 앞 6자리(YYMMDD)를 숫자판으로 — 맞으면 혜택 화면으로.
    5번 틀리면 목록으로. 카드에 생년월일이 없으면 직원이 확인하고 넘길 수 있다. 실물 키보드 숫자도 된다 */
 let BV=null;   // {pid, d:'입력한 숫자', miss:틀린 횟수}
+/* ═════ 4층 치료 동의 (2026-10-06 요청) ═════
+   본인 확인(생년월일) 뒤, 아래 환자는 동의 문구에 체크해야 한다.
+   · 비급여(충격파 ES… 코드, 신장분사 CRYO… 코드 — CRYO3 은 제외) 처방이 있으면: 이 동선관리에서 처음 한 번만. 받은 뒤로는 목록에도 안 나옴
+   · 그 밖에 기본물리치료(MM… 코드)가 있으면(CRYO3+MM 포함): 오는 날마다 하루 한 번
+   · CRYO3 만 있고 MM 이 없으면: 동의 없음(목록에도 안 나옴)
+   기록: 보너스 문서(bonus/{차트번호})의 c4At(처음 받은 때)·c4Days(받은 날)·c4Log. 환자 정보 창 '4층 혜택' 칸에 '4층 동의서 받음' 표시 */
+const C4_TEXT='환자분의 빠른 일상 복귀를 돕기 위해, 담당 치료사가 진행하는 전문적인 치료 행위에 동의합니다.';
+let C4=null, C4_TIMER=null;   // {pid, ok:체크함, saving}
+function c4Kind(p){let mm=false,nc=false;
+  (typeof rxItemsOf==='function'?rxItemsOf(p):[]).forEach(it=>{const c=String(it.cod||'').replace(/\s+/g,'').toLowerCase();
+    if(/^mm/.test(c))mm=true;
+    if(/^es/.test(c)||(/^cryo/.test(c)&&c!=='cryo3'))nc=true;});
+  return nc?'once':mm?'daily':'';}
+function c4Done(mrn,kind){const b=BONUS[mrn]||{};
+  if(kind==='once')return !!b.c4At;
+  if(kind==='daily')return Array.isArray(b.c4Days)&&b.c4Days.includes(localYMD(new Date()));
+  return true;}
+function c4Need(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!bonusCol())return false;const k=c4Kind(p);return !!k&&!c4Done(mrn,k);}
+function bmInjToday(p){const b=BONUS[normMrn(p&&p.mrn)]||{};return Array.isArray(b.injDays)&&b.injDays.includes(localYMD(new Date()));}
+function c4Open(p){C4={pid:p.id,ok:false,saving:false};BV=null;BONUS_PID='';
+  document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
+  document.getElementById('bonusMgrVerify').style.display='';bmListing(false);renderC4();bmCloseLabel();}
+function renderC4(){const box=document.getElementById('bonusMgrVerify');if(!box||!C4)return;
+  const p=data.find(x=>x.id===C4.pid);if(!p){bonusMgrBack();return;}
+  box.innerHTML=`<div class="bv-top"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button></div>
+    <div class="bv-card c4-card">
+      <div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
+      <div class="c4-title">치료 동의</div>
+      <button type="button" class="c4-chk${C4.ok?' on':''}" onclick="c4Toggle()" aria-pressed="${C4.ok}"><span class="c4-box">${C4.ok?'✔':''}</span><span class="c4-text">환자분의 빠른 일상 복귀를 돕기 위해, 담당 치료사가 진행하는 전문적인 치료 행위에 동의합니다.</span></button>
+      <button type="button" class="bk-btn c4-ok" ${C4.ok&&!C4.saving?'':'disabled'} onclick="c4Submit()">${C4.saving?'저장 중…':'동의합니다'}</button>
+      <div class="c4-hint">${C4.ok?'':'위 네모 칸을 눌러 체크해 주세요'}</div>
+    </div>`;}
+window.c4Toggle=function(){if(!C4||C4.saving)return;C4.ok=!C4.ok;renderC4();};
+window.c4Submit=async function(){if(!C4||!C4.ok||C4.saving)return;const p=data.find(x=>x.id===C4.pid);if(!p)return;
+  const col=bonusCol(),mrn=normMrn(p.mrn);if(!col||!mrn)return;
+  C4.saving=true;renderC4();
+  const now=new Date().toISOString(),day=localYMD(new Date()),kind=c4Kind(p)||'',b=BONUS[mrn]||{};
+  const by=((currentUser&&currentUser.name)||'')+' · 4층 관리';
+  const upd={mrn,name:p.name||'',c4Days:firebase.firestore.FieldValue.arrayUnion(day),c4Log:firebase.firestore.FieldValue.arrayUnion({at:now,date:day,by,kind,text:C4_TEXT})};
+  if(!b.c4At)upd.c4At=now;
+  try{await col.doc(mrn).set(upd,{merge:true});}
+  catch(e){C4.saving=false;renderC4();alert('저장하지 못했습니다: '+(e.message||e));return;}
+  BONUS[mrn]=Object.assign({},b,{mrn,c4At:b.c4At||now,c4Days:[...new Set([...(Array.isArray(b.c4Days)?b.c4Days:[]),day])]});
+  try{audit('4층 치료 동의',(p.name||'')+' ('+mrn+')'+(kind==='once'?' · 비급여 첫 동의':' · 오늘'));}catch(e){}
+  C4=null;bonusMgrOpenOne(p);};
+function c4Thanks(p){C4={pid:p.id,ok:true,saving:true,done:true};BV=null;BONUS_PID='';
+  document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
+  const box=document.getElementById('bonusMgrVerify');box.style.display='';bmListing(false);bmCloseLabel();
+  box.innerHTML=`<div class="bv-card c4-card"><div class="c4-done">✔</div><div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
+    <div class="bv-msg">동의해 주셔서 감사합니다.<br>치료사가 곧 안내해 드릴게요.</div></div>`;
+  clearTimeout(C4_TIMER);C4_TIMER=setTimeout(()=>{if(C4&&C4.done&&C4.pid===p.id)bonusMgrBack();},4000);}
 window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   BV={pid,d:'',miss:0};
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
@@ -8596,17 +8657,21 @@ window.bvStaffPass=function(){if(!BV)return;const p=data.find(x=>x.id===BV.pid);
   if(!confirm('직원이 본인임을 확인했나요?'))return;try{audit('혜택 본인 확인(직원)',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}bonusMgrOpenOne(p);};
 document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMgrVerify');if(!BV||!v||v.style.display==='none')return;
   if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
-function bonusMgrOpenOne(p){BONUS_PID=p.id;BV=null;
+function bonusMgrOpenOne(p){
+  if(c4Need(p)){c4Open(p);return;}
+  if(!bmInjToday(p)){c4Thanks(p);return;}   // 동의만 하러 온 환자(오늘 주사 없음)
+  C4=null;BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name)+' 님';   // 성함 뒤 '님' (2026-10-06 요청)
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';bmListing(false);
   renderBonusSection();bmCloseLabel();}
 function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!box)return;
+  if(C4)return;   // 치료 동의 화면 — 체크 상태가 지워지지 않게 다시 그리지 않음
   if(BONUS_PID){const p=data.find(x=>x.id===BONUS_PID);if(!p||p.discharged){bonusMgrBack();return;}renderBonusSection();return;}
   const L=bonusMgrList();
   box.innerHTML=L.length?L.map(p=>{const i=bonusInfo(p.mrn);
       return `<button type="button" class="bm-item${i.left?' has':''}" onclick="bonusMgrPick('${esc(p.id)}')"><span class="bm-name">${esc(bonusMaskName(p.name))}</span>${i.left?`<span class="bm-left"><i data-lucide="gift"></i> ${i.left}</span>`:''}</button>`;}).join('')
-    :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 4층에 오늘 주사를 맞은 환자가 없습니다.</div>';
+    :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 4층에 확인할 환자가 없습니다.</div>';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 /* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
 /* 동선 줄에 '🎁 혜택 추가' 작은 표시 — 오늘 이 환자가 4층 관리에서 고른 무료 치료 방 (2026-10-06 요청) */
@@ -8633,7 +8698,9 @@ function renderBonus4Section(){
   const i=bonusInfo(mrn),b=i.b||{};
   const sum=`<div class="b4-sum">리뷰 ${b.review?'<b class="b4-ok">✔ 확인</b>':'<span class="hint">없음</span>'} · 주사 <b>${i.inj}일</b> · 혜택 <b>${i.total}회</b> · 사용 <b>${i.used}</b> · 남음 <b class="${i.left?'b4-left':''}">${i.left}회</b></div>`;
   const uses=(i.uses||[]).slice().reverse();
-  box.innerHTML=sum+(uses.length?uses.map(u=>`<div class="b4-use"><i data-lucide="gift"></i> <b>${esc(u.item)}</b> 무료 <span class="hint">${esc(String(u.date||u.at||'').slice(5,10).replace('-','/'))} ${esc(hhmm(u.at))}${u.by?' · '+esc(u.by):''}</span>
+  const ck=c4Kind(p),cd=Array.isArray(b.c4Days)?b.c4Days:[],T=localYMD(new Date());
+  const c4h=`<div class="b4-sum">4층 동의서 ${b.c4At?`<b class="b4-ok">✔ 받음</b> <span class="hint">처음 ${esc(String(b.c4At).slice(5,10).replace('-','/'))}${cd.includes(T)?' · 오늘 ✔':''}${cd.length>1?' · '+cd.length+'일':''}</span>`:'<span class="hint">아직 없음</span>'}${ck&&c4Need(p)?` <b style="color:#b45309">· ${ck==='once'?'비급여 — 처음 1번 필요':'오늘 필요'}</b>`:''}</div>`;
+  box.innerHTML=c4h+sum+(uses.length?uses.map(u=>`<div class="b4-use"><i data-lucide="gift"></i> <b>${esc(u.item)}</b> 무료 <span class="hint">${esc(String(u.date||u.at||'').slice(5,10).replace('-','/'))} ${esc(hhmm(u.at))}${u.by?' · '+esc(u.by):''}</span>
       <button type="button" class="btn sm b4-cancel" onclick="bonusUndo('${esc(u.at)}')"><i data-lucide="undo-2"></i> 취소</button></div>`).join('')
     :'<div class="hint" style="margin-top:4px">받은 무료 치료가 없습니다.</div>');
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
