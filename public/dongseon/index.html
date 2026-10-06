@@ -2470,6 +2470,7 @@ function rxLoopGuard(p){
 function rxStampOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return rx?String(rx.at||rx.updatedAt||''):'';}
 function rxRouteSkip(c,h,stamp){
   if(!c||c.discharged||!Array.isArray(c.route)||!c.route.length)return true;
+  if(c.route[Math.max(0,Math.min(c.step||0,c.route.length-1))]===PAY_DONE_NAME)return true;   // 수납완료에 온 환자는 처방이 바뀌어도 동선을 다시 짜지 않는다 (2026-10-06)
   if(h===(c.routeRxHash||''))return true;
   {const sv=String(c.routeRxHash||'').split('\n')[0]; if(sv&&sv>RX_ROUTE_VER)return true;}   // 더 새 판이 짠 동선은 옛 판 화면이 되돌리지 않는다
   if(stamp&&c.routeRxAt&&String(c.routeRxAt)>stamp)return true;   // 이 화면이 가진 처방이 더 옛것
@@ -7860,7 +7861,7 @@ function cardEl(p,colRoom){
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
-  const last=p.step>=p.route.length-1;
+  const last=p.step>=p.route.length-1||curRoom(p)===PAY_DONE_NAME;   // 수납완료는 무조건 마지막 — [내보내기] (2026-10-06)
   // 동선 전체
   const steps=p.route.map((r,i)=>{
     const cls=i<p.step?"done":(i===p.step?"cur":"");
@@ -8498,6 +8499,7 @@ window.pbConfirm=async function(){const it=PB.pick;if(PB.mode!=='choose'||!it)re
   if(!ok)PB.pick='';PB.phase='done';pbRender();};
 /* ───── 동선 이동 + 알람 ───── */
 function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  if(curRoom(p)===PAY_DONE_NAME){finishPatient(pid);return;}   // 수납완료 다음은 없다 — 내보내기 (2026-10-06)
   /* 진료 상담에서 [시행]으로 기록한 환자를 [종결]하면 처방 방(같은 공간)으로 — 다음 차례가 그 방들 중 하나면 평소대로, 아니면 처방 방으로 바로 (2026-10-01) */
   {const cr=curRoom(p);
    if(isClinicConsult(cr)&&isConsultRoom(cr)&&((p.consults||{})[cr]||{}).result==='시행'){
@@ -8545,6 +8547,7 @@ function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
      2026-09-28: '지금 위치 뒤'에서만 찾는다 — 이미 지나온 방(예: 물리치료 앞의 수납대기)으로 다시 가면
      단계가 뒤로 감기지 않고(5/5→4/5 문제) 새 단계로 끼워 넣는다 */
   if(i>=0)p.step=i; else {p.route.splice(p.step+1,0,room);p.step=p.step+1;}
+  if(room===PAY_DONE_NAME)p.route=p.route.slice(0,p.step+1);   /* 수납완료가 맨 끝 — 뒤에 남은 방은 지운다 (2026-10-06 요청: 수납완료 뒤 다른 방으로 가던 문제) */
   enterCurrentRoom(p);
   markSpaceDone(p,from,room);
   save(p);render();enteredRoom(p,room);}
@@ -11410,7 +11413,7 @@ function renderEditStatus(){
   // 헤더 환자 요약(이름 · 병록 · 나이·성별)
   if(mh){ const bi=[p.mrn?esc(p.mrn):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
     mh.innerHTML=`<b>${esc(p.name)}</b>${bi?`<span class="hint">${bi}</span>`:''}`; }
-  const st=p.status||'대기', room=curRoom(p), _rm=meta(room), last=p.step>=p.route.length-1;
+  const st=p.status||'대기', room=curRoom(p), _rm=meta(room), last=p.step>=p.route.length-1||room===PAY_DONE_NAME;
   const MOD=/Mac|iP/.test(navigator.platform||'')?'⌘':'Ctrl+';
   box.innerHTML=`
     <div class="es-wrap" title="${MOD}→ 다음 단계 · ${MOD}← 이전 단계">
@@ -11445,7 +11448,7 @@ function editNextStep(){
     if(data.find(x=>x.id===pid)) openEdit(pid);      // savePatient가 모달을 닫으므로 복원(내보내기 취소 대비)
   }
   const fp=data.find(x=>x.id===pid); if(!fp){closeModal();return;}
-  const isLast=fp.step>=fp.route.length-1;
+  const isLast=fp.step>=fp.route.length-1||curRoom(fp)===PAY_DONE_NAME;
   if(isLast&&needsPay(fp)){
     finishPatient(pid);   // 수납 창구로 이동 (내보내기 아님)
   } else if(isLast){
