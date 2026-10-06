@@ -1610,6 +1610,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* 혜택 화면(환자용) — 안내 문구 + 흰색 [리뷰 확인] (2026-10-06) */
   #bonusMgr.bm-full .bm-one{display:flex;flex-direction:column}
   #bonusMgr.bm-full .bm-one .bnbox{margin:3vh auto 0;width:min(1100px,94%)}
+  #bonusMgr .bm-intro{text-align:center;font-size:clamp(26px,4.2vh,50px);font-weight:800;line-height:1.45;word-break:keep-all;color:#1f2937;margin:.5vh 0 2.4vh;text-shadow:0 1px 0 rgba(255,255,255,.6)}   /* 혜택 안내 (2026-10-06 요청) */
+  #bonusMgr .bm-intro b{color:#1d4ed8}
   #bonusMgr .bk-wrap{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2.4vh;padding:4vh 2vw 3vh}
   #bonusMgr .bk-msg{font-size:clamp(28px,4.6vh,56px);font-weight:800;line-height:1.5;word-break:keep-all;color:#1f2937}
   #bonusMgr .bk-msg b{color:#1d4ed8}
@@ -8546,7 +8548,7 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
     ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
-      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
+      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">오늘 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료를 서비스로</b> 진행해 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
   {const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';BV=null;}
