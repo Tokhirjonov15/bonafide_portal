@@ -1552,7 +1552,37 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bm-box.bm-listing .bm-item.has{background:rgba(255,251,235,.92);border-color:#fcd34d}
   #bonusMgr .bm-box.bm-listing .route-empty,#bonusMgr .bm-box.bm-listing .bm-list>.hint{background:rgba(255,255,255,.8);border-radius:10px;padding:10px 12px}
   #bonusMgr.bm-full .bm-box.bm-listing .bm-list{flex:0 1 auto;max-height:calc(100dvh - 24vh - 70px)}   /* 아래쪽 병원 로고를 가리지 않게 */
-  #bonusMgr .bm-one{overflow:auto}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
+  #bonusMgr .bm-one{overflow:auto}
+  /* 본인 확인·혜택 화면 — 대기용 사진(화병) 배경, 큰 글씨 (2026-10-06) */
+  #bonusMgr .bm-box.bm-photo{background:#e6e0d8 url('img/bonus_bg2.jpg') center/cover no-repeat}
+  #bonusMgr .bm-box.bm-photo .cip-head{background:rgba(255,255,255,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:8px 12px}
+  #bonusMgr .bm-verify{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;overflow:auto}
+  #bonusMgr .bv-top{align-self:flex-start}
+  #bonusMgr .bv-card{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:28px;padding:26px 44px 30px;box-shadow:0 10px 40px rgba(60,50,40,.15)}
+  #bonusMgr .bv-name{font-size:40px;font-weight:800;letter-spacing:3px;color:#1f2937}
+  #bonusMgr .bv-msg{font-size:32px;font-weight:800;line-height:1.45;word-break:keep-all;color:#1f2937}
+  #bonusMgr .bv-sub{font-size:18px;color:#57534e;word-break:keep-all}
+  #bonusMgr .bv-dots{display:flex;gap:16px;margin-top:6px}
+  #bonusMgr .bv-dots i{width:24px;height:24px;border-radius:50%;border:3px solid #78716c;display:block}
+  #bonusMgr .bv-dots i.on{background:#44403c;border-color:#44403c}
+  #bonusMgr .bv-err{min-height:28px;font-size:20px;font-weight:800;color:#b91c1c}
+  #bonusMgr .bv-pad{display:grid;grid-template-columns:repeat(3,104px);gap:12px}
+  #bonusMgr .bv-pad button{height:86px;border-radius:20px;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.92);font:inherit;font-size:36px;font-weight:800;color:#1f2937;cursor:pointer;box-shadow:0 2px 8px rgba(60,50,40,.12);touch-action:manipulation}
+  #bonusMgr .bv-pad button:active{background:#e7e5e4}
+  #bonusMgr .bv-pad button.sm{font-size:19px}
+  #bonusMgr.bm-full .bm-one-head{font-size:36px;letter-spacing:2px;margin-bottom:14px}
+  #bonusMgr.bm-full .bm-one .bnbox{font-size:21px;padding:24px 30px;border-radius:24px;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:rgba(255,255,255,.9);max-width:980px;box-shadow:0 10px 40px rgba(60,50,40,.12)}
+  #bonusMgr.bm-full .bm-one .bnbox .btn.sm{font-size:20px;padding:13px 22px;border-radius:14px}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-bottom:18px;word-break:keep-all}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-k{min-width:150px;font-size:21px}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-days{flex-basis:100%;margin:2px 0 0 164px}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-day{font-size:17px;padding:2px 9px}
+  #bonusMgr.bm-full .bm-one .bnbox .hint{font-size:17px}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-sum{font-size:26px;padding-top:16px}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-btns{gap:12px;margin:14px 0}
+  #bonusMgr.bm-full .bm-one .bnbox svg{width:21px;height:21px;vertical-align:-4px}
+  #bonusMgr.bm-full .bm-one .bnbox .bn-use{font-size:19px;margin-top:8px}
+  @media (max-width:700px){#bonusMgr .bv-pad{grid-template-columns:repeat(3,84px)}#bonusMgr .bv-pad button{height:72px}#bonusMgr .bv-msg{font-size:24px}#bonusMgr .bv-card{padding:20px 18px}}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
   .cst-main{flex:1;min-width:0;font-size:13px}
@@ -8440,19 +8470,56 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
     ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>혜택 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
+      <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
+  {const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';BV=null;}
   ov.classList.add('bm-full');   // 혜택 관리는 어느 화면에서든 꽉 차게 (2026-10-06 요청 — 터치 화면 판정이 안 맞는 태블릿이 있었다)
   ov.classList.add('show');renderBonusMgr();try{renderWaitPop();}catch(e){}};
 /* 이름 목록 화면에만 병원 배경 사진 (2026-10-06 요청) — 환자를 고른 화면은 그대로 */
-function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b)b.classList.toggle('bm-listing',!!on);}
+function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b){b.classList.toggle('bm-listing',!!on);b.classList.toggle('bm-photo',!on);}}   // 목록 = 기둥 사진, 본인 확인·혜택 화면 = 대기용 사진(화병) (2026-10-06)
 window.closeBonusMgr=function(){if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');try{renderWaitPop();}catch(e){}};
-window.bonusMgrBack=function(){BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();};
-window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;BONUS_PID=pid;
+window.bonusMgrBack=function(){BONUS_PID='';BV=null;{const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';}document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();};
+/* 이름을 누르면 먼저 본인 확인 (2026-10-06 요청): 생년월일 앞 6자리(YYMMDD)를 숫자판으로 — 맞으면 혜택 화면으로.
+   5번 틀리면 목록으로. 카드에 생년월일이 없으면 직원이 확인하고 넘길 수 있다. 실물 키보드 숫자도 된다 */
+let BV=null;   // {pid, d:'입력한 숫자', miss:틀린 횟수}
+window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  BV={pid,d:'',miss:0};
+  document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
+  document.getElementById('bonusMgrVerify').style.display='';bmListing(false);renderBonusVerify('');};
+function bvBirth(p){const d=String((p&&p.birth)||'').replace(/\D/g,'');return d.length>=8?d.slice(2,8):'';}
+function renderBonusVerify(err){const box=document.getElementById('bonusMgrVerify');if(!box||!BV)return;
+  const p=data.find(x=>x.id===BV.pid);if(!p){bonusMgrBack();return;}
+  const has=!!bvBirth(p);
+  box.innerHTML=`<div class="bv-top"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button></div>
+    <div class="bv-card">
+      <div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
+      ${has?`<div class="bv-msg">본인 확인을 위해<br>생년월일 앞자리를 눌러 주세요</div>
+      <div class="bv-sub">예) 1990년 3월 5일생 → 9 0 0 3 0 5</div>
+      <div class="bv-dots">${[0,1,2,3,4,5].map(k=>`<i class="${k<BV.d.length?'on':''}"></i>`).join('')}</div>
+      <div class="bv-err">${esc(err||'')}</div>
+      <div class="bv-pad">${['1','2','3','4','5','6','7','8','9'].map(n=>`<button type="button" onclick="bvKey('${n}')">${n}</button>`).join('')}
+        <button type="button" class="sm" onclick="bvKey('C')">지우기</button><button type="button" onclick="bvKey('0')">0</button><button type="button" class="sm" onclick="bvKey('B')">⌫</button></div>`
+      :`<div class="bv-msg">등록된 생년월일이 없어<br>본인 확인을 할 수 없어요</div><div class="bv-sub">직원에게 말씀해 주세요</div>
+      <div style="margin-top:18px"><button type="button" class="btn" onclick="bvStaffPass()">직원 확인 후 넘어가기</button></div>`}
+    </div>`;}
+window.bvKey=function(k){if(!BV)return;const p=data.find(x=>x.id===BV.pid);if(!p)return;
+  if(k==='C')BV.d='';else if(k==='B')BV.d=BV.d.slice(0,-1);else if(BV.d.length<6)BV.d+=k;
+  if(BV.d.length<6){renderBonusVerify('');return;}
+  if(BV.d===bvBirth(p)){try{audit('혜택 본인 확인',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}bonusMgrOpenOne(p);return;}
+  BV.miss++;BV.d='';
+  if(BV.miss>=5){try{audit('혜택 본인 확인 실패(5회)',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}bonusMgrBack();return;}
+  renderBonusVerify('생년월일이 맞지 않아요. 다시 눌러 주세요.');};
+window.bvStaffPass=function(){if(!BV)return;const p=data.find(x=>x.id===BV.pid);if(!p)return;
+  if(!confirm('직원이 본인임을 확인했나요?'))return;try{audit('혜택 본인 확인(직원)',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}bonusMgrOpenOne(p);};
+document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMgrVerify');if(!BV||!v||v.style.display==='none')return;
+  if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
+function bonusMgrOpenOne(p){BONUS_PID=p.id;BV=null;
+  document.getElementById('bonusMgrVerify').style.display='none';
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name);
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';bmListing(false);
-  renderBonusSection();};
+  renderBonusSection();}
 function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!box)return;
   if(BONUS_PID){const p=data.find(x=>x.id===BONUS_PID);if(!p||p.discharged){bonusMgrBack();return;}renderBonusSection();return;}
   const L=bonusMgrList();
