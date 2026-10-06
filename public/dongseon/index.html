@@ -8676,13 +8676,51 @@ window.pbClose=function(){clearTimeout(PB_TIMER);pbCamStop();const d=document.ge
   PB={pid:'',mrn:'',name:'',mode:'',phase:'',pick:''};try{renderBonusSection();render();}catch(e){}
   /* 혜택 관리에서 띄운 화면이면 닫을 때 혜택 관리 첫 화면(이름 목록)으로 — 환자 전용 화면이라 다른 환자 정보·보드가 보이면 안 된다 (2026-10-06) */
   if(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN)try{bonusMgrBack();}catch(e){}};
-function pbCamStop(){if(PB_STREAM){try{PB_STREAM.getTracks().forEach(t=>t.stop());}catch(e){}PB_STREAM=null;}}
+function pbCamStop(){pbAutoStop();if(PB_STREAM){try{PB_STREAM.getTracks().forEach(t=>t.stop());}catch(e){}PB_STREAM=null;}}
+/* 자동 촬영 (2026-10-06 요청) — 카메라가 실제로 켜진 뒤, 점선 칸 안에 '밝은 바탕 + 검은 글자'(휴대폰 리뷰 화면)가
+   1초쯤 흔들림 없이 보이면 저절로 찰칵 → pbCheck. 전부 이 기기 브라우저 안에서 계산(서버·비용 없음). [리뷰 확인하기] 버튼은 그대로 */
+let PB_AUTO=null;
+function pbAutoStop(){if(PB_AUTO){clearInterval(PB_AUTO.iv);PB_AUTO=null;}}
+function pbAutoStart(){pbAutoStop();
+  const st={iv:0,live:0,good:0,prev:null,c:document.createElement('canvas')};st.c.width=96;st.c.height=72;PB_AUTO=st;
+  const note=t=>{const n=document.getElementById('pbCamNote');if(n&&n.textContent!==t)n.textContent=t;};
+  note('카메라를 켜고 있어요…');
+  st.iv=setInterval(()=>{
+    if(PB_AUTO!==st)return;
+    if(PB.mode!=='review'||PB.phase!=='cam'){pbAutoStop();return;}
+    const v=document.getElementById('pbVideo');
+    if(!v||!PB_STREAM||v.readyState<2||!v.videoWidth||v.paused){st.live=0;return;}
+    /* 화면에 보이는 점선 칸(ks-frame: 위아래 12%·좌우 18%)을 원본 영상 좌표로 — video 는 object-fit:cover */
+    const W=v.clientWidth||4,H=v.clientHeight||3,vw=v.videoWidth,vh=v.videoHeight,s=Math.max(W/vw,H/vh);
+    const sw=W/s,sh=H/s,sx=(vw-sw)/2,sy=(vh-sh)/2;
+    const g=st.c.getContext('2d',{willReadFrequently:true});
+    try{g.drawImage(v,sx+sw*.18,sy+sh*.12,sw*.64,sh*.76,0,0,96,72);}catch(e){return;}
+    const px=g.getImageData(0,0,96,72).data,n=96*72,L=new Uint8Array(n);let sum=0;
+    for(let i=0;i<n;i++){const l=(px[i*4]*299+px[i*4+1]*587+px[i*4+2]*114)/1000|0;L[i]=l;sum+=l;}
+    const mean=sum/n;
+    /* 1) 카메라 준비: 검은 화면이 아니고, 켜진 뒤 1초(밝기 자동 조절 시간) 지나야 */
+    if(mean<25){st.live=0;st.good=0;note('카메라를 켜고 있어요…');return;}
+    st.live++;if(st.live<4){note('카메라를 켜고 있어요…');st.prev=L;return;}
+    /* 2) 흔들림: 직전 프레임과 차이 */
+    let diff=0;if(st.prev)for(let i=0;i<n;i+=3)diff+=Math.abs(L[i]-st.prev[i]);diff=st.prev?diff/(n/3):99;st.prev=L;
+    /* 3) 밝은 바탕(상위 25% 밝기) + 그보다 확 어두운 점(글자) 비율 + 글자 가장자리(좌우 밝기 차) 비율 */
+    const hist=new Uint32Array(256);for(let i=0;i<n;i++)hist[L[i]]++;
+    let acc=0,bg=255;for(let k=255;k>=0;k--){acc+=hist[k];if(acc>=n*.25){bg=k;break;}}
+    let dark=0,edge=0;
+    for(let y=0;y<72;y++)for(let x=0;x<96;x++){const i=y*96+x;if(L[i]<bg-70)dark++;if(x<95&&Math.abs(L[i]-L[i+1])>45)edge++;}
+    const dr=dark/n,er=edge/n;
+    const text=bg>=140&&dr>=.03&&dr<=.5&&er>=.04;
+    if(!text){st.good=0;note('휴대폰의 리뷰 화면이 네모 칸 안에 보이게 해 주세요');return;}
+    if(diff>14){st.good=0;note('휴대폰을 움직이지 말고 잠시만 그대로 들어 주세요');return;}
+    st.good++;note('좋아요! 그대로 잠시만요…');
+    if(st.good>=4){pbAutoStop();pbCheck();}   // 0.3초 × 4 ≈ 1초 동안 글자가 또렷하게 보이면 찰칵
+  },300);}
 async function pbCamStart(){
   const v=document.getElementById('pbVideo');if(!v)return;
-  if(PB_STREAM){v.srcObject=PB_STREAM;return;}
+  if(PB_STREAM){v.srcObject=PB_STREAM;if(PB.phase==='cam')pbAutoStart();return;}
   try{if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia))throw new Error('no camera api');
     PB_STREAM=await navigator.mediaDevices.getUserMedia({video:{facingMode:PB_FACING,width:{ideal:1280},height:{ideal:720}},audio:false});
-    const v2=document.getElementById('pbVideo');if(v2){v2.srcObject=PB_STREAM;v2.classList.toggle('mirror',PB_FACING==='user');}else pbCamStop();}
+    const v2=document.getElementById('pbVideo');if(v2){v2.srcObject=PB_STREAM;v2.classList.toggle('mirror',PB_FACING==='user');if(PB.phase==='cam')pbAutoStart();}else pbCamStop();}
   catch(e){const n=document.getElementById('pbCamNote');if(n)n.textContent='카메라를 켤 수 없습니다 — 화면을 직원에게 보여 주셔도 됩니다';console.warn('bonus cam',e);}}
 window.pbFlip=function(){PB_FACING=PB_FACING==='user'?'environment':'user';pbCamStop();pbCamStart();};
 function pbRender(){
@@ -8733,7 +8771,7 @@ function pbSnap(){
   const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();
   return true;}
 window.pbCheck=function(){if(PB.mode!=='review'||PB.phase!=='cam')return;
-  try{pbSnap();}catch(e){console.warn('review photo',e);}
+  pbAutoStop();try{pbSnap();}catch(e){console.warn('review photo',e);}
   PB.phase='scan';
   const b=document.getElementById('pbCheckBtn');if(b){b.disabled=true;b.textContent='확인 중…';}
   const sc=document.getElementById('pbScan');if(sc)sc.classList.add('on');
