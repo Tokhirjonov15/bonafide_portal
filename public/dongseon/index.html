@@ -1583,7 +1583,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bv-pad button{height:86px;border-radius:20px;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.92);font:inherit;font-size:36px;font-weight:800;color:#1f2937;cursor:pointer;box-shadow:0 2px 8px rgba(60,50,40,.12);touch-action:manipulation}
   #bonusMgr .bv-pad button:active{background:#e7e5e4}
   #bonusMgr .bv-pad button.sm{font-size:19px}
-  #bonusMgr.bm-full .bm-one-head{font-size:36px;letter-spacing:2px;margin-bottom:14px}
+  #bonusMgr.bm-full .bm-one-head{position:relative;display:flex;align-items:center;justify-content:center;min-height:9vh;font-size:clamp(40px,6.6vh,76px);letter-spacing:4px;margin-bottom:.5vh}   /* 이름 가운데·크게 (2026-10-06) */
+  #bonusMgr.bm-full .bm-one-head>.btn{position:absolute;left:0;top:50%;transform:translateY(-50%);letter-spacing:0}
+  #bonusMgr.bm-full .bm-one-head #bonusMgrName{font-weight:800;color:#1f2937}
+  #bonusMgr.bm-full .bm-one .bnbox{margin-top:1.5vh}
   #bonusMgr.bm-full .bm-one .bnbox{font-size:21px;padding:24px 30px;border-radius:24px;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-color:rgba(255,255,255,.9);max-width:980px;box-shadow:0 10px 40px rgba(60,50,40,.12)}
   #bonusMgr.bm-full .bm-one .bnbox .btn.sm{font-size:20px;padding:13px 22px;border-radius:14px}
   #bonusMgr.bm-full .bm-one .bnbox .bn-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-bottom:18px;word-break:keep-all}
