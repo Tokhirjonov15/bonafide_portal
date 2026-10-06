@@ -1605,10 +1605,11 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bk-msg{font-size:clamp(28px,4.6vh,56px);font-weight:800;line-height:1.5;word-break:keep-all;color:#1f2937}
   #bonusMgr .bk-msg b{color:#1d4ed8}
   #bonusMgr .bk-sub{font-size:clamp(20px,3.1vh,36px);font-weight:700;color:#57534e;word-break:keep-all}
-  #bonusMgr .bk-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5em;margin-top:1vh;background:#fff;color:#1f2937;border:1px solid rgba(0,0,0,.06);border-radius:999px;padding:2.2vh 7vh;font:inherit;font-size:clamp(24px,3.8vh,46px);font-weight:800;letter-spacing:1px;box-shadow:0 12px 34px rgba(60,50,40,.18);cursor:pointer;touch-action:manipulation}
+  #bonusMgr.bm-full .bm-one .bnbox .bk-btn svg{width:1em;height:1em;vertical-align:-.1em}   /* 카메라·선물 아이콘을 글씨 크기에 맞춤 */
+  #bonusMgr .bk-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5em;margin-top:1vh;background:#fff;color:#1f2937;border:1px solid rgba(0,0,0,.06);border-radius:999px;padding:3.2vh 11vh;font:inherit;font-size:clamp(30px,5.4vh,64px);min-width:min(560px,80%);font-weight:800;letter-spacing:1px;box-shadow:0 12px 34px rgba(60,50,40,.18);cursor:pointer;touch-action:manipulation}
   #bonusMgr .bk-btn svg{width:1.05em;height:1.05em}
   #bonusMgr .bk-btn:active{transform:scale(.97);background:#f5f5f4}
-  #bonusMgr .bk-btn2{font-size:clamp(20px,2.9vh,34px);padding:1.7vh 5vh}
+  #bonusMgr .bk-btn2{font-size:clamp(22px,3.4vh,40px);padding:2.2vh 7vh;min-width:min(420px,70%)}
   #bonusMgr .bk-left{font-size:clamp(18px,2.6vh,30px);color:#92400e;margin-top:1.5vh}
   #bonusMgr .bk-staff{margin-top:2vh;border-top:1px dashed rgba(0,0,0,.12);padding-top:8px;font-size:14px}
   #bonusMgr .bk-staff>summary{cursor:pointer;color:#a8a29e;font-size:13px;font-weight:700;list-style:none;text-align:right}
@@ -8485,13 +8486,11 @@ function renderBonusSection(){
     <div class="bn-btns">${BONUS_ITEMS.map(it=>`<button type="button" class="btn sm${i.left?' bn-go':''}" ${i.left?'':'disabled'} onclick="bonusUse('${it}')"><i data-lucide="gift"></i> ${it} 무료</button>`).join('')}</div>
     ${usesHtml}`;
   if(BONUS_PID){   /* 혜택 관리(환자용) — 안내 문구 + 흰색 [리뷰 확인] 버튼. 직원용 상세는 아래 '직원용' 접기 칸 (2026-10-06 요청) */
-    const staff=box.innerHTML;
     box.innerHTML=`<div class="bk-wrap">${b.review
         ?`<div class="bk-msg">네이버 리뷰 확인이<br>완료되었습니다.</div><div class="bk-sub">소중한 리뷰 감사합니다.</div>`
         :`<div class="bk-msg">네이버 리뷰를 준비해 주시고,<br><b>리뷰 확인</b> 버튼을 눌러 주세요.</div><div class="bk-sub">AI가 확인하겠습니다.</div>
           <button type="button" class="bk-btn" onclick="pbOpen('review')"><i data-lucide="camera"></i> 리뷰 확인</button>`}
-      ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}</div>
-      <details class="bk-staff"${BK_STAFF_OPEN?' open':''} ontoggle="BK_STAFF_OPEN=this.open"><summary>직원용</summary>${staff}</details>`;}
+      ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 let BK_STAFF_OPEN=false;
 window.bonusReview=async function(on){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
