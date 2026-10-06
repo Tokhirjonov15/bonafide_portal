@@ -96,8 +96,14 @@ const MIGRATIONS = [
   `ALTER TABLE products  ADD COLUMN hidden  INTEGER DEFAULT 0`,  // 안 쓰는 품목 숨김 — 관리자만 (2026-09-27)
   `ALTER TABLE products  ADD COLUMN kind    TEXT DEFAULT ''`,     // 약품/물품 직접 지정 (2026-10-04). '' = 카테고리·거래처로 자동 판정
   `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
-  `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`
+  `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`,
+  `ALTER TABLE movements ADD COLUMN floor  TEXT DEFAULT ''`,   // 층별 재고 (2026-10-06): 입출고한 층. '' = 예전 기록 → 품목 위치(loc)의 층으로 본다
+  `ALTER TABLE products  ADD COLUMN alt_of TEXT DEFAULT ''`    // 대체 품목 (2026-10-06): 본 품목 id. 대체 품목도 자기 재고를 가진다
 ];
+/* 층 (2026-10-06) — 화면의 FLOORS 와 같다. 위치 글자에 든 층으로 판정 */
+const FLOORS = ["3층", "4층", "10층"];
+const floorOfLoc = (loc) => { const l = s(loc); if (!l) return ""; return FLOORS.find((f) => l.includes(f)) || l; };
+const normFloor = (v) => FLOORS.find((f) => s(v).includes(f)) || "";
 
 async function ensureSchema(env) {
   if (schemaReady) return;
@@ -183,7 +189,7 @@ async function listProducts(env) {
   const { results } = await env.DB.prepare(`
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
            p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
-           p.order_unit AS ounit, p.order_group AS ogrp, p.rx_code AS rx, COALESCE(p.hidden,0) AS hidden, COALESCE(p.kind,'') AS kind, p.created_at,
+           p.order_unit AS ounit, p.order_group AS ogrp, p.rx_code AS rx, COALESCE(p.hidden,0) AS hidden, COALESCE(p.kind,'') AS kind, COALESCE(p.alt_of,'') AS altOf, p.created_at,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -191,6 +197,35 @@ async function listProducts(env) {
     ORDER BY p.name COLLATE NOCASE
   `).all();
   return results || [];
+}
+
+/* 층별 재고 (2026-10-06): 품목마다 {층: 수량}. 층이 비어 있는 예전 기록은 품목 위치(loc)의 층으로, 위치도 없으면 '' (미지정) */
+async function attachFloors(env, products) {
+  const { results } = await env.DB.prepare(`
+    SELECT pid, COALESCE(floor,'') AS floor, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty
+    FROM movements GROUP BY pid, COALESCE(floor,'')
+  `).all();
+  const byId = {};
+  for (const p of products) { p.floors = {}; byId[p.id] = p; }
+  for (const r of results || []) {
+    const p = byId[r.pid]; if (!p) continue;
+    const k = r.floor || floorOfLoc(p.loc);
+    p.floors[k] = (p.floors[k] || 0) + (r.qty || 0);
+  }
+  for (const p of products) for (const k of Object.keys(p.floors)) if (!p.floors[k]) delete p.floors[k];
+  return products;
+}
+/* 본 품목 + 대체 품목 재고 합 (발주 판단용, 2026-10-06) */
+async function groupStock(env, gid) {
+  const row = await env.DB.prepare(`
+    SELECT COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END),0) AS stock
+    FROM movements m WHERE m.pid = ? OR m.pid IN (SELECT id FROM products WHERE alt_of = ? AND COALESCE(hidden,0)=0)
+  `).bind(gid, gid).first();
+  return row ? row.stock : 0;
+}
+async function altParentOf(env, pid) {
+  const r = await env.DB.prepare(`SELECT COALESCE(alt_of,'') AS a FROM products WHERE id=?`).bind(pid).first();
+  return (r && r.a) || "";
 }
 
 /* 남아 있는 로트(유통기한별 재고) */
@@ -246,7 +281,7 @@ async function listMovements(env, limit = 300) {
 /* 출고 시 유통기한이 빠른 로트부터 차감(FEFO).
    기록 문장 배열과 함께 "어느 묶음에서 꺼냈는지"(took)도 돌려준다 —
    화면에서 직원에게 실제로 꺼낼 묶음을 안내하기 위함. */
-async function buildOutStatements(env, pid, qty, memo, who) {
+async function buildOutStatements(env, pid, qty, memo, who, floor = "") {   // floor: 출고한 층 (2026-10-06)
   const { results } = await env.DB.prepare(`
     SELECT expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty
     FROM movements
@@ -261,15 +296,15 @@ async function buildOutStatements(env, pid, qty, memo, who) {
     if (remain <= 0) break;
     const take = Math.min(remain, b.qty);
     stmts.push(env.DB.prepare(
-      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'out',?,?,?,?,'',?)`
-    ).bind(uid(), pid, take, memo, who, b.expiry, Date.now()));
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'out',?,?,?,?,'',?,?)`
+    ).bind(uid(), pid, take, memo, who, b.expiry, Date.now(), floor));
     took.push({ expiry: b.expiry, qty: take });
     remain -= take;
   }
   if (remain > 0) {
     stmts.push(env.DB.prepare(
-      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'out',?,?,?,'','',?)`
-    ).bind(uid(), pid, remain, memo, who, Date.now()));
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'out',?,?,?,'','',?,?)`
+    ).bind(uid(), pid, remain, memo, who, Date.now(), floor));
     took.push({ expiry: "", qty: remain });
   }
   return { stmts, took };
@@ -369,8 +404,12 @@ function applyOrderUnits(items) {
 
 async function buildOrders(env) {
   const products = await listProducts(env);
+  /* 대체 품목(alt_of)은 따로 발주하지 않고, 그 재고를 본 품목 재고에 더해 판단한다 (2026-10-06) */
+  const subStock = {};
+  for (const p of products) if (p.altOf && !p.hidden) subStock[p.altOf] = (subStock[p.altOf] || 0) + (p.stock || 0);
   const items = applyOrderUnits(products
-    .filter((p) => !p.hidden)   // 숨긴 품목은 발주하지 않는다
+    .filter((p) => !p.hidden && !p.altOf)   // 숨긴 품목·대체 품목은 발주하지 않는다
+    .map((p) => ({ ...p, stock: (p.stock || 0) + (subStock[p.id] || 0) }))
     .filter((p) => (p.par || 0) > 0 || (p.min || 0) > 0)
     .filter((p) => p.stock <= (p.min || 0))
     .map((p) => ({ ...p, need: Math.max(1, (p.par || 0) - p.stock) })));
@@ -991,6 +1030,7 @@ async function handleApi(request, env, url, ident, ctx) {
     const [products, lotsRaw, movements] = await Promise.all([
       listProducts(env), listLots(env), listMovements(env)
     ]);
+    await attachFloors(env, products);   // 층별 재고 (2026-10-06)
     return json({ products, lots: adjustLots(products, lotsRaw), movements, me, serverTime: Date.now() });
   }
 
@@ -1098,17 +1138,17 @@ async function handleApi(request, env, url, ident, ctx) {
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,kind,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,kind,alt_of,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), s(body.rx), kindVal(body.kind), Date.now())
+             n(body.ounit), s(body.ogrp), s(body.rx), kindVal(body.kind), s(body.altOf), Date.now())
     ];
     const init = n(body.init);
     if (init > 0) {
       stmts.push(env.DB.prepare(
-        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,'',?)`
-      ).bind(uid(), id, init, "초기 수량", actor, normDate(body.expiry), Date.now()));
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'in',?,?,?,?,'',?,?)`
+      ).bind(uid(), id, init, "초기 수량", actor, normDate(body.expiry), Date.now(), normFloor(body.floor || body.loc)));
     }
     await env.DB.batch(stmts);
     return json({ ok: true, id });
@@ -1119,12 +1159,13 @@ async function handleApi(request, env, url, ident, ctx) {
     if (!(staff && staff.admin)) return json({ error: "관리자만 한꺼번에 바꿀 수 있습니다." }, 403);
     const ids = (Array.isArray(body.ids) ? body.ids : []).map(s).filter(Boolean).slice(0, 1000);
     if (!ids.length) return json({ error: "바꿀 품목이 없습니다." }, 400);
-    const setLoc = body.loc !== undefined, setKind = body.kind !== undefined;
-    if (!setLoc && !setKind) return json({ error: "바꿀 항목(loc 또는 kind)이 없습니다." }, 400);
-    const stmts = ids.map((id) => setLoc && setKind
-      ? env.DB.prepare(`UPDATE products SET loc=?, kind=? WHERE id=?`).bind(s(body.loc), kindVal(body.kind), id)
-      : setLoc ? env.DB.prepare(`UPDATE products SET loc=? WHERE id=?`).bind(s(body.loc), id)
-      : env.DB.prepare(`UPDATE products SET kind=? WHERE id=?`).bind(kindVal(body.kind), id));
+    /* 준 것만 바꾼다: loc · kind · hidden(선택 숨기기, 2026-10-06) */
+    const sets = [], vals = [];
+    if (body.loc !== undefined) { sets.push("loc=?"); vals.push(s(body.loc)); }
+    if (body.kind !== undefined) { sets.push("kind=?"); vals.push(kindVal(body.kind)); }
+    if (body.hidden !== undefined) { sets.push("hidden=?"); vals.push(body.hidden ? 1 : 0); }
+    if (!sets.length) return json({ error: "바꿀 항목(loc·kind·hidden)이 없습니다." }, 400);
+    const stmts = ids.map((id) => env.DB.prepare(`UPDATE products SET ${sets.join(", ")} WHERE id=?`).bind(...vals, id));
     await env.DB.batch(stmts);
     return json({ ok: true, updated: ids.length });
   }
@@ -1188,22 +1229,24 @@ async function handleApi(request, env, url, ident, ctx) {
     const unitSel = body.unitSel === "box" ? "box" : (body.unitSel === "ea" ? "ea" : "");
     const asBox = bs > 1 && (unitSel === "box" || (!unitSel && type === "in"));
     const inQty = asBox ? qty * bs : qty, boxIn = asBox ? { boxes: qty, per: bs } : null;
-    const prev = await currentStock(env, pid);
+    const floor = normFloor(body.floor);   // 입출고한 층 (2026-10-06)
+    const gid = (await altParentOf(env, pid)) || pid;   // 대체 품목이면 본 품목 기준으로 발주 경계 판단
+    const prev = await groupStock(env, gid);
     if (type === "in") {
       const memoIn = boxIn
         ? [s(body.memo), `${boxIn.boxes}박스 입고(1박스=${boxIn.per}개)`].filter(Boolean).join(" · ")
         : s(body.memo);
       await env.DB.prepare(
-        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
-      ).bind(uid(), pid, inQty, memoIn, actor, normDate(body.expiry), s(body.lot), Date.now()).run();
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'in',?,?,?,?,?,?,?)`
+      ).bind(uid(), pid, inQty, memoIn, actor, normDate(body.expiry), s(body.lot), Date.now(), floor).run();
     } else {
       const memoOut = boxIn
         ? [s(body.memo), `${boxIn.boxes}박스 출고(1박스=${boxIn.per}개)`].filter(Boolean).join(" · ")
         : s(body.memo);
-      const r = await buildOutStatements(env, pid, inQty, memoOut, actor);
+      const r = await buildOutStatements(env, pid, inQty, memoOut, actor, floor);
       await env.DB.batch(r.stmts);
       took = r.took;
-      await notifyOrderCross(env, ctx, pid, prev, prev - inQty);
+      await notifyOrderCross(env, ctx, gid, prev, prev - inQty);
     }
     return json({ ok: true, took, boxIn, stock: await currentStock(env, pid) });
   }
@@ -1222,9 +1265,9 @@ async function handleApi(request, env, url, ident, ctx) {
     if (!isAdm && !(orig.who === actor && fresh))
       return json({ error: "본인 기록은 30분 이내에만 취소할 수 있습니다. (그 외는 관리자에게 요청하세요)" }, 403);
     await env.DB.prepare(
-      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,?,?,?,?,?,?,?,?)`
     ).bind(uid(), orig.pid, orig.type === "in" ? "out" : "in", orig.qty,
-           `취소:${mid}`, actor, orig.expiry || "", orig.lot || "", Date.now()).run();
+           `취소:${mid}`, actor, orig.expiry || "", orig.lot || "", Date.now(), orig.floor || "").run();   // 같은 층으로 되돌린다
     return json({ ok: true, stock: await currentStock(env, orig.pid) });
   }
 
@@ -1239,6 +1282,59 @@ async function handleApi(request, env, url, ident, ctx) {
       `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',0,?,?,?,'',?)`
     ).bind(uid(), pid, `유통기한 수정: ${from} → ${to}`, actor, to, Date.now()).run();
     return json({ ok: true, changed: (r.meta && r.meta.changes) || 0 });
+  }
+
+  /* 층별 재고 맞추기 (2026-10-06, 품목 수정 창) — {pid, floors:{"3층":5,"10층":12}}.
+     지금 층별 재고와의 차이만큼 그 층에 입고/출고 기록을 남긴다(출고는 유통기한 빠른 묶음부터) */
+  if (path === "/product/floor-stock" && method === "POST") {
+    const pid = s(body.pid);
+    const want = body.floors && typeof body.floors === "object" ? body.floors : null;
+    if (!pid || !want) return json({ error: "품목과 층별 수량이 필요합니다." }, 400);
+    const prod = await env.DB.prepare(`SELECT loc FROM products WHERE id=?`).bind(pid).first();
+    if (!prod) return json({ error: "품목을 찾을 수 없습니다." }, 404);
+    const cur = {};
+    const rows = (await env.DB.prepare(`SELECT COALESCE(floor,'') AS floor, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty FROM movements WHERE pid=? GROUP BY COALESCE(floor,'')`).bind(pid).all()).results || [];
+    for (const r of rows) { const k = r.floor || floorOfLoc(prod.loc); cur[k] = (cur[k] || 0) + (r.qty || 0); }
+    const stmts = [], changed = [];
+    for (const f of FLOORS) {
+      if (want[f] === undefined || want[f] === null || want[f] === "") continue;
+      const target = Math.max(0, n(want[f])), diff = target - (cur[f] || 0);
+      if (!diff) continue;
+      if (diff > 0) stmts.push(env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'in',?,?,?,'','',?,?)`)
+        .bind(uid(), pid, diff, `층별 재고 조정 (${f} ${cur[f] || 0}→${target})`, actor, Date.now(), f));
+      else { const r = await buildOutStatements(env, pid, -diff, `층별 재고 조정 (${f} ${cur[f] || 0}→${target})`, actor, f); stmts.push(...r.stmts); }
+      changed.push(f);
+    }
+    if (stmts.length) await env.DB.batch(stmts);
+    return json({ ok: true, changed });
+  }
+
+  /* 유통기한 나누기 (2026-10-06) — 이미 있는 재고 중 qty 개에 유통기한 to 를 붙인다. from = 지금 기한('' = 기한 없는 재고).
+     총 재고는 그대로: from 묶음에서 qty 출고 + to 묶음으로 qty 입고 (층은 비워 둠 → 층별 재고도 그대로) */
+  if (path === "/lot/split" && method === "POST") {
+    const pid = s(body.pid), from = s(body.from), to = normDate(body.to), qty = n(body.qty);
+    if (!pid || qty <= 0) return json({ error: "품목과 개수를 확인하세요." }, 400);
+    if (!to) return json({ error: "유통기한 형식이 올바르지 않습니다. (예: 2027-05-31)" }, 400);
+    if (from && normDate(from) === to) return json({ error: "같은 유통기한입니다." }, 400);
+    const stock = await currentStock(env, pid);
+    const lots = (await env.DB.prepare(`SELECT expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty FROM movements WHERE pid=? AND expiry<>'' GROUP BY expiry HAVING qty>0`).bind(pid).all()).results || [];
+    const lotSum = lots.reduce((a, l) => a + l.qty, 0);
+    const avail = from ? ((lots.find((l) => l.expiry === from) || {}).qty || 0) : Math.max(0, stock - lotSum);
+    if (qty > avail) return json({ error: `${from ? from + " 묶음" : "유통기한 없는 재고"}가 ${avail}개뿐입니다.` }, 400);
+    const memo = `유통기한 지정: ${qty}개 ${from || "기한 없음"} → ${to}`;
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'out',?,?,?,?,'',?,'')`).bind(uid(), pid, qty, memo, actor, from, Date.now()),
+      env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'in',?,?,?,?,'',?,'')`).bind(uid(), pid, qty, memo, actor, to, Date.now())
+    ]);
+    return json({ ok: true });
+  }
+
+  /* 대체 품목 빼기 (2026-10-06) — 본 품목 수정 창에서 대체품목 이름을 지우면: 연결을 끊고 숨긴다(기록은 남김, 숨긴 목록에서 되돌릴 수 있음) */
+  if (path === "/product/sub-remove" && method === "POST") {
+    const id = s(body.id);
+    if (!id) return json({ error: "id가 필요합니다." }, 400);
+    await env.DB.prepare(`UPDATE products SET hidden=1, alt_of='' WHERE id=? AND COALESCE(alt_of,'')<>''`).bind(id).run();
+    return json({ ok: true });
   }
 
   /* 스캐너 전용: 바코드 하나로 입고/출고 */
@@ -1263,20 +1359,22 @@ async function handleApi(request, env, url, ident, ctx) {
     const bs = boxSizeOf(p);
     let appliedQty = qty, boxIn = null;
     if (mode === "in" && bs > 1) { appliedQty = qty * bs; boxIn = { boxes: qty, per: bs }; }
-    const prev = await currentStock(env, p.id);
+    const floor = normFloor(body.floor || locSel);   // 이 기기의 층 = 입출고한 층 (2026-10-06)
+    const gid = (await altParentOf(env, p.id)) || p.id;
+    const prev = await groupStock(env, gid);
     if (mode === "in") {
       const g = parseGs1(raw);
       const expiry = normDate(body.expiry) || g.expiry;
       await env.DB.prepare(
-        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts) VALUES (?,?,'in',?,?,?,?,?,?)`
+        `INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'in',?,?,?,?,?,?,?)`
       ).bind(uid(), p.id, appliedQty,
              boxIn ? `스캔 입고 ${boxIn.boxes}박스(1박스=${boxIn.per}개)` : "스캔 입고",
-             actor, expiry, g.lot, Date.now()).run();
+             actor, expiry, g.lot, Date.now(), floor).run();
     } else {
-      const r = await buildOutStatements(env, p.id, qty, "스캔 출고", actor);
+      const r = await buildOutStatements(env, p.id, qty, "스캔 출고", actor, floor);
       await env.DB.batch(r.stmts);
       took = r.took;
-      await notifyOrderCross(env, ctx, p.id, prev, prev - qty);
+      await notifyOrderCross(env, ctx, gid, prev, prev - qty);
     }
     return json({ ok: true, product: p, mode, qty: appliedQty, boxIn, took, stock: await currentStock(env, p.id) });
   }

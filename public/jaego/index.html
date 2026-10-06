@@ -193,6 +193,10 @@
   /* 재고 현황 — 유통기한 묶음(로트) 펼치기 */
   .lotchev{cursor:pointer; user-select:none; margin-right:4px}
   .lotrow td{background:#F4F8FC; font-size:12px; padding:8px 10px 8px 30px; color:var(--ink2)}
+  .altrow td{background:#FAFAFA; color:#9CA3AF; font-size:12.5px; border-top:1px dashed #E5E7EB}
+  .altrow .altname{color:#9CA3AF; font-weight:600; padding-left:18px}
+  .altrow .qty{color:#6B7280}
+  .catchev{display:inline-block; width:18px; color:var(--ink2); font-size:14px}
   .lotrow .lotitem{display:block; padding:3px 0; border-bottom:1px dashed #E2EAF2}
   .lotrow .lotitem:last-child{border-bottom:none}
 
@@ -268,6 +272,10 @@
     font-size:14px; font-family:inherit;
   }
   .mrow{display:flex; gap:10px} .mrow>div{flex:1}
+  .mrow3{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .fbox{border:1px solid var(--line); border-radius:10px; padding:8px 10px 2px; margin:6px 0 10px; background:#F8FAFC}
+  .fbox .fb-t{font-size:12.5px; font-weight:800; margin-bottom:4px}
+  .fbox .fb-t.alt{color:#6B7280}
   .mbtns{display:flex; gap:8px; margin-top:18px; justify-content:flex-end}
   .qbig{font-size:22px !important; text-align:center; font-weight:700}
 
@@ -409,6 +417,7 @@
       <button class="btn ghost" id="todayLabelBtn" title="오늘 추가된 모든 품목의 라벨을 한 번에 인쇄"><i data-lucide="tags"></i> 오늘 품목 라벨</button>
       <button class="btn ghost" id="bulkDelBtn" style="display:none;color:var(--warn)" onclick="bulkDelete()" title="체크한 품목을 한꺼번에 삭제 (관리자)"><i data-lucide="trash-2"></i> 선택 삭제 <span id="bulkCnt"></span></button>
       <span id="bulkTools" class="bulktools" style="display:none">
+        <button class="btn ghost" onclick="bulkHide()" title="체크한 품목을 한꺼번에 숨기기 (관리자)"><i data-lucide="eye-off"></i> 선택 숨기기</button>
         <button class="btn ghost" onclick="selClear()" title="체크한 품목 모두 해제"><i data-lucide="x"></i> 선택 해제</button>
         <select class="fsel" title="체크한 품목의 층(보관 위치)을 한꺼번에" onchange="bulkSet('loc',this.value);this.value=''"><option value="">층 지정…</option><option value="3층">3층</option><option value="4층">4층</option><option value="10층">10층</option><option value="__none__">위치 비우기</option></select>
         <select class="fsel" title="체크한 품목을 약품/물품으로" onchange="bulkSet('kind',this.value);this.value=''"><option value="">약품/물품…</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option><option value="__auto__">자동 판정으로</option></select>
@@ -576,7 +585,12 @@
   </div>
   <div class="mrow">
     <div><label>거래처 (구입처)</label><input id="pVendor" list="venList" placeholder="예) 한대표님 / 메디풀"><datalist id="venList"></datalist></div>
-    <div><label>대체품목</label><input id="pAlt" placeholder="선택사항"></div>
+    <div><label>대체품목</label><input id="pAlt" placeholder="선택사항 — 여러 개는 쉼표로" onchange="renderAltStock()"></div>
+  </div>
+  <div class="muted" style="font-size:11.5px; margin:-4px 0 6px">· 대체품목이 여러 개면 쉼표(,)로 구분 · 대체품목도 아래에서 층별 재고를 따로 넣을 수 있습니다</div>
+  <div id="pFloorWrap" style="display:none">
+    <div class="fbox"><div class="fb-t">이 품목(발주 품목) 층별 재고 <span class="muted" style="font-weight:400">— 지금 실제로 있는 개수. 바꾸면 그 차이만큼 입출고 기록이 남습니다</span></div><div class="mrow3" id="pFloors"></div></div>
+    <div id="pAltStock"></div>
   </div>
   <div class="mrow">
     <div><label>발주단위 (1박스 수량)</label><input id="pOunit" type="number" min="0" value="0" placeholder="예) 20"></div>
@@ -597,6 +611,7 @@
   </div>
   <div class="mbtns">
     <button class="btn ghost" id="prodDel" style="margin-right:auto; color:var(--warn); display:none">삭제</button>
+    <button class="btn ghost" id="prodHide" style="display:none" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기 (관리자)"><i data-lucide="eye-off"></i> 숨기기</button>
     <button class="btn ghost" id="prodCancel">취소</button>
     <button class="btn" id="prodSave">저장</button>
   </div>
@@ -610,6 +625,8 @@
     <button type="button" class="btn small ghost" id="mvUnitEa" onclick="setMvUnit('ea')">개수</button>
     <button type="button" class="btn small ghost" id="mvUnitBox" onclick="setMvUnit('box')">박스</button>
   </div>
+  <p class="muted" id="mvFloors" style="margin:-2px 0 6px; font-size:12.5px"></p>
+  <div id="mvFloorWrap"><label>층 (어느 층 재고에서)</label><select id="mvFloor" class="fsel" style="width:100%"><option value="3층">3층</option><option value="4층">4층</option><option value="10층">10층</option></select></div>
   <label id="mvQtyLabel">수량</label><input id="mvQty" type="number" min="1" value="1" class="qbig" oninput="mvHint()">
   <p class="muted" id="mvBoxHint" style="display:none; margin:2px 0 6px; color:var(--accent); font-weight:700"></p>
   <div id="mvExpWrap"><label>유통기한 (선택)</label><input id="mvExp" type="date"></div>
@@ -677,6 +694,7 @@ const esc=s=>(""+(s??"")).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt
 const won=v=>(+v||0).toLocaleString("ko-KR");
 
 let PRODUCTS=[], HIDDEN=[], SEL=new Set(), VISIBLE_IDS=[], LOTS=[], MOVEMENTS=[], ME=null, busy=false;
+let SUBS={};   // 본 품목 id → 대체 품목들(alt_of) — 대체 품목도 자기 재고를 가진다 (2026-10-06)
 let scanMode="in", scanHistory=[];
 
 /* ---------- 서버 통신 (직원 토큰 자동 첨부, 401이면 로그인 창) ---------- */
@@ -771,6 +789,7 @@ async function refresh(silent){
     const d=await API.call("/state");
     /* 숨긴 품목(안 쓰는 품목)은 화면 전체에서 빼고 '숨긴 목록'에만 둔다 (2026-09-27) */
     HIDDEN=(d.products||[]).filter(p=>p.hidden); PRODUCTS=(d.products||[]).filter(p=>!p.hidden); LOTS=d.lots||[]; MOVEMENTS=d.movements||[]; ME=d.me||null;
+    SUBS={}; PRODUCTS.forEach(p=>{ if(p.altOf) (SUBS[p.altOf]=SUBS[p.altOf]||[]).push(p); });
     if(ME){ const nm=esc(ME.email).replace(" 👑", ' <i data-lucide="user-cog"></i>');
       const el=$("conn"); el.className="conn on"; el.innerHTML='<i data-lucide="user-round"></i> '+nm; }
     else setConn("on","☁ 클라우드 연결됨");
@@ -886,7 +905,13 @@ function kindAuto(p){
   if(DRUG_VENDORS.has((p.vendor||"").trim())) return "약품";
   return "물품";
 }
-const isLow=p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0));
+/* 발주 판단은 본 품목 + 대체 품목 재고 합으로 (2026-10-06). 대체 품목 자신은 발주 대상이 아니다 */
+const gstock=p=>(p.stock||0)+((SUBS[p.id]||[]).reduce((a,x)=>a+(x.stock||0),0));
+const isLow=p=>(!p.altOf && ((p.par||0)>0||(p.min||0)>0) && gstock(p)<=(p.min||0));
+/* 층별 재고 글자 — '3층 5 · 10층 12' (2026-10-06) */
+function floorTxt(p){ const f=p.floors||{}; const ks=[...FLOORS.filter(k=>f[k]), ...Object.keys(f).filter(k=>!FLOORS.includes(k)&&f[k])];
+  return ks.map(k=>`${k?esc(k):"미지정"} <b>${f[k]}</b>`).join(" · "); }
+const floorQty=(p,k)=>((p.floors||{})[k]||0);
 /* 박스 크기: 발주단위 우선, 없으면 단위 텍스트 "10=1통(박스)"에서 추출 ("1=1개"는 제외) */
 const boxSizeOf=p=>{
   const u=(p&&(p.ounit||p.order_unit))||0;
@@ -920,30 +945,31 @@ function matchState(p, sel){
   if(sel==="ok") return !st.low && !st.expired && !st.soon;
   return true;
 }
-/* ═════ 층별 구역 (2026-10-04 요청: 층 구분) ═════
-   품목의 보관 위치(loc)에 든 층(3층·4층·10층)으로 묶어 구역마다 머리줄을 단다. 그 밖의 위치는 이름순, 위치가 없으면 '위치 미지정'.
-   머리줄을 누르면 접고 펼친다(이 기기에 기억). 관리자는 '이 구역 전체 선택' 후 위 막대에서 층·약품/물품을 한꺼번에 바꾼다 */
-let SEC_CLOSED={}; try{SEC_CLOSED=JSON.parse(localStorage.getItem("jaego_sec_closed")||"{}")||{};}catch(_){}
-let SEC_KEYS=[], SEC_LISTS=[];
+/* ═════ 카테고리 묶음 (2026-10-06 요청 — 예전 층별 구역 대신) ═════
+   카테고리(급여·비급여·코반 …)로 묶는다. 처음엔 모두 접힘(▷) — 누르면 펼침(▽), 이 기기에 기억. 검색 중에는 모두 펼친다.
+   층은 줄마다 '3층 5 · 10층 12' 로 보인다. 관리자는 '이 묶음 전체 선택' 후 위 막대에서 한꺼번에 작업 */
+let CAT_OPEN={}; try{CAT_OPEN=JSON.parse(localStorage.getItem("jaego_cat_open")||"{}")||{};}catch(_){}
+let SEC_KEYS=[], SEC_LISTS=[], SEC_FORCE_OPEN=false;
 function floorKeyOf(p){ const l=String(p.loc||"").trim(); if(!l) return ""; return FLOORS.find(f=>l.includes(f))||l; }
-function secHtml(list, ADM, rowFn){
+function secHtml(list, ADM, rowFn, flatTop){
   const cols=ADM?10:9, groups=new Map();
-  list.forEach(p=>{ const k=floorKeyOf(p); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(p); });
-  SEC_KEYS=[...FLOORS.filter(f=>groups.has(f)), ...[...groups.keys()].filter(k=>k&&!FLOORS.includes(k)).sort((a,b)=>a.localeCompare(b,"ko")), ...(groups.has("")?[""]:[])];
+  const top=(flatTop||[]);
+  list.forEach(p=>{ const k=String(p.cat||"").trim(); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(p); });
+  SEC_KEYS=[...[...groups.keys()].filter(k=>k).sort((a,b)=>a.localeCompare(b,"ko")), ...(groups.has("")?[""]:[])];
   SEC_LISTS=SEC_KEYS.map(k=>groups.get(k));
-  VISIBLE_IDS=[];
-  return SEC_KEYS.map((k,i)=>{
-    const L=SEC_LISTS[i], closed=!!SEC_CLOSED[k||"__none__"], nDrug=L.filter(p=>kindOf(p)==="약품").length;
-    if(!closed) L.forEach(p=>VISIBLE_IDS.push(p.id));
-    return `<tr class="secrow" onclick="toggleSec(${i})"><td colspan="${cols}"><span class="chev ${closed?"":"open"}">▶</span>
-        <b><i data-lucide="map-pin"></i> ${k?esc(k):"위치 미지정"}</b> <span class="muted">${L.length}품목 · 💊 약품 ${nDrug} · 📦 물품 ${L.length-nDrug}${closed?" · 접힘":""}</span>
-        ${ADM?`<button class="btn small ghost secbtn" onclick="event.stopPropagation();selectSec(${i})" title="이 구역 품목을 모두 체크">이 구역 전체 선택</button>`:""}</td></tr>`
-      +(closed?"":L.map(rowFn).join(""));
+  VISIBLE_IDS=top.map(p=>p.id);
+  return top.map(rowFn).join("")+SEC_KEYS.map((k,i)=>{
+    const L=SEC_LISTS[i], open=SEC_FORCE_OPEN||!!CAT_OPEN[k||"__none__"], nLow=L.filter(isLow).length, nDrug=L.filter(p=>kindOf(p)==="약품").length;
+    if(open) L.forEach(p=>VISIBLE_IDS.push(p.id));
+    return `<tr class="secrow" onclick="toggleSec(${i})"><td colspan="${cols}"><span class="catchev">${open?"▽":"▷"}</span>
+        <b><i data-lucide="folder"></i> ${k?esc(k):"미분류"}</b> <span class="muted">${L.length}품목 · 💊 ${nDrug} · 📦 ${L.length-nDrug}${nLow?` · <b style="color:var(--warn)">발주 ${nLow}</b>`:""}</span>
+        ${ADM&&open?`<button class="btn small ghost secbtn" onclick="event.stopPropagation();selectSec(${i})" title="이 묶음 품목을 모두 체크">이 묶음 전체 선택</button>`:""}</td></tr>`
+      +(open?L.map(rowFn).join(""):"");
   }).join("");
 }
 window.toggleSec=function(i){ const k=SEC_KEYS[i]; if(k===undefined) return; const key=k||"__none__";
-  if(SEC_CLOSED[key]) delete SEC_CLOSED[key]; else SEC_CLOSED[key]=1;
-  try{localStorage.setItem("jaego_sec_closed",JSON.stringify(SEC_CLOSED));}catch(_){}
+  if(CAT_OPEN[key]) delete CAT_OPEN[key]; else CAT_OPEN[key]=1;
+  try{localStorage.setItem("jaego_cat_open",JSON.stringify(CAT_OPEN));}catch(_){}
   render(); };
 window.selectSec=function(i){ (SEC_LISTS[i]||[]).forEach(p=>SEL.add(p.id)); render(); };
 window.selClear=function(){ SEL.clear(); render(); };
@@ -956,8 +982,17 @@ window.bulkSet=async function(field, v){
   const what=field==="loc"?(val?`층을 '${val}'(으)로`:"위치를 비우기로"):(val?`'${val}'(으)로`:"자동 판정으로");
   if(!confirm(`체크한 ${list.length}개 품목의 ${what} 바꿉니다.`)) return;
   try{ await API.call("/product/bulk-update",{ids:list.map(p=>p.id),[field]:val});
-    await refresh(true);
+    SEL.clear(); await refresh(true);   // 작업이 끝나면 선택 해제 (2026-10-06)
   }catch(err){ alert("바꾸지 못했습니다: "+err.message); }
+};
+/* 선택 숨기기 (2026-10-06) — 체크한 품목을 한꺼번에 숨긴다. '숨긴 목록'에서 되돌릴 수 있다 */
+window.bulkHide=async function(){
+  if(!(ME&&ME.admin)){alert("관리자만 할 수 있습니다.");return;}
+  const list=PRODUCTS.filter(p=>SEL.has(p.id)); if(!list.length) return;
+  if(!confirm(`체크한 ${list.length}개 품목을 숨길까요?\n재고 현황·발주·알림에서 빠지고, '숨긴 목록'에서 되돌릴 수 있습니다.`)) return;
+  try{ await API.call("/product/bulk-update",{ids:list.map(p=>p.id),hidden:true});
+    SEL.clear(); await refresh(true);
+  }catch(err){ alert("숨기지 못했습니다: "+err.message); }
 };
 function render(){
   const q=($("q").value||"").trim().toLowerCase();
@@ -966,12 +1001,14 @@ function render(){
   /* 정렬용: 품목별 가장 빠른 유통기한 — 기한이 임박한 품목이 위로 (기한 없는 품목은 이름순으로 뒤에) */
   const firstExp={};
   for(const l of LOTS){ if(l.expiry && (!firstExp[l.pid] || l.expiry<firstExp[l.pid])) firstExp[l.pid]=l.expiry; }
-  const rows=PRODUCTS
-    .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")+" "+(p.loc||"")+" "+(p.rx||"")).toLowerCase().includes(q))
+  SEC_FORCE_OPEN=!!q;   // 검색 중에는 카테고리를 모두 펼친다
+  const subTxt=p=>(SUBS[p.id]||[]).map(x=>x.name+" "+(x.bar||"")).join(" ")+" "+(p.alt||"");
+  const rows=PRODUCTS.filter(p=>!p.altOf)   // 대체 품목은 본 품목 줄 아래에 회색으로 (2026-10-06)
+    .filter(p=>!q || (p.name+" "+(p.cat||"")+" "+(p.bar||"")+" "+(p.vendor||"")+" "+(p.loc||"")+" "+(p.rx||"")+" "+subTxt(p)).toLowerCase().includes(q))
     .filter(p=>{
       if(!locSel) return true;
-      if(locSel==="__none__") return !(p.loc||"").trim();
-      return (p.loc||"").includes(locSel);
+      if(locSel==="__none__") return !(p.loc||"").trim() && !Object.keys(p.floors||{}).some(k=>k);
+      return floorQty(p,locSel)>0 || (p.loc||"").includes(locSel) || (SUBS[p.id]||[]).some(x=>floorQty(x,locSel)>0);
     })
     .filter(p=>!catSel || kindOf(p)===catSel)
     .filter(p=>!venSel || (p.vendor||"미지정")===venSel)
@@ -980,7 +1017,7 @@ function render(){
       || (firstExp[a.id]||"9999").localeCompare(firstExp[b.id]||"9999")
       || a.name.localeCompare(b.name,"ko"));
 
-  const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
+  const ordN=PRODUCTS.filter(isLow).length;
   const soon=LOTS.filter(l=>{ const d=daysLeft(l.expiry); return d!==null && d<=60; }).length;
   $("statLine").textContent=`품목 ${PRODUCTS.length}개 · 발주대상 ${ordN}개 · 기한임박 ${soon}건`;
   $("tabOrder").innerHTML = '<i data-lucide="file"></i> 발주' + (ordN?` (${ordN})`:"");
@@ -1014,29 +1051,31 @@ function render(){
   $("stockWrap").innerHTML = !PRODUCTS.length
     ? `<div class="empty">품목이 없습니다.<br><b><i data-lucide="plus"></i> 품목 추가</b> 또는 <b>설정·백업 → CSV 가져오기</b>로 시작하세요.</div>`
     : `<table><thead><tr>
-        ${ADM?`<th class="selcol"><input type="checkbox" id="selAll" title="보이는 품목 전체 선택" onchange="selectAllVisible(this.checked)"></th>`:""}<th class="namecol">품목명</th><th class="hidem">카테고리</th><th class="hidem">위치</th>
+        ${ADM?`<th class="selcol"><input type="checkbox" id="selAll" title="보이는 품목 전체 선택" onchange="selectAllVisible(this.checked)"></th>`:""}<th class="namecol">품목명</th><th class="hidem">카테고리</th><th class="hidem">층별 재고</th>
         <th>현재</th><th class="hidem">최소</th><th class="hidem">단가</th><th class="hidem">거래처</th>
         <th>유통기한</th><th>입출고</th>
-      </tr></thead><tbody>${lowGroupRow}${secHtml(rows.filter(p=>lowOpenT||!isLow(p)), ADM, p=>{
+      </tr></thead><tbody>${lowGroupRow}${secHtml(rows.filter(p=>!isLow(p)), ADM, p=>{
         const ls=lotsOf(p.id);
         const open=!!LOT_OPEN[p.id];
-        const expCell = !ls.length ? "—"
+        const unass=Math.max(0,(p.stock||0)-ls.reduce((a,l)=>a+l.qty,0));   // 유통기한 없는 재고
+        const addExp = unass>0 ? ` <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="유통기한 없는 재고 ${unass}개 중 몇 개에 유통기한 넣기" onclick="splitLot('${p.id}','')"><i data-lucide="calendar-plus"></i></button>` : "";
+        const expCell = (!ls.length ? "—"
           : ls.length===1 || ls[0].expiry===ls[ls.length-1].expiry
             ? `${esc(ls[0].expiry)} ${expBadge(p.id)}`
-            : `${esc(ls[0].expiry)} ${expBadge(p.id)} <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)}</span> <span class="tag">${ls.length}묶음</span>`;
+            : `${esc(ls[0].expiry)} ${expBadge(p.id)} <span style="font-size:11px">~ ${esc(ls[ls.length-1].expiry)}</span> <span class="tag">${ls.length}묶음</span>`) + addExp;
         const lotDetail = (open && ls.length) ? `<tr class="lotrow"><td colspan="${ADM?10:9}">
           <i data-lucide="boxes"></i> 유통기한별 묶음: ${ls.map(l=>{
             const dd=daysLeft(l.expiry);
             const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
                         : dd<=60?` <span class="exptag">D-${dd}</span>` : ` <span class="muted">D-${dd}</span>`;
-            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge} <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 유통기한 수정" onclick="editLotExp('${p.id}','${esc(l.expiry)}')"><i data-lucide="pencil"></i></button></span>`;
+            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge} <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 유통기한 수정" onclick="editLotExp('${p.id}','${esc(l.expiry)}')"><i data-lucide="pencil"></i></button> <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 중 몇 개만 다른 유통기한으로 나누기" onclick="splitLot('${p.id}','${esc(l.expiry)}')"><i data-lucide="split"></i> 나누기</button></span>`;
           }).join("")}</td></tr>` : "";
         return `<tr class="${isLow(p)?"low":""}${SEL.has(p.id)?" selrow":""}">
           ${ADM?`<td class="selcol"><input type="checkbox" ${SEL.has(p.id)?"checked":""} onclick="event.stopPropagation()" onchange="selToggle('${p.id}',this.checked)"></td>`:""}
-          <td class="namecol">${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<span class="kbadge${p.kind?"":" auto"}" title="${kindOf(p)}${p.kind?"":" (자동 판정)"}">${kindOf(p)==="약품"?"💊":"📦"}</span><b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}${isLow(p)&&ME&&ME.admin?` <button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i> 숨기기</button>`:""}
+          <td class="namecol">${ls.length?`<span class="chev lotchev ${open?"open":""}" onclick="toggleLots('${p.id}')">▶</span>`:""}<span class="kbadge${p.kind?"":" auto"}" title="${kindOf(p)}${p.kind?"":" (자동 판정)"}">${kindOf(p)==="약품"?"💊":"📦"}</span><b>${esc(p.name)}</b> ${isLow(p)?'<span class="lowtag">발주</span>':""}
               <div class="muted hidem">${esc(p.bar||"")}</div></td>
           <td class="hidem">${p.cat?`<span class="tag">${esc(p.cat)}</span>`:""}</td>
-          <td class="hidem muted" style="white-space:nowrap">${esc(p.loc||"")}</td>
+          <td class="hidem muted" style="white-space:nowrap;font-size:12.5px">${floorTxt(p)||esc(p.loc||"")}</td>
           <td class="qty" style="white-space:nowrap">${(function(){
             const bs=boxSizeOf(p);
             if(bs>1){
@@ -1044,7 +1083,7 @@ function render(){
                 <span class="muted" style="font-size:11px;font-weight:400">(1B=${bs}개)</span><br>
                 갯수: <b>${p.stock}</b>개`;
             }
-            return `${p.stock} <span class="muted">${esc(p.unit||"")}</span>`;
+            return `${p.stock} <span class="muted">${esc(p.unit||"")}</span>${(SUBS[p.id]||[]).length?`<div class="muted" style="font-size:11px;font-weight:400">대체 포함 ${gstock(p)}</div>`:""}`;
           })()}</td>
           <td class="hidem muted num">${p.min||0}</td>
           <td class="hidem num">${p.price?won(p.price)+"원":""}</td>
@@ -1057,10 +1096,11 @@ function render(){
                 <button class="btn small out" onclick="openMv('${p.id}','out')"><i data-lucide="minus"></i></button>
               </div>
               <button class="btn small ghost" title="품목 수정" onclick="openProd('${p.id}')"><i data-lucide="pencil"></i></button>
+              ${ADM?`<button class="btn small ghost hidebtn" title="안 쓰는 품목 — 재고 현황·발주에서 숨기기" onclick="event.stopPropagation();hideProduct('${p.id}',true)"><i data-lucide="eye-off"></i></button>`:""}
             </div>
           </td>
-        </tr>${lotDetail}`;
-      })}</tbody></table>`;
+        </tr>${lotDetail}${altRowsHtml(p, ADM)}`;
+      }, lowOpenT?rows.filter(isLow):[])}</tbody></table>`;   /* 발주 필요 품목은 '발주 필요' 줄 바로 아래에 (카테고리는 처음에 접혀 있으므로) */
 
   /* 담당 표시: 직원에게는 아이디만, 관리자에게는 "아이디 (이름)" */
   const whoDisp=w=>{
@@ -1644,7 +1684,7 @@ function alertList(){
 let ALERT_SIG="";
 function renderAlerts(){
   const items=alertList();
-  const ordN=PRODUCTS.filter(p=>(((p.par||0)>0||(p.min||0)>0) && p.stock<=(p.min||0))).length;
+  const ordN=PRODUCTS.filter(isLow).length;
   const total=items.length+(ordN?1:0);
 
   /* 알림 내용의 "지문" — 내용이 바뀌면(새 항목·단계 변화) 다시 읽지 않은 것으로 처리 */
@@ -1709,6 +1749,33 @@ window.cancelMv=async function(id){
 };
 
 /* 로트(입고 묶음) 유통기한 수정 */
+/* 대체 품목 줄 — 본 품목 바로 아래 회색 (2026-10-06). 연결된 대체 품목은 재고·층별·입출고 단추, 이름만 적힌 것은 '재고 미입력' */
+function altNames(p){ return String(p.alt||"").split(/[,/]/).map(x=>x.trim()).filter(Boolean); }
+function altRowsHtml(p, ADM){
+  const cols=ADM?10:9, subs=SUBS[p.id]||[];
+  const linked=subs.map(x=>`<tr class="altrow">${ADM?'<td class="selcol"></td>':''}
+      <td class="namecol"><span class="altname">↳ 대체: ${esc(x.name)}</span></td><td class="hidem"></td>
+      <td class="hidem" style="white-space:nowrap;font-size:12px">${floorTxt(x)}</td>
+      <td class="qty">${x.stock} <span class="muted">${esc(x.unit||p.unit||"")}</span></td>
+      <td class="hidem"></td><td class="hidem"></td><td class="hidem"></td>
+      <td class="muted" style="white-space:nowrap">${esc((lotsOf(x.id)[0]||{}).expiry||"—")}</td>
+      <td><div style="display:flex;gap:4px;align-items:center"><button class="btn small in" onclick="openMv('${x.id}','in')"><i data-lucide="plus"></i></button><button class="btn small out" onclick="openMv('${x.id}','out')"><i data-lucide="minus"></i></button></div></td></tr>`).join("");
+  const have=new Set(subs.map(x=>String(x.name||"").trim()));
+  const textOnly=altNames(p).filter(n=>!have.has(n)).map(n=>`<tr class="altrow"><td colspan="${cols}"><span class="altname">↳ 대체: ${esc(n)}</span> <span style="font-size:11px">(재고 미입력 — 품목 수정에서 넣을 수 있어요)</span></td></tr>`).join("");
+  return linked+textOnly;
+}
+/* 유통기한 나누기 (2026-10-06) — 이미 있는 재고 중 몇 개에 유통기한을 넣는다. from='' = 기한 없는 재고, 그 밖 = 그 묶음에서 일부만 다른 기한으로 */
+window.splitLot=async function(pid, from){
+  const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
+  const ls=lotsOf(pid);
+  const avail= from ? ((ls.find(l=>l.expiry===from)||{}).qty||0) : Math.max(0,(p.stock||0)-ls.reduce((a,l)=>a+l.qty,0));
+  if(avail<=0){ alert(from?"이 묶음에 남은 재고가 없습니다.":"유통기한 없는 재고가 없습니다."); return; }
+  const qs=prompt(`'${p.name}'\n${from?from+" 묶음":"유통기한 없는 재고"} ${avail}개 중 몇 개에 새 유통기한을 넣을까요?`, String(avail)); if(qs===null) return;
+  const qty=parseInt(qs,10); if(!(qty>0&&qty<=avail)){ alert(`1 ~ ${avail} 사이로 입력하세요.`); return; }
+  const to=prompt(`${qty}개의 유통기한을 입력하세요\n예) 2027-03-01 또는 20270301`,""); if(to===null||!to.trim()) return;
+  try{ await API.call("/lot/split",{pid, from, to:to.trim(), qty}); await refresh(true); }
+  catch(err){ alert("유통기한을 넣지 못했습니다: "+err.message); }
+};
 window.editLotExp=async function(pid,from){
   const to=prompt(`새 유통기한을 입력하세요 (예: 2027-05-31)\n현재: ${from}`, from);
   if(!to||to.trim()===from) return;
@@ -1745,6 +1812,7 @@ function applyOrderUnits(items){
 }
 function orderItems(){
   return applyOrderUnits(PRODUCTS
+    .filter(p=>!p.altOf).map(p=>({...p, stock:gstock(p)}))   // 대체 품목 재고를 더해 판단 (2026-10-06)
     .filter(p=>((p.par||0)>0 || (p.min||0)>0))      // 둘 다 0 → 발주 대상 아님
     .filter(p=>p.stock<=(p.min||0))
     .map(p=>({...p, need: Math.max(1,(p.par||0)-p.stock)})));
@@ -2256,6 +2324,9 @@ window.openProd=function(id){
   $("pOunit").value=p?(p.ounit||0):0; $("pOgrp").value=p?(p.ogrp||""):"";
   $("pInitWrap").style.display=p?"none":"";
   $("prodDel").style.display=p?"":"none";
+  $("prodHide").style.display=(p&&ME&&ME.admin)?"":"none";
+  $("pFloorWrap").style.display=p?"":"none";
+  if(p){ $("pFloors").innerHTML=FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pFl_${i}" type="number" min="0" value="${floorQty(p,f)}"></div>`).join(""); renderAltStock(); }
   $("pInit").value=0; $("pExp").value="";
   $("prodOvl").classList.add("show"); $("pName").focus();
 };
@@ -2339,12 +2410,41 @@ $("prodSave").onclick=async()=>{
   $("prodSave").disabled=true;
   try{
     await API.call("/product", payload);
+    if(editId) await saveFloorAndAltStock(editId, payload);   // 층별 재고 · 대체 품목 재고 (2026-10-06)
     $("prodOvl").classList.remove("show");
     await refresh(true); focusScan();
   }catch(err){ alert("저장 실패: "+err.message); }
   finally{ $("prodSave").disabled=false; }
 };
 
+/* ═════ 품목 수정 창 — 층별 재고 · 대체 품목 재고 (2026-10-06 요청) ═════
+   대체품목 칸의 이름마다 층별 재고 칸을 보여 준다. 재고를 넣으면 그 이름으로 '대체 품목'(alt_of = 이 품목)을 만들고 자기 재고를 가진다.
+   이름을 지우면 그 대체 품목은 연결을 끊고 숨긴다(숨긴 목록에서 되돌릴 수 있음). 재고를 안 넣은 이름은 목록에 글자로만 보인다 */
+window.renderAltStock=function(){
+  const box=$("pAltStock"); if(!box) return;
+  const p=editId?PRODUCTS.find(x=>x.id===editId):null; if(!p){ box.innerHTML=""; return; }
+  const subs=SUBS[p.id]||[];
+  box.innerHTML=altNames({alt:$("pAlt").value}).map((nm,j)=>{ const sub=subs.find(x=>String(x.name||"").trim()===nm);
+    return `<div class="fbox"><div class="fb-t alt">대체 품목: ${esc(nm)} 층별 재고 ${sub?"":'<span class="muted" style="font-weight:400">— 아직 재고 없음. 넣으면 대체 품목으로 등록돼요</span>'}</div>
+      <div class="mrow3">${FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pAs_${j}_${i}" type="number" min="0" value="${sub?floorQty(sub,f):""}" placeholder="0"></div>`).join("")}</div></div>`; }).join("");
+};
+async function saveFloorAndAltStock(pid, payload){
+  const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
+  const fl={}; let ch=false;
+  FLOORS.forEach((f,i)=>{ const el=$("pFl_"+i); if(!el||el.value==="") return; const v=Math.max(0,+el.value||0); if(v!==floorQty(p,f)){ fl[f]=v; ch=true; } });
+  if(ch) await API.call("/product/floor-stock",{pid, floors:fl});
+  const names=altNames({alt:payload.alt}), subs=SUBS[pid]||[];
+  for(const [j,nm] of names.entries()){
+    let sub=subs.find(x=>String(x.name||"").trim()===nm);
+    const fl2={}; let ch2=false, any=false;
+    FLOORS.forEach((f,i)=>{ const el=$(`pAs_${j}_${i}`); if(!el||el.value==="") return; const v=Math.max(0,+el.value||0); if(v>0) any=true; if(v!==(sub?floorQty(sub,f):0)){ fl2[f]=v; ch2=true; } });
+    if(!sub&&!any) continue;   // 재고를 안 넣은 이름은 글자로만
+    if(!sub){ const r=await API.call("/product",{name:nm, altOf:pid, cat:payload.cat, unit:payload.unit, vendor:payload.vendor, kind:payload.kind, loc:payload.loc}); sub={id:r.id}; }
+    if(ch2) await API.call("/product/floor-stock",{pid:sub.id, floors:fl2});
+  }
+  for(const x of subs) if(!names.includes(String(x.name||"").trim())) await API.call("/product/sub-remove",{id:x.id});
+}
+$("prodHide").onclick=async()=>{ if(!editId) return; const id=editId; $("prodOvl").classList.remove("show"); await hideProduct(id,true); };
 $("prodDel").onclick=async()=>{
   if(!editId) return;
   const p=PRODUCTS.find(x=>x.id===editId);
@@ -2377,6 +2477,8 @@ window.openMv=function(pid,type){
     $("mvNow").textContent="현재 재고: "+p.stock+" "+(p.unit||"")+boxTx+(nl?`  ·  가장 빠른 유통기한 ${nl.expiry}`:"");
   }
   $("mvQty").value=1; $("mvMemo").value=""; $("mvExp").value="";
+  $("mvFloor").value=$("scanLoc").value||"10층";   // 기본 = 이 기기의 층 (2026-10-06)
+  $("mvFloors").innerHTML=floorTxt(p)?"층별 재고: "+floorTxt(p):"";
   $("mvExpWrap").style.display = (type==="in") ? "" : "none";
   if(ME){
     $("mvWhoWrap").style.display="none"; $("mvWhoAuto").style.display="";
@@ -2415,7 +2517,7 @@ $("mvSave").onclick=async()=>{
   $("mvSave").disabled=true;
   try{
     await API.call("/movement",{pid:mvPid, type:mvType, qty, unitSel:mvUnit,
-      memo:$("mvMemo").value.trim(), who, expiry:$("mvExp").value||""});
+      memo:$("mvMemo").value.trim(), who, expiry:$("mvExp").value||"", floor:$("mvFloor").value||""});
     $("mvOvl").classList.remove("show");
     await refresh(true); focusScan();
   }catch(err){ alert("저장 실패: "+err.message); }
