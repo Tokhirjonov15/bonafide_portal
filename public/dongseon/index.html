@@ -1527,6 +1527,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   @keyframes ksScan{from{top:12%}to{top:86%}}
   #pbScreen .ks-scantxt{position:absolute;left:0;right:0;bottom:14px;color:#fff;font-size:22px;font-weight:800;text-shadow:0 2px 8px rgba(0,0,0,.6)}
   #pbScreen .ks-note{font-size:clamp(30px,5vw,48px);font-weight:800;color:#1e293b}
+  /* 4층 관리 [← 목록] — 태블릿에서 크게 (2026-10-06 요청) */
+  #bonusMgr .btn.sm.bm-back{font-size:clamp(24px,3.2vw,34px);font-weight:800;padding:14px 30px;border-radius:18px;min-height:64px;box-shadow:0 6px 18px rgba(15,23,42,.18)}
   #pbScreen .ks-btns{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
   #pbScreen .ks-btn{border:0;border-radius:18px;padding:18px 34px;font-size:24px;font-weight:900;cursor:pointer}
   #pbScreen .ks-main{background:#2563eb;color:#fff}#pbScreen .ks-main[disabled]{opacity:.6}#pbScreen .ks-sub{background:#e2e8f0;color:#334155}
@@ -8544,7 +8546,7 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
     ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
-      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
+      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
   {const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';BV=null;}
@@ -8567,7 +8569,7 @@ function bvBirth(p){const d=String((p&&p.birth)||'').replace(/\D/g,'');return d.
 function renderBonusVerify(err){const box=document.getElementById('bonusMgrVerify');if(!box||!BV)return;
   const p=data.find(x=>x.id===BV.pid);if(!p){bonusMgrBack();return;}
   const has=!!bvBirth(p);
-  box.innerHTML=`<div class="bv-top"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button></div>
+  box.innerHTML=`<div class="bv-top"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button></div>
     <div class="bv-card">
       <div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
       ${has?`<div class="bv-msg">본인 확인을 위해<br>생년월일 앞자리를 눌러 주세요</div>
