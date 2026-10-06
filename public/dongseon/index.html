@@ -1490,6 +1490,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .bonus-tag svg{width:12px;height:12px;vertical-align:-2px;margin-right:2px}
   .bnbox svg,#bonusSection .sect-t svg{width:15px;height:15px;vertical-align:-3px}
   .bonus-tag.used{background:#dcfce7;color:#166534;border-color:#86efac}
+  /* 환자 정보 창 — 4층 혜택 칸 (2026-10-06) */
+  .b4-box{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--panel2);font-size:13px}
+  .b4-sum{margin-bottom:4px}.b4-ok{color:#047857}.b4-left{color:#b45309}
+  .b4-use{display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px dashed var(--line)}
+  .b4-use svg{width:14px;height:14px;color:#d97706}
+  .b4-use .b4-cancel{margin-left:auto;color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,var(--line))}
   .bnbox{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--panel2);font-size:13px}
   .bnbox .bn-row{margin-bottom:6px}.bnbox .bn-k{display:inline-block;min-width:74px;font-weight:800;color:var(--sub)}
   .bnbox .bn-days{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}.bnbox .bn-day{background:#e0e7ff;color:#3730a3;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700}
@@ -2268,6 +2274,11 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <div class="sect-t" style="margin-bottom:8px"><i data-lucide="file-signature"></i> 비급여 동의서</div>
         <div id="consentList"></div>
         <button type="button" class="btn" style="width:100%;margin-top:6px" onclick="openConsent()"><i data-lucide="pen-line"></i> 동의서 작성 (서명)</button>
+      </div>
+      <!-- 4층 혜택 — 받은 무료 치료 기록과 [취소] (2026-10-06 요청) -->
+      <div id="bonus4Section" style="margin-top:12px">
+        <div class="sect-t" style="margin-bottom:8px"><i data-lucide="gift"></i> 4층 혜택</div>
+        <div id="bonus4List" class="b4-box"></div>
       </div>
 
       <div id="notesSection" style="display:none">
@@ -8461,7 +8472,7 @@ function bonusScanRx(){
       .catch(e=>console.warn('bonus inj',e));});}
 function bonusSubscribe(){const col=bonusCol();if(!col||cloud.unsubBonus)return;
   cloud.unsubBonus=col.onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const mrn=normMrn(v.mrn||d.id);if(mrn)m[mrn]=v;});BONUS=m;
-    try{renderThrottled();}catch(e){}try{if(BONUS_PID||editId)renderBonusSection();}catch(e){}try{if(BONUS_MGR_OPEN)renderBonusMgr();}catch(e){}},err=>console.warn('bonus',err));}
+    try{renderThrottled();}catch(e){}try{if(BONUS_PID||editId)renderBonusSection();}catch(e){}try{if(editId)renderBonus4Section();}catch(e){}try{if(BONUS_MGR_OPEN)renderBonusMgr();}catch(e){}},err=>console.warn('bonus',err));}
 function bonusTag(p){const m=normMrn(p&&p.mrn);if(!m)return '';const i=bonusInfo(m);
   const t=i.today.length?` <span class="bonus-tag used" title="오늘 보너스 사용 — 무료: ${esc(i.today.map(u=>u.item).join(', '))}"><i data-lucide="gift"></i> 오늘 ${esc(i.today.map(u=>u.item).join('·'))} 무료</span>`:'';
   return (i.left?` <span class="bonus-tag" title="리뷰·주사 보너스 — SASO·아쿠아·롤러 중 무료 ${i.left}회 남음"><i data-lucide="gift"></i> ${i.left}</span>`:'')+t;}
@@ -8600,12 +8611,26 @@ function bonusAddRoom(pid,room){
   const p=data.find(x=>x.id===pid);if(!p)return;
   if(add(p)!==false){saveLocal();render();try{if(editId===pid&&typeof renderRouteRows==='function'){routeDraft=[...p.route];renderRouteRows();}}catch(e){}}
   cloudPatientTxn(pid,add,{keepLocal:true});}
-window.bonusUndo=async function(at){if(!isAdmin())return;const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+/* ═════ 환자 정보 창 — 4층 혜택 칸 (2026-10-06 요청) ═════
+   리뷰·주사로 받은 혜택 요약과, 받은 무료 치료(사용 기록)마다 [취소]. 취소하면 남은 횟수가 1 늘어난다(동선의 방은 그대로) */
+function renderBonus4Section(){
+  const box=document.getElementById('bonus4List');if(!box)return;
+  const p=editId?data.find(x=>x.id===editId):null;const mrn=normMrn(p&&p.mrn);
+  if(!p||!mrn){box.innerHTML='<div class="hint">차트번호가 있어야 4층 혜택을 볼 수 있습니다.</div>';return;}
+  if(!bonusCol()){box.innerHTML='<div class="hint">클라우드에 연결되면 표시됩니다.</div>';return;}
+  const i=bonusInfo(mrn),b=i.b||{};
+  const sum=`<div class="b4-sum">리뷰 ${b.review?'<b class="b4-ok">✔ 확인</b>':'<span class="hint">없음</span>'} · 주사 <b>${i.inj}일</b> · 혜택 <b>${i.total}회</b> · 사용 <b>${i.used}</b> · 남음 <b class="${i.left?'b4-left':''}">${i.left}회</b></div>`;
+  const uses=(i.uses||[]).slice().reverse();
+  box.innerHTML=sum+(uses.length?uses.map(u=>`<div class="b4-use"><i data-lucide="gift"></i> <b>${esc(u.item)}</b> 무료 <span class="hint">${esc(String(u.date||u.at||'').slice(5,10).replace('-','/'))} ${esc(hhmm(u.at))}${u.by?' · '+esc(u.by):''}</span>
+      <button type="button" class="btn sm b4-cancel" onclick="bonusUndo('${esc(u.at)}')"><i data-lucide="undo-2"></i> 취소</button></div>`).join('')
+    :'<div class="hint" style="margin-top:4px">받은 무료 치료가 없습니다.</div>');
+  if(window.lucide)try{lucide.createIcons();}catch(e){}}
+window.bonusUndo=async function(at){if(!currentUser)return;const p=data.find(x=>x.id===bonusCurPid());   // 2026-10-06: 직원 누구나(환자 정보 창 4층 혜택 칸)const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
   if(!confirm('이 보너스 사용을 취소할까요? (남은 횟수가 1 늘어납니다. 동선의 방은 그대로입니다)'))return;
   try{await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
       t.set(ref,{uses:(Array.isArray(v.uses)?v.uses:[]).filter(u=>u.at!==at)},{merge:true});});
     {const b=BONUS[mrn]||{};BONUS[mrn]=Object.assign({},b,{uses:(Array.isArray(b.uses)?b.uses:[]).filter(u=>u.at!==at)});}   /* 화면에 바로 반영 (2026-10-04: 새로고침해야 보였다) */
-    renderBonusSection();render();
+    renderBonusSection();try{renderBonus4Section();}catch(e){}render();
     try{audit('보너스 사용 취소',(p.name||'')+' ('+mrn+')');}catch(e){}
   }catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
 /* ═════ 환자에게 보여 주는 보너스 화면 (2026-10-04) ═════
@@ -11185,7 +11210,7 @@ function openEdit(pid){document.getElementById('modal').classList.remove('view-o
   updateEditActions(p);
   renderEditStatus();
   renderModalRail();
-  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();   /* 보너스 칸은 [혜택 관리]에서만 (2026-10-04) */
+  renderNotesEditor();renderConsultEditor();initPastConsults(p);renderConsentSection();try{renderBonus4Section();}catch(e){}   /* 보너스 칸은 [혜택 관리]에서만 (2026-10-04) */
   showModal();
 }
 /* ═════ 비급여 동의서 (태블릿 서명) — 2026-09-26 요청 ═════
