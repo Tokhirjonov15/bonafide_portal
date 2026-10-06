@@ -1562,7 +1562,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr.bm-full .cip-head{font-size:24px;margin-bottom:12px}
   body.bonus-mode #bonusMgr .cip-head button[onclick="closeBonusMgr()"]{display:none}
   #bonusMgr.bm-full .bm-list{flex:1;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.8vh 1.4vw;align-content:start}   /* 한 줄에 4명 (2026-10-06 요청) */
-  #bonusMgr.bm-full .bm-item{font-size:clamp(34px,5.6vh,64px);font-weight:800;letter-spacing:3px;padding:2.4vh 2.2vw;min-height:clamp(104px,13vh,160px);border-radius:24px}   /* 이름 크게 */
+  #bonusMgr.bm-full .bm-item{font-size:clamp(28px,min(5.6vh,5vw),64px);font-weight:800;letter-spacing:3px;padding:2.4vh 2.2vw;min-height:clamp(104px,13vh,160px);border-radius:24px}   /* 이름 크게 */
+  #bonusMgr.bm-full .bm-item .bm-name{white-space:nowrap}   /* 이름은 늘 가로 한 줄 (2026-10-06 요청) */
+  @media (orientation:portrait){#bonusMgr.bm-full .bm-item{flex-direction:column;justify-content:center;gap:1vh;text-align:center}#bonusMgr.bm-full .bm-item .bm-left{font-size:.6em}}   /* 세로 태블릿: 이름 위, 선물 아래 */
   #bonusMgr.bm-full .bm-left{font-size:clamp(22px,3.2vh,36px)}
   #bonusMgr.bm-full .bm-left svg{width:.9em;height:.9em;vertical-align:-3px}
   @media (max-width:900px){#bonusMgr.bm-full .bm-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
