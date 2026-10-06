@@ -625,6 +625,8 @@
 .sms-rec .sms-kind{font-weight:700;color:var(--teal);flex:0 0 auto}
 .hv-live{border:1px solid var(--teal);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(16,185,129,.06)}
 .card-doc{margin:3px 0 1px;font-size:12px;color:var(--sub);font-weight:600;display:flex;align-items:center;gap:3px}
+.card-doc .doc-two{display:inline-flex;align-items:center;gap:3px;flex-wrap:wrap}
+.card-doc .doc-lbl{font-size:10.5px;font-weight:800;color:var(--sub);margin-left:2px}
 .card-doc .doc-sel{background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:2px 5px;font-size:12px;font-weight:700;max-width:120px}
 .card-doc .doc-set{color:var(--muted);cursor:pointer;text-decoration:underline dotted}
 .queue-info{display:inline-flex;align-items:center;gap:6px;margin:6px 12px 2px;padding:3px 10px;font-size:11.5px;color:var(--sub);font-weight:600;background:var(--panel2);border:1px solid var(--line);border-radius:999px;white-space:nowrap;line-height:1.6}
@@ -8168,6 +8170,7 @@ function completeVisit(p,finalStatus){
   const waitMs=p.waitMs||0,prepMs=p.prepMs||0,activeMs=p.activeMs||0;
   const rec={id:'s'+id(),patientId:p.id,mrn:p.mrn,name:p.name,room,enteredAt,leftAt,
     durationMs:waitMs+prepMs+activeMs,waitMs,prepMs,activeMs,proc:procSel(p,room).join(', '),finalStatus:finalStatus||'종결'};
+  if(isProcRoom(room)){rec.doctor=docFor(p,room);rec.seenDoc=seenDocFor(p,room);}   // 시술 방: 술기 의사 · 진료본 의사 (2026-10-06)
   if(!p.visits)p.visits=[];p.visits.push(rec);STATS.push(rec);if(STATS.length>5000)STATS=STATS.slice(-5000);
   cloudAddStat(rec);
   if(!p.autoClosed)roomNotify(p,room,'out',{waitMs,prepMs,activeMs,finalStatus:rec.finalStatus});   // 자동 마감(밤 정리)은 알리지 않음
@@ -8667,7 +8670,7 @@ function archiveVisit(p){
     routeFull:[...p.route],receiveAt:p.receiveAt||"",reserveAt:p.reserveAt||"",
     arrivedAt:p.arrivedAt||p.enteredAt,dischargedAt,autoClosed:!!p.autoClosed,
     totalMs:p.arrivedAt?Math.max(0,new Date(dischargedAt)-new Date(p.arrivedAt)):0,
-    rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",doctor:docFor(p,v.room),nurse:nurseFor(p,v.room),rad:radFor(p,v.room),enteredAt:v.enteredAt,leftAt:v.leftAt})),
+    rooms:(p.visits||[]).map(v=>({room:v.room,waitMs:v.waitMs||0,prepMs:v.prepMs||0,activeMs:v.activeMs||0,proc:v.proc||"",doctor:docFor(p,v.room),seenDoc:isProcRoom(v.room)?seenDocFor(p,v.room):"",nurse:nurseFor(p,v.room),rad:radFor(p,v.room),enteredAt:v.enteredAt,leftAt:v.leftAt})),
     roomDocs:JSON.parse(JSON.stringify(p.roomDocs||{})),
     roomNurses:JSON.parse(JSON.stringify(p.roomNurses||{})),
     progLog:JSON.parse(JSON.stringify(p.progLog||{})),
@@ -10644,8 +10647,26 @@ function doctorChipHtml(p,room){
     : [...new Set([cur,...DOCTORS.filter(n=>!isOffToday(n))].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
+  if(isProcRoom(_r)){   // 시술 방: 진료본 의사 / 술기 의사 따로 (2026-10-06)
+    const sd=seenDocFor(p,_r), sOpts=[...new Set([sd,...DOCTORS].filter(Boolean))];
+    const sHtml=`<option value="">(미지정)</option>`+sOpts.map(d=>`<option value="${esc(d)}" ${d===sd?'selected':''}>${esc(d)}</option>`).join('');
+    const fromBit=!(p.seenDocs&&Object.prototype.hasOwnProperty.call(p.seenDocs,_r))&&sd;
+    return `<span class="doc-two"><span class="doc-lbl">진료</span><select class="doc-sel" title="진료본 의사${fromBit?' — 비트 처방에서 불러옴':''} (이 방 ${esc(_r)})" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeSeenDoc('${p.id}','${esc(_r)}',this.value)">${sHtml}</select>
+      <span class="doc-lbl">술기</span><select class="doc-sel" title="술기 시행한 의사 (이 방 ${esc(_r)})" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}','${esc(_r)}',this.value)">${optHtml}</select></span>`;}
   return `<i data-lucide="stethoscope"></i> <select class="doc-sel" title="이 방(${esc(_r)})에서의 담당 진료의 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeDoctor('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
 }
+/* ═════ 시술 방(C-Arm·Sono·처치실·근전도검사) — 진료본 의사 / 술기 의사 따로 (2026-10-06 요청) ═════
+   술기 의사 = 지금까지의 방별 담당 진료의(roomDocs, docFor). 진료본 의사 = p.seenDocs[방].
+   직원이 고르지 않았으면 비트에서: ① 그 방으로 가는 처방 줄을 낸 원장님(비트 처방의 dr) ② 오늘 비트 접수 원장님 ③ 카드 접수 원장님(p.doctor) */
+function isProcRoom(r){return (SAME_SPACE_GROUPS[0]||[]).includes(r);}
+function bitSeenDoc(p,room){
+  const rule=ROUTE_RX_RULES.find(x=>x.room===room);
+  if(rule){const it=rxItemsOf(p).find(x=>String(x.dr||'').trim()&&rxRuleHit(rule,String(x.cod||'').trim(),String(x.nam||'').trim()));if(it)return String(it.dr).trim();}
+  return bitDocToday(p.mrn)||String(p.doctor||'').trim();}
+function seenDocFor(p,room){if(p.seenDocs&&Object.prototype.hasOwnProperty.call(p.seenDocs,room))return p.seenDocs[room]||'';return bitSeenDoc(p,room);}
+function changeSeenDoc(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
+  p.seenDocs=p.seenDocs||{};p.seenDocs[room]=nv;   // '' = 일부러 미지정
+  audit('진료본 의사 변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);render();}
 /* 진료의가 카드를 열면 그 방의 담당 진료의로 자동 지정 (2026-09-21 결정 — 지정을 잊는 일 방지).
    조건: 로그인 이름 또는 ID 가 이 방 진료의 목록(목록이 없으면 전체 진료의)의 이름과 같고, 오늘 휴무가 아니며, 이 방에 아직 진료의가 지정되지 않았을 때.
    이미 다른 진료의가 지정된 방은 건드리지 않는다 (바꾸려면 카드 선택칸에서 직접). 관리자·간호사 등 이름이 진료의 목록에 없으면 아무 일도 없음 */
