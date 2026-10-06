@@ -6505,7 +6505,8 @@ function applyColFilters(){
 var LAST_SEARCH_Q='';
 function render(){
   normalizeData();
-  try{if(SUPPORT_OPEN)renderSupport();}catch(e){}   // 진료지원 창이 열려 있으면 함께 갱신 (2026-10-05)
+  try{if(SUPPORT_OPEN)renderSupport();}catch(e){}
+  try{if(BONUS_MGR_OPEN&&!BONUS_PID&&!BV)renderBonusMgr();}catch(e){}   // 혜택 관리 목록: 환자가 4층 방에 들고 나면 바로 반영 (2026-10-06)   // 진료지원 창이 열려 있으면 함께 갱신 (2026-10-05)
   const board=document.getElementById("board");
   const q=document.getElementById("search").value.trim();
   /* 스크롤 위치 보존 — 카드 안에서 선택(상담 결과·사유·원장님 등)만 바꿔도 전체를 다시 그리므로,
@@ -8514,7 +8515,12 @@ function bonusMaskName(n){n=String(n||'').trim();if(!n)return '';
   if(/[A-Za-z]/.test(n))return n.length>10?n.slice(0,10)+'...':n;
   const a=[...n.replace(/\s+/g,'')];if(a.length<=1)return a.join('');if(a.length===2)return a[0]+' O';
   return a[0]+' '+Array(a.length-2).fill('O').join(' ')+' '+a[a.length-1];}
-function bonusMgrList(){return data.filter(p=>p&&!p._viewOnly&&!p.discharged&&normMrn(p.mrn)).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
+/* 혜택 관리 목록 (2026-10-06 요청): 지금 4층 방(보드 [4층] 탭의 방 — 수납대기·수납완료 제외)에 있고 오늘 주사를 맞은 환자만.
+   혜택 횟수는 예전처럼 누적(주사 날수 1·5·10일 → 1·2·3회, 리뷰 1회) */
+function bonusMgrList(){const today=localYMD(new Date());
+  return data.filter(p=>{if(!p||p._viewOnly||p.discharged)return false;const mrn=normMrn(p.mrn);if(!mrn)return false;
+    const r=curRoom(p);if(!r||isPayRoom(r)||(meta(r).group||'')!=='4층')return false;
+    const b=BONUS[mrn]||{};return Array.isArray(b.injDays)&&b.injDays.includes(today);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
 window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   let ov=document.getElementById('bonusMgr');
   if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
@@ -8577,7 +8583,7 @@ function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!
   const L=bonusMgrList();
   box.innerHTML=L.length?L.map(p=>{const i=bonusInfo(p.mrn);
       return `<button type="button" class="bm-item${i.left?' has':''}" onclick="bonusMgrPick('${esc(p.id)}')"><span class="bm-name">${esc(bonusMaskName(p.name))}</span>${i.left?`<span class="bm-left"><i data-lucide="gift"></i> ${i.left}</span>`:''}</button>`;}).join('')
-    :'<div class="hint" style="padding:20px">지금 보드에 환자가 없습니다.</div>';
+    :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 4층에 오늘 주사를 맞은 환자가 없습니다.</div>';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 /* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
 function bonusAddRoom(pid,room){
