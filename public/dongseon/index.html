@@ -850,6 +850,13 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-name{font-size:30px;font-weight:800;line-height:1.2}.sd-sa{font-size:16px;font-weight:700;margin-left:10px;color:var(--sub)}
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
+  /* 진료실 캡처 (2026-10-06) */
+  .sd-shots{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  .sd-shot{position:relative;border:1px solid var(--line);border-radius:8px;background:#111;overflow:hidden}
+  .sd-shot img{display:block;max-height:340px;max-width:100%;min-width:80px;min-height:60px;cursor:zoom-in}
+  .sd-shot span{position:absolute;left:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:12px;padding:1px 6px}
+  .sd-shot-x{position:absolute;top:4px;right:4px;border:0;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:13px;padding:2px 7px;cursor:pointer}
+  .sd-shot-x:hover{background:var(--red)}
   .sd-lines li{font-size:24px;font-weight:700;padding:9px 4px;border-bottom:1px dashed var(--line)}
   .sd-drug{font-weight:900}   /* 약물 약어 (2026-10-04) */
   .sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}   /* 놓치면 안 되는 줄 강조 — slipHot() 참고 (2026-09-28 neuropathic pain, 2026-09-29 reduction) */
@@ -3423,8 +3430,9 @@ function slipItems(){
       let p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
       const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
-      return {id:n.docId,mrn,note:n,p,lines:rp.lines,badges:rp.badges,valid:rp.valid,name:(p&&p.name)||n.name||(lk&&lk.name)||'',t:new Date(n.updatedAt||0).getTime()||0};})
-    .filter(it=>it.mrn&&it.valid&&it.lines.length&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
+      const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const shots=(Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&!hid.includes(x.id));   // 진료실 캡처 (2026-10-06)
+      return {id:n.docId,mrn,note:n,p,lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
+    .filter(it=>it.mrn&&((it.valid&&it.lines.length)||it.shots.length)&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
 }
 /* 슬립의 진료실 (2026-10-03 요청): 처방을 보낸 PC 이름(진료실3·PT2 …)이 아니라 몇 진료실인지.
@@ -3499,16 +3507,17 @@ const SLIP_POP_CSS='*{box-sizing:border-box}body{margin:0;padding:20px 24px;back
   +'.rb-4f{display:inline-block;background:rgba(13,148,136,.13);color:#0f766e;border-radius:999px;padding:1px 9px;font-weight:800}'
   +'.sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid #111827}.sd-lines li{font-size:26px;font-weight:700;padding:10px 4px;border-bottom:1px dashed #d1d5db}'
   +'.sd-drug{font-weight:900}'
+  +'.sd-shots{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.sd-shot{position:relative;border:1px solid #d1d5db;border-radius:8px;background:#111;overflow:hidden}.sd-shot img{display:block;max-height:340px;max-width:100%;cursor:zoom-in}.sd-shot span{position:absolute;left:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:12px;padding:1px 6px}'
   +'.sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}.empty{color:#6b7280;font-size:18px;padding:30px 0}';
 function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록에 없습니다</div>';const h=slipHeaderInfo(it);
   const meta=[h.birth?esc(h.birth):'',h.doc?'담당의 <b>'+esc(h.doc)+'</b>':'',h.clinic?'<b>'+esc(h.clinic)+'</b>':'',h.hm,h.f4.length?`<span class="rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''].filter(Boolean).join(' · ');
   return `<div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
     ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
     <div class="sd-meta">${meta}</div>${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
-    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>`;}
+    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,true)}`;}
 function slipPopRender(){if(!SLIP_POP||SLIP_POP.closed||!SLIP_POP_MRN)return;
   try{const it=slipItems().find(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const d=SLIP_POP.document;
-    const html=slipPopHtml(it);if(d.body.dataset.h===html)return;d.body.dataset.h=html;d.body.innerHTML=html;
+    const html=slipPopHtml(it);if(d.body.dataset.h!==html){d.body.dataset.h=html;d.body.innerHTML=html;}slipShotsLoad(d);
     d.title=(it?String(it.name||''):'')+' — 처방';}catch(e){console.warn('slip pop',e);}}
 function popSlipSolo(mrn){
   const w=window.open('','slipSolo','popup,width=820,height=720');if(!w){warnToast('팝업이 막혀 있습니다 — 주소창 오른쪽의 팝업 차단을 풀어 주세요.');return;}
@@ -3516,6 +3525,24 @@ function popSlipSolo(mrn){
   const d=w.document;if(!d.getElementById('slipPopCss')){d.open();d.write('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>처방</title><style id="slipPopCss">'+SLIP_POP_CSS+'</style></head><body></body></html>');d.close();}
   slipPopRender();try{w.focus();}catch(e){}}
 setInterval(()=>{try{slipPopRender();}catch(e){}},3000);
+/* ═════ 진료실 캡처 (2026-10-06 요청) ═════
+   진료실 PC 의 [캡처] 바(tools/slip_capture.ps1)가 팍스 화면 등에서 잘라 올린 사진 — bitNote 문서의 shots: [{id, path, at, pc, w, h}].
+   슬립 화면·[창 띄우기]에 그 환자 처방 아래에 뜬다. 누르면 원본 크기로 새 창. 잘못 올린 것은 ✕ = 숨김(slipMark.shotHidden — 사진 파일은 남음) */
+var SLIP_SHOT_URL={};
+function slipShotsHtml(it,pop){if(!it||!it.shots||!it.shots.length)return '';
+  return '<div class="sd-shots">'+it.shots.map(x=>{const u=SLIP_SHOT_URL[x.path]||'';const t=x.at?hhmm(x.at):'';
+    return '<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(u?' src="'+esc(u)+'"':'')+' alt="캡처" onclick="if(this.src)window.open(this.src)" title="누르면 크게 보기">'
+      +'<span>📷 '+esc(t)+(x.pc?' · '+esc(x.pc):'')+'</span>'
+      +(pop?'':'<button type="button" class="sd-shot-x" data-doc="'+esc(it.id)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 숨기기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button>')+'</div>';}).join('')+'</div>';}
+function slipShotsLoad(doc){try{if(!cloud.storage||!doc)return;
+  doc.querySelectorAll('.sd-shot img[data-path]').forEach(im=>{if(im.getAttribute('src'))return;const path=im.dataset.path;
+    if(SLIP_SHOT_URL[path]){im.src=SLIP_SHOT_URL[path];return;}
+    cloud.storage.ref(path).getDownloadURL().then(u=>{SLIP_SHOT_URL[path]=u;im.src=u;}).catch(e=>{im.alt='불러올 수 없음';console.warn('slip shot',e);});});}catch(e){console.warn('slip shots',e);}}
+function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨길까요?'))return;
+  const n=BIT_NOTES.find(x=>x.docId===docId);const hid=[...new Set([...((n&&n.shotHidden)||[]),id])];
+  saveSlipMark(docId,{shotHidden:hid});if(n)n.shotHidden=hid;
+  try{audit('진료실 캡처 숨김',docId);}catch(e){}
+  renderSlipScreen();}
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
 function renderSlipScreen(){
   if(!slipOpen)return;const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
@@ -3528,7 +3555,7 @@ function renderSlipScreen(){
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
   const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
-      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div></div>`;}).join('')
+      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div></div>`;}).join('')
     :(qq?`<div class="slip-empty">'${esc(SLIP_Q)}' — 오늘 처방 목록에 없는 환자입니다</div>`:'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>');
   if(box.dataset.h!==listHtml){box.dataset.h=listHtml;box.innerHTML=listHtml;}
   const it=items.find(x=>x.mrn===slipSel);
@@ -3540,11 +3567,12 @@ function renderSlipScreen(){
       <div class="sd-meta">${SLIP_SOLO?'':`차트 <b>${esc(it.mrn)}</b>`}${h.birth?(SLIP_SOLO?'':' · ')+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
-    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>
+    <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,false)}
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
       <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button>${SLIP_SOLO?'':`<button class="btn" onclick="popSlipSolo('${esc(it.mrn)}')" title="이 환자 화면만 따로 띄웁니다 (차트번호 없이, 이름 가운데 가림)"><i data-lucide="external-link"></i> 창 띄우기</button>`}</div>`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
+  slipShotsLoad(document);
   try{slipPopRender();}catch(e){}
 }
 var SLIP_MARKS={};   // slipMark/{bitNote docId} — 인쇄됨·확인 (모든 화면 공유)
