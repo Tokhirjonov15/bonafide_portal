@@ -1111,6 +1111,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .route-rows{display:flex;flex-direction:column;gap:6px}
   .rrow{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
   .rrow.cur{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 7%,var(--panel))}   /* 지금 있는 방 (2026-10-06) */
+  .rrow .rbn{font-size:10.5px;font-weight:800;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:0 5px;white-space:nowrap}
   .rrow .rcur{font-size:11px;font-weight:800;color:#fff;background:var(--blue);border-radius:6px;padding:1px 6px}
   .rrow .rgo{margin-left:auto;border-color:var(--blue);color:var(--blue);font-weight:800}
   .rrow .rgo:hover{background:var(--blue);color:#fff}
@@ -8602,6 +8603,9 @@ function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!
     :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 4층에 오늘 주사를 맞은 환자가 없습니다.</div>';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 /* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
+/* 동선 줄에 '🎁 혜택 추가' 작은 표시 — 오늘 이 환자가 4층 관리에서 고른 무료 치료 방 (2026-10-06 요청) */
+function bonusRouteTag(p,room){try{if(!p||!p.mrn)return '';const b=BONUS[normMrn(p.mrn)];const T=localYMD(new Date());
+  return (b&&Array.isArray(b.uses)&&b.uses.some(u=>u.item===room&&u.date===T&&(!u.pid||u.pid===p.id)))?'<span class="rbn" title="4층 관리에서 환자가 고른 무료 치료로 자동 추가">🎁 혜택 추가</span>':'';}catch(e){return '';}}
 function bonusAddRoom(pid,room){
   if(!ROOMS.includes(room))return;
   const add=d=>{if(!Array.isArray(d.route)||!d.route.length)return false;const st=Math.max(0,Math.min(d.step||0,d.route.length-1));
@@ -10962,7 +10966,7 @@ function renderRouteRows(){
   box.innerHTML=routeDraft.map((r,i)=>{const isCur=_live&&i===(_lp.step||0);return `
     <div class="rrow${isCur?' cur':''}" draggable="true" data-i="${i}">
       <span class="grip" title="드래그로 순서 변경">⠿</span>
-      <span class="num">${i+1}</span><span class="rname">${esc(r)}</span>${isCur?'<span class="rcur">지금</span>':''}${routeByHtml(r)}
+      <span class="num">${i+1}</span><span class="rname">${esc(r)}</span>${isCur?'<span class="rcur">지금</span>':''}${bonusRouteTag(_lp,r)}${routeByHtml(r)}
       ${(_lp&&!_lp._viewOnly&&!_lp.discharged&&!isCur)?`<button type="button" class="mini rgo" onclick="routeGo(${i})" title="카드를 ${esc(r)}(으)로 옮기기 — 보드에서 끌어다 놓은 것과 같음">이동</button>`:''}
       <button type="button" class="mini" onclick="moveRouteStep(${i},-1)" ${i===0?'disabled':''}>↑</button>
       <button type="button" class="mini" onclick="moveRouteStep(${i},1)" ${i===routeDraft.length-1?'disabled':''}>↓</button>
