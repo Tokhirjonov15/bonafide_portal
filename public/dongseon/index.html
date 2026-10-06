@@ -8487,7 +8487,7 @@ function renderBonusSection(){
         ?`<div class="bk-msg">네이버 리뷰 확인이<br>완료되었습니다.</div><div class="bk-sub">소중한 리뷰 감사합니다.</div>`
         :`<div class="bk-msg">네이버 리뷰를 준비해 주시고,<br><b>리뷰 확인</b> 버튼을 눌러 주세요.</div><div class="bk-sub">AI가 확인하겠습니다.</div>
           <button type="button" class="bk-btn" onclick="pbOpen('review')"><i data-lucide="camera"></i> 리뷰 확인</button>`}
-      ${i.left?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}</div>
+      ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}</div>
       <details class="bk-staff"${BK_STAFF_OPEN?' open':''} ontoggle="BK_STAFF_OPEN=this.open"><summary>직원용</summary>${staff}</details>`;}
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 let BK_STAFF_OPEN=false;
