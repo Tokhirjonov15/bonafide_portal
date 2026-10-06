@@ -8610,14 +8610,14 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     try{toast(dispName(p.name)+' 님 → '+pay+' (계산 후 수납완료)');}catch(e){}
     return;}
   {const pend=supportPending(p);   // 진료지원 창의 D/C·차팅 확인이 끝나야 수납완료·내보내기 (2026-10-05 요청)
-   if(pend.length){alert(`'${p.name}'님은 진료지원 확인이 남아 있습니다.\n\n${pend.map(x=>'· '+x).join('\n')}\n\n상단 [진료지원] 창에서 [확인]을 눌러 주세요.`);try{openSupport();const ss=document.getElementById('supportSearch');if(ss){ss.value=p.mrn||p.name||'';renderSupport();}}catch(e){}return;}}
+   if(pend.length){alert(`⚠️ 진료지원 확인해주세요\n\n'${p.name}'님 — 아직 확인하지 않은 항목:\n${pend.map(x=>'· '+x).join('\n')}\n\n[진료지원] 창에서 [확인]을 누르면 수납완료·내보내기가 됩니다.`);try{openSupport();const ss=document.getElementById('supportSearch');if(ss){ss.value=p.mrn||p.name||'';renderSupport();}}catch(e){}return;}}
   if(needsPayDone(p)){const done=payDoneRoom();const from=curRoom(p);moveTo(pid,done);
     try{audit('수납완료 이동',p.name+(p.mrn?' ('+p.mrn+')':'')+' '+from+' → '+done);}catch(e){}
     try{toast(dispName(p.name)+' 님 → '+done);}catch(e){}
     return;}
   if((p.extraFee||0)>0&&!p.paid){alert(`아직 수납이 완료되지 않았습니다.\n미수납 ${won(p.extraFee)}원 — 카드의 '수납완료' 버튼을 눌러 주세요.`);return;}
   /* 주차권 미지급이어도 내보내기를 막지 않는다 (2026-10-06 요청) — 카드의 주차권 안내 표시는 그대로 */
-  if(!confirm(`'${p.name}'님을 종결하고 보드에서 내보낼까요?\n(내원 기록으로 보관됩니다)`))return;
+  /* 내보내기 확인 창은 없앴다 (2026-10-06 요청) — 누르면 바로 내보낸다 */
   try{audit('내보내기',p.name+(p.mrn?' ('+p.mrn+')':'')+(p.seq?' #'+p.seq:''));}catch(e){}   /* 누가 언제 내보냈는지 — 유령 카드 추적용 (2026-09-30) */
   completeVisit(p,'종결');archiveVisit(p);cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();}
 /* ── 자동 마감: 내보내기를 잊은 카드 정리 ──
