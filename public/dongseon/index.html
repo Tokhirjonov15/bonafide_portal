@@ -1519,21 +1519,23 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bm-item.has{border-color:#fcd34d;background:#fffbeb}
   #bonusMgr .bm-left{font-size:13px;color:#92400e;white-space:nowrap}#bonusMgr .bm-left svg{width:13px;height:13px;vertical-align:-2px}
   /* ?bonus 전용 태블릿 — 화면 가득, 큰 글씨, 닫기 숨김 (2026-10-06) */
-  body.bonus-mode #bonusMgr{padding:0;background:var(--bg)}
-  body.bonus-mode #bonusMgr .bm-box{max-width:none;width:100vw;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;padding:18px 22px}
-  body.bonus-mode #bonusMgr .cip-head{font-size:24px;margin-bottom:12px}
+  /* 화면 가득 — ?bonus 전용 태블릿 또는 태블릿(터치 화면)에서 [혜택 관리]를 열 때 (2026-10-06). 닫기 버튼 숨김은 ?bonus 만 */
+  #bonusMgr.bm-full{padding:0;background:var(--bg)}
+  #bonusMgr.bm-full .cip-head .btn{font-size:16px;padding:8px 18px}
+  #bonusMgr.bm-full .bm-box{max-width:none;width:100vw;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;padding:18px 22px}
+  #bonusMgr.bm-full .cip-head{font-size:24px;margin-bottom:12px}
   body.bonus-mode #bonusMgr .cip-head button[onclick="closeBonusMgr()"]{display:none}
-  body.bonus-mode #bonusMgr .bm-list{flex:1;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-content:start}
-  body.bonus-mode #bonusMgr .bm-item{font-size:22px;padding:20px 18px;border-radius:16px}
-  body.bonus-mode #bonusMgr .bm-left{font-size:16px}
-  body.bonus-mode #bonusMgr .bm-one{flex:1;font-size:17px}
-  body.bonus-mode #bonusMgr .bm-one-head{font-size:24px}
+  #bonusMgr.bm-full .bm-list{flex:1;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-content:start}
+  #bonusMgr.bm-full .bm-item{font-size:22px;padding:20px 18px;border-radius:16px}
+  #bonusMgr.bm-full .bm-left{font-size:16px}
+  #bonusMgr.bm-full .bm-one{flex:1;font-size:17px}
+  #bonusMgr.bm-full .bm-one-head{font-size:24px}
   #bonusMgr .bm-box.bm-listing{background:#e9e4dc url('img/bonus_bg.jpg') center bottom/cover no-repeat}
   #bonusMgr .bm-box.bm-listing .cip-head{background:rgba(255,255,255,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:8px 12px}
   #bonusMgr .bm-box.bm-listing .bm-item{background:rgba(255,255,255,.84);border-color:rgba(255,255,255,.95);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(60,50,40,.12)}
   #bonusMgr .bm-box.bm-listing .bm-item.has{background:rgba(255,251,235,.92);border-color:#fcd34d}
   #bonusMgr .bm-box.bm-listing .route-empty,#bonusMgr .bm-box.bm-listing .bm-list>.hint{background:rgba(255,255,255,.8);border-radius:10px;padding:10px 12px}
-  body.bonus-mode #bonusMgr .bm-box.bm-listing .bm-list{flex:0 1 auto;max-height:calc(100dvh - 24vh - 70px)}   /* 아래쪽 병원 로고를 가리지 않게 */
+  #bonusMgr.bm-full .bm-box.bm-listing .bm-list{flex:0 1 auto;max-height:calc(100dvh - 24vh - 70px)}   /* 아래쪽 병원 로고를 가리지 않게 */
   #bonusMgr .bm-one{overflow:auto}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
@@ -8425,6 +8427,7 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
+  {let touch=false;try{touch=matchMedia('(pointer:coarse)').matches;}catch(e){}ov.classList.toggle('bm-full',BONUS_MODE||touch);}
   ov.classList.add('show');renderBonusMgr();try{renderWaitPop();}catch(e){}};
 /* 이름 목록 화면에만 병원 배경 사진 (2026-10-06 요청) — 환자를 고른 화면은 그대로 */
 function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b)b.classList.toggle('bm-listing',!!on);}
