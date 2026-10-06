@@ -1572,6 +1572,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <div class="top-actions" id="topActions">
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
     <button class="btn" id="viewBtn" onclick="openView()"><i data-lucide="eye"></i> 방 보기</button>
+    <button class="btn" id="foldEmptyBtn" onclick="foldEmpty()" title="지금 환자가 없는 방만 접기 (2026-10-06: 방 보기를 열지 않고 바로)"><i data-lucide="fold-horizontal"></i> 빈 방 접기</button>
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
     <!-- 4층 비급여 치료: SHOW_RESV 로 표시 여부를 켜고 끈다 (2026-09-21 숨김 → 2026-09-23 다시 표시) -->

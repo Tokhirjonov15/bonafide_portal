@@ -262,11 +262,12 @@ function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+
   $out = @(); foreach ($l in (($text -replace "`r`n", "`n") -split "[`r`n]")) { $t = $l.Trim(); if ($t -and $t -notmatch '^[\s+\-_.·ㆍ,~*]*$') { $out += ($t -replace '\s{2,}', ' ') } }
   return ($out -join "`n")
 }
-function ExtractRx($text) {   # 증상 전체 → 맨 아래 처방 블록(마지막 'med' 줄부터 끝까지, 빈 줄 제외, 원문 그대로). 'med' 줄이 없으면 처방 없음
+function ExtractRx($text) {   # 증상 전체 → 처방 블록(맨 위 'med' 줄부터 끝까지, 빈 줄 제외, 원문 그대로). 'med' 줄이 없으면 처방 없음
+  # 2026-10-06 요청: med 가 위아래 두 번 있으면 아래 것부터만 잡혀 위쪽 처방이 빠졌다 → 맨 위 med 줄부터 긁는다
   $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
   $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
   if ($end -lt 0) { return @{ lines = @(); marker = $false } }
-  $start = -1; for ($i = $end; $i -ge 0; $i--) { if ($lines[$i] -match $RX_HEAD) { $start = $i; break } }
+  $start = -1; for ($i = 0; $i -le $end; $i++) { if ($lines[$i] -match $RX_HEAD) { $start = $i; break } }
   if ($start -lt 0) { return @{ lines = @(); marker = $false } }
   $out = @(); for ($i = $start; $i -le $end; $i++) { if ($lines[$i].Trim()) { $out += ($lines[$i].Trim() -replace '\s{2,}', ' ') } }
   if ($out.Count -gt $RX_MAX_LINES) { $out = @($out[0..($RX_MAX_LINES - 1)]) }
