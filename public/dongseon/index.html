@@ -1583,6 +1583,18 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr.bm-full .bm-one .bnbox .bn-btns{gap:12px;margin:14px 0}
   #bonusMgr.bm-full .bm-one .bnbox svg{width:21px;height:21px;vertical-align:-4px}
   #bonusMgr.bm-full .bm-one .bnbox .bn-use{font-size:19px;margin-top:8px}
+  /* 본인 확인 카드 크게 — 화면 높이에 맞춰 아래가 배경 사진의 탁자 바로 위까지 (2026-10-06 요청) */
+  #bonusMgr.bm-full .bm-verify{gap:1vh}
+  #bonusMgr.bm-full .bv-card{gap:1.2vh;padding:3.2vh 5.5vh 3.6vh;border-radius:34px}
+  #bonusMgr.bm-full .bv-name{font-size:clamp(36px,6.4vh,72px);letter-spacing:5px}
+  #bonusMgr.bm-full .bv-msg{font-size:clamp(28px,4.2vh,52px);line-height:1.38}
+  #bonusMgr.bm-full .bv-sub{font-size:clamp(17px,2.3vh,26px)}
+  #bonusMgr.bm-full .bv-dots{gap:2.2vh;margin-top:.6vh}
+  #bonusMgr.bm-full .bv-dots i{width:clamp(22px,3.2vh,38px);height:clamp(22px,3.2vh,38px);border-width:4px}
+  #bonusMgr.bm-full .bv-err{min-height:3vh;font-size:clamp(18px,2.6vh,30px)}
+  #bonusMgr.bm-full .bv-pad{grid-template-columns:repeat(3,clamp(100px,12vh,165px));gap:1.2vh}
+  #bonusMgr.bm-full .bv-pad button{height:clamp(74px,8.2vh,124px);border-radius:24px;font-size:clamp(34px,5.2vh,62px)}
+  #bonusMgr.bm-full .bv-pad button.sm{font-size:clamp(18px,2.8vh,32px)}
   @media (max-width:700px){#bonusMgr .bv-pad{grid-template-columns:repeat(3,84px)}#bonusMgr .bv-pad button{height:72px}#bonusMgr .bv-msg{font-size:24px}#bonusMgr .bv-card{padding:20px 18px}}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
