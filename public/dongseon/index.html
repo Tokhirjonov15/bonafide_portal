@@ -1528,6 +1528,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   body.bonus-mode #bonusMgr .bm-left{font-size:16px}
   body.bonus-mode #bonusMgr .bm-one{flex:1;font-size:17px}
   body.bonus-mode #bonusMgr .bm-one-head{font-size:24px}
+  #bonusMgr .bm-box.bm-listing{background:#e9e4dc url('img/bonus_bg.jpg') center bottom/cover no-repeat}
+  #bonusMgr .bm-box.bm-listing .cip-head{background:rgba(255,255,255,.78);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-radius:12px;padding:8px 12px}
+  #bonusMgr .bm-box.bm-listing .bm-item{background:rgba(255,255,255,.84);border-color:rgba(255,255,255,.95);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(60,50,40,.12)}
+  #bonusMgr .bm-box.bm-listing .bm-item.has{background:rgba(255,251,235,.92);border-color:#fcd34d}
+  #bonusMgr .bm-box.bm-listing .route-empty,#bonusMgr .bm-box.bm-listing .bm-list>.hint{background:rgba(255,255,255,.8);border-radius:10px;padding:10px 12px}
+  body.bonus-mode #bonusMgr .bm-box.bm-listing .bm-list{flex:0 1 auto;max-height:calc(100dvh - 24vh - 70px)}   /* 아래쪽 병원 로고를 가리지 않게 */
   #bonusMgr .bm-one{overflow:auto}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
@@ -8418,13 +8424,15 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
-  BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';
+  BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
   ov.classList.add('show');renderBonusMgr();};
+/* 이름 목록 화면에만 병원 배경 사진 (2026-10-06 요청) — 환자를 고른 화면은 그대로 */
+function bmListing(on){const b=document.querySelector('#bonusMgr .bm-box');if(b)b.classList.toggle('bm-listing',!!on);}
 window.closeBonusMgr=function(){if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');};
-window.bonusMgrBack=function(){BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';renderBonusMgr();};
+window.bonusMgrBack=function(){BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);renderBonusMgr();};
 window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;BONUS_PID=pid;
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name);
-  document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';
+  document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';bmListing(false);
   renderBonusSection();};
 function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!box)return;
   if(BONUS_PID){const p=data.find(x=>x.id===BONUS_PID);if(!p||p.discharged){bonusMgrBack();return;}renderBonusSection();return;}
