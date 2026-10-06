@@ -2533,7 +2533,7 @@ function isHandOffDrop(targetEl,p){   // 같은 환자 카드 위에 놓았는�
    · 방 순서는 ROUTE_ORDER. 처방에 없는 방이 손으로 들어가 있으면 그대로 둔다(자동으로 넣은 방만 다시 계산).
    · 직원이 [종결] 대신 다른 방으로 끌어다 놓아도(예: C-Arm → x-ray실) 그 방이 동선 사이에 끼어들고 나머지는 이어진다(moveTo 참고).
    · 낱말이나 방 순서가 바뀌면 여기만 고친다. */
-const ROUTE_ORDER=['x-ray실','CT실','진료 상담','비용 상담','근전도검사','C-Arm','Sono','처치실','4층 대기실','4층 상담','충격파','신장분사','SASO','자동차도수','물리치료','기본물리치료'];   /* 2026-10-01 '동선관리 로직' 시트: 근전도→C-arm→sono→처치, 4층은 4층 대기실 → 4층 상담 → 충격파·신장분사 → SASO·자동차도수 → 기본물리치료 */   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
+const ROUTE_ORDER=['x-ray실','CT실','진료 상담','비용 상담','근전도검사','C-Arm','Sono','처치실','4층 대기실','4층 상담','충격파','신장분사','SASO','아쿠아','롤러','자동차도수','물리치료','기본물리치료'];   /* 2026-10-01 '동선관리 로직' 시트: 근전도→C-arm→sono→처치, 4층은 4층 대기실 → 4층 상담 → 충격파·신장분사 → SASO·자동차도수 → 기본물리치료 */   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
 /* 진료 상담이 반드시 앞에 들어가야 하는 방들 — 이 중 하나라도 처방되면 상담을 먼저 거친다 (2026-09-26 지시) */
 const CONSULT_NEEDS=['C-Arm','Sono','근전도검사','처치실'];
 const PT_ROOMS=['물리치료','기본물리치료'];   // 수납대기가 이 방들 앞에 들어간다(4층 상담이 없을 때)
@@ -8610,7 +8610,9 @@ function bonusAddRoom(pid,room){
   if(!ROOMS.includes(room))return;
   const add=d=>{if(!Array.isArray(d.route)||!d.route.length)return false;const st=Math.max(0,Math.min(d.step||0,d.route.length-1));
     if(d.route.indexOf(room,st+1)>=0)return false;
-    const pi=d.route.findIndex((r,k)=>k>st&&isPayRoom(r));
+    /* 무료 치료(아쿠아·롤러·SASO)는 SASO 자리(ROUTE_ORDER) — 지금 방 뒤에서, 순서상 더 뒤인 방(자동차도수·물리치료 등)이나 수납 앞에 (2026-10-06 요청) */
+    const oi=ROUTE_ORDER.indexOf(room);
+    const pi=d.route.findIndex((r,k)=>k>st&&(isPayRoom(r)||(oi>=0&&ROUTE_ORDER.indexOf(r)>oi)));
     if(pi>=0)d.route.splice(pi,0,room);else d.route.push(room);return d;};
   const p=data.find(x=>x.id===pid);if(!p)return;
   if(add(p)!==false){saveLocal();render();try{if(editId===pid&&typeof renderRouteRows==='function'){routeDraft=[...p.route];renderRouteRows();}}catch(e){}}
