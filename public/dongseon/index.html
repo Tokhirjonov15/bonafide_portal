@@ -8598,7 +8598,7 @@ document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMg
   if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
 function bonusMgrOpenOne(p){BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
-  document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name);
+  document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name)+' 님';   // 성함 뒤 '님' (2026-10-06 요청)
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='';bmListing(false);
   renderBonusSection();bmCloseLabel();}
 function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!box)return;
