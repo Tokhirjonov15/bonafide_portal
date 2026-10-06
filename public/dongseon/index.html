@@ -1108,6 +1108,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .route-build{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel2)}
   .route-rows{display:flex;flex-direction:column;gap:6px}
   .rrow{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+  .rrow.cur{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 7%,var(--panel))}   /* 지금 있는 방 (2026-10-06) */
+  .rrow .rcur{font-size:11px;font-weight:800;color:#fff;background:var(--blue);border-radius:6px;padding:1px 6px}
+  .rrow .rgo{margin-left:auto;border-color:var(--blue);color:var(--blue);font-weight:800}
+  .rrow .rgo:hover{background:var(--blue);color:#fff}
   .rrow .num{width:18px;height:18px;border-radius:50%;background:var(--blue);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;flex-shrink:0}
   .rrow .rname{flex:1;font-weight:600}
   .route-empty{color:var(--sub);font-size:12px;padding:4px 2px}
@@ -10749,14 +10753,17 @@ function routeByHtml(room){
 function renderRouteRows(){
   const box=document.getElementById("routeRows");
   if(!routeDraft.length){box.innerHTML=`<div class="route-empty">아직 동선이 없습니다. 아래 방 버튼을 누르세요.</div>`;return;}
-  box.innerHTML=routeDraft.map((r,i)=>`
-    <div class="rrow" draggable="true" data-i="${i}">
+  const _lp=editId?data.find(x=>x.id===editId):null;   // 지금 있는 방 표시 + [이동] (2026-10-06)
+  const _live=!!(_lp&&!_lp._viewOnly&&!_lp.discharged&&JSON.stringify(routeDraft)===JSON.stringify(_lp.route));
+  box.innerHTML=routeDraft.map((r,i)=>{const isCur=_live&&i===(_lp.step||0);return `
+    <div class="rrow${isCur?' cur':''}" draggable="true" data-i="${i}">
       <span class="grip" title="드래그로 순서 변경">⠿</span>
-      <span class="num">${i+1}</span><span class="rname">${esc(r)}</span>${routeByHtml(r)}
+      <span class="num">${i+1}</span><span class="rname">${esc(r)}</span>${isCur?'<span class="rcur">지금</span>':''}${routeByHtml(r)}
+      ${(_lp&&!_lp._viewOnly&&!_lp.discharged&&!isCur)?`<button type="button" class="mini rgo" onclick="routeGo(${i})" title="카드를 ${esc(r)}(으)로 옮기기 — 보드에서 끌어다 놓은 것과 같음">이동</button>`:''}
       <button type="button" class="mini" onclick="moveRouteStep(${i},-1)" ${i===0?'disabled':''}>↑</button>
       <button type="button" class="mini" onclick="moveRouteStep(${i},1)" ${i===routeDraft.length-1?'disabled':''}>↓</button>
       <button type="button" class="mini" onclick="removeRouteStep(${i})" style="color:var(--red)">✕</button>
-    </div>`).join("");
+    </div>`;}).join("");
   [...box.querySelectorAll(".rrow")].forEach(row=>{
     row.addEventListener("dragstart",e=>{routeDragIdx=+row.dataset.i;row.classList.add("dragging");e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain","");});
     row.addEventListener("dragend",()=>{row.classList.remove("dragging");[...box.querySelectorAll(".rrow")].forEach(x=>x.classList.remove("drop-target"));});
@@ -10765,6 +10772,19 @@ function renderRouteRows(){
     row.addEventListener("drop",e=>{e.preventDefault();reorderRoute(routeDragIdx,+row.dataset.i);});
   });
 }
+/* 동선 줄의 [이동] (2026-10-06 요청) — 보드에서 카드를 그 방으로 끌어다 놓은 것과 똑같이(moveByDrag): 뒤쪽에 있는 방이면 그 단계로, 이미 지난 방이면 지금 방 바로 뒤에 끼워 넣는다 */
+window.routeGo=function(i){
+  if(!editId)return;const p=data.find(x=>x.id===editId);if(!p||p._viewOnly||p.discharged)return;
+  const room=routeDraft[i];if(!room)return;
+  if(JSON.stringify(routeDraft)!==JSON.stringify(p.route)&&!confirm('고치던 동선은 저장되지 않고, 카드의 지금 동선 기준으로 옮깁니다. 계속할까요?\n(고친 동선을 남기려면 [취소] 후 먼저 [저장])'))return;
+  const from=curRoom(p);if(room===from&&i===(p.step||0))return;
+  moveByDrag(p.id,room);
+  const q=data.find(x=>x.id===p.id);if(!q)return;
+  routeDraft=[...q.route];renderRouteRows();
+  try{renderEditStatus();renderModalRail();}catch(e){}
+  try{audit('동선 이동(환자 정보 창)',(q.name||'')+' · '+from+' → '+room);}catch(e){}
+  try{toast(dispName(q.name)+' 님 → '+room);}catch(e){}
+  if(window.lucide)try{lucide.createIcons();}catch(e){}};
 function routeChanged(){renderRouteRows();if(editId&&document.getElementById("notesSection").style.display!=="none"){renderNotesEditor();renderConsultEditor();}}
 function addRouteStep(room){if(!room)return;routeDraft.push(room);routeChanged();}
 function removeRouteStep(i){routeDraft.splice(i,1);routeChanged();}
