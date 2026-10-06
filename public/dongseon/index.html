@@ -3485,7 +3485,7 @@ function guardAutofill(el,onClear){if(!el)return;let typed=false;
   const unfill=()=>{if(!typed&&el.value){el.value='';try{onClear&&onClear();}catch(e){}}};
   el.addEventListener("input",()=>{if(!el.value)typed=false;else if(!typed)setTimeout(unfill,0);});   // 칸을 비우면 다시 감시
   setInterval(unfill,1500);}
-/* [창 띄우기] (2026-10-03 요청): 이 환자의 처방 화면만 따로 띄운다 — 왼쪽 목록·위 막대 없이, 차트번호 빼고 이름 가운데를 가린다.
+/* [창 띄우기] (2026-10-03 요청): 이 환자의 처방 화면만 따로 띄운다 — 왼쪽 목록·위 막대 없이, 차트번호 뺀다. 이름은 2026-10-06 요청으로 다 보인다(가리지 않음).
    같은 이름의 창(slipSolo)을 다시 쓰므로 다른 환자에서 누르면 그 창이 그 환자로 바뀐다 */
 function slipMaskName(n){n=String(n||'').trim();if(!n)return '';const M='○';
   if(/[A-Za-z]/.test(n)){const c=n.replace(/\s+/g,'');return c.length<=4?c[0]+M.repeat(c.length-1):c.slice(0,2)+M.repeat(c.length-4)+c.slice(-2);}   // 영문: 앞 두 글자 ○○○ 뒤 두 글자
@@ -3501,14 +3501,14 @@ const SLIP_POP_CSS='*{box-sizing:border-box}body{margin:0;padding:20px 24px;back
   +'.sd-lines li.np{color:#d92d20;background:#fff3cd;text-decoration:underline;text-underline-offset:4px;border-radius:6px}.empty{color:#6b7280;font-size:18px;padding:30px 0}';
 function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록에 없습니다</div>';const h=slipHeaderInfo(it);
   const meta=[h.birth?esc(h.birth):'',h.doc?'담당의 <b>'+esc(h.doc)+'</b>':'',h.clinic?'<b>'+esc(h.clinic)+'</b>':'',h.hm,h.f4.length?`<span class="rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''].filter(Boolean).join(' · ');
-  return `<div class="sd-name">${esc(slipMaskName(it.name))}<span class="sd-sa">${esc(h.sexAge)}</span></div>
+  return `<div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
     ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
     <div class="sd-meta">${meta}</div>${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
     <ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>`;}
 function slipPopRender(){if(!SLIP_POP||SLIP_POP.closed||!SLIP_POP_MRN)return;
   try{const it=slipItems().find(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const d=SLIP_POP.document;
     const html=slipPopHtml(it);if(d.body.dataset.h===html)return;d.body.dataset.h=html;d.body.innerHTML=html;
-    d.title=(it?slipMaskName(it.name):'')+' — 처방';}catch(e){console.warn('slip pop',e);}}
+    d.title=(it?String(it.name||''):'')+' — 처방';}catch(e){console.warn('slip pop',e);}}
 function popSlipSolo(mrn){
   const w=window.open('','slipSolo','popup,width=820,height=720');if(!w){warnToast('팝업이 막혀 있습니다 — 주소창 오른쪽의 팝업 차단을 풀어 주세요.');return;}
   SLIP_POP=w;SLIP_POP_MRN=String(mrn||'');
@@ -3534,7 +3534,7 @@ function renderSlipScreen(){
   if(!it){const e='<div class="slip-empty">목록에서 환자를 선택하세요</div>';if(det.dataset.h!==e){det.dataset.h=e;det.innerHTML=e;}return;}
   const h=slipHeaderInfo(it);
   let detHtml=`<div class="sd-head">
-      <div class="sd-name">${esc(SLIP_SOLO?slipMaskName(it.name):it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
+      <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
       ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
       <div class="sd-meta">${SLIP_SOLO?'':`차트 <b>${esc(it.mrn)}</b>`}${h.birth?(SLIP_SOLO?'':' · ')+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
@@ -8613,12 +8613,7 @@ function finishPatient(pid){const p=data.find(x=>x.id===pid);if(!p)return;
     try{toast(dispName(p.name)+' 님 → '+done);}catch(e){}
     return;}
   if((p.extraFee||0)>0&&!p.paid){alert(`아직 수납이 완료되지 않았습니다.\n미수납 ${won(p.extraFee)}원 — 카드의 '수납완료' 버튼을 눌러 주세요.`);return;}
-  if(parkingDue(p)&&(!p.parking||p.parking.pending)){   // 주차권 안내 대상인데 아직 미지급(또는 확인 전) → 내보내기 전 확인
-    if(!confirm(`🅿️ '${p.name}'님은 주차권 안내 대상입니다 (접수 후 ${parkingThresholdText()} 경과).\n아직 '지급완료' 표시가 없습니다.\n\n주차권을 지급하셨다면 [확인] — 지급완료 기록 후 내보내기를 계속합니다.\n아직이라면 [취소]를 누르고 주차권을 챙겨주세요.`))return;
-    const val={at:Date.now(),by:(currentUser&&currentUser.name)||''};
-    applyParking(p,val);saveLocal();cloudPatientTxn(pid,d=>applyParking(d,val));
-    try{audit('주차권지급',p.name+(p.mrn?' ('+p.mrn+')':'')+' (내보내기 확인)');}catch(e){}
-  }
+  /* 주차권 미지급이어도 내보내기를 막지 않는다 (2026-10-06 요청) — 카드의 주차권 안내 표시는 그대로 */
   if(!confirm(`'${p.name}'님을 종결하고 보드에서 내보낼까요?\n(내원 기록으로 보관됩니다)`))return;
   try{audit('내보내기',p.name+(p.mrn?' ('+p.mrn+')':'')+(p.seq?' #'+p.seq:''));}catch(e){}   /* 누가 언제 내보냈는지 — 유령 카드 추적용 (2026-09-30) */
   completeVisit(p,'종결');archiveVisit(p);cloudDelPatient(pid);data=data.filter(x=>x.id!==pid);save();render();}
