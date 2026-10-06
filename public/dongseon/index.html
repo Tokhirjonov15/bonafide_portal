@@ -1518,6 +1518,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bm-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:12px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);font:inherit;font-size:17px;font-weight:800;cursor:pointer;text-align:left;color:inherit}
   #bonusMgr .bm-item.has{border-color:#fcd34d;background:#fffbeb}
   #bonusMgr .bm-left{font-size:13px;color:#92400e;white-space:nowrap}#bonusMgr .bm-left svg{width:13px;height:13px;vertical-align:-2px}
+  /* ?bonus 전용 태블릿 — 화면 가득, 큰 글씨, 닫기 숨김 (2026-10-06) */
+  body.bonus-mode #bonusMgr{padding:0;background:var(--bg)}
+  body.bonus-mode #bonusMgr .bm-box{max-width:none;width:100vw;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;padding:18px 22px}
+  body.bonus-mode #bonusMgr .cip-head{font-size:24px;margin-bottom:12px}
+  body.bonus-mode #bonusMgr .cip-head button[onclick="closeBonusMgr()"]{display:none}
+  body.bonus-mode #bonusMgr .bm-list{flex:1;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;align-content:start}
+  body.bonus-mode #bonusMgr .bm-item{font-size:22px;padding:20px 18px;border-radius:16px}
+  body.bonus-mode #bonusMgr .bm-left{font-size:16px}
+  body.bonus-mode #bonusMgr .bm-one{flex:1;font-size:17px}
+  body.bonus-mode #bonusMgr .bm-one-head{font-size:24px}
   #bonusMgr .bm-one{overflow:auto}#bonusMgr .bm-one-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:18px}
   /* 저장된 동의서 목록(환자 정보 안) */
   .cst-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);margin-bottom:6px}
@@ -2981,7 +2991,7 @@ async function doLogin(){
     // 이후는 onAuthStateChanged → establishSession 이 처리
   }catch(e){loginMsg(authErrMsg(e));}
 }
-function finishLogin(){showReconnecting(false);localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();if(BITRESV_MODE)openBitResvScreen();}
+function finishLogin(){showReconnecting(false);localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();if(BITRESV_MODE)openBitResvScreen();if(BONUS_MODE)openBonusMgr();}
 /* ───── 비트플러스 접수 연동 ─────
    접수 PC의 감시 스크립트(tools/bitplus_watcher.ps1)가 비트 '접수' 창의 인적정보 패널을 읽어
    bitIntake/{날짜_병록번호} 문서로 올린다. 여기서는 오늘 문서만 구독해 보드 위에 '비트 접수 대기' 줄로 보여주고,
@@ -5301,7 +5311,7 @@ function showSelfTestReport(R,pass,fail){
   document.body.appendChild(ov);
 }
 function boot(){
-  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();SLIP_SOLO=SLIP_MODE?(sp.get('solo')||'').trim():'';if(SLIP_SOLO)document.body.classList.add('slip-solo');RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');}catch(e){}
+  try{const sp=new URLSearchParams(location.search);SLIP_MODE=sp.has('slip');SLIP_ROOM=(sp.get('room')||'').trim();SLIP_SOLO=SLIP_MODE?(sp.get('solo')||'').trim():'';if(SLIP_SOLO)document.body.classList.add('slip-solo');RESV_MODE=!SLIP_MODE&&sp.has('resv');BITRESV_MODE=!SLIP_MODE&&!RESV_MODE&&sp.has('bitresv');BONUS_MODE=!SLIP_MODE&&sp.has('bonus');if(BONUS_MODE)document.body.classList.add('bonus-mode');}catch(e){}
   {const rb=document.getElementById('resvBtn');if(rb)rb.style.display=SHOW_RESV?'':'none';}   // 4층 비급여 치료 버튼 표시/숨김
   if(location.hash.indexOf('labelstation')>=0){   // 라벨 전용 창(무음 인쇄) 표지 — EMR 등 다른 용도 사용 방지
     const b=document.createElement('div');
@@ -8395,6 +8405,7 @@ window.bonusUse=async function(item){const p=data.find(x=>x.id===bonusCurPid());
    [진료실 관리] 옆 [혜택 관리] — 지금 보드에 있는 환자 목록을 이름만(가운데를 가려서) 보여 주고, 누르면 그 환자의 보너스 칸(카메라·환자 선택·리뷰·주사·혜택)을 띄운다.
    이름 가리기: 한글 최다솜 → 최 O 솜, 최이아솜 → 최 O O 솜, 두 글자 김철 → 김 O. 영문 등 외국 이름은 앞 10글자 + '...' */
 let BONUS_MGR_OPEN=false;
+let BONUS_MODE=false;   // ?bonus — 혜택 관리 전용 태블릿: 로그인하면 혜택 관리가 화면 가득, 닫기 없음 (2026-10-06)
 function bonusMaskName(n){n=String(n||'').trim();if(!n)return '';
   if(/[A-Za-z]/.test(n))return n.length>10?n.slice(0,10)+'...':n;
   const a=[...n.replace(/\s+/g,'')];if(a.length<=1)return a.join('');if(a.length===2)return a[0]+' O';
@@ -8409,7 +8420,7 @@ window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';
   ov.classList.add('show');renderBonusMgr();};
-window.closeBonusMgr=function(){BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');};
+window.closeBonusMgr=function(){if(BONUS_MODE)return;BONUS_MGR_OPEN=false;BONUS_PID='';const ov=document.getElementById('bonusMgr');if(ov)ov.classList.remove('show');};
 window.bonusMgrBack=function(){BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';renderBonusMgr();};
 window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;BONUS_PID=pid;
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name);
@@ -10336,7 +10347,7 @@ function waitAlertInfo(p){
    사유(대기 길어짐 / 동선관리 미사용)를 골라 [확인]해야 사라진다. 확인은 카드 문서 waitAck[방|입실시각] 에 남겨 모든 화면에서 함께 사라진다(같은 입실엔 다시 안 뜸) */
 const WAIT_POP_REASONS=['대기 길어짐','동선관리 미사용','환자 체크 누락'];
 function waitPopKey(p){return curRoom(p)+'|'+(p.enteredAt||'');}
-function waitPopHidden(){if(SLIP_SOLO||slipOpen||document.body.classList.contains('pb-on'))return true;const st=document.getElementById('statsModal');return !!(st&&st.classList.contains('show'));}   // 슬립 화면(?slip 포함)·창 띄우기·통계에서는 안 띄운다 (2026-10-03)
+function waitPopHidden(){if(SLIP_SOLO||slipOpen||document.body.classList.contains('pb-on')||document.body.classList.contains('bonus-mode'))return true;const st=document.getElementById('statsModal');return !!(st&&st.classList.contains('show'));}   // 슬립 화면(?slip 포함)·창 띄우기·통계에서는 안 띄운다 (2026-10-03)
 /* 누가 어떤 방의 대기 알림을 보나 (2026-10-03 요청)
    admin = 모든 방 · 4층 직원(아래 명단) = 4층 쪽 방 · 의사(role doctor) = 없음 · 그 밖의 직원 = 3층 쪽 방 */
 const WAIT_POP_4F_STAFF=['서효성','김지은','허빈','한상훈','조현신','이세영','황지현','김건휘','김재하','신소현','고민정','박승규','임현주'];
