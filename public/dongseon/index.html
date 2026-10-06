@@ -1584,6 +1584,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .bv-top{align-self:flex-start}
   #bonusMgr .bv-card{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;background:rgba(255,255,255,.74);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:28px;padding:26px 44px 30px;box-shadow:0 10px 40px rgba(60,50,40,.15)}
   #bonusMgr .c4-card{max-width:min(980px,94vw)}
+  #bonusMgr .bk-next{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
   #bonusMgr .c4-title{font-size:clamp(24px,3.4vh,40px);font-weight:800;color:#57534e;letter-spacing:2px}
   #bonusMgr .c4-chk{display:flex;align-items:center;gap:2.4vh;text-align:left;background:#fff;border:4px solid #d6d3d1;border-radius:26px;padding:3vh 3.4vh;font:inherit;cursor:pointer;touch-action:manipulation;box-shadow:0 8px 26px rgba(60,50,40,.12)}
   #bonusMgr .c4-chk.on{border-color:#2563eb;background:#eff6ff}
@@ -8518,7 +8519,8 @@ function renderBonusSection(){
         ?`<div class="bk-msg">네이버 리뷰 확인이<br>완료되었습니다.</div><div class="bk-sub">소중한 리뷰 감사합니다.</div>`
         :`<div class="bk-msg">네이버 리뷰를 준비해 주시고,<br><b>리뷰 확인</b> 버튼을 눌러 주세요.</div><div class="bk-sub">AI가 확인하겠습니다.</div>
           <button type="button" class="bk-btn" onclick="pbOpen('review')"><i data-lucide="camera"></i> 리뷰 확인</button>`}
-      ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
+      ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}
+      ${c4Need(p)?`<button type="button" class="bk-btn bk-btn2 bk-next" onclick="c4Open(data.find(x=>x.id===BONUS_PID))">다음: 치료 동의 →</button>`:''}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 let BK_STAFF_OPEN=false;
 window.bonusReview=async function(on){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
@@ -8619,7 +8621,7 @@ window.c4Submit=async function(){if(!C4||!C4.ok||C4.saving)return;const p=data.f
   catch(e){C4.saving=false;renderC4();alert('저장하지 못했습니다: '+(e.message||e));return;}
   BONUS[mrn]=Object.assign({},b,{mrn,c4At:b.c4At||now,c4Days:[...new Set([...(Array.isArray(b.c4Days)?b.c4Days:[]),day])]});
   try{audit('4층 치료 동의',(p.name||'')+' ('+mrn+')'+(kind==='once'?' · 비급여 첫 동의':' · 오늘'));}catch(e){}
-  C4=null;bonusMgrOpenOne(p);};
+  C4=null;c4Thanks(p);};
 function c4Thanks(p){C4={pid:p.id,ok:true,saving:true,done:true};BV=null;BONUS_PID='';
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
   const box=document.getElementById('bonusMgrVerify');box.style.display='';bmListing(false);bmCloseLabel();
@@ -8658,8 +8660,8 @@ window.bvStaffPass=function(){if(!BV)return;const p=data.find(x=>x.id===BV.pid);
 document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMgrVerify');if(!BV||!v||v.style.display==='none')return;
   if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
 function bonusMgrOpenOne(p){
-  if(c4Need(p)){c4Open(p);return;}
-  if(!bmInjToday(p)){c4Thanks(p);return;}   // 동의만 하러 온 환자(오늘 주사 없음)
+  /* 오늘 주사 맞은 환자: 보너스(리뷰·치료 고르기) 먼저 → 끝나면 치료 동의 (2026-10-06 요청). 주사 없는 환자는 바로 동의 */
+  if(!bmInjToday(p)){if(c4Need(p))c4Open(p);else c4Thanks(p);return;}
   C4=null;BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name)+' 님';   // 성함 뒤 '님' (2026-10-06 요청)
@@ -8751,10 +8753,10 @@ window.pbOpen=function(mode){const p=data.find(x=>x.id===bonusCurPid());const mr
   let d=document.getElementById('pbScreen');
   if(!d){d=document.createElement('div');d.id='pbScreen';d.innerHTML='<div class="ks-top"><span class="ks-logo">반듯한정형외과</span><button type="button" class="ks-x" onclick="pbClose()" title="닫기">✕</button></div><div id="pbBox" class="ks-box"></div>';document.body.appendChild(d);}
   d.classList.add('show');document.body.classList.add('pb-on');pbRender();};
-window.pbClose=function(){clearTimeout(PB_TIMER);pbCamStop();const d=document.getElementById('pbScreen');if(d)d.classList.remove('show');document.body.classList.remove('pb-on');
+window.pbClose=function(){const _pbPid=PB.pid;clearTimeout(PB_TIMER);pbCamStop();const d=document.getElementById('pbScreen');if(d)d.classList.remove('show');document.body.classList.remove('pb-on');
   PB={pid:'',mrn:'',name:'',mode:'',phase:'',pick:''};try{renderBonusSection();render();}catch(e){}
   /* 혜택 관리에서 띄운 화면이면 닫을 때 혜택 관리 첫 화면(이름 목록)으로 — 환자 전용 화면이라 다른 환자 정보·보드가 보이면 안 된다 (2026-10-06) */
-  if(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN)try{bonusMgrBack();}catch(e){}};
+  if(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN)try{const q=data.find(x=>x.id===_pbPid);if(q&&c4Need(q))c4Open(q);else bonusMgrBack();}catch(e){}};
 function pbCamStop(){pbAutoStop();if(PB_STREAM){try{PB_STREAM.getTracks().forEach(t=>t.stop());}catch(e){}PB_STREAM=null;}}
 /* 자동 촬영 (2026-10-06 요청) — 카메라가 실제로 켜진 뒤, 점선 칸 안에 '밝은 바탕 + 검은 글자'(휴대폰 리뷰 화면)가
    1초쯤 흔들림 없이 보이면 저절로 찰칵 → pbCheck. 전부 이 기기 브라우저 안에서 계산(서버·비용 없음). [리뷰 확인하기] 버튼은 그대로 */
