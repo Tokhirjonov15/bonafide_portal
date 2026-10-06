@@ -10903,7 +10903,9 @@ function doctorChipHtml(p,room){
   const roomDocs=(_r?(meta(_r).doctors||[]):[]).filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
   /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
      지정이 없는 방만 전체 진료의 목록으로 폴백. 이미 선택된 값은 항상 보존. */
-  const opts=(_r&&(meta(_r).doctors||[]).length)
+  const opts=isClinicRoom(_r)
+    ? [...new Set([cur,...roomDocs,...allClinicDoctors()].filter(Boolean))]   // 진료실: 모든 의사(이 방 의사가 먼저) — 다른 진료실 의사를 고르면 그 진료실로 옮김 (2026-10-06)
+    : (_r&&(meta(_r).doctors||[]).length)
     ? [...new Set([cur,...roomDocs].filter(Boolean))]
     : [...new Set([cur,...DOCTORS.filter(n=>!isOffToday(n))].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
@@ -10947,8 +10949,18 @@ function autoAssignViewer(p){if(p&&p._viewOnly)return;
   cloudPatientTxn(p.id,d=>{d.roomDocs=d.roomDocs||{};if(!Object.prototype.hasOwnProperty.call(d.roomDocs,room))d.roomDocs[room]=doc;return d;});
   return true;}
 /* 카드에서 진료의 빠른 변경 — 현재 방에 대해서만 기록 */
+/* 진료실 카드의 의사 칸 (2026-10-06 요청): 모든 의사를 고를 수 있고, 다른 진료실 담당 의사를 고르면 카드를 그 의사의 진료실로 옮긴다
+   (보드에서 그 진료실로 끌어다 놓은 것과 같음 — moveByDrag). 옮긴 진료실의 담당으로 그 의사를 넣는다 */
+const isClinicRoom=r=>/^진료실\s*\d/.test(String(r||'').trim());
+function allClinicDoctors(){const s=new Set();ROOMS.forEach(r=>{if(isClinicRoom(r))(meta(r).doctors||[]).forEach(n=>n&&s.add(n));});(DOCTORS||[]).forEach(n=>n&&s.add(n));return [...s];}
 function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomDocs=p.roomDocs||{};
+  if(nv&&isClinicRoom(room)&&curRoom(p)===room){const to=docRoomOf(nv);
+    if(to&&to!==room){p.roomDocs[to]=nv;
+      audit('진료실 이동(진료의 선택)',p.name+' · '+room+' → '+to+' ('+nv+')');
+      moveByDrag(p.id,to);
+      try{toast(dispName(p.name)+' 님 → '+to+' ('+nv+')');}catch(e){}
+      return;}}
   p.roomDocs[room]=nv;   // '' 도 그대로 둔다 = 일부러 미지정 (지우면 접수 때 담당의로 되돌아가 '미지정'을 고를 수 없었다)
   if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}
   audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
