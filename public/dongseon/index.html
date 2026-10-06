@@ -2449,11 +2449,13 @@ const CLINIC_CONSULT_RE=/^(진료|비용)\s*상담$/;
 function rxConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>CLINIC_CONSULT_RE.test(r))||'';}
 function rxUpConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^4층\s*상담$/.test(r))||'';}
 /* 처치실로 보내는 처방코드 — '동선관리 로직.xlsx' 처치 칸(B열) 그대로, 소문자 (2026-10-01) */
+/* 엑스레이 처방코드 (2026-10-06 표 그대로) — 이 코드만 x-ray실로. 소문자로 비교(공백 있는 TRAUMA 2 는 붙인 것도) */
+const XRAY_CODES=new Set(["g0503","g1002","g1103","g1602","g16022","g2001","g3102","g3201","g32012","g3303","g33032","g3402","g3503","g4102","g4104","g4105","g4302","g4502","g4504","g4505","g4702","g4902","g5101","g5105","g5203","g6104","g61042","g6204","g62042","g6304","g63042","g6404","g64042","g6501","g6504","g65042","g6601","g66012","g7104","g71042","g7204","g72042","g7304","g73042","g7403","g74032","g7504","g75042","g7601","g7701","g77012","che^","trauma","trauma 2","trauma2"]);
 const RX_TREAT_CODES=new Set(["dressing", "d1850", "d1860", "d0002030", "d0002010", "d0002050", "d0002040", "d0002070", "d8413036", "d3230060", "d3250010", "d3230050", "d6802066z", "d6801046z", "d5874096z", "d6802026z", "d6801016z", "d5912036z", "d5913016z", "d013300hz", "d8070016z", "d8070026z", "d7951036z", "d5010010", "d5030010", "d4902020", "d7843006", "d7951036", "d7471010", "d7471020", "d8413026", "d5856000z", "d5851000z", "d5853000z", "d654219cz", "d654319cz", "d654209cz", "d654309cz", "d7460006z", "m0111", "m0121", "skycell", "a7", "sk", "gsk", "m0032", "c8140", "t6151", "t6155", "t6153", "t6154", "t6152", "b형간염", "sc031", "sb021", "sc021", "cefaze", "sb032", "crutch", "alle", "ttb", "ibn", "실린더", "장하지1", "pprol", "본큐어주", "terrosa", "evenity", "ev", "jx", "n0210", "coban1", "coban2", "coban3", "coban4", "coban5", "coolband1", "coolband2", "coolband3", "coolband4", "coolband5", "itl", "tsc", "zroid", "zlm", "atb", "mixinjection1", "mixinjection2", "mixinjection3", "mixinjection4", "mixinjection5", "mixinjection6", "mixinjection7", "mixinjection8", "mixinjection9", "rkarl", "wenuf", "pain", "pain4", "pain5", "pain8", "pain10", "genta", "dxmt", "triam", "dcf", "trol", "t6163", "t6162", "t6161", "peni", "conto", "n0234", "h9", "h92", "d5854", "n0215", "n0912", "n0200", "d1004", "d1005", "d1083", "d1121"]);
 /* 규칙: codes = 처방코드가 이 목록과 같으면, cod = 처방코드 모양, nam = 처방명칭 낱말, any = 코드+명칭 어디든.
    not/notCod 에 걸리면 그 방은 아님. 시트의 '○○ 포함 항목' = 코드나 명칭에 그 낱말이 들어 있으면 (2026-10-01) */
 const ROUTE_RX_RULES=[
-  {room:'x-ray실',    cod:/^g\d/i,      any:/x-?ray/i, not:/c\s*-?\s*arm/i},   // G+숫자만(genta 주사 제외), 'C-Arm 이용료(G0400)'는 C-Arm 으로
+  {room:'x-ray실',    codes:XRAY_CODES},   // 2026-10-06: 'G로 시작하면 전부'가 아니라 엑스레이 처방코드 표에 있는 코드만
   {room:'CT실',       cod:/^ct$/i, any:/(^|[^a-z])ct($|[^a-z])/i},            // INJECTION 같은 단어 속 'ct' 는 제외
   {room:'C-Arm',      codes:new Set(['c-arm','carm','g0400']), any:/c\s*-?\s*arm/i},
   {room:'Sono',       codes:new Set(['sono','c010','c8140010','aatri','ssyno','hran','prolo']), any:/sono/i},
@@ -2633,7 +2635,7 @@ function applyRxRoutesAll(){
    한 처방에 한 번, 여러 화면 중 한 화면만(카드 문서 xrayAutoKey·greenAutoKey 로 선점).
    이 기능을 켠 순간 보드에 있던 환자가 옛 처방으로 끌려가지 않도록, 처방을 낸 시각(줄의 t)이 15분 안인 것만 옮긴다 */
 function rxItemsOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return (rx&&Array.isArray(rx.items))?rx.items:[];}
-function rxIsXrayCode(c){c=String(c||'').trim();return /^g\d/i.test(c)&&c.toUpperCase()!=='G0400';}
+function rxIsXrayCode(c){return XRAY_CODES.has(String(c||'').trim().toLowerCase())||XRAY_CODES.has(String(c||'').replace(/\s+/g,'').toLowerCase());}   // 엑스레이 처방코드 표만 (2026-10-06)
 function rxIsGreen(p){return rxItemsOf(p).some(x=>/green/i.test(String(x.cod||'')));}
 function rxFresh(items){const now=new Date(),nm=now.getHours()*60+now.getMinutes();
   return items.some(x=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(x.t||''));if(!m)return false;const d=nm-(+m[1]*60+ +m[2]);return d>=-2&&d<=15;});}
