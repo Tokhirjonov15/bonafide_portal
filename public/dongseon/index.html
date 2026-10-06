@@ -8019,7 +8019,7 @@ function cardEl(p,colRoom){
     ${''/* 비트 처방내역 요약은 카드에서 빼고 환자 정보 창의 '처방내역' 표에서만 본다 (2026-09-23) */}
     ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
-      return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 진료의"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
+      return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 — 진료실·C-Arm·Sono 는 의사, x-ray실 은 방사선, 비용 상담·처치실 은 간호"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
     <div class="pt-soon-tag" style="${PT_SOON[p.id]?'':'display:none'}">${esc(ptSoonText(PT_SOON[p.id]))}</div>
     <div class="wait-over-tag" style="${WAIT_OVER[p.id]?'':'display:none'}">${esc(waitOverText(WAIT_OVER[p.id]))}</div>
@@ -8232,9 +8232,16 @@ function accrue(p){const el=p.out?0:Math.max(0,sinceMs(p));
 /* ── 노트/상태 순수 변경 함수: 로컬 낙관적 반영 & 서버 트랜잭션이 같은 로직 적용(동시편집 보호·테스트 가능) ── */
 function applyStatus(d,st){accrue(d);d.status=st;
   /* 진행 시작 시 이 방의 담당 진료의를 치료 기록으로 남긴다 — 이후 다른 방에서도 누가 치료했는지 보임 */
-  if(st==='진행'){const r=curRoom(d);const doc=docFor(d,r);
+  if(st==='진행'){const r=curRoom(d);const doc=progStaffFor(d,r);
     if(doc){d.progLog=d.progLog||{};d.progLog[r]=doc;}}
   return d;}
+/* 방마다 '담당'으로 남길 사람 (2026-10-06 요청): 진료실 = 의사 · C-Arm·Sono·근전도 = 술기 의사 · x-ray실 = 방사선 · 비용 상담·처치실 = 간호.
+   그 방 담당을 아직 안 골랐으면 비워 둔다(예전처럼 접수 진료의로 채우지 않음 — 비용 상담에 의사 이름이 찍혔다) */
+function progStaffFor(d,r){
+  if(/x-?ray/i.test(r||''))return radFor(d,r);
+  if(isConsultRoom(r)){const c=(d.consults||{})[r];return (c&&c.who)||nurseFor(d,r);}
+  if(/처치실/.test(r||''))return nurseFor(d,r);
+  return docFor(d,r);}
 function applyNoteAppend(d,room,note){if(!d.notes)d.notes={};if(!Array.isArray(d.notes[room]))d.notes[room]=[];d.notes[room].push(note);return d;}
 function applyReply(d,room,key,reply){const a=d.notes&&d.notes[room];if(a){const t=a.find(x=>x.at===key);if(t){if(!Array.isArray(t.replies))t.replies=[];t.replies.push(reply);}}return d;}
 function applyNoteDone(d,room,key,target,by,at){const a=d.notes&&d.notes[room];if(a){const t=a.find(x=>x.at===key);if(t){if(target){t.done=true;t.doneBy=by;t.doneAt=at;}else{t.done=false;t.doneBy="";t.doneAt="";}}}return d;}
@@ -10820,7 +10827,8 @@ function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)e
 function docFor(p,room){if(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return p.roomDocs[room]||'';return p.doctor||'';}
 /* 카드에서 담당 선택칸을 숨길 방 (2026-10-01 요청): 진료실 → 간호, x-ray실 → 방사선, 3층 대기실 → 원무과(진료의 칸에 원무 직원이 들어 있었다).
    숨긴 칸은 자동 지정도 하지 않고, 진료의 칸을 숨긴 방은 [진행] 때 진료의를 요구하지 않는다 */
-const CARD_STAFF_HIDE={doc:r=>/^3층\s*대기실$/.test(r||''), nurse:r=>/진료실/.test(r||''), rad:r=>/x-?ray/i.test(r||'')};
+/* 2026-10-06 요청으로 바꿈: x-ray실 = 방사선만(진료의 칸 숨김) · 처치실 = 간호만(진료의 칸 숨김) · 진료실 = 의사만(간호·방사선 숨김) */
+const CARD_STAFF_HIDE={doc:r=>/^3층\s*대기실$/.test(r||'')||/x-?ray/i.test(r||'')||/처치실/.test(r||''), nurse:r=>/진료실/.test(r||''), rad:r=>/진료실/.test(r||'')};
 function doctorChipHtml(p,room){
   const _r=room||curRoom(p)||'';
   if(CARD_STAFF_HIDE.doc(_r))return '';
