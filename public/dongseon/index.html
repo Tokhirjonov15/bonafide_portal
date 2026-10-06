@@ -2486,7 +2486,7 @@ function rxRouteCompute(p,h,stamp){
   /* 2026-10-06: 진료실 뒤 상담은 4층 치료로 가는 환자에게는 넣지 않는다 — 4층은 4층 상담이 따로 있다.
      3층 시술(C-Arm·Sono·근전도·처치)이 있으면 여전히 반드시 */
   const FLOOR4_TREAT=['4층 상담','SASO','자동차도수','충격파','신장분사','물리치료','기본물리치료'];
-  const mustCons=!!(consR&&(want.some(r=>CONSULT_NEEDS.includes(r))||(seenDoc&&!want.some(r=>FLOOR4_TREAT.includes(r)))));
+  const mustCons=!rxIsGreen(p)&&!!(consR&&(want.some(r=>CONSULT_NEEDS.includes(r))||(seenDoc&&!want.some(r=>FLOOR4_TREAT.includes(r)))));   // GREEN+ 는 진료실·비용 상담 없이 바로 시술 (2026-10-06)
   const mustUp=!!(upR&&want.includes(upR));
   if(mustCons&&!want.includes(consR))want=[consR,...want];
   const step=Math.max(0,Math.min(p.step||0,p.route.length-1));
@@ -2554,7 +2554,67 @@ function applyRxRoutesAll(){
   if(n){try{renderThrottled();}catch(e){}
     if(editId&&changed.includes(editId)){const p=data.find(x=>x.id===editId);
       if(p&&typeof renderRouteRows==='function'){try{routeDraft=[...p.route];renderRouteRows();}catch(e){}}}}
+  rxAutoMoveSoon();   // 처방 → 카드 자동 이동 (X-RAY·GREEN+, 2026-10-06)
   return n;
+}
+/* ═════ 처방 → 카드 자동 이동 (2026-10-06 요청) ═════
+   · X-RAY 처방(처방코드 G+숫자, G0400 = C-Arm 이용료 제외)이 오면 → 카드가 어느 방에 있든 x-ray실로.
+     x-ray 다음 방은 비트 접수의 원장님 진료실(docRoomOf(p.doctor)) — 진료 뒤에 낸 X-RAY 면 결과를 보러 그 진료실로 다시.
+   · GREEN+(처방코드에 GREEN) 환자는 진료실을 건너뛴다(비용 상담도 넣지 않음, rxRouteCompute) —
+     x-ray 를 마친 뒤 SONO·C-ARM 처방이 오면 그 방으로 바로(같은 공간 순서: 근전도 → C-Arm → Sono → 처치).
+   한 처방에 한 번, 여러 화면 중 한 화면만(카드 문서 xrayAutoKey·greenAutoKey 로 선점).
+   이 기능을 켠 순간 보드에 있던 환자가 옛 처방으로 끌려가지 않도록, 처방을 낸 시각(줄의 t)이 15분 안인 것만 옮긴다 */
+function rxItemsOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return (rx&&Array.isArray(rx.items))?rx.items:[];}
+function rxIsXrayCode(c){c=String(c||'').trim();return /^g\d/i.test(c)&&c.toUpperCase()!=='G0400';}
+function rxIsGreen(p){return rxItemsOf(p).some(x=>/green/i.test(String(x.cod||'')));}
+function rxFresh(items){const now=new Date(),nm=now.getHours()*60+now.getMinutes();
+  return items.some(x=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(x.t||''));if(!m)return false;const d=nm-(+m[1]*60+ +m[2]);return d>=-2&&d<=15;});}
+function visitedRoom(p,room){return (p.visits||[]).some(v=>v&&v.room===room);}
+let _rxMoveT=null;const RX_MOVE_BUSY={};
+function rxAutoMoveSoon(){clearTimeout(_rxMoveT);_rxMoveT=setTimeout(()=>{try{rxAutoMoveAll();}catch(e){console.warn('rxAutoMove',e);}},1500);}   // 동선 다시 짜기(트랜잭션)가 먼저 끝나도록 잠깐 뒤에
+function rxClaim(p,field,key,then){RX_MOVE_BUSY[p.id]=1;p[field]=key;
+  cloudPatientTxn(p.id,d=>{if(d[field]===key)return false;d[field]=key;return d;},{keepLocal:true})
+    .then(ok=>{if(ok===true&&then)try{then();}catch(e){console.warn('rxClaim',e);}})
+    .finally(()=>{delete RX_MOVE_BUSY[p.id];});}
+function rxAutoMoveAll(){
+  if(!currentUser||!Array.isArray(data)||!(cloud.active&&cloud.patientsCol))return;
+  const xr=ROOMS.includes('x-ray실')?'x-ray실':'';
+  data.forEach(p=>{
+    if(!p||p._viewOnly||p.discharged||RX_MOVE_BUSY[p.id])return;
+    if(RX_ROUTE_BUSY[p.id]){rxAutoMoveSoon();return;}
+    const cur=curRoom(p);if(!cur||cur===payDoneRoom())return;
+    const items=rxItemsOf(p);if(!items.length)return;
+    /* 1) X-RAY */
+    const xi=items.filter(x=>rxIsXrayCode(x.cod));
+    if(xr&&xi.length){const key=xi.map(x=>String(x.cod).trim().toUpperCase()).sort().join(',');
+      if(p.xrayAutoKey!==key){
+        if(cur===xr||visitedRoom(p,xr)||!rxFresh(xi)){rxClaim(p,'xrayAutoKey',key);return;}   // 이미 찍는 중·찍었음·옛 처방 — 표시만 남기고 옮기지 않는다
+        rxClaim(p,'xrayAutoKey',key,()=>rxMoveToXray(p.id));return;}}
+    /* 2) GREEN+ → SONO·C-ARM */
+    if(rxIsGreen(p)){
+      const need=(spaceRoomsFromRx(p)||[]);if(!need.some(r=>r==='C-Arm'||r==='Sono'))return;
+      if(cur===xr)return;                                   // x-ray 찍는 중 — 끝나면 [종결]로 동선대로 간다
+      if(xr&&xi.length&&!visitedRoom(p,xr))return;          // x-ray 가 먼저
+      const pi=items.filter(x=>{const c=String(x.cod||'').trim(),n=String(x.nam||'').trim();return ROUTE_RX_RULES.some(r=>(r.room==='C-Arm'||r.room==='Sono')&&rxRuleHit(r,c,n));});
+      const key=need.join(',');if(p.greenAutoKey===key)return;
+      if(isSameSpace(cur,need[0])||need.some(r=>visitedRoom(p,r))||!rxFresh(pi)){rxClaim(p,'greenAutoKey',key);return;}
+      rxClaim(p,'greenAutoKey',key,()=>{const q=data.find(x=>x.id===p.id);if(!q||q.discharged||curRoom(q)===need[0])return;
+        delete q.spaceDone;const from=curRoom(q);moveTo(q.id,need[0]);
+        try{audit('GREEN+ 자동 이동',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+from+' → '+need[0]);}catch(e){}});
+    }
+  });
+}
+function rxMoveToXray(pid){
+  const q=data.find(x=>x.id===pid);if(!q||q.discharged)return;
+  const xr='x-ray실',from=curRoom(q);if(from===xr)return;
+  const green=rxIsGreen(q), docR=docRoomOf(q.doctor);
+  const st=Math.max(0,Math.min(q.step||0,q.route.length-1));
+  let rest=q.route.slice(st+1).filter(r=>r!==xr);
+  if(docR)rest=rest.filter(r=>r!==docR);                // 진료실은 x-ray 바로 뒤로(GREEN+ 면 뺀다)
+  q.route=[...q.route.slice(0,st+1),xr,...((docR&&!green)?[docR]:[]),...rest];
+  moveTo(q.id,xr);
+  try{audit('X-RAY 자동 이동',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+from+' → '+xr+(green?' (GREEN+ — 진료실 건너뜀)':(docR?' → '+docR:'')));}catch(e){}
+  try{toast(dispName(q.name)+' 님 X-RAY 처방 → x-ray실');}catch(e){}
 }
 function mirroredHere(p, room){
   const cr=curRoom(p);
