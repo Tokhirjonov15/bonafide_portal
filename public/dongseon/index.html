@@ -8849,7 +8849,12 @@ function roomNotify(p,room,kind,extra){
   try{
     if(!p||!room||!(window.firebase&&firebase.auth)||!firebase.auth().currentUser)return;
     const body=Object.assign({room,kind,seq:p.seq||null,name:p.name||'',mrn:p.mrn||''},extra||{});
-    firebase.auth().currentUser.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});
+    const send=()=>{try{const u=firebase.auth().currentUser;if(!u)return;
+      u.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});}catch(e){}};
+    /* "x-ray 나왔습니다" 는 방을 나가고 30초 뒤에 (2026-10-06 요청). 그 사이 카드가 x-ray실로 되돌아오면(잘못 옮겼다 되돌림) 보내지 않는다 */
+    if(kind==='out'&&/x-?ray/i.test(room)){const pid=p.id;
+      setTimeout(()=>{const q=data.find(x=>x.id===pid);if(q&&!q.discharged&&curRoom(q)===room)return;send();},30000);return;}
+    send();
   }catch(e){}
 }
 /* ═════ 3층 ↔ 4층 이동 텔레그램 알림 (2026-10-01 요청) ═════
