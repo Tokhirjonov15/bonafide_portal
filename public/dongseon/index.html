@@ -1464,6 +1464,15 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cst-info-pop{position:fixed;inset:0;z-index:1400;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px}
   .cst-info-pop.show{display:flex}
   .cip-box{background:var(--panel);border-radius:14px;max-width:620px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  /* 드레싱 재료 고르기 (2026-10-06) */
+  .drs-box{max-width:560px}
+  .drs-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .drs-name{flex:0 0 120px;font-weight:800;font-size:15px;color:var(--muted)}
+  .drs-name.on{color:var(--blue)}
+  .drs-opts{display:flex;flex-wrap:wrap;gap:6px}
+  .drs-chip{min-width:44px;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:7px 11px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  .drs-chip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .drs-prev{margin:12px 0 10px;padding:9px 11px;border-radius:9px;background:var(--panel2);font-weight:700;font-size:14px}
   .cip-head{display:flex;align-items:center;gap:8px;font-size:18px;margin-bottom:6px}
   .cip-t{font-weight:800;color:#1e3a5f;margin:12px 0 4px;font-size:14px}
   .cip-p{font-size:15px;line-height:1.7}
@@ -2202,6 +2211,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
       <div id="todaySection">
       <div class="sect-t" style="display:flex;align-items:center;gap:8px"><i data-lucide="notebook-pen"></i> 오늘 차팅
         <span style="margin-left:auto;display:inline-flex;gap:4px">
+          <button type="button" class="mini" title="드레싱 사용 재료 고르기 → 오늘 차팅에 한 줄로 넣기" onclick="openDressing()"><i data-lucide="bandage"></i> 드레싱</button>
           <!-- 기본양식·양식저장 버튼: 사용 안 함(2026-09, 원장 지시) — 필요 시 display 제거 -->
           <button type="button" class="mini" style="display:none" title="진료의 기본 양식을 오늘 차트에 적용" onclick="editApplyTpl()"><i data-lucide="clipboard"></i> 기본양식</button>
           <button type="button" class="mini" style="display:none" title="오늘 차트 내용을 진료의 기본 양식으로 저장" onclick="editSaveTpl()"><i data-lucide="save"></i> 양식저장</button>
@@ -9974,6 +9984,42 @@ function chartBoxHtml(cid, text){
 }
 /* 오늘 차팅을 새로 썼는지 (2026-10-05, 진료지원 창): 비어 있던 칸에 자동으로 복사돼 들어간 직전 차트를 그대로 저장한 것은 빼고,
    내용이 바뀌었을 때만 p.chartAt·chartBy 를 남긴다 */
+/* ═════ 드레싱 재료 (2026-10-06 요청) ═════
+   오늘 차팅 옆 [드레싱] → 재료와 규격을 골라 차팅에 한 줄로 넣는다. 예) "드레싱: 메딕스 s1, 메디폼 5mm, 코반 2"
+   여러 재료·여러 규격을 함께 고를 수 있다. 재료·규격을 바꾸려면 DRESSING_ITEMS 만 고치면 된다 */
+const DRESSING_ITEMS=[
+  {name:'메딕스',opts:['s1','1','2','3','4','5','6','7']},
+  {name:'이지에프 일회성',opts:[]},
+  {name:'메디폼',opts:['2mm','5mm']},
+  {name:'픽스롤',opts:['픽스롤1','픽스롤3']},
+  {name:'코반',opts:['1','2','3','4']},
+  {name:'eb붕대',opts:['1','2','3','4']},
+  {name:'듀오덤',opts:[]}];
+let DRS_SEL={};   // 재료 이름 → 고른 규격들(Set). 규격 없는 재료는 '' 하나
+function drsLabel(name,opt){return !opt?name:(String(opt).startsWith(name)?opt:name+' '+opt);}
+function drsParts(){const out=[];DRESSING_ITEMS.forEach(it=>{const s=DRS_SEL[it.name];if(!s)return;(it.opts.length?it.opts.filter(o=>s.has(o)):(s.has('')?['']:[])).forEach(o=>out.push(drsLabel(it.name,o)));});return out;}
+window.openDressing=function(){DRS_SEL={};
+  let ov=document.getElementById('drsPop');
+  if(!ov){ov=document.createElement('div');ov.id='drsPop';ov.className='cst-info-pop';ov.onclick=e=>{if(e.target===ov)ov.classList.remove('show');};document.body.appendChild(ov);}
+  renderDressing();ov.classList.add('show');};
+window.drsToggle=function(i,o){const it=DRESSING_ITEMS[i];if(!it)return;const s=DRS_SEL[it.name]||(DRS_SEL[it.name]=new Set());
+  if(s.has(o))s.delete(o);else s.add(o);if(!s.size)delete DRS_SEL[it.name];renderDressing();};
+function renderDressing(){const ov=document.getElementById('drsPop');if(!ov)return;const parts=drsParts();
+  ov.innerHTML=`<div class="cip-box drs-box"><div class="cip-head"><i data-lucide="bandage"></i> <b>드레싱 사용 재료</b><span style="flex:1"></span><button type="button" class="btn sm" onclick="document.getElementById('drsPop').classList.remove('show')">닫기</button></div>
+    ${DRESSING_ITEMS.map((it,i)=>{const s=DRS_SEL[it.name];
+      return `<div class="drs-row"><span class="drs-name${s?' on':''}">${esc(it.name)}</span><span class="drs-opts">${it.opts.length
+        ?it.opts.map(o=>`<button type="button" class="drs-chip${s&&s.has(o)?' on':''}" onclick="drsToggle(${i},'${esc(o)}')">${esc(o)}</button>`).join('')
+        :`<button type="button" class="drs-chip${s&&s.has('')?' on':''}" onclick="drsToggle(${i},'')">사용</button>`}</span></div>`;}).join('')}
+    <div class="drs-prev">${parts.length?'드레싱: '+parts.map(esc).join(', '):'<span class="hint">재료를 골라 주세요</span>'}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="btn" onclick="DRS_SEL={};renderDressing()">다시 고르기</button><button type="button" class="btn primary" ${parts.length?'':'disabled'} onclick="drsInsert()">차팅에 넣기</button></div></div>`;
+  if(window.lucide)try{lucide.createIcons();}catch(e){}}
+window.drsInsert=function(){const parts=drsParts();if(!parts.length)return;
+  const ta=document.getElementById('f_chart');if(!ta)return;
+  const line='드레싱: '+parts.join(', ');const cur=ta.value.replace(/\s+$/,'');
+  ta.value=cur?cur+'\n'+line:line;ta.dispatchEvent(new Event('input',{bubbles:true}));
+  document.getElementById('drsPop').classList.remove('show');
+  try{ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length);}catch(e){}
+  try{toast('오늘 차팅에 넣었습니다 — [저장]을 눌러야 저장됩니다');}catch(e){}};
 function markChartWritten(p,text){
   text=String(text||'');if(!p||!text.trim()||text===(p.chart||''))return;
   const key=pKey(p.mrn,p.name);
