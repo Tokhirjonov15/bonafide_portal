@@ -1527,6 +1527,17 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #pbScreen .ks-item{width:min(260px,80vw);min-height:180px;border:3px solid #bfdbfe;border-radius:24px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;box-shadow:0 10px 30px rgba(37,99,235,.12)}
   #pbScreen .ks-item:active{transform:scale(.97);border-color:#2563eb}
   #pbScreen .ks-iname{font-size:36px;font-weight:900;color:#1d4ed8}#pbScreen .ks-idesc{font-size:16px;color:#64748b;padding:0 10px}
+  /* 환자용 화면 크게 — 화면 높이 기준 (2026-10-06 요청) */
+  #pbScreen .ks-h1{font-size:clamp(32px,6vh,66px);letter-spacing:1px;word-break:keep-all}
+  #pbScreen .ks-h2{font-size:clamp(20px,3.3vh,38px);word-break:keep-all}
+  #pbScreen .ks-items{gap:2.6vw;margin-top:3vh}
+  #pbScreen .ks-item{width:min(28vw,460px);min-height:clamp(200px,34vh,400px);border-radius:34px;border-width:4px;gap:1.6vh}
+  #pbScreen .ks-iname{font-size:clamp(46px,8.4vh,100px);letter-spacing:2px}
+  #pbScreen .ks-idesc{font-size:clamp(17px,2.4vh,28px)}
+  #pbScreen .ks-btns{gap:2vw;margin-top:2vh}
+  #pbScreen .ks-btn{font-size:clamp(24px,3.8vh,44px);padding:2.4vh 5vh;border-radius:24px}
+  #pbScreen .ks-ok{width:clamp(110px,15vh,180px);height:clamp(110px,15vh,180px);line-height:clamp(110px,15vh,180px);font-size:clamp(64px,9vh,110px)}
+  @media (max-width:760px){#pbScreen .ks-item{width:80vw;min-height:150px}}
   /* 혜택 관리 */
   #bonusMgr .bm-box{max-width:760px;max-height:88vh;display:flex;flex-direction:column}
   #bonusMgr .cip-head svg{width:18px;height:18px;color:#d97706}
