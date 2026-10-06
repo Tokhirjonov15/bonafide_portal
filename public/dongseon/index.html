@@ -2373,11 +2373,13 @@ function isHandOffDrop(targetEl,p){   // 같은 환자 카드 위에 놓았는�
    · 방 순서는 ROUTE_ORDER. 처방에 없는 방이 손으로 들어가 있으면 그대로 둔다(자동으로 넣은 방만 다시 계산).
    · 직원이 [종결] 대신 다른 방으로 끌어다 놓아도(예: C-Arm → x-ray실) 그 방이 동선 사이에 끼어들고 나머지는 이어진다(moveTo 참고).
    · 낱말이나 방 순서가 바뀌면 여기만 고친다. */
-const ROUTE_ORDER=['x-ray실','CT실','진료 상담','근전도검사','C-Arm','Sono','처치실','4층 대기실','4층 상담','충격파','신장분사','SASO','자동차도수','물리치료','기본물리치료'];   /* 2026-10-01 '동선관리 로직' 시트: 근전도→C-arm→sono→처치, 4층은 4층 대기실 → 4층 상담 → 충격파·신장분사 → SASO·자동차도수 → 기본물리치료 */   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
+const ROUTE_ORDER=['x-ray실','CT실','진료 상담','비용 상담','근전도검사','C-Arm','Sono','처치실','4층 대기실','4층 상담','충격파','신장분사','SASO','자동차도수','물리치료','기본물리치료'];   /* 2026-10-01 '동선관리 로직' 시트: 근전도→C-arm→sono→처치, 4층은 4층 대기실 → 4층 상담 → 충격파·신장분사 → SASO·자동차도수 → 기본물리치료 */   // 4층 상담은 물리치료보다 먼저 (2026-09-26 지시: CS+MM 이면 4층 상담 → 기본물리치료 → 수납대기)
 /* 진료 상담이 반드시 앞에 들어가야 하는 방들 — 이 중 하나라도 처방되면 상담을 먼저 거친다 (2026-09-26 지시) */
 const CONSULT_NEEDS=['C-Arm','Sono','근전도검사','처치실'];
 const PT_ROOMS=['물리치료','기본물리치료'];   // 수납대기가 이 방들 앞에 들어간다(4층 상담이 없을 때)
-function rxConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^진료\s*상담$/.test(r))||'';}
+/* 진료 상담 방 — 2026-10-06 방 이름을 '비용 상담'으로 바꿈. 두 이름 모두 진료 상담으로 본다 */
+const CLINIC_CONSULT_RE=/^(진료|비용)\s*상담$/;
+function rxConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>CLINIC_CONSULT_RE.test(r))||'';}
 function rxUpConsultRoom(){const l=(typeof ROOMS!=='undefined'&&Array.isArray(ROOMS))?ROOMS:[];return l.find(r=>/^4층\s*상담$/.test(r))||'';}
 /* 처치실로 보내는 처방코드 — '동선관리 로직.xlsx' 처치 칸(B열) 그대로, 소문자 (2026-10-01) */
 const RX_TREAT_CODES=new Set(["dressing", "d1850", "d1860", "d0002030", "d0002010", "d0002050", "d0002040", "d0002070", "d8413036", "d3230060", "d3250010", "d3230050", "d6802066z", "d6801046z", "d5874096z", "d6802026z", "d6801016z", "d5912036z", "d5913016z", "d013300hz", "d8070016z", "d8070026z", "d7951036z", "d5010010", "d5030010", "d4902020", "d7843006", "d7951036", "d7471010", "d7471020", "d8413026", "d5856000z", "d5851000z", "d5853000z", "d654219cz", "d654319cz", "d654209cz", "d654309cz", "d7460006z", "m0111", "m0121", "skycell", "a7", "sk", "gsk", "m0032", "c8140", "t6151", "t6155", "t6153", "t6154", "t6152", "b형간염", "sc031", "sb021", "sc021", "cefaze", "sb032", "crutch", "alle", "ttb", "ibn", "실린더", "장하지1", "pprol", "본큐어주", "terrosa", "evenity", "ev", "jx", "n0210", "coban1", "coban2", "coban3", "coban4", "coban5", "coolband1", "coolband2", "coolband3", "coolband4", "coolband5", "itl", "tsc", "zroid", "zlm", "atb", "mixinjection1", "mixinjection2", "mixinjection3", "mixinjection4", "mixinjection5", "mixinjection6", "mixinjection7", "mixinjection8", "mixinjection9", "rkarl", "wenuf", "pain", "pain4", "pain5", "pain8", "pain10", "genta", "dxmt", "triam", "dcf", "trol", "t6163", "t6162", "t6161", "peni", "conto", "n0234", "h9", "h92", "d5854", "n0215", "n0912", "n0200", "d1004", "d1005", "d1083", "d1121"]);
@@ -2481,7 +2483,10 @@ function rxRouteCompute(p,h,stamp){
   const consR=rxConsultRoom(), upR=rxUpConsultRoom();
   /* 2026-10-01 시트: '진료실 후에는 무조건 진료 상담' — 진료실을 거친 환자는 처방 내용과 상관없이 진료 상담. (진료실 없이 대기실에서 처방이 온 경우는 시술이 있을 때만) */
   const seenDoc=p.route.slice(0,Math.max(0,Math.min(p.step||0,p.route.length-1))+1).some(r=>/진료실/.test(r)&&r!=='3층 진료실');
-  const mustCons=!!(consR&&(seenDoc||want.some(r=>CONSULT_NEEDS.includes(r))));
+  /* 2026-10-06: 진료실 뒤 상담은 4층 치료로 가는 환자에게는 넣지 않는다 — 4층은 4층 상담이 따로 있다.
+     3층 시술(C-Arm·Sono·근전도·처치)이 있으면 여전히 반드시 */
+  const FLOOR4_TREAT=['4층 상담','SASO','자동차도수','충격파','신장분사','물리치료','기본물리치료'];
+  const mustCons=!!(consR&&(want.some(r=>CONSULT_NEEDS.includes(r))||(seenDoc&&!want.some(r=>FLOOR4_TREAT.includes(r)))));
   const mustUp=!!(upR&&want.includes(upR));
   if(mustCons&&!want.includes(consR))want=[consR,...want];
   const step=Math.max(0,Math.min(p.step||0,p.route.length-1));
@@ -6090,7 +6095,7 @@ function setConsultResult(pid,room,result){const p=data.find(x=>x.id===pid);if(!
 /* 상담에서 '시행' 을 누르면 비트 처방내역에 적힌 방으로 카드를 자동으로 보낸다 (2026-09-24).
    처방에 C-Arm 이 있으면 C-Arm 으로, 여러 방이면 그 방들 모두에 펼쳐진다(같은 공간이라 거울로 함께 보임).
    처방에 네 방이 하나도 없으면 아무것도 하지 않고 상담실에 그대로 둔다. */
-function isClinicConsult(r){return /^진료\s*상담$/.test(String(r||'').trim());}
+function isClinicConsult(r){return CLINIC_CONSULT_RE.test(String(r||'').trim());}
 function consultAutoRoute(pid,fromRoom){
   const p=data.find(x=>x.id===pid);if(!p)return false;
   if(!isConsultRoom(fromRoom)||curRoom(p)!==fromRoom)return false;
@@ -7782,8 +7787,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(routeOutOfOrder(p)?" off-route":"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"");c.draggable=true;
-  if(routeOutOfOrder(p))c.title="환자 동선 순서가 처방 순서와 다릅니다 — 카드를 눌러 동선을 확인해 주세요.";
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
@@ -8458,13 +8462,8 @@ function rxRouteOff(p,room){
 function moveByDrag(pid,room){
   const p=data.find(x=>x.id===pid);if(!p)return;
   /* 2026-10-01 시트 요청: 처방 동선 밖으로 끌 때 뜨던 경고창은 없앤다 (빨간 카드 표시는 그대로) */
-  const _old=p.route.slice(), _st=p.step||0, _from=curRoom(p);
   moveTo(pid,room);
-  /* 다음 차례가 아닌 방으로 옮겼으면 모두에게: 끼워 넣음(동선에 없던 방) 또는 건너뜀(사이 방을 지나침) */
-  const q=data.find(x=>x.id===pid);if(!q||_from===room)return;
-  const ni=_old.indexOf(room,_st+1);
-  if(ni<0)routeChangeNotify(q,_old,q.route,_from+' → '+room,[_from,room]);
-  else if(ni>_st+1)routeChangeNotify(q,_old,q.route,'건너뜀 '+_old.slice(_st+1,ni).join(', '),[_from,room,..._old.slice(_st+1,ni)]);
+  /* 동선 밖 방으로 끌거나 사이 방을 건너뛸 때 보내던 텔레그램 알림은 없앴다 (2026-10-06 요청) */
 }
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
@@ -10090,7 +10089,7 @@ function exportConsults(){
 /* ───── 환자 추가/편집 모달 ───── */
 let routeDragIdx=null;
 /* 동선 추가 버튼 순서: '진료 상담'을 맨 앞에 (2026-10-01 요청). 나머지는 방 순서 그대로 — 보드 칸 순서(ROOMS)는 건드리지 않는다 */
-const ROUTE_BTN_FIRST=['진료 상담','수납대기'];   // 2026-10-01: 진료 상담 다음에 수납대기
+const ROUTE_BTN_FIRST=['진료 상담','비용 상담','수납대기'];   // 2026-10-01: 진료 상담 다음에 수납대기
 function renderRoomButtons(){
   const order=[...ROUTE_BTN_FIRST.filter(r=>ROOMS.includes(r)),...ROOMS.filter(r=>!ROUTE_BTN_FIRST.includes(r))];
   document.getElementById("routeBtns").innerHTML=order.map(r=>`<button type="button" class="rbtn" onclick="addRouteStep('${esc(r)}')">${esc(r)} +</button>`).join("");
@@ -10176,7 +10175,7 @@ function waitPopHidden(){if(SLIP_SOLO||slipOpen||document.body.classList.contain
    admin = 모든 방 · 4층 직원(아래 명단) = 4층 쪽 방 · 의사(role doctor) = 없음 · 그 밖의 직원 = 3층 쪽 방 */
 const WAIT_POP_4F_STAFF=['서효성','김지은','허빈','한상훈','조현신','이세영','황지현','김건휘','김재하','신소현','고민정','박승규','임현주'];
 const WAIT_POP_4F_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','신장분사','충격파','아쿠아','롤러','3층 진료실'];
-const WAIT_POP_3F_ROOMS=['3층 대기실','x-ray실','진료실1','진료실3','진료 상담','근전도검사','C-Arm','Sono','처치실','CT실','수납대기'];
+const WAIT_POP_3F_ROOMS=['3층 대기실','x-ray실','진료실1','진료실3','진료 상담','비용 상담','근전도검사','C-Arm','Sono','처치실','CT실','수납대기'];
 function waitPopRooms(){if(!currentUser)return [];if(isAdmin())return null;   // null = 모든 방
   const nm=String(currentUser.name||'').replace(/\s+/g,'');
   if(WAIT_POP_4F_STAFF.some(n=>nm.includes(n)))return WAIT_POP_4F_ROOMS;   /* '김지은 선생님'처럼 붙어 있어도 */
