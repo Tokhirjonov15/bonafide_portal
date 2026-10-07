@@ -51,7 +51,7 @@ function renderSchedule(){
     <span class="row"><button type="button" class="ghost" onclick="copyLayout()">${esc(D.borrowedFrom)} 의 비근무까지 복사</button><button type="button" class="ghost" onclick="openEd({kind:'therapists'})">명단 직접 고르기</button></span></div>`;
   if(!D.therapists.length)h+=`<div class="empty"><p>치료사가 아직 없습니다. 먼저 치료사를 추가하세요.</p><button type="button" onclick="openEd({kind:'therapists'})">치료사 추가</button></div>`;
   if(fullOff.length&&fullOff.length<D.allTherapists.length){const names=fullOff.map(t=>esc(t.name)).join(', ');
-    h+=`<div class="hint" style="margin:6px 0"><span>${HIDE_OFF?`하루 종일 회색인 치료사 <b>${fullOff.length}명</b>을 숨겼습니다: ${names}`:`하루 종일 회색인 치료사 ${fullOff.length}명: ${names}`} <span class="who small">(화면에서만 — 통계는 그대로)</span></span><button type="button" class="ghost" onclick="toggleHideOff()">${HIDE_OFF?'다시 보이기':'열 숨기기'}</button></div>`;}
+    h+=`<div class="hint" style="margin:6px 0"><span>${HIDE_OFF?`휴무자 <b>${fullOff.length}명</b>을 숨겼습니다: ${names}`:`휴무자(하루 종일 회색) ${fullOff.length}명: ${names}`} <span class="who small">(화면에서만 — 통계는 그대로)</span></span><button type="button" class="ghost" onclick="toggleHideOff()">${HIDE_OFF?'휴무자 다시 보이기':'휴무자 숨기기'}</button></div>`;}
   if(D.therapists.length){
     const units=54+D.therapists.reduce((a,t)=>a+(t.single?44:122),0);const w=u=>`${((u/units)*100).toFixed(3)}%`;
     h+=`<div class="scroll"><table class="sheet grid fluid" style="width:100%"><colgroup><col style="width:${w(54)}">`;
