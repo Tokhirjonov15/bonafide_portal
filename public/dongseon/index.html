@@ -8170,9 +8170,8 @@ function cardEl(p,colRoom){
         return `<span class="nudge-grp" title="대기실 순서 바꾸기 (위/아래 한 칸)"><button class="icon-btn nudge" ${np.i===0?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',-1)">▲</button><button class="icon-btn nudge" ${np.i===np.n-1?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',1)">▼</button></span>`;})()}</div>
     ${(function(){   /* 예약 뱃지 (2026-10-01): [비트 19:20] = 비트 진료 예약, 그 오른쪽 [14:30] = 4층 비급여 치료 예약 시트의 오늘 시간 */
       const f4=cardFloor4Times(p);if(!p.reserveAt&&!f4.length)return '';
-      /* 비트 예약 시간과 4층 예약 시간이 같으면 한 번만 — [비트·4층 15:00] (2026-10-07 요청) */
       const mn=t=>{const m=/^(d{1,2}):(d{2})/.exec(String(t||''));return m?(+m[1])*60+(+m[2]):-1;};
-      const same=p.reserveAt?f4.find(t=>mn(t)===mn(p.reserveAt)):null;
+      const same=null;   // 2026-10-07 다시 요청: 비트 시간과 4층 시간은 같아도 따로 적는다 ([비트 14:30] [4층 14:30])
       const f4b=t=>{const a=cardFloor4Arrived(p,t);return `<span class="rb rb-4f${a?' arr':''}" title="${t===same?'비트 예약 + ':''}4층 비급여 치료 예약${a?' — 받음(표시 .)·도착':''}">${t===same?'비트·':''}4층 ${esc(t)}${a?' ✓':''}</span>`;};
       return `<div class="card-time res-badges">${p.reserveAt&&!same?`<span class="rb rb-bit" title="비트 예약 시간"><i data-lucide="calendar"></i> 비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(f4b).join('')}${p.reserveAt?resTagHtml:''}</div>`;})()}
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
