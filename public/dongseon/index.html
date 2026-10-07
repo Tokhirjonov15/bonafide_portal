@@ -8348,7 +8348,9 @@ function progStaffFor(d,r){
   if(/x-?ray/i.test(r||''))return radFor(d,r);
   if(isConsultRoom(r)){const c=(d.consults||{})[r];return (c&&c.who)||nurseFor(d,r);}
   if(/처치실/.test(r||''))return nurseFor(d,r);
-  return docFor(d,r);}
+  /* 의사 이름은 진료실과 C-Arm·Sono·근전도만. 나머지 방(대기실·수납·물리치료 등)은 [진행]을 누른 직원 이름 (2026-10-07 요청) */
+  if(/^진료실/.test(r||'')||/c\s*-?\s*arm|sono|근전도/i.test(r||''))return docFor(d,r);
+  return (typeof currentUser!=='undefined'&&currentUser&&currentUser.name)||'';}
 function applyNoteAppend(d,room,note){if(!d.notes)d.notes={};if(!Array.isArray(d.notes[room]))d.notes[room]=[];d.notes[room].push(note);return d;}
 function applyReply(d,room,key,reply){const a=d.notes&&d.notes[room];if(a){const t=a.find(x=>x.at===key);if(t){if(!Array.isArray(t.replies))t.replies=[];t.replies.push(reply);}}return d;}
 function applyNoteDone(d,room,key,target,by,at){const a=d.notes&&d.notes[room];if(a){const t=a.find(x=>x.at===key);if(t){if(target){t.done=true;t.doneBy=by;t.doneAt=at;}else{t.done=false;t.doneBy="";t.doneAt="";}}}return d;}
