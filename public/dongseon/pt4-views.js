@@ -48,6 +48,7 @@ function renderSchedule(){
   h+=`<div class="sheet-title"><span class="sheet-title-text">비급여치료 예약리스트</span><span class="sheet-title-date">${month}월 ${dd}일 ${WEEKDAYS[new Date(year,month-1,dd).getDay()]}요일${D.shortDay?' · 17:30까지':''}</span></div>`;
   if(MSG&&!EDIT)h+=`<p class="err">${esc(MSG)}</p>`;
   h+=newPtBar(D);
+  h+=hiddenBar(D);
   if(D.borrowedFrom)h+=`<div class="hint"><span>이 날은 아직 배치가 없어 <strong>${esc(D.borrowedFrom)}</strong> 의 치료사 명단으로 표시합니다. 예약이나 비근무를 저장하면 이 명단이 이 날에 확정됩니다.</span>
     <span class="row"><button type="button" class="ghost" onclick="copyLayout()">${esc(D.borrowedFrom)} 의 비근무까지 복사</button><button type="button" class="ghost" onclick="openEd({kind:'therapists'})">명단 직접 고르기</button></span></div>`;
   if(!D.therapists.length)h+=`<div class="empty"><p>치료사가 아직 없습니다. 먼저 치료사를 추가하세요.</p><button type="button" onclick="openEd({kind:'therapists'})">치료사 추가</button></div>`;
@@ -335,6 +336,23 @@ function manualPanel(D){
     <table class="mini manual-count summary"><tbody>
       <tr><td class="lbl green">도수+충격파</td><td>${D.bookings.filter(b=>b.visited&&!/^CRYO/i.test(normalizeCode(b.code))).length}</td></tr>
       <tr><td class="lbl blue">신장분사+Hilt</td><td>${D.bookings.filter(b=>b.visited&&/^CRYO/i.test(normalizeCode(b.code))).length}</td></tr></tbody></table></section>`;}
+/* ═════ 겹쳐서 안 보이는 예약 (2026-10-07: 빈 칸인데 '이미 예약이 있다'고 막힘) ═════
+   표는 한 칸에 예약 하나만 그린다 — 같은 치료사의 같은 시간에 예약이 둘 이상이거나, 명단에서 빠진(숨긴·전체 삭제) 치료사의 예약,
+   표 시간 밖 예약은 화면에 안 보이지만 자리를 차지한다. 그런 예약을 표 위에 빨간 줄로 보여 주고, 누르면 그 예약 창을 연다(옮기거나 지우기) */
+function hiddenBookings(D){const out=[];const shown=new Set(D.therapists.map(t=>t.id));const allIds=new Set((D.allTherapists||D.therapists).map(t=>t.id));
+  const seen=new Map();
+  D.bookings.slice().sort((a,b)=>a.startMin-b.startMin||a.id-b.id).forEach(b=>{
+    if(!allIds.has(b.therapistId)){out.push({b,why:'명단에 없는 치료사'});return;}
+    if(!shown.has(b.therapistId))return;   // 휴무자 숨기기로 가린 열 — 일부러 숨긴 것
+    if(b.startMin<DAY_START||b.startMin+b.durationMin>D.endMin){out.push({b,why:'표 시간 밖'});return;}
+    const prev=seen.get(b.therapistId);
+    if(prev&&b.startMin<prev.startMin+prev.durationMin){out.push({b,why:'다른 예약과 겹침 ('+hm(prev.startMin)+' '+(prev.patientName||prev.mrn||'')+')'});}
+    if(!prev||b.startMin+b.durationMin>prev.startMin+prev.durationMin)seen.set(b.therapistId,b);});
+  return out;}
+function hiddenBar(D){const L=hiddenBookings(D);if(!L.length)return '';const nm=id=>(thById(id)||{}).name||('#'+id);
+  return `<div class="hint" style="margin:6px 0;border-color:#fca5a5;background:#fef2f2;justify-content:flex-start"><b style="color:#b91c1c;white-space:nowrap">⚠ 표에 안 보이는 예약 ${L.length}건</b>${L.map(x=>`<span class="np-chip" style="border-color:#fca5a5;background:#fff">${esc(nm(x.b.therapistId))} ${hm(x.b.startMin)}~${hm(x.b.startMin+x.b.durationMin)} <b>${esc(x.b.patientName||x.b.mrn||'(이름 없음)')}</b> <span class="who small">${esc(x.b.code||'')} · ${esc(x.why)}</span> <button type="button" class="ghost" onclick="openHidden(${x.b.id})">열기</button></span>`).join('')}<span class="who small">자리를 차지해서 그 칸에 새 예약이 안 들어갑니다 — 열어서 옮기거나 지우세요</span></div>`;}
+window.openHidden=id=>{const b=D_().bookings.find(x=>x.id===id);if(b)openEd({kind:'booking',booking:b});};
+
 /* ═════ 처방 나온 첫 방문(1회차) 환자 → [추가] (2026-10-07 요청) ═════
    오늘 보드에서 동선에 신장분사·충격파가 있거나 그 처방(CRYO·EES·CE·ES 코드)이 나온 환자 중, 예약표에 예전 예약이 하나도 없는 환자(1회차)를
    제목 아래에 '이름 차트번호 [추가]' 로 띄운다. 누르면 이름·차트번호·진료실·치료코드·시간(지금 다음 15분 칸, 그때 비어 있는 치료사)·방문수 1 을 채운 새 예약 창.
