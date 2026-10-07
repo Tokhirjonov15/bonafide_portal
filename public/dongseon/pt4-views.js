@@ -495,7 +495,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <label>이름<input value="${A(d.patientName)}" placeholder="함수진" oninput="dset('patientName',this.value)"></label>
       <label>방문수<input value="${A(d.visitNo??'')}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);dset('visitNo',this.value===''?null:Number(this.value))"></label>
       <label>치료코드<input value="${A(d.code)}" placeholder="CME15" oninput="this.value=this.value.toUpperCase();dset('code',this.value)" onchange="codeDur(this.value)"></label>
-      <label class="wide">메모<input value="${A(d.note)}" oninput="dset('note',this.value)"></label></div>
+      <label class="wide">메모<textarea rows="5" class="ed-note" oninput="dset('note',this.value)">${esc(d.note||'')}</textarea></label></div>
       <div class="swatch-row"><span class="who small">코드 색</span>${PALETTE.map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.codeColor||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('codeColor','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
       <div class="swatch-row"><span class="who small">환자 칸 색</span>${PALETTE.filter(p=>p.hex!=='#ffe599'&&p.hex!=='#999999').map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.color||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('color','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
       <div class="row" style="justify-content:space-between;flex-wrap:wrap"><label class="check" style="margin:0"><input type="checkbox" ${d.visited?'checked':''} onchange="dset('visited',this.checked)"> 내원 (표시 "." + 환자 칸 노란색)</label>
