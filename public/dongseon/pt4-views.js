@@ -20,6 +20,10 @@ function renderSchedule(){
     for(const b of D.bookings.filter(x=>x.therapistId===t.id))for(let m=b.startMin;m<b.startMin+b.durationMin;m+=SLOT){const i=(m-DAY_START)/SLOT;if(i>=0&&i<slots)arr[i]={type:'booking',b};}
     occ.set(t.id,arr);}
   D.occ=occ;
+  /* 하루 종일 회색(예약 없이 모든 칸이 비근무·차단)인 치료사 열 숨기기 — 화면에서만, 통계·데이터는 그대로 (2026-10-07 요청, 이 PC 에 기억) */
+  const fullOff=D.therapists.filter(t=>occ.get(t.id).every(o=>o.type==='block'));
+  D.allTherapists=D.therapists;
+  if(HIDE_OFF&&fullOff.length&&fullOff.length<D.therapists.length)D.therapists=D.therapists.filter(t=>!fullOff.includes(t));
   const rendered=new Map(D.therapists.map(t=>[t.id,new Set()]));
   /* 전원 공통 차단(점심 등) — 띠 하나로 */
   const bands=[];
@@ -46,6 +50,8 @@ function renderSchedule(){
   if(D.borrowedFrom)h+=`<div class="hint"><span>이 날은 아직 배치가 없어 <strong>${esc(D.borrowedFrom)}</strong> 의 치료사 명단으로 표시합니다. 예약이나 비근무를 저장하면 이 명단이 이 날에 확정됩니다.</span>
     <span class="row"><button type="button" class="ghost" onclick="copyLayout()">${esc(D.borrowedFrom)} 의 비근무까지 복사</button><button type="button" class="ghost" onclick="openEd({kind:'therapists'})">명단 직접 고르기</button></span></div>`;
   if(!D.therapists.length)h+=`<div class="empty"><p>치료사가 아직 없습니다. 먼저 치료사를 추가하세요.</p><button type="button" onclick="openEd({kind:'therapists'})">치료사 추가</button></div>`;
+  if(fullOff.length&&fullOff.length<D.allTherapists.length){const names=fullOff.map(t=>esc(t.name)).join(', ');
+    h+=`<div class="hint" style="margin:6px 0"><span>${HIDE_OFF?`하루 종일 회색인 치료사 <b>${fullOff.length}명</b>을 숨겼습니다: ${names}`:`하루 종일 회색인 치료사 ${fullOff.length}명: ${names}`} <span class="who small">(화면에서만 — 통계는 그대로)</span></span><button type="button" class="ghost" onclick="toggleHideOff()">${HIDE_OFF?'다시 보이기':'열 숨기기'}</button></div>`;}
   if(D.therapists.length){
     const units=54+D.therapists.reduce((a,t)=>a+(t.single?44:122),0);const w=u=>`${((u/units)*100).toFixed(3)}%`;
     h+=`<div class="scroll"><table class="sheet grid fluid" style="width:100%"><colgroup><col style="width:${w(54)}">`;
@@ -115,6 +121,8 @@ function bookingCells(b,span){const bg=b.visited?'#ffe599':b.color||'#ffffff';co
     <td rowspan="${span}" class="code editable" style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}</td>
     <td rowspan="${span}" class="mark editable" title="클릭해서 점(.)이나 치료 시작 시각을 입력. 내용이 있으면 내원 · 두 번 누르면 방문 체크" onclick="markClick(${b.id},this,event)" ondblclick="event.stopPropagation();bVisit(${b.id})">${esc(shown)}</td>`;}
 
+let HIDE_OFF=(()=>{try{return localStorage.getItem('pt4HideOff')==='1';}catch(e){return false;}})();
+window.toggleHideOff=()=>{HIDE_OFF=!HIDE_OFF;try{localStorage.setItem('pt4HideOff',HIDE_OFF?'1':'0');}catch(e){}render();};
 /* ── 표 칸 동작 ── */
 const D_=()=>window.DV;
 function freeRun(tid,startMin){const arr=D_().occ.get(tid);let n=0;for(let i=(startMin-DAY_START)/SLOT;i<D_().slots&&arr[i].type==='free';i++)n+=SLOT;return n;}
@@ -366,12 +374,12 @@ window.edCopy=async()=>{const to=(document.getElementById('cpDate')||{}).value;c
     code:b.code,codeColor:b.codeColor,color:b.color==='#ffe599'?'':b.color,visited:false,note:b.note}),false);
   if(r){MSG=`${to} 로 복사했습니다 (메모 포함).`;renderEditor();}};
 window.edSaveBlock=async()=>{const e=EDIT,d=Object.assign({},e.draft);
-  if(e.kind==='band'){const old=e.band;const tids=D_().therapists.map(t=>t.id);
+  if(e.kind==='band'){const old=e.band;const tids=(D_().allTherapists||D_().therapists).map(t=>t.id);
     const r=await commitDay(R.q.date,ctx=>{const c1=opBandClear(tids,old.startMin,old.endMin)(ctx);if(!c1.ok)return c1;return opBlockSet(Object.assign(d,{all:true}))(ctx);});
     if(!r.ok){MSG=r.message;renderEditor();return;}EDIT=null;renderEditor();safeRender();return;}
   run(R.q.date,opBlockSet(d));};
 window.edClearBlock=()=>{const e=EDIT,d=e.draft;
-  if(e.kind==='band'){run(R.q.date,opBandClear(D_().therapists.map(t=>t.id),d.startMin,d.endMin));return;}
+  if(e.kind==='band'){run(R.q.date,opBandClear((D_().allTherapists||D_().therapists).map(t=>t.id),d.startMin,d.endMin));return;}
   run(R.q.date,opBlockClear(d.therapistId,d.startMin,d.endMin));};
 window.edSaveCancel=()=>{const e=EDIT;run(R.q.date,opCancelSave(Object.assign({},e.draft,{id:e.cancel?e.cancel.id:undefined})));};
 window.edDelCancel=()=>{if(confirm('삭제할까요?'))run(R.q.date,opCancelDelete(EDIT.cancel.id));};
