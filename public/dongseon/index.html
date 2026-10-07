@@ -903,6 +903,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #modal.view-only button[onclick="savePatient()"],#modal.view-only #delBtn,#modal.view-only #editStatusRow,#modal.view-only #modalRail{display:none !important}   /* 보기 전용 — 저장·삭제·상태 단추 숨김 */
   .pt4-ov{position:fixed;inset:0;z-index:450;background:var(--bg,#f6f7f9);display:none;flex-direction:column}
   .pt4-ov.show{display:flex}
+  body.wp-on .pt4-ov{bottom:var(--wpPad,0px)}   /* 대기 알림 띠가 스케줄 아래쪽(입력창)을 가리지 않게 — 그 높이만큼 띄움 (2026-10-07) */
   .pt4-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line,#e5e7eb);background:var(--panel,#fff)}
   .pt4-bar .spacer{flex:1}
   .pt4-ov iframe{flex:1;border:0;width:100%;background:#fff}
