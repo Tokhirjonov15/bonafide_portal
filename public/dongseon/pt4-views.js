@@ -431,7 +431,7 @@ const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Num
   return n?{ok:true}:{ok:false,noop:true};};
 async function sasoSync(){const date=R.q.date;if(SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
   const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length)return;
-  SASO_BUSY=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}SASO_BUSY=false;}
+  SASO_BUSY=true;NO_UNDO=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}NO_UNDO=false;SASO_BUSY=false;}
 const focusMan=()=>setTimeout(()=>{const e=document.getElementById('mnMrn');if(e)e.focus();},0);
 window.manNew=no=>{if(PAINT)return;MAN={no,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};render();focusMan();};
 window.manEdit=(id,ev)=>{if(PAINT)return;ev.stopPropagation();const m=D_().manual.find(x=>x.id===id);if(!m)return;MAN={no:m.no,id,f:{mrn:m.mrn,patientName:m.patientName,therapistName:m.therapistName},colorFor:null};render();focusMan();};

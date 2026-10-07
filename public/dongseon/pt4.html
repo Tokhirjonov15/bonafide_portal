@@ -436,6 +436,25 @@ function ensureTh(ctx){const d=ctx.d;if(d.th.length||!ctx.near||!ctx.near.th.len
   d.th=ctx.near.th.slice();lunchBlocks(d.date,d.th,b=>{d.blocks.push(Object.assign(b,{id:newId(d),updatedBy:'auto'}));return b;});}
 function timeOk(s,e){return Number.isInteger(s)&&Number.isInteger(e)&&s>=DAY_START&&e<=DAY_END&&e>s&&s%SLOT===0&&e%SLOT===0;}
 function aud(ctx,action,entity,entityId,before,after){ctx.audits.push({action,entity,entityId:String(entityId),date:ctx.d.date,before:jclone(before),after:jclone(after)});}
+/* ═════ 되돌리기 (Ctrl+Z, 2026-10-07 요청) ═════
+   이 화면에서 내가 한 저장마다 '바꾸기 전 하루 문서'를 기억해 두었다가(최근 50개) Ctrl+Z 로 하나씩 되돌린다.
+   그 사이 다른 PC 가 같은 날을 고쳤으면(문서의 updatedAt 이 내가 쓴 값과 다르면) 그 사람 변경까지 지워지므로 되돌리지 않고 알린다.
+   새로고침하면 기록은 사라진다. 치료사 정보·상담수(설정 문서)는 되돌리지 않는다 */
+const UNDO=[];let NO_UNDO=false;
+function undoLabel(a){const x=a[0];const L={create:'추가',update:'수정',delete:'삭제'};const E={bookings:'예약',work_blocks:'비근무/차단',cancels:'취소/변경',manual_tx:'Manual Tx',day_notes:'특이사항',day_therapists:'치료사 명단',day:'날짜 복사'};
+  const nm=(x.after&&x.after.patientName)||(x.before&&x.before.patientName)||'';return (E[x.entity]||x.entity)+' '+(L[x.action]||x.action)+(nm?' ('+nm+')':'')+(a.length>1?' 외 '+(a.length-1)+'건':'');}
+async function undoLast(){const u=UNDO[UNDO.length-1];if(!u){toast('되돌릴 변경이 없습니다 (이 화면에서 한 변경만, 새로고침 전까지)');return;}
+  try{const r=await DB.runTransaction(async t=>{const ref=C.day.doc(u.date);const s=await t.get(ref);const cur=s.exists?s.data():null;
+      if(!cur||cur.updatedAt!==u.after)return {ok:false,message:'그 뒤에 다른 PC(또는 자동 추가)에서 '+u.date+' 를 고쳐서 되돌릴 수 없습니다. 직접 고쳐 주세요.'};
+      const prev=u.prev?JSON.parse(u.prev):emptyDay(u.date);prev.updatedAt=new Date().toISOString();prev.updatedBy=ME.name;t.set(ref,prev);return {ok:true};});
+    if(!r.ok){toast(r.message,5000);UNDO.pop();return;}
+    UNDO.pop();writeAudits([{action:'update',entity:'day',entityId:u.date,date:u.date,before:null,after:{undo:u.what}}]);
+    toast('되돌렸습니다: '+u.what+' ('+u.date+')',3000);
+    if(R.page!=='schedule'||R.q.date!==u.date)go('schedule',{date:u.date});}
+  catch(e){console.error('undo',e);toast('되돌리지 못했습니다');}}
+document.addEventListener('keydown',e=>{if(!(e.ctrlKey||e.metaKey)||e.shiftKey||String(e.key).toLowerCase()!=='z')return;
+  const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;   // 글자 입력 중의 Ctrl+Z 는 그 칸의 되돌리기
+  if(!ME)return;e.preventDefault();undoLast();});
 async function commitDay(date,fn){
   if(!isValidDate(date))return {ok:false,message:'잘못된 날짜입니다.'};
   let near=null;const nd=nearestDataDate(date);
@@ -443,14 +462,18 @@ async function commitDay(date,fn){
   try{
     const r=await DB.runTransaction(async t=>{
       const ref=C.day.doc(date);const s=await t.get(ref);
+      const prevRaw=s.exists?JSON.stringify(s.data()):null;   // 되돌리기(Ctrl+Z)용 — 바꾸기 전 그대로
       const d=s.exists?normDay(s.data(),date):emptyDay(date);
       const ctx={d,near,audits:[],extra:{}};
       const res=fn(ctx)||{ok:true};
       if(!res.ok)return res;
       d.updatedAt=new Date().toISOString();d.updatedBy=ME.name;
       t.set(ref,JSON.parse(JSON.stringify(d)));
-      return Object.assign({},res,{audits:ctx.audits,hasTh:d.th.length>0,extra:ctx.extra});});
+      return Object.assign({},res,{audits:ctx.audits,hasTh:d.th.length>0,extra:ctx.extra,prevRaw,prevAt:s.exists?(s.data().updatedAt||null):null,after:d.updatedAt});});
     if(r.ok){
+      const top=UNDO[UNDO.length-1];
+      if(NO_UNDO){if(top&&top.date===date&&top.after===r.prevAt)top.after=r.after;}   // SASO 자동 채우기는 기록하지 않되, 내 되돌리기가 막히지 않게 이어 준다
+      else{UNDO.push({date,prev:r.prevRaw,after:r.after,what:(r.audits[0]&&undoLabel(r.audits))||'변경'});if(UNDO.length>50)UNDO.shift();}
       if(r.hasTh&&!META.dataDays.includes(date))C.meta.set({dataDays:firebase.firestore.FieldValue.arrayUnion(date)},{merge:true}).catch(e=>console.warn(e));
       if(r.extra.manualName)C.meta.update(new firebase.firestore.FieldPath('manualNames',ymOf(date)),firebase.firestore.FieldValue.arrayUnion(r.extra.manualName)).catch(()=>C.meta.set({manualNames:{[ymOf(date)]:[r.extra.manualName]}},{merge:true}));
       writeAudits(r.audits);}
