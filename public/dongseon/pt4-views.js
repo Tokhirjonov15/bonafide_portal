@@ -47,6 +47,7 @@ function renderSchedule(){
   h+=`<button class="pill small" onclick="go('schedule',{date:'${ymd(month===12?year+1:year,month===12?1:month+1,1)}'})">다음달 ›</button></div>`;
   h+=`<div class="sheet-title"><span class="sheet-title-text">비급여치료 예약리스트</span><span class="sheet-title-date">${month}월 ${dd}일 ${WEEKDAYS[new Date(year,month-1,dd).getDay()]}요일${D.shortDay?' · 17:30까지':''}</span></div>`;
   if(MSG&&!EDIT)h+=`<p class="err">${esc(MSG)}</p>`;
+  h+=newPtBar(D);
   if(D.borrowedFrom)h+=`<div class="hint"><span>이 날은 아직 배치가 없어 <strong>${esc(D.borrowedFrom)}</strong> 의 치료사 명단으로 표시합니다. 예약이나 비근무를 저장하면 이 명단이 이 날에 확정됩니다.</span>
     <span class="row"><button type="button" class="ghost" onclick="copyLayout()">${esc(D.borrowedFrom)} 의 비근무까지 복사</button><button type="button" class="ghost" onclick="openEd({kind:'therapists'})">명단 직접 고르기</button></span></div>`;
   if(!D.therapists.length)h+=`<div class="empty"><p>치료사가 아직 없습니다. 먼저 치료사를 추가하세요.</p><button type="button" onclick="openEd({kind:'therapists'})">치료사 추가</button></div>`;
@@ -334,6 +335,36 @@ function manualPanel(D){
     <table class="mini manual-count summary"><tbody>
       <tr><td class="lbl green">도수+충격파</td><td>${D.bookings.filter(b=>b.visited&&!/^CRYO/i.test(normalizeCode(b.code))).length}</td></tr>
       <tr><td class="lbl blue">신장분사+Hilt</td><td>${D.bookings.filter(b=>b.visited&&/^CRYO/i.test(normalizeCode(b.code))).length}</td></tr></tbody></table></section>`;}
+/* ═════ 처방 나온 첫 방문(1회차) 환자 → [추가] (2026-10-07 요청) ═════
+   오늘 보드에서 동선에 신장분사·충격파가 있거나 그 처방(CRYO·EES·CE·ES 코드)이 나온 환자 중, 예약표에 예전 예약이 하나도 없는 환자(1회차)를
+   제목 아래에 '이름 차트번호 [추가]' 로 띄운다. 누르면 이름·차트번호·진료실·치료코드·시간(지금 다음 15분 칸, 그때 비어 있는 치료사)·방문수 1 을 채운 새 예약 창.
+   오늘 예약표에 이미 있으면 빠진다. 오늘 날짜에만 */
+let RXT={at:0,docs:null,loading:false};
+function todayRx(){const today=todayYmd();if(RXT.docs&&RXT.day===today&&Date.now()-RXT.at<60000)return RXT.docs;
+  if(!RXT.loading){RXT.loading=true;DB.collection('bitRx').where('date','==',today).get().then(s=>{RXT={at:Date.now(),day:today,docs:s.docs.map(d=>d.data()||{}),loading:false};safeRender();})
+    .catch(e=>{console.warn('bitRx',e);RXT={at:Date.now(),day:today,docs:[],loading:false};});}
+  return RXT.docs||[];}
+const RX4=/^(CRYO|EES|CE|ES)\d+$/;
+function newPtCands(D){if(D.date!==todayYmd()||!BOARD)return [];const hist=ALLDOCS.docs;if(!hist){recentDocs().then(()=>safeRender()).catch(()=>{});return [];}
+  const rx=todayRx();const seen=new Set();hist.forEach(d=>(d.bookings||[]).forEach(b=>{if(mrnKey(b.mrn))seen.add(mrnKey(b.mrn));}));
+  (DAYDOC?DAYDOC.bookings:[]).forEach(b=>{if(mrnKey(b.mrn))seen.add(mrnKey(b.mrn));});
+  const out=[];
+  BOARD.forEach(p=>{if(p.discharged)return;const mrn=mrnKey(p.mrn);if(!mrn||seen.has(mrn))return;const route=Array.isArray(p.route)?p.route:[];
+    const codes=[];rx.filter(r=>mrnKey(r.mrn)===mrn).forEach(r=>(r.items||[]).forEach(it=>{const c=normalizeCode(it.cod);if(RX4.test(c)&&!codes.includes(c))codes.push(c);}));
+    if(!codes.length&&!route.some(r=>r==='신장분사'||r==='충격파'))return;
+    const clinic=[...route].reverse().find(r=>/^진료실\s*\d/.test(r));
+    out.push({mrn,name:String(p.name||'').trim(),room:clinic?clinic.replace(/\D/g,''):'',code:codes[0]||'',codes});seen.add(mrn);});
+  return out;}
+function newPtBar(D){const L=newPtCands(D);if(!L.length)return '';
+  return `<div class="hint" style="margin:6px 0;justify-content:flex-start"><b style="white-space:nowrap">처방 나온 첫 방문</b>${L.map((c,i)=>`<span class="np-chip">${esc(c.name)} <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''}${c.code?' · '+esc(c.codes.join(' ')):''}</span> <button type="button" class="ghost" onclick="newPtAdd(${i})">+ 추가</button></span>`).join('')}</div>`;}
+window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
+  const now=new Date();let st=Math.ceil((now.getHours()*60+now.getMinutes())/SLOT)*SLOT;st=Math.max(DAY_START,Math.min(st,D.endMin-SLOT));
+  const dur=Math.min(codeMinutes(c.code)||30,D.endMin-st);
+  const occ=D.occ||new Map();const free=t=>{const a=occ.get(t.id);if(!a)return false;for(let m=st;m<st+dur;m+=SLOT){const k=(m-DAY_START)/SLOT;if(!a[k]||a[k].type!=='free')return false;}return true;};
+  const th=D.therapists.find(free)||D.therapists[0];if(!th){toast('이 날 치료사 명단이 없습니다');return;}
+  openEd({kind:'new',therapistId:th.id,startMin:st,maxDuration:dur,draft:{therapistId:th.id,startMin:st,durationMin:dur,mrn:c.mrn,room:c.room,patientName:c.name,visitNo:1,code:c.code,codeColor:'',color:'',visited:false,note:''}});
+  MSG=`처방 나온 첫 방문 환자입니다. 치료사(${th.name})·시간(${hm(st)})을 확인하고 저장하세요.`;renderEditor();};
+
 /* ═════ SASO 환자 → Manual Tx 자동 (2026-10-07 요청: Manual Tx = SASO 명단) ═════
    오늘 날짜를 보고 있으면, 동선관리 보드에서 동선에 SASO 가 있는 환자를 Manual Tx 에 넣는다(차트번호로 한 번만).
    치료사: 카드에서 SASO 방 담당으로 고른 사람(없으면 SASO 에서 [진행]을 누른 사람). 이미 있는 줄은 치료사가 비었거나 'null' 일 때만 채운다.
@@ -395,7 +426,7 @@ window.codeDur=v=>{if(!EDIT||!EDIT.draft)return;const want=codeMinutes(v);if(!wa
   const from=EDIT.draft.durationMin;EDIT.draft.durationMin=want;MSG=`치료코드에 맞춰 길이를 ${from}분 → ${want}분으로 바꿨습니다.`;renderEditor();};
 window.dset=(k,v,re)=>{if(!EDIT||!EDIT.draft)return;EDIT.draft[k]=v;if(re)renderEditor();};
 const opt=(v,cur,label)=>`<option value="${A(v)}" ${String(v)===String(cur)?'selected':''}>${esc(label)}</option>`;
-function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다|바꿨습니다/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
+function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다|바꿨습니다|확인하고 저장/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
 function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.page!=='schedule'){box.innerHTML='';return;}
   const e=EDIT,D=D_();if(!D){box.innerHTML='';return;}
   const head=t=>`<div class="editor-head"><strong>${t}</strong><button type="button" class="ghost" onclick="closeEd()">닫기</button></div>`;
