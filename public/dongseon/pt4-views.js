@@ -119,12 +119,28 @@ function notePop(b){return `<div class="note-pop" onclick="event.stopPropagation
   <div class="note-foot"><span class="who small">창 밖을 누르거나 Ctrl+Enter 로 저장</span></div></div>`;}
 function bookingCells(b,span){const bg=b.visited?'#ffe599':b.color||'#ffffff';const shown=b.mark||(b.visited?'.':'');
   const dm=`data-bid="${b.id}" data-tid="${b.therapistId}" data-min="${b.startMin}"`,sc=SEL.has(b.id)?' sel':'';
-  return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}${sc}" ${dm} style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>
-    <td rowspan="${span}" class="code editable${sc}" ${dm} style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}</td>
+  const du=dueInfo(b),dc=du?' due':'',dt=du?` title="${A(`${hm(du.start)} 시작 · ${du.mins}분 치료 → ${hm(du.end)} 끝 (지남) — 끝났으면 표시 칸에 점(.)`)}"`:'';
+  return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}${sc}${dc}"${dt} ${dm} style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>
+    <td rowspan="${span}" class="code editable${sc}${dc}"${dt} ${dm} style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}</td>
     <td rowspan="${span}" class="mark editable${sc}" ${dm} title="클릭해서 점(.)이나 치료 시작 시각을 입력. 내용이 있으면 내원 · 두 번 누르면 방문 체크" onclick="markClick(${b.id},this,event)" ondblclick="event.stopPropagation();bVisit(${b.id})">${esc(shown)}</td>`;}
 
 let HIDE_OFF=(()=>{try{return localStorage.getItem('pt4HideOff')==='1';}catch(e){return false;}})();
 window.toggleHideOff=()=>{HIDE_OFF=!HIDE_OFF;try{localStorage.setItem('pt4HideOff',HIDE_OFF?'1':'0');}catch(e){}render();};
+/* ═════ 치료 시간 지남 알림 (2026-10-07 요청) ═════
+   표시 칸에 점(.) 대신 치료를 시작한 '분'(예: 35 = 그 시각의 35분, 1435·14:35 도 됨)을 적으면 치료 중으로 보고,
+   시작 + 코드별 치료 시간이 지나면 이름 칸·치료코드 칸이 빨갛게 천천히 깜빡인다. 점(.)을 찍으면 끝(깜빡임 사라짐). 오늘 날짜만.
+   치료 시간: 설정의 코드별 치료 시간표(가져오기 화면) → 없으면 임시로 코드 숫자 × 3분 (CM15 = 45분) */
+function txMinutes(code){const c=normalizeCode(code);if(!c)return null;const t=META.txMinutes||{};if(t[c]!=null&&+t[c]>0)return +t[c];
+  const m=/^(CME|CM|ES|CRYO|EES|CE)(\d+)$/.exec(c);return m?(+m[2])*3:null;}
+function markStart(b){const s=String(b.mark||'').trim();if(!s||/^[.·]+$/.test(s))return null;let m;
+  if((m=/^(\d{1,2})\s*[:시]\s*(\d{2})$/.exec(s)))return (+m[1])*60+(+m[2]);
+  if((m=/^(\d{1,2})(\d{2})$/.exec(s))&&+m[1]>=8&&+m[1]<=21)return (+m[1])*60+(+m[2]);
+  if((m=/^(\d{1,2})$/.exec(s))&&+m[1]<60){let t=Math.floor(b.startMin/60)*60+(+m[1]);if(t<b.startMin-20)t+=60;return t;}
+  return null;}
+function dueInfo(b){if(R.q.date!==todayYmd())return null;const start=markStart(b);if(start==null)return null;const mins=txMinutes(b.code);if(!mins)return null;
+  const now=new Date(),nowMin=now.getHours()*60+now.getMinutes();return nowMin>=start+mins?{start,mins,end:start+mins}:null;}
+setInterval(()=>{if(R.page==='schedule'&&R.q.date===todayYmd()&&!DRAG&&!EDIT)safeRender();},30000);   // 30초마다 시간 지남 다시 확인
+
 /* ── 표 칸 동작 ── */
 const D_=()=>window.DV;
 function freeRun(tid,startMin){const arr=D_().occ.get(tid);let n=0;for(let i=(startMin-DAY_START)/SLOT;i<D_().slots&&arr[i].type==='free';i++)n+=SLOT;return n;}
@@ -766,7 +782,10 @@ function renderImportPage(){
       <textarea id="impLinks" rows="3" style="width:100%" placeholder="https://docs.google.com/spreadsheets/d/…/edit?usp=sharing">${esc(IMP&&IMP.links||'')}</textarea>
       <div class="row"><button type="button" ${IMP&&IMP.busy?'disabled':''} onclick="impLinks()">${IMP&&IMP.busy&&IMP.log?esc(IMP.log):'시트 읽기'}</button></div></div>
     <div class="panel" style="margin-top:10px"><h2>visit-stats 백업 파일로</h2><p class="sub">visit-stats 데이터베이스 백업(JSON). 파일에 있는 날짜는 포털의 그 날짜를 통째로 덮어씁니다.</p>
-      <div class="row"><input type="file" accept=".json,application/json" onchange="impFile(this.files[0])"></div></div>`;
+      <div class="row"><input type="file" accept=".json,application/json" onchange="impFile(this.files[0])"></div></div>
+    <div class="panel" style="margin-top:10px"><h2>코드별 치료 시간</h2><p class="sub">표시 칸에 시작 분(예: 35)을 적은 예약이 이 시간을 넘으면 빨갛게 깜빡입니다. 한 줄에 하나: <code>CM15 45</code>. 적지 않은 코드는 임시로 숫자 × 3분.</p>
+      <textarea id="txMinTa" rows="8" style="width:100%" placeholder="CM10 30&#10;CM15 45&#10;CME15 45&#10;CRYO10 30">${esc(Object.entries(META.txMinutes||{}).sort().map(([k,v])=>k+' '+v).join('\n'))}</textarea>
+      <div class="row"><button type="button" onclick="saveTxMin()">저장</button></div></div>`;
   if(IMP&&IMP.err)h+=`<p class="err">${esc(IMP.err)}</p>`;
   if(IMP&&IMP.plan){const p=IMP.plan;
     h+=`<div class="panel" style="margin-top:12px"><h2>${esc(IMP.name)}</h2><ul class="list">
@@ -775,6 +794,9 @@ function renderImportPage(){
       <li>치료사 ${p.meta.therapists.length}명 · 상담수 ${p.n.consults}건 · 변경 기록 ${p.audits.length}건</li></ul>
       ${IMP.done?`<p class="info">가져오기를 마쳤습니다. 일별 스케줄에서 확인하세요.</p>`:`<div class="row"><button type="button" ${IMP.busy?'disabled':''} onclick="impRun()">${IMP.busy?esc(IMP.log||'옮기는 중…'):'포털로 가져오기'}</button></div>`}</div>`;}
   return h;}
+window.saveTxMin=async()=>{const t={};const bad=[];String((document.getElementById('txMinTa')||{}).value||'').split(/\r?\n/).forEach(l=>{l=l.trim();if(!l)return;const m=/^([A-Za-z]+\s*\d+)\s*[:=\s]\s*(\d{1,3})\s*분?$/.exec(l);if(!m){bad.push(l);return;}t[normalizeCode(m[1])]=+m[2];});
+  if(bad.length){toast('알아볼 수 없는 줄: '+bad.join(', '),4000);return;}
+  const r=await commitMeta(m=>{m.txMinutes=t;return {ok:true};},[{action:'update',entity:'therapists',entityId:'치료 시간표',after:{codes:Object.keys(t).length}}]);toast(r.ok?`치료 시간 ${Object.keys(t).length}개 저장했습니다`:(r.message||'저장하지 못했습니다'));};
 window.impFile=async f=>{IMP={name:f?f.name:''};render();if(!f)return;
   try{const j=JSON.parse(await f.text());IMP.plan=planImport(j);}catch(e){IMP.err='파일을 읽지 못했습니다: '+e.message;}render();};
 function planImport(j){

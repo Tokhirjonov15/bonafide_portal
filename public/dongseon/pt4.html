@@ -102,6 +102,8 @@ input.consult{width:44px;text-align:center;font:inherit;border:1px solid var(--l
 .cancel-wrap{margin-top:14px}
 /* 메모 말풍선 */
 #selBox{position:fixed;display:none;pointer-events:none;z-index:40;border:2px solid #2563eb;background:rgba(37,99,235,.10);border-radius:3px}   /* 드래그 범위 */
+@keyframes dueBlink{0%,100%{background-color:#fecaca;box-shadow:inset 0 0 0 2px #ef4444}50%{background-color:#fee2e2;box-shadow:inset 0 0 0 1px #fca5a5}}
+table.grid td.due{animation:dueBlink 1.8s ease-in-out infinite;color:#991b1b!important;font-weight:700}   /* 치료 시간이 지났는데 아직 점(.)이 안 찍힘 (2026-10-07) */
 table.grid td.sel{box-shadow:inset 0 0 0 2px #2563eb;filter:brightness(.93)}   /* 복사하려고 고른 예약 */
 table.grid:not(.cancel-grid){user-select:none;-webkit-user-select:none}
 table.grid .note-pop,table.grid .note-pop textarea{user-select:text;-webkit-user-select:text}
@@ -375,7 +377,7 @@ AUTH.onAuthStateChanged(async u=>{
   ME={name:name||u.email,email:u.email,role};
   document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;
   C.meta.onSnapshot(s=>{const d=s.exists?s.data():{};
-    META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0};
+    META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0,txMinutes:d.txMinutes||{}};
     metaReady=true;safeRender();},e=>{console.warn('meta',e);toast('설정을 읽지 못했습니다');});
   window.addEventListener('hashchange',route);route();
 });
