@@ -1729,7 +1729,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <div class="pop-set" id="popSet"></div>
     <div class="chat-tabs">
       <button type="button" id="chatTabAll" onclick="setChatTab('all')"><i data-lucide="bell-ring"></i> 전체<span id="chatTabAllN"></span></button>
-      <button type="button" id="chatTabMine" onclick="setChatTab('mine')" title="방 헤더의 '담당'을 체크한 방의 알람만"><i data-lucide="hand"></i> 담당<span id="chatTabMineN"></span></button>
+      <button type="button" id="chatTabMine" onclick="setChatTab('mine')" title="내 파트의 방(방사선사: x-ray·CT / 물리치료사: 4층 / 진료지원·간호사: 3층) + 방 헤더의 '담당'을 체크한 방의 알람"><i data-lucide="hand"></i> 담당<span id="chatTabMineN"></span></button>
     </div>
     <div class="chat-body" id="chatBodyAll"></div>
   </div>
@@ -5671,6 +5671,15 @@ function sendTestPush(){
     .catch(e=>alert('전송 실패: '+((e&&e.message)||e)));
 }
 /* 알람 이벤트를 클라우드에 기록 → Cloud Function이 대상자 폰으로 푸시 발송 */
+/* 방별 전달사항은 그 방을 맡는 파트에게 (2026-10-07 요청) — 방 헤더 '담당' 체크와 함께.
+   x-ray실·CT실 = 방사선사 · 4층 방 = 물리치료사 · 나머지(3층) 방 = 진료지원·간호사. 파트는 직원 목록(partOf) 기준 */
+function noteTeams(room){const r=String(room||'');
+  if(/x-?ray|(^|[^a-z])ct/i.test(r))return ['방사선사'];
+  if(typeof isFloor4Room==='function'&&isFloor4Room(r))return ['물리치료사'];
+  return ['진료지원','간호사'];}
+function isNoteTeam(room,m){const pt=partOf(m||currentUser);return !!pt&&noteTeams(room).includes(pt);}
+function noteTargetEmails(room){const out=ownerEmails(room);
+  (MEMBERS||[]).forEach(m=>{if(m&&m.email&&!out.includes(m.email)&&isNoteTeam(room,m))out.push(m.email);});return out;}
 function ownerEmails(room){const m=meta(room);const out=[];(m.owners||[]).forEach(o=>{const mem=MEMBERS.find(x=>x.name===o.name);if(mem&&mem.email&&!out.includes(mem.email))out.push(mem.email);});return out;}
 function pushAlarm(targets,title,body,url){
   if(!cloud.active||!cloud.ref)return;
@@ -9104,7 +9113,7 @@ function addNote(pid,room,text){
   const note={text,at:new Date().toISOString(),by:currentUser?currentUser.name:"",done:false,doneBy:"",doneAt:"",replies:[]};
   applyNoteAppend(p,room,note);saveLocal();render();renderNotesEditor();
   cloudPatientTxn(pid,d=>applyNoteAppend(d,room,note));   // 동시편집 보호: 서버 최신본에 append
-  pushAlarm(ownerEmails(room),`📌 ${room} 전달사항`,`${maskName(p.name)} · ${text}`);   // 담당자 폰으로 푸시
+  pushAlarm(noteTargetEmails(room),`📌 ${room} 전달사항`,`${maskName(p.name)} · ${text}`);   // 담당자 폰으로 푸시
   return true;  // 화면 토스트는 scanAlarms()가 처리
 }
 function addReply(pid,room,idx,text){
@@ -9114,7 +9123,7 @@ function addReply(pid,room,idx,text){
   const reply={text,by:currentUser?currentUser.name:"",at:new Date().toISOString()};
   applyReply(p,room,key,reply);saveLocal();render();renderNotesEditor();
   cloudPatientTxn(pid,d=>applyReply(d,room,key,reply));   // 원글을 at(타임스탬프)로 찾아 답장 append
-  const tgt=ownerEmails(room);const oem=MEMBERS.find(x=>x.name===n.by);if(oem&&oem.email&&!tgt.includes(oem.email))tgt.push(oem.email);  // 원글 작성자도
+  const tgt=noteTargetEmails(room);const oem=MEMBERS.find(x=>x.name===n.by);if(oem&&oem.email&&!tgt.includes(oem.email))tgt.push(oem.email);  // 원글 작성자도
   pushAlarm(tgt,`↩ ${room} 답장`,`${maskName(p.name)} · ${text}`);
   return true;
 }
@@ -9127,7 +9136,7 @@ function scanAlarms(){
   const me=currentUser.name, fresh=[];
   data.forEach(p=>{if(!p.notes)return;
     Object.keys(p.notes).forEach(room=>{
-      const owners=meta(room).owners.map(o=>o.name);
+      const owners=meta(room).owners.map(o=>o.name);if(isNoteTeam(room)&&!owners.includes(me))owners.push(me);   // 내 파트의 방이면 담당처럼 알림 (2026-10-07)
       (p.notes[room]||[]).forEach(n=>{
         const k=nKey(p.id,room,n);
         if(!seenAlarms.has(k)){if(n.by!==me&&owners.includes(me))fresh.push({icon:"📌",title:`${esc(room)} 전달사항`,sub:`${esc(n.text)} · ${esc(p.name)}`});seenAlarms.add(k);}
@@ -9547,7 +9556,7 @@ function chatItems(){
 }
 function toggleMute(on){if(!currentUser)return;currentUser.mutePopups=on;
   STAFF_PREFS[currentUser.email]=Object.assign({},STAFF_PREFS[currentUser.email],{mutePopups:on});savePrefs();}
-function isMineItem(it){return !!(currentUser&&isOwner(it.room,currentUser.name));}
+function isMineItem(it){return !!(currentUser&&(isOwner(it.room,currentUser.name)||isNoteTeam(it.room)));}   // 담당 체크한 방 + 내 파트의 방 (2026-10-07)
 function chatMsgHtml(it){
   const reps=(it.n.replies||[]).map(rep=>`<div class="reply"><b>${authorLabel(rep.by)}</b> ${esc(rep.text)} <span class="r-t">${hhmm(rep.at)}</span></div>`).join("");
   return `<div class="chat-msg ${it.n.done?'done':''}">
@@ -9575,7 +9584,7 @@ function renderChat(){
   const tM=document.getElementById("chatTabMineN");if(tM)tM.innerHTML=undoneMine?` <span class="chat-badge">${undoneMine}</span>`:"";
   document.querySelectorAll("#chatTabAll,#chatTabMine").forEach(b=>b.classList.toggle("on",b.id===(CHAT_TAB==='mine'?'chatTabMine':'chatTabAll')));
   document.querySelectorAll("#muteChk").forEach(mc=>mc.checked=isMuted());
-  if(CHAT_TAB==='mine')renderChatBody("chatBodyAll","chatAll",mine,'내 담당 방의 전달사항이 없습니다. 방 헤더의 "담당"을 체크하면 그 방 알람만 모여요.');
+  if(CHAT_TAB==='mine')renderChatBody("chatBodyAll","chatAll",mine,'내 담당 방의 전달사항이 없습니다. 내 파트의 방(방사선사: x-ray·CT / 물리치료사: 4층 / 진료지원·간호사: 3층)과 방 헤더에서 "담당"을 체크한 방의 알람이 모여요.');
   else renderChatBody("chatBodyAll","chatAll",all,"전달사항이 없습니다. 방별 전달사항을 등록하면 여기에 모두 모입니다.");
 }
 var CHAT_TAB=(()=>{try{return localStorage.getItem('patientBoard_chatTab')==='mine'?'mine':'all';}catch(e){return 'all';}})();   // 이 기기에서 마지막에 본 탭
