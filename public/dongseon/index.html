@@ -1455,6 +1455,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* ═══ 비급여 동의서 (2026-09-26): 태블릿에서 쓰기 좋게 큼직하게 ═══ */
   .cst-screen{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px}
   .cst-screen.show{display:flex}
+  .cst-price.from-hint{background:#fff7ed;border-color:#fb923c;color:#9a3412}
+  .cst-hint-tag{color:#c2410c;font-weight:700}
   .cst-box{background:var(--panel);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.3);width:min(860px,100%);max-height:96vh;display:flex;flex-direction:column;overflow:hidden}
   .cst-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:15px}
   .cst-head .hint{font-weight:600}
@@ -11510,6 +11512,13 @@ const CONSENT_ITEMS=[
 const CONSENT_OLD_KEY={'체외충격파':'eswt','신장분사(프롤로)':'sst','DNA 주사':'dna','영양수액':'iv','초음파 유도하 주사':'us'};
 function consentKeyOf(i){return i&&(i.key||CONSENT_OLD_KEY[i.name])||'';}
 /* 이 환자의 오늘 비트 처방 금액 → 항목별 합계. 반환: {byItem:[금액…], used:Set(줄 번호), lines:[금액 있는 비급여 줄]} */
+/* 이 환자 처방에서 그 동의서 항목에 해당하는 처방코드들 */
+function consentRxCodes(p,it){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const out=[];
+  ((rx&&rx.items)||[]).forEach(x=>{const cod=String(x.cod||'').trim(),nam=String(x.nam||'').trim();if(it.bit&&((it.bit.cod&&it.bit.cod.test(cod))||(it.bit.nam&&it.bit.nam.test(nam)))&&cod&&!out.includes(cod))out.push(cod);});return out;}
+/* 오늘 다른 환자의 같은 처방코드 금액(비트 pay 줄) — 가장 흔한 값 */
+function bitPriceHint(cod){const k=String(cod||'').trim().toUpperCase();if(!k)return 0;const cnt={};
+  Object.values(BIT_RX||{}).forEach(rx=>((rx&&rx.pay)||[]).forEach(ln=>{if(String(ln.cod||'').trim().toUpperCase()!==k)return;const a=Number(String(ln.amt||'').replace(/[^\d.]/g,''))||0;if(a>0)cnt[a]=(cnt[a]||0)+1;}));
+  const best=Object.entries(cnt).sort((a,b)=>b[1]-a[1]||b[0]-a[0])[0];return best?Number(best[0]):0;}
 function consentBitAmounts(p){
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;
   const pay=(rx&&Array.isArray(rx.pay))?rx.pay:[];
@@ -11641,14 +11650,21 @@ function openConsent(pid){
   document.getElementById('cstForm').innerHTML=consentFormHtml(p);
   /* 비트 처방 금액 자동 채우기 (2026-10-01) — 금액이 있는 항목은 체크하고 금액을 넣는다. 고칠 수 있다 */
   {const info=document.getElementById('cstBitInfo');
-   try{const B=consentBitAmounts(p);let filled=0;
+   try{const B=consentBitAmounts(p);let filled=0,hinted=0,noPrice=[];
      B.byItem.forEach((amt,i)=>{if(amt<=0)return;filled++;
        const c=document.getElementById('cstChk'+i),pr=document.getElementById('cstPrc'+i);
        if(c)c.checked=true;if(pr){pr.value=String(Math.round(amt));pr.classList.add('from-bit');pr.title='비트 처방 금액';}});
+     /* 처방은 있는데 이 환자 금액 줄이 아직 없는 항목 (2026-10-07: Sono·신장분사가 체크도 금액도 안 됨) — 체크하고,
+        오늘 다른 환자의 같은 처방코드 금액이 있으면 넣는다(표시: 주황 · '확인하세요'). 없으면 비워 둔다 */
+     try{cdItemsFor(p).forEach(x=>{if(B.byItem[x.i]>0)return;const c=document.getElementById('cstChk'+x.i),pr=document.getElementById('cstPrc'+x.i);if(c)c.checked=true;
+       const cods=consentRxCodes(p,x.it);let hint=0;cods.forEach(cd=>{hint+=bitPriceHint(cd);});
+       if(hint>0&&pr){pr.value=String(Math.round(hint));pr.classList.add('from-hint');pr.title='이 환자 금액이 아직 비트에 없어 오늘 다른 환자의 같은 처방('+cods.join(', ')+') 금액을 넣었습니다 — 확인하세요';hinted++;}
+       else noPrice.push(x.it.name);});}catch(e){console.warn('consent hint',e);}
      const rest=B.lines.filter(ln=>!B.used.has(ln.j));
      if(info){
-       if(!B.has)info.innerHTML='<i data-lucide="info"></i> 비트 처방 금액이 아직 없습니다 (진료 처방이 나오면 자동으로 채워집니다)';
-       else info.innerHTML=`<i data-lucide="pill"></i> 비트 처방에서 <b>${filled}개 항목</b> 금액을 불러왔습니다`+
+       const extra=(hinted?` · <span class="cst-hint-tag">오늘 같은 처방 금액으로 ${hinted}개 채움 — 확인하세요</span>`:'')+(noPrice.length?` · 금액 없음(직접 입력): ${noPrice.map(esc).join(', ')}`:'');
+       if(!B.has)info.innerHTML='<i data-lucide="info"></i> 이 환자의 비트 처방 금액이 아직 없습니다 (처방 항목은 체크했습니다)'+extra;
+       else info.innerHTML=`<i data-lucide="pill"></i> 비트 처방에서 <b>${filled}개 항목</b> 금액을 불러왔습니다`+extra+
          (rest.length?` · 항목에 안 맞는 비급여: ${rest.map(ln=>`<span class="cst-bitrest" title="${esc(ln.cod)}">${esc(ln.nam||ln.cod)} ${esc(wonTxt(Number(ln.amt)||0))}</span>`).join(' ')} (필요하면 '기타'에)`:'');}
    }catch(e){console.warn('consent bit',e);if(info)info.textContent='';}}
   consentSum();
@@ -12518,7 +12534,7 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     ${r.rooms.length?`<div class="cd-rooms">시술·처치 처방: ${r.rooms.map(x=>`<span class="cd-rm">${esc(x)}</span>`).join(' ')}${r.items.length?'':' <span class="hint">(비급여 항목 없음 — 동의서에서 기타에 적거나 해당 항목을 체크)</span>'}</div>`:''}
     ${r.today.length?`<div class="cd-rooms">오늘 서명: ${r.today.map(c=>consentSavedTag(c)).join(' ')}</div>`:''}
     ${r.items.length?'':'<!--'}<table class="cd-tbl"><thead><tr><th>비급여 항목</th><th class="r">금액(비트)</th><th>서명</th></tr></thead><tbody>
-    ${r.items.map(x=>`<tr><td><button type="button" class="cst-iname" onclick="consentInfo('${x.it.key}')" title="설명 보기">${esc(x.it.name)}</button></td><td class="r">${x.amt?esc(wonTxt(x.amt)):'<span class="hint">금액 없음</span>'}</td><td>${sv[x.it.key]?consentSavedTag(sv[x.it.key]):'<span class="hint">미서명</span>'}</td></tr>`).join('')}
+    ${r.items.map(x=>`<tr><td><button type="button" class="cst-iname" onclick="consentInfo('${x.it.key}')" title="설명 보기">${esc(x.it.name)}</button></td><td class="r">${x.amt?esc(wonTxt(x.amt)):(()=>{const hp=consentRxCodes(r.p,x.it).reduce((s,cd)=>s+bitPriceHint(cd),0);return hp?'<span class="cst-hint-tag" title="이 환자 금액이 아직 비트에 없어 오늘 같은 처방의 금액">약 '+esc(wonTxt(hp))+'</span>':'<span class="hint">금액 없음</span>';})()}</td><td>${sv[x.it.key]?consentSavedTag(sv[x.it.key]):'<span class="hint">미서명</span>'}</td></tr>`).join('')}
     <tr class="sum"><th class="r">합계</th><th class="r">${esc(wonTxt(total)||'0원')}</th><th></th></tr></tbody></table>${r.items.length?'':'-->'}
     ${mrn?`<button type="button" class="btn cd-sign" onclick="openConsent('${esc(p.id)}')"><i data-lucide="pen-line"></i> 동의서 작성 (서명)</button>`:'<div class="hint">차트번호가 없는 환자는 동의서를 쓸 수 없습니다.</div>'}
     <button type="button" class="btn sm" style="margin-left:6px" onclick="closeConsentDesk();openEdit('${esc(p.id)}')">환자 정보 창</button></div>`;
