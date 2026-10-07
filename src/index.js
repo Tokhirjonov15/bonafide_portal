@@ -1329,6 +1329,41 @@ async function handleApi(request, env, url, ident, ctx) {
     return json({ ok: true });
   }
 
+  /* 유통기한 정리 (2026-10-07 다시 만듦) — 이미 들어와 있는 재고를 유통기한 묶음으로 나눈다.
+     body.lots = [{expiry, qty}] (유통기한 있는 묶음만, 합계 ≤ 현재 재고). 나머지는 '유통기한 없음'.
+     총 재고·층별 재고는 그대로: 묶음마다 차이만큼 그 기한으로 입·출고하고, 그 합계만큼 '기한 없음'을 반대로 맞춘다(층 비움 → 층별 합 0) */
+  if (path === "/lot/set" && method === "POST") {
+    const pid = s(body.pid);
+    if (!pid) return json({ error: "품목이 없습니다." }, 400);
+    const want = {};
+    for (const l of Array.isArray(body.lots) ? body.lots : []) {
+      const q = Math.floor(n(l && l.qty));
+      if (!(q >= 0)) return json({ error: "개수를 확인하세요." }, 400);
+      if (!q) continue;
+      const e = normDate(l && l.expiry);
+      if (!e) return json({ error: `유통기한 형식이 올바르지 않습니다: ${s(l && l.expiry) || "(빈 칸)"} (예: 2027-05-31)` }, 400);
+      want[e] = (want[e] || 0) + q;
+    }
+    const stock = await currentStock(env, pid);
+    const wantSum = Object.values(want).reduce((a, b) => a + b, 0);
+    if (wantSum > stock) return json({ error: `유통기한 묶음 합계(${wantSum}개)가 현재 재고(${stock}개)보다 많습니다.` }, 400);
+    const raw = {};
+    for (const l of (await env.DB.prepare(`SELECT expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty FROM movements WHERE pid=? AND expiry<>'' GROUP BY expiry`).bind(pid).all()).results || []) raw[l.expiry] = l.qty;
+    const now = Date.now(), stmts = [], memo = "유통기한 정리";
+    let net = 0;
+    for (const e of new Set([...Object.keys(raw), ...Object.keys(want)])) {
+      const cur = raw[e] || 0, diff = (want[e] || 0) - cur;   // 기록상 그 기한 잔량 → 원하는 개수
+      if (!diff) continue;
+      net += diff;
+      stmts.push(env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,?,?,?,?,?,'',?,'')`)
+        .bind(uid(), pid, diff > 0 ? "in" : "out", Math.abs(diff), `${memo}: ${e} ${cur}→${want[e] || 0}`, actor, e, now));
+    }
+    if (net) stmts.push(env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,?,?,?,?,'','',?,'')`)
+      .bind(uid(), pid, net > 0 ? "out" : "in", Math.abs(net), `${memo}: 유통기한 없음 ${net > 0 ? "→ 기한 지정" : "← 기한 해제"} ${Math.abs(net)}개`, actor, now));
+    if (stmts.length) await env.DB.batch(stmts);
+    return json({ ok: true, changed: stmts.length });
+  }
+
   /* 대체 품목 빼기 (2026-10-06) — 본 품목 수정 창에서 대체품목 이름을 지우면: 연결을 끊고 숨긴다(기록은 남김, 숨긴 목록에서 되돌릴 수 있음) */
   if (path === "/product/sub-remove" && method === "POST") {
     const id = s(body.id);

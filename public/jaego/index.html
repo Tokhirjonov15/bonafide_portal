@@ -264,6 +264,10 @@
   #topBtn svg{width:18px; height:18px}
   .ovl{position:fixed; inset:0; background:rgba(20,30,45,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:14px}
   .ovl.show{display:flex}
+  .lottbl{width:100%; border-collapse:collapse}
+  .lottbl th,.lottbl td{padding:4px; border-bottom:1px solid var(--line); text-align:left; font-size:13px}
+  .lottbl input{font-size:15px; padding:6px 8px}
+  .lotbtn{padding:1px 8px !important; font-size:11.5px !important; white-space:nowrap}
   .modal{background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:440px; max-height:92vh; overflow:auto}
   .modal h2{font-size:16px; margin-bottom:14px; color:var(--accent)}
   .modal label{display:block; font-size:12px; color:var(--ink2); font-weight:700; margin:10px 0 4px}
@@ -636,6 +640,25 @@
   <div class="mbtns">
     <button class="btn ghost" id="mvCancel">취소</button>
     <button class="btn" id="mvSave">확인</button>
+  </div>
+</div></div>
+
+<!-- 유통기한 정리 (2026-10-07 다시 만듦): 이미 있는 재고를 '유통기한 · 개수' 묶음으로. 넣은 묶음도 언제든 다시 고칠 수 있다 -->
+<div class="ovl" id="lotOvl"><div class="modal" style="max-width:520px">
+  <h2><i data-lucide="calendar-clock"></i> 유통기한 정리</h2>
+  <p id="lotProd" style="font-weight:700; margin-bottom:2px"></p>
+  <p class="muted" id="lotNow" style="margin-bottom:8px"></p>
+  <table class="lottbl"><thead><tr><th>유통기한</th><th style="width:110px">개수</th><th style="width:40px"></th></tr></thead><tbody id="lotRows"></tbody></table>
+  <div style="display:flex; gap:6px; margin:8px 0; flex-wrap:wrap">
+    <button type="button" class="btn small ghost" onclick="lotAddRow()"><i data-lucide="plus"></i> 묶음 추가</button>
+    <button type="button" class="btn small ghost" id="lotFillBtn" onclick="lotFillRest()"></button>
+  </div>
+  <p id="lotRest" style="margin:4px 0 2px; font-weight:700"></p>
+  <p class="muted" style="font-size:12px">개수·유통기한을 고치면 그 묶음이 바뀝니다. 묶음에 넣지 않은 나머지는 '유통기한 없음'으로 남습니다. 총 재고·층별 재고는 바뀌지 않습니다.</p>
+  <p class="err" id="lotErr" style="color:var(--danger,#dc2626); min-height:1em"></p>
+  <div class="mbtns">
+    <button class="btn ghost" onclick="closeLotDlg()">취소</button>
+    <button class="btn" id="lotSave" onclick="saveLotDlg()">저장</button>
   </div>
 </div></div>
 
@@ -1058,7 +1081,7 @@ function render(){
         const ls=lotsOf(p.id);
         const open=!!LOT_OPEN[p.id];
         const unass=Math.max(0,(p.stock||0)-ls.reduce((a,l)=>a+l.qty,0));   // 유통기한 없는 재고
-        const addExp = unass>0 ? ` <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="유통기한 없는 재고 ${unass}개 중 몇 개에 유통기한 넣기" onclick="splitLot('${p.id}','')"><i data-lucide="calendar-plus"></i></button>` : "";
+        const addExp = (p.stock||0)>0 ? ` <button class="btn small ghost lotbtn" title="유통기한 정리 — 개수를 정해 유통기한 넣기·고치기${unass>0?` (기한 없는 재고 ${unass}개)`:''}" onclick="openLotDlg('${p.id}')"><i data-lucide="calendar-plus"></i> ${ls.length?'정리':'기입'}</button>` : "";
         const expCell = (!ls.length ? "—"
           : ls.length===1 || ls[0].expiry===ls[ls.length-1].expiry
             ? `${esc(ls[0].expiry)} ${expBadge(p.id)}`
@@ -1068,7 +1091,7 @@ function render(){
             const dd=daysLeft(l.expiry);
             const badge = dd===null?"" : dd<=0?` <span class="expold">${dd===0?"오늘":-dd+"일 지남"}</span>`
                         : dd<=60?` <span class="exptag">D-${dd}</span>` : ` <span class="muted">D-${dd}</span>`;
-            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge} <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 유통기한 수정" onclick="editLotExp('${p.id}','${esc(l.expiry)}')"><i data-lucide="pencil"></i></button> <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 중 몇 개만 다른 유통기한으로 나누기" onclick="splitLot('${p.id}','${esc(l.expiry)}')"><i data-lucide="split"></i> 나누기</button></span>`;
+            return `<span class="lotitem"><b>${esc(l.expiry)}</b> · ${l.qty}개${badge} <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 유통기한 수정" onclick="editLotExp('${p.id}','${esc(l.expiry)}')"><i data-lucide="pencil"></i></button> <button class="btn small ghost" style="padding:1px 7px;font-size:11px" title="이 묶음 중 몇 개만 다른 유통기한으로 나누기" onclick="openLotDlg('${p.id}')"><i data-lucide="split"></i> 나누기·정리</button></span>`;
           }).join("")}</td></tr>` : "";
         return `<tr class="${isLow(p)?"low":""}${SEL.has(p.id)?" selrow":""}">
           ${ADM?`<td class="selcol"><input type="checkbox" ${SEL.has(p.id)?"checked":""} onclick="event.stopPropagation()" onchange="selToggle('${p.id}',this.checked)"></td>`:""}
@@ -1776,6 +1799,39 @@ window.splitLot=async function(pid, from){
   try{ await API.call("/lot/split",{pid, from, to:to.trim(), qty}); await refresh(true); }
   catch(err){ alert("유통기한을 넣지 못했습니다: "+err.message); }
 };
+/* ── 유통기한 정리 창 (2026-10-07) ── */
+let LOTDLG=null;   // {pid, stock, rows:[{expiry, qty}]}
+window.openLotDlg=function(pid){const p=PRODUCTS.find(x=>x.id===pid);if(!p)return;
+  LOTDLG={pid,stock:Math.max(0,p.stock||0),rows:lotsOf(pid).map(l=>({expiry:l.expiry,qty:l.qty}))};
+  if(!LOTDLG.rows.length)LOTDLG.rows.push({expiry:'',qty:LOTDLG.stock});   // 처음이면 전부를 한 묶음으로 제안
+  $("lotProd").textContent=p.name;
+  $("lotNow").textContent=`현재 재고 ${LOTDLG.stock}${p.unit?' '+p.unit:'개'}${floorTxt(p)?' · '+floorTxt(p).replace(/<[^>]+>/g,''):''}`;
+  $("lotErr").textContent='';renderLotRows();$("lotOvl").classList.add("show");refreshIcons();
+  const first=document.querySelector('#lotRows input[type=date]');if(first&&!first.value)first.focus();};
+window.closeLotDlg=function(){$("lotOvl").classList.remove("show");LOTDLG=null;};
+function lotSum(){return LOTDLG.rows.reduce((a,r)=>a+(Math.max(0,parseInt(r.qty,10)||0)),0);}
+function renderLotRows(){if(!LOTDLG)return;
+  $("lotRows").innerHTML=LOTDLG.rows.map((r,i)=>{const dd=r.expiry?daysLeft(r.expiry):null;
+    const badge=dd===null?'':dd<=0?` <span class="expold">${dd===0?'오늘':-dd+'일 지남'}</span>`:dd<=60?` <span class="exptag">D-${dd}</span>`:'';
+    return `<tr><td><input type="date" value="${esc(r.expiry)}" onchange="LOTDLG.rows[${i}].expiry=this.value;lotCheck()" style="width:100%">${badge}</td>
+      <td><input type="number" min="0" value="${esc(r.qty)}" oninput="LOTDLG.rows[${i}].qty=this.value;lotCheck()" style="width:100%"></td>
+      <td><button type="button" class="btn small ghost" title="이 묶음 빼기 (그 개수는 '유통기한 없음'으로)" onclick="LOTDLG.rows.splice(${i},1);renderLotRows()">✕</button></td></tr>`;}).join('')
+    ||'<tr><td colspan="3" class="muted">묶음이 없습니다 — [묶음 추가]를 누르세요</td></tr>';
+  lotCheck();refreshIcons();}
+function lotCheck(){if(!LOTDLG)return;const sum=lotSum(),rest=LOTDLG.stock-sum;
+  $("lotRest").innerHTML=rest>=0?`유통기한 없음: <b>${rest}개</b> <span class="muted">(묶음 합계 ${sum} / 재고 ${LOTDLG.stock})</span>`
+    :`<span style="color:var(--danger,#dc2626)">묶음 합계 ${sum}개가 재고 ${LOTDLG.stock}개보다 ${-rest}개 많습니다</span>`;
+  const fb=$("lotFillBtn");fb.style.display=rest>0?'':'none';fb.textContent=`남은 ${rest}개를 새 묶음으로`;
+  $("lotSave").disabled=rest<0;}
+window.lotAddRow=function(){LOTDLG.rows.push({expiry:'',qty:''});renderLotRows();const ins=document.querySelectorAll('#lotRows input[type=date]');if(ins.length)ins[ins.length-1].focus();};
+window.lotFillRest=function(){const rest=LOTDLG.stock-lotSum();if(rest<=0)return;LOTDLG.rows.push({expiry:'',qty:rest});renderLotRows();const ins=document.querySelectorAll('#lotRows input[type=date]');if(ins.length)ins[ins.length-1].focus();};
+window.saveLotDlg=async function(){if(!LOTDLG)return;
+  const rows=LOTDLG.rows.map(r=>({expiry:String(r.expiry||'').trim(),qty:Math.max(0,parseInt(r.qty,10)||0)})).filter(r=>r.qty>0);
+  const noDate=rows.find(r=>!r.expiry);if(noDate){$("lotErr").textContent=`개수 ${noDate.qty}개 묶음에 유통기한을 넣어 주세요.`;return;}
+  if(lotSum()>LOTDLG.stock){$("lotErr").textContent='묶음 합계가 재고보다 많습니다.';return;}
+  $("lotSave").disabled=true;$("lotErr").textContent='';
+  try{await API.call("/lot/set",{pid:LOTDLG.pid,lots:rows});closeLotDlg();await refresh(true);}
+  catch(e){$("lotErr").textContent='저장하지 못했습니다: '+e.message;$("lotSave").disabled=false;}};
 window.editLotExp=async function(pid,from){
   const to=prompt(`새 유통기한을 입력하세요 (예: 2027-05-31)\n현재: ${from}`, from);
   if(!to||to.trim()===from) return;
