@@ -458,6 +458,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       ${isEdit?`<div class="row"><span class="who small">다른 날로 복사 (같은 치료사·시간, 메모 포함)</span><input type="date" id="cpDate"><button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCopy()">복사</button></div>`:''}
       ${msgHtml()}
       <div class="editor-actions"><button type="button" ${BUSY?'disabled':''} onclick="edSaveBooking()">${BUSY?'저장 중...':'저장'}</button>
+        ${(d.mrn||d.patientName)?`<button type="button" class="ghost" onclick="openPatientInfo()" title="동선관리 환자 정보 창 (보드에 카드가 있으면 그 카드, 없으면 보기 전용)">환자 정보</button>`:''}
         ${isEdit?`<button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edVisit()">${e.booking.visited?'방문 체크 해제':'✔ 방문 체크'}</button>`:''}
         ${e.kind==='new'?`<button type="button" class="ghost" onclick="openEd({kind:'off',therapistId:${d.therapistId},startMin:${d.startMin}})">이 시간을 비근무로</button>`:''}
         ${isEdit?`<button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCancelMove('cancel')">취소로 옮기기</button><button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCancelMove('change')">변경 기록 남기기</button>
@@ -495,6 +496,10 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       ${msgHtml()}
       <div class="editor-actions"><button type="button" ${BUSY?'disabled':''} onclick="run(R.q.date,opDayTherapists(EDIT.draft.ids))">${BUSY?'저장 중...':'저장'}</button></div>`;}
   box.innerHTML=`<div class="editor">${h}</div>`;}
+/* [환자 정보] — 동선관리의 환자 정보 창(4층 화면 위로 뜸). 이 스케줄을 따로 연 창이면 동선관리에서 열어 달라고 안내 (2026-10-07 요청) */
+window.openPatientInfo=()=>{const d=EDIT&&EDIT.draft;if(!d)return;const P=window.parent;
+  if(P&&P!==window&&typeof P.mxOpenPatient==='function'){try{P.mxOpenPatient('',String(d.mrn||''),String(d.patientName||''));return;}catch(e){console.warn(e);}}
+  toast('환자 정보는 동선관리 안에서 연 스케줄([4층 비급여 치료])에서 볼 수 있습니다',3500);};
 window.edSaveBooking=()=>{const e=EDIT;const d=Object.assign({},e.draft);if(e.kind==='booking')d.id=e.booking.id;if(e.kind==='restore')d.fromCancelId=e.cancel.id;run(R.q.date,opBookingSave(d));};
 window.edVisit=()=>run(R.q.date,opBookingVisit(EDIT.booking.id));
 window.edDelete=()=>{if(confirm('이 예약을 삭제할까요?'))run(R.q.date,opBookingDelete(EDIT.booking.id));};
