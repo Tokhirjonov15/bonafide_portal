@@ -381,7 +381,7 @@ function newPtCands(D){if(D.date!==todayYmd()||!BOARD)return [];const hist=ALLDO
     const clinic=[...route].reverse().find(r=>/^진료실\s*\d/.test(r));
     const past=[];hist.forEach(d=>{if(d.date>=D.date)return;(d.bookings||[]).forEach(b=>{if(mrnKey(b.mrn)===mrn)past.push(Object.assign({},b,{date:d.date,therapist:(thById(b.therapistId)||{}).name||('#'+b.therapistId)}));});});
     past.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:b.startMin-a.startMin);
-    out.push({past:past.slice(0,2),mrn,name:String(p.name||'').trim(),room:clinic?clinic.replace(/\D/g,''):'',code:(fc[0]||codes[0]||''),codes:fc.length?fc:codes,fams:first});seen.add(mrn);});
+    out.push({allPast:past.map(x=>Number(x.visitNo)||0),past:past.slice(0,2),mrn,name:String(p.name||'').trim(),room:clinic?clinic.replace(/\D/g,''):'',code:(fc[0]||codes[0]||''),codes:fc.length?fc:codes,fams:first});seen.add(mrn);});
   return out;}
 function newPtBar(D){const L=newPtCands(D);if(!L.length)return '';
   const withPast=L.map((c,i)=>Object.assign({i},c)).filter(c=>c.past.length),none=L.map((c,i)=>Object.assign({i},c)).filter(c=>!c.past.length);
@@ -402,7 +402,7 @@ window.newPtPast=(i,k)=>{const D=D_();const c=newPtCands(D)[i];const p=c&&c.past
   const same=D.therapists.find(t=>t.name===p.therapist);const code=c.code||p.code;const dur=(c.code&&codeMinutes(c.code))||p.durationMin;
   const startMin=p.startMin+dur<=D.endMin?p.startMin:DAY_START;
   openEd({kind:'copyin',source:p,draft:{therapistId:same?same.id:(D.therapists[0]||{}).id,startMin,durationMin:dur,mrn:p.mrn,room:c.room||p.room,patientName:p.patientName||c.name,
-    visitNo:1,code,codeColor:'',color:'',visited:false,note:p.note||''}});};   // 그 치료 1회차 — 방문수 1 (카드의 '신장분사 1회차'와 맞춤)
+    visitNo:Math.max(0,...(c.allPast||[]))+1,code,codeColor:'',color:'',visited:false,note:p.note||''}});};   // 방문수 = 예전 기록의 마지막 방문수 + 1 (환자 검색과 이어지게)
 window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
   const now=new Date();let st=Math.ceil((now.getHours()*60+now.getMinutes())/SLOT)*SLOT;st=Math.max(DAY_START,Math.min(st,D.endMin-SLOT));
   const dur=Math.min(codeMinutes(c.code)||30,D.endMin-st);

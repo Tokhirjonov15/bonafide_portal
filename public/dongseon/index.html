@@ -7352,7 +7352,7 @@ function pt4ToBk(doc){if(!doc)return null;const T=(PT4_META&&Array.isArray(PT4_M
 /* ═════ 신장분사 방에 들어온 환자 → 4층 비급여 예약표에 자동 추가 (2026-10-07 요청) ═════
    오늘 보드에서 지금 방이 '신장분사'인 환자가 오늘 예약표(pt4Day/오늘)에 없으면 넣는다(차트번호로 확인, 트랜잭션이라 여러 PC 가 동시에 해도 한 번).
    시간 = 지금이 속한 15분 칸, 치료사 = 그 시간에 비어 있는 첫 치료사(없으면 15분씩 미뤄 1시간까지), 코드 = 오늘 비트 처방의 CRYO 코드(CRYO3 만이면 넣지 않음),
-   길이 = 코드 숫자 ≤10 → 30분 …(스케줄과 같은 규칙, CRYO 는 30분), 방문수 = 예전 예약표의 신장분사(CRYO) 예약 중 가장 큰 방문수 + 1 (없으면 1) */
+   길이 = 코드 숫자 ≤10 → 30분 …(스케줄과 같은 규칙, CRYO 는 30분), 방문수 = 예전 예약표 전체 기록 중 가장 큰 방문수 + 1 (없으면 1) */
 let PT4_AUTO_BUSY=false;const PT4_AUTO_DONE={};
 function pt4AutoCand(){const today=localYMD(new Date());const doc=PT4_DAYS[today];if(!doc||!Array.isArray(doc.th)||!doc.th.length)return [];
   const have=new Set((doc.bookings||[]).map(b=>normMrn(b.mrn)).filter(Boolean));const out=[];
@@ -7361,12 +7361,21 @@ function pt4AutoCand(){const today=localYMD(new Date());const doc=PT4_DAYS[today
     const real=cods.filter(c=>c!=='CRYO3');if(cods.length&&!real.length)return;   // CRYO3 만 = 급여 → 비급여 예약표에 넣지 않음
     out.push({p,mrn:m,code:real[0]||''});});
   return out;}
-async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!currentUser)return;const L=pt4AutoCand();if(!L.length)return;
+/* 자동으로 넣었던 예약의 방문수 바로잡기 (2026-10-07: 처음에 신장분사만 세어 '1' 로 들어갔다 → 전체 기록의 마지막 방문수 + 1) — 한 번만 */
+async function pt4AutoFixVisit(){const today=localYMD(new Date());const doc=PT4_DAYS[today];if(!doc||!pt4AutoAdd.hist)return;
+  const bad=(doc.bookings||[]).filter(b=>b.auto==='cryo-room'&&!b.visitFixed);if(!bad.length)return;
+  const want=m=>{let mx=0;pt4AutoAdd.hist.forEach(d=>{if(d.date>=today)return;(d.bookings||[]).forEach(b=>{if(normMrn(b.mrn)===m)mx=Math.max(mx,Number(b.visitNo)||0);});});return mx+1;};
+  try{await cloud.db.runTransaction(async t=>{const ref=cloud.pt4Col.doc(today);const sn=await t.get(ref);if(!sn.exists)return;const d=sn.data()||{};const B=Array.isArray(d.bookings)?d.bookings:[];let ch=false;
+    B.forEach(b=>{if(b.auto==='cryo-room'&&!b.visitFixed){const v=want(normMrn(b.mrn));if(Number(b.visitNo)!==v)b.visitNo=v;b.visitFixed=true;ch=true;}});
+    if(ch)t.set(ref,{bookings:B},{merge:true});});}catch(e){console.warn('pt4 fix visit',e);}}
+async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!currentUser)return;
+  if(pt4AutoAdd.hist&&!PT4_AUTO_BUSY){PT4_AUTO_BUSY=true;try{await pt4AutoFixVisit();}catch(e){}PT4_AUTO_BUSY=false;}
+  const L=pt4AutoCand();if(!L.length){if(!pt4AutoAdd.hist&&cloud.pt4Col){try{const s=await cloud.pt4Col.where('date','>=',localYMD(new Date(Date.now()-400*864e5))).get();pt4AutoAdd.hist=s.docs.map(d=>d.data()||{});pt4AutoAdd.at=Date.now();}catch(e){pt4AutoAdd.hist=[];}}return;}
   PT4_AUTO_BUSY=true;const today=localYMD(new Date());
   /* 예전 신장분사 방문수 — 최근 문서에서 (한 번 읽고 10분 보관) */
   try{if(!pt4AutoAdd.hist||Date.now()-pt4AutoAdd.at>600000){const s=await cloud.pt4Col.where('date','>=',localYMD(new Date(Date.now()-400*864e5))).get();pt4AutoAdd.hist=s.docs.map(d=>d.data()||{});pt4AutoAdd.at=Date.now();}}catch(e){pt4AutoAdd.hist=[];}
   for(const c of L){
-    let prevMax=0;(pt4AutoAdd.hist||[]).forEach(d=>{if(d.date>=today)return;(d.bookings||[]).forEach(b=>{if(normMrn(b.mrn)===c.mrn&&/^CRYO/i.test(String(b.code||'').replace(/\s+/g,'')))prevMax=Math.max(prevMax,Number(b.visitNo)||0);});});
+    let prevMax=0;(pt4AutoAdd.hist||[]).forEach(d=>{if(d.date>=today)return;(d.bookings||[]).forEach(b=>{if(normMrn(b.mrn)===c.mrn)prevMax=Math.max(prevMax,Number(b.visitNo)||0);});});   // 방문수 = 예약표 전체 기록의 마지막 방문수 + 1 (환자 검색의 방문수와 이어지게, 2026-10-07 고침)
     const now=new Date();const nowMin=now.getHours()*60+now.getMinutes();
     try{const ok=await cloud.db.runTransaction(async t=>{const ref=cloud.pt4Col.doc(today);const sn=await t.get(ref);if(!sn.exists)return false;const d=sn.data()||{};
         const B=Array.isArray(d.bookings)?d.bookings:[];if(B.some(b=>normMrn(b.mrn)===c.mrn))return false;   // 그새 누가 넣음
@@ -7380,7 +7389,7 @@ async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!current
         const id=(Number(d.nid)||Math.max(0,...B.map(b=>Number(b.id)||0)))+1;
         const nowIso=new Date().toISOString(),by='동선관리 자동 (신장분사 방)';
         B.push({id,therapistId:tid,startMin:st,durationMin:dur,mrn:c.mrn,room:String((c.p.route||[]).slice().reverse().find(r=>/^진료실\s*\d/.test(r))||'').replace(/\D/g,''),
-          patientName:String(c.p.name||'').trim(),visitNo:prevMax+1,rawText:'',code:c.code,codeColor:'',color:'',visited:false,mark:'',note:'',createdBy:by,updatedBy:by,createdAt:nowIso,updatedAt:nowIso,auto:'cryo-room'});
+          patientName:String(c.p.name||'').trim(),visitNo:prevMax+1,rawText:'',code:c.code,codeColor:'',color:'',visited:false,mark:'',note:'',createdBy:by,updatedBy:by,createdAt:nowIso,updatedAt:nowIso,auto:'cryo-room',visitFixed:true});
         t.set(ref,{bookings:B,nid:id,updatedAt:nowIso,updatedBy:by},{merge:true});return {tid,st};});
       PT4_AUTO_DONE[c.mrn]=today;
       if(ok){try{audit('4층 예약표 자동 추가',(c.p.name||'')+' ('+c.mrn+') · 신장분사 '+(c.code||'')+' '+String(Math.floor(ok.st/60))+':'+String(ok.st%60).padStart(2,'0'));}catch(e){}
