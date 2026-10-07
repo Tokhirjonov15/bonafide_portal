@@ -475,7 +475,9 @@ function opBookingSave(input){return ctx=>{const d=ctx.d;
   if(!colorOk(codeColor)||!colorOk(color))return {ok:false,message:'잘못된 색입니다.'};
   const visited=!!input.visited;if(visited)color='#ffe599';else if(color==='#ffe599')color='';
   const note=clean(input.note,1000);const endMin=startMin+durationMin;
-  if(d.bookings.some(o=>o.therapistId===therapistId&&o.id!==input.id&&o.startMin<endMin&&startMin<o.startMin+o.durationMin))return {ok:false,message:'같은 시간에 이미 다른 예약이 있습니다.'};
+  {const cl=d.bookings.filter(o=>o.therapistId===therapistId&&o.id!==input.id&&o.startMin<endMin&&startMin<o.startMin+o.durationMin);
+   if(cl.length){const t=thById(therapistId);   /* 어느 예약과 겹치는지 알려 준다 (2026-10-07: 빈 칸인데 겹친다는 제보 — 화면에 안 보이는 예약일 수 있음) */
+     return {ok:false,message:'같은 시간에 이미 다른 예약이 있습니다: '+cl.map(o=>(t?t.name+' ':'')+hm(o.startMin)+'~'+hm(o.startMin+o.durationMin)+' '+((o.patientName||o.mrn||o.rawText||'(이름 없음)')+(o.code?' '+o.code:''))+' #'+o.id).join(', ')};}}
   ensureTh(ctx);
   let before=null;if(input.id){before=d.bookings.find(b=>b.id===input.id)||null;if(!before)return {ok:false,message:'예약을 찾지 못했습니다. 새로고침하세요.'};}
   const mark=visited?((before&&String(before.mark||'').trim())||'.'):'';
