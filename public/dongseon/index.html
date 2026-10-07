@@ -7306,7 +7306,8 @@ function pt4ToBk(doc){if(!doc)return null;const T=(PT4_META&&Array.isArray(PT4_M
     cancels:(doc.cancels||[]).map(c=>({th:c.therapistName||'',t:hhmm2(c.startMin),text:c.text||'',mrn:c.mrn||'',name:c.patientName||'',color:c.color||'',note:c.note||''})),
     manual:(doc.manual||[]).map(m=>({no:String(m.no),mrn:m.mrn||'',name:m.patientName||'',th:m.therapistName||'',color:m.color||'',note:m.note||''})),
     stats:[{label:'당월 누적 상담수',value:Object.values(cons).reduce((a,n)=>a+(+n||0),0)},{label:'도수+충격파',key:'CME',value:visited.length-cry},{label:'신장분사+Hilt',key:'CRY',value:cry}]};}
-function bkPick(D){const p=PT4_DAYS[D];BOOKINGS[D]=(p&&Array.isArray(p.th)&&p.th.length)?pt4ToBk(p):(BK_SHEET[D]||null);
+function bkPick(D){const p=PT4_DAYS[D];const usePt4=p&&Array.isArray(p.th)&&p.th.length&&((Array.isArray(p.bookings)&&p.bookings.length)||!BK_SHEET[D]);
+  BOOKINGS[D]=usePt4?pt4ToBk(p):(BK_SHEET[D]||(p&&Array.isArray(p.th)&&p.th.length?pt4ToBk(p):null));
   try{if(resvOpen)renderResvScreen();bkChangedRedraw();}catch(e){}}
 /* [예약 스케줄] — 포털 스케줄(입력·내원률 통계·치료 통계·그래프·변경 기록)을 이 화면 위에 띄운다 */
 function openPt4(date){let ov=document.getElementById('pt4Ov');
@@ -8168,7 +8169,11 @@ function cardEl(p,colRoom){
         return `<span class="nudge-grp" title="대기실 순서 바꾸기 (위/아래 한 칸)"><button class="icon-btn nudge" ${np.i===0?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',-1)">▲</button><button class="icon-btn nudge" ${np.i===np.n-1?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',1)">▼</button></span>`;})()}</div>
     ${(function(){   /* 예약 뱃지 (2026-10-01): [비트 19:20] = 비트 진료 예약, 그 오른쪽 [14:30] = 4층 비급여 치료 예약 시트의 오늘 시간 */
       const f4=cardFloor4Times(p);if(!p.reserveAt&&!f4.length)return '';
-      return `<div class="card-time res-badges">${p.reserveAt?`<span class="rb rb-bit" title="비트 예약 시간"><i data-lucide="calendar"></i> 비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(t=>{const a=cardFloor4Arrived(p,t);return `<span class="rb rb-4f${a?' arr':''}" title="4층 비급여 치료 예약${a?' — 받음(표시 .)·도착':''}">4층 ${esc(t)}${a?' ✓':''}</span>`;}).join('')}${p.reserveAt?resTagHtml:''}</div>`;})()}
+      /* 비트 예약 시간과 4층 예약 시간이 같으면 한 번만 — [비트·4층 15:00] (2026-10-07 요청) */
+      const mn=t=>{const m=/^(d{1,2}):(d{2})/.exec(String(t||''));return m?(+m[1])*60+(+m[2]):-1;};
+      const same=p.reserveAt?f4.find(t=>mn(t)===mn(p.reserveAt)):null;
+      const f4b=t=>{const a=cardFloor4Arrived(p,t);return `<span class="rb rb-4f${a?' arr':''}" title="${t===same?'비트 예약 + ':''}4층 비급여 치료 예약${a?' — 받음(표시 .)·도착':''}">${t===same?'비트·':''}4층 ${esc(t)}${a?' ✓':''}</span>`;};
+      return `<div class="card-time res-badges">${p.reserveAt&&!same?`<span class="rb rb-bit" title="비트 예약 시간"><i data-lucide="calendar"></i> 비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(f4b).join('')}${p.reserveAt?resTagHtml:''}</div>`;})()}
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     ${''/* 공공보험 뱃지는 카드에서 빼고 환자 정보 창 '환자 정보' 줄로 옮겼다 (2026-10-01 요청) */}
     ${xrayRxHtml(p,_cur)}
