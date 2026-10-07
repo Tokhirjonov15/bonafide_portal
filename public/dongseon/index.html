@@ -8061,7 +8061,7 @@ function cardEl(p,colRoom){
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
-  const last=p.step>=p.route.length-1||curRoom(p)===PAY_DONE_NAME;   // 수납완료는 무조건 마지막 — [내보내기] (2026-10-06)
+  const last=(p.step>=p.route.length-1&&!spaceNext(p))||curRoom(p)===PAY_DONE_NAME;   // 수납완료는 무조건 마지막 — [내보내기] (2026-10-06). 같은 공간에 남은 처방 방이 있으면 [종결] (2026-10-07)
   // 동선 전체
   const steps=p.route.map((r,i)=>{
     const cls=i<p.step?"done":(i===p.step?"cur":"");
@@ -8908,6 +8908,9 @@ function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
      if(need&&need.length){
        if(!need.includes(p.route[p.step+1])){try{if(consultAutoRoute(pid,cr))return;}catch(e){console.warn('consultAutoRoute',e);}}
        else delete p.spaceDone;}}}
+  /* 같은 공간에 처방이 남은 방이 있으면 그 방으로 — 동선에 없거나 뒤쪽에 있으면 바로 다음 자리로 당겨 온다 (2026-10-07) */
+  {const sn=spaceNext(p);
+   if(sn&&p.route[p.step+1]!==sn){const later=p.route.indexOf(sn,p.step+1);if(later>=0)p.route.splice(later,1);p.route.splice(p.step+1,0,sn);}}
   {const done=roomsDoneBefore(p);done.add(curRoom(p));
    const rest=p.route.slice(p.step+1), keep=rest.filter(r=>repeatOk(r)||!done.has(r));
    if(keep.length!==rest.length){
@@ -8953,6 +8956,13 @@ function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   markSpaceDone(p,from,room);
   save(p);render();enteredRoom(p,room);}
 /* 같은 공간(C-Arm·Sono·처치실·근전도검사) 안에서 옮겼으면 떠난 방은 끝난 것으로 본다 — 옮긴 자리에만 한 장 (2026-09-24). [종결]·끌기 모두 */
+/* 같은 공간(C-Arm·Sono·처치실·근전도검사)에서 처방이 남은 다음 방 (2026-10-07 요청: C-Arm·Sono 둘 다 처방이면 C-Arm [종결] → Sono 로 합쳐짐).
+   지금 방이 같은 공간이고, 처방에 있는 같은 공간 방 중 아직 안 한 방(인계·이전 방문에 없는 방)을 기준 순서(근전도 → C-Arm → Sono → 처치실)로 */
+function spaceNext(p){
+  if(!p||p.discharged)return '';const cr=curRoom(p);if(!sameSpaceMates(cr).length)return '';
+  const need=spaceRoomsFromRx(p);if(!need||!need.length)return '';
+  const done=new Set([...(p.spaceDone||[]),...roomsDoneBefore(p),cr]);
+  return need.find(r=>!done.has(r))||'';}
 function markSpaceDone(p,from,to){
   if(!from||!to||!isSameSpace(from,to))return;
   const done=(p.spaceDone||[]).filter(r=>r!==to);if(!done.includes(from))done.push(from);p.spaceDone=done;}
@@ -11889,7 +11899,7 @@ function renderEditStatus(){
   if(mh){ const bi=[p.mrn?esc(p.mrn):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
     mh.innerHTML=`<b>${esc(p.name)}</b>${bi?`<span class="hint">${bi}</span>`:''}`;
     const sb=document.getElementById('mhSticky');if(sb)sb.querySelector('.mhs-name').innerHTML=mh.innerHTML; }   // 휴대폰: 위에 붙는 이름 줄 (2026-10-06)
-  const st=p.status||'대기', room=curRoom(p), _rm=meta(room), last=p.step>=p.route.length-1||room===PAY_DONE_NAME;
+  const st=p.status||'대기', room=curRoom(p), _rm=meta(room), last=(p.step>=p.route.length-1&&!spaceNext(p))||room===PAY_DONE_NAME;
   const MOD=/Mac|iP/.test(navigator.platform||'')?'⌘':'Ctrl+';
   box.innerHTML=`
     <div class="es-wrap" title="${MOD}→ 다음 단계 · ${MOD}← 이전 단계">
