@@ -121,7 +121,7 @@ function bookingCells(b,span){const bg=b.visited?'#ffe599':b.color||'#ffffff';co
   const dm=`data-bid="${b.id}" data-tid="${b.therapistId}" data-min="${b.startMin}"`,sc=SEL.has(b.id)?' sel':'';
   const du=dueInfo(b),dc=du?' due':'',dt=du?` title="${A(`${hm(du.start)} 시작 · ${du.mins}분 치료 → ${hm(du.end)} 끝 (지남) — 끝났으면 표시 칸에 점(.)`)}"`:'';
   return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}${sc}${dc}"${dt} ${dm} style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>
-    <td rowspan="${span}" class="code editable${sc}${dc}"${dt} ${dm} style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}</td>
+    <td rowspan="${span}" class="code editable${sc}${dc}"${dt} ${dm} style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}${(()=>{const x=txInfo(b);return x?`<div class="tx-end" title="${A(`${hm(x.start)} 시작 · ${x.mins}분`)}">~${hm(x.end)}</div>`:'';})()}</td>
     <td rowspan="${span}" class="mark editable${sc}" ${dm} title="클릭해서 점(.)이나 치료 시작 시각을 입력. 내용이 있으면 내원 · 두 번 누르면 방문 체크" onclick="markClick(${b.id},this,event)" ondblclick="event.stopPropagation();bVisit(${b.id})">${esc(shown)}</td>`;}
 
 let HIDE_OFF=(()=>{try{return localStorage.getItem('pt4HideOff')==='1';}catch(e){return false;}})();
@@ -135,8 +135,14 @@ function txMinutes(code){const c=normalizeCode(code);if(!c)return null;const t=M
 function markStart(b){const s=String(b.mark||'').trim();if(!s||/^[.·]+$/.test(s))return null;let m;
   if((m=/^(\d{1,2})\s*[:시]\s*(\d{2})$/.exec(s)))return (+m[1])*60+(+m[2]);
   if((m=/^(\d{1,2})(\d{2})$/.exec(s))&&+m[1]>=8&&+m[1]<=21)return (+m[1])*60+(+m[2]);
-  if((m=/^(\d{1,2})$/.exec(s))&&+m[1]<60){let t=Math.floor(b.startMin/60)*60+(+m[1]);if(t<b.startMin-20)t+=60;return t;}
+  if((m=/^(\d{1,2})$/.exec(s))&&+m[1]<60){const mm=+m[1];
+    const at=b.markAt?new Date(b.markAt):null;
+    if(at&&localYmdOf(at)===R.q.date){const w=at.getHours()*60+at.getMinutes()+2;let t=Math.floor(w/60)*60+mm;if(t>w)t-=60;return t;}   // 적은 시각에서 가장 가까운 지난 '그 분' (늦게 들어온 환자도 맞게)
+    let t=Math.floor(b.startMin/60)*60+mm;if(t<b.startMin-20)t+=60;return t;}
   return null;}
+const localYmdOf=d=>ymd(d.getFullYear(),d.getMonth()+1,d.getDate());
+/* 치료 중(표시 칸에 시작 분)이면 끝나는 시각 — 코드 칸에 작게 보여 준다 */
+function txInfo(b){if(R.q.date!==todayYmd())return null;const start=markStart(b);if(start==null)return null;const mins=txMinutes(b.code);if(!mins)return null;return {start,mins,end:start+mins};}
 function dueInfo(b){if(R.q.date!==todayYmd())return null;const start=markStart(b);if(start==null)return null;const mins=txMinutes(b.code);if(!mins)return null;
   const now=new Date(),nowMin=now.getHours()*60+now.getMinutes();return nowMin>=start+mins?{start,mins,end:start+mins}:null;}
 setInterval(()=>{if(R.page==='schedule'&&R.q.date===todayYmd()&&!DRAG&&!EDIT)safeRender();},30000);   // 30초마다 시간 지남 다시 확인

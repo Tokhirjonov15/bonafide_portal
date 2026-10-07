@@ -104,6 +104,7 @@ input.consult{width:44px;text-align:center;font:inherit;border:1px solid var(--l
 #selBox{position:fixed;display:none;pointer-events:none;z-index:40;border:2px solid #2563eb;background:rgba(37,99,235,.10);border-radius:3px}   /* 드래그 범위 */
 @keyframes dueBlink{0%,100%{background-color:#fecaca;box-shadow:inset 0 0 0 2px #ef4444}50%{background-color:#fee2e2;box-shadow:inset 0 0 0 1px #fca5a5}}
 table.grid td.due{animation:dueBlink 1.8s ease-in-out infinite;color:#991b1b!important;font-weight:700}   /* 치료 시간이 지났는데 아직 점(.)이 안 찍힘 (2026-10-07) */
+table.grid td .tx-end{font-size:10px;font-weight:700;color:#b45309;line-height:1.1}   /* 치료 끝나는 시각 */
 table.grid td.sel{box-shadow:inset 0 0 0 2px #2563eb;filter:brightness(.93)}   /* 복사하려고 고른 예약 */
 table.grid:not(.cancel-grid){user-select:none;-webkit-user-select:none}
 table.grid .note-pop,table.grid .note-pop textarea{user-select:text;-webkit-user-select:text}
@@ -488,6 +489,7 @@ const opBookingDelete=id=>ctx=>{const i=ctx.d.bookings.findIndex(b=>b.id===id);i
 const opBookingVisit=id=>ctx=>{const b=findB(ctx.d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const visited=!b.visited;const was=b.visited;
   Object.assign(b,{visited,mark:visited?'.':'',color:visited?'#ffe599':b.color==='#ffe599'?'':b.color,updatedBy:ME.name,updatedAt:new Date().toISOString()});aud(ctx,'update','bookings',id,{visited:was},{visited});return {ok:true};};
 const opBookingMark=(id,mark)=>ctx=>{const b=findB(ctx.d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const m=String(mark??'').trim().slice(0,10);const visited=m!=='';
+  b.markAt=m?new Date().toISOString():'';   // 표시 칸을 적은 시각 — 시작 분(예: 35)이 몇 시의 35분인지 정할 때 씀 (2026-10-07)
   const bf={mark:b.mark,visited:b.visited};Object.assign(b,{mark:m,visited,color:visited?'#ffe599':b.color==='#ffe599'?'':b.color,updatedBy:ME.name,updatedAt:new Date().toISOString()});aud(ctx,'update','bookings',id,bf,{mark:m,visited});return {ok:true};};
 const opBookingNote=(id,note)=>ctx=>{const b=findB(ctx.d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const n=String(note??'').trim().slice(0,1000);const bf=b.note;
   Object.assign(b,{note:n,updatedBy:ME.name,updatedAt:new Date().toISOString()});aud(ctx,'update','bookings',id,{note:bf},{note:n});return {ok:true};};
