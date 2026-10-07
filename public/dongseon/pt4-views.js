@@ -472,7 +472,7 @@ window.codeDur=v=>{if(!EDIT||!EDIT.draft)return;const want=codeMinutes(v);if(!wa
   const from=EDIT.draft.durationMin;EDIT.draft.durationMin=want;MSG=`치료코드에 맞춰 길이를 ${from}분 → ${want}분으로 바꿨습니다.`;renderEditor();};
 window.dset=(k,v,re)=>{if(!EDIT||!EDIT.draft)return;EDIT.draft[k]=v;if(re)renderEditor();};
 const opt=(v,cur,label)=>`<option value="${A(v)}" ${String(v)===String(cur)?'selected':''}>${esc(label)}</option>`;
-function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다|바꿨습니다|확인하고 저장/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
+function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다|바꿨습니다|확인하고 저장|옮겼습니다/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
 function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.page!=='schedule'){box.innerHTML='';return;}
   const e=EDIT,D=D_();if(!D){box.innerHTML='';return;}
   const head=t=>`<div class="editor-head"><strong>${t}</strong><button type="button" class="ghost" onclick="closeEd()">닫기</button></div>`;
@@ -502,7 +502,11 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
         ${(d.mrn||d.patientName)?`<button type="button" class="pt-info-btn" onclick="openPatientInfo()" title="동선관리 환자 정보 창 (보드에 카드가 있으면 그 카드, 없으면 보기 전용)">👤 환자 정보</button>`:''}</div>
       ${e.kind==='restore'?'<p class="info">시간·치료사를 확인하고 저장하면 예약이 다시 생기고 취소/변경 기록은 지워집니다.</p>':''}
       ${e.kind==='copyin'?'<p class="info">과거 기록의 환자 정보·치료코드·메모가 채워져 있습니다. 시간과 치료사를 확인하고 저장하세요.</p>':''}
-      ${isEdit?`<div class="row"><span class="who small">다른 날로 복사 (같은 치료사·시간, 메모 포함)</span><input type="date" id="cpDate"><button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCopy()">복사</button></div>`:''}
+      ${isEdit?`<div class="row wrap cp-row"><span class="who small">다른 날로 (메모 포함)</span><input type="date" id="cpDate">
+        <select id="cpTime" title="시작 시간">${TIMES.map(m=>opt(m,e.booking.startMin,hm(m))).join('')}</select>
+        <select id="cpTh" title="치료사">${activeTh().map(t=>opt(t.id,e.booking.therapistId,t.name)).join('')}</select>
+        <button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCopy(false)" title="원래 예약은 그대로 두고 그 날에 하나 더 (방문수 +1)">복사</button>
+        <button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCopy(true)" title="그 날·시간으로 옮기고 원래 예약은 지움 (방문수 그대로)">옮기기</button></div>`:''}
       ${msgHtml()}
       <div class="editor-actions"><button type="button" ${BUSY?'disabled':''} onclick="edSaveBooking()">${BUSY?'저장 중...':'저장'}</button>
         ${isEdit?`<button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edVisit()">${e.booking.visited?'방문 체크 해제':'✔ 방문 체크'}</button>`:''}
@@ -552,12 +556,20 @@ window.edDelete=()=>{if(confirm('이 예약을 삭제할까요?'))run(R.q.date,o
 window.edCancelMove=async kind=>{const id=EDIT.booking.id;
   if(kind==='cancel'){if(confirm('이 예약을 취소/변경 칸으로 옮기고 표에서 지울까요?'))run(R.q.date,opBookingCancel(id,'cancel'));return;}
   if(await run(R.q.date,opBookingCancel(id,'change'),false)){MSG='변경 기록을 남겼습니다. 이제 새 시간(또는 치료사)을 고르고 저장하세요.';renderEditor();}};
-window.edCopy=async()=>{const to=(document.getElementById('cpDate')||{}).value;const b=EDIT.booking;if(!to)return;
+/* 다른 날로 복사·옮기기 (2026-10-07: 시간·치료사도 고를 수 있게 — 전에는 같은 시간으로만 복사됐다) */
+window.edCopy=async move=>{const to=(document.getElementById('cpDate')||{}).value;const b=EDIT.booking;if(!to){MSG='날짜를 고르세요.';renderEditor();return;}
+  const st=Number((document.getElementById('cpTime')||{}).value||b.startMin),tid=Number((document.getElementById('cpTh')||{}).value||b.therapistId);
   if(!isValidDate(to)){MSG='잘못된 날짜입니다.';renderEditor();return;}
-  if(b.startMin+b.durationMin>dayEndMin(to)){MSG='그 날은 마감 시간이 빨라서 같은 시간에 넣을 수 없습니다. 그 날 화면에서 환자 검색으로 시간을 골라 가져오세요.';renderEditor();return;}
-  const r=await run(to,opBookingSave({therapistId:b.therapistId,startMin:b.startMin,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,visitNo:b.visitNo==null?null:b.visitNo+1,
-    code:b.code,codeColor:b.codeColor,color:b.color==='#ffe599'?'':b.color,visited:false,note:b.note}),false);
-  if(r){MSG=`${to} 로 복사했습니다 (메모 포함).`;renderEditor();}};
+  if(st+b.durationMin>dayEndMin(to)){MSG=`그 날은 ${hm(dayEndMin(to))} 마감이라 ${hm(st)}부터 ${b.durationMin}분은 넣을 수 없습니다. 시간을 당겨 주세요.`;renderEditor();return;}
+  if(move&&to===R.q.date){MSG='같은 날 안에서 옮기려면 위의 치료사·시작 시간을 바꾸고 [저장]하세요.';renderEditor();return;}
+  const tn0=(thById(tid)||{}).name||'';
+  const r=await run(to,ctx=>{ensureTh(ctx);if(ctx.d.th.length&&!ctx.d.th.includes(tid))return {ok:false,message:tn0+' 는 '+to+' 치료사 명단에 없습니다 — 그 날 명단에 먼저 넣거나 다른 치료사를 고르세요.'};return opBookingSave({therapistId:tid,startMin:st,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,visitNo:b.visitNo==null?null:(move?b.visitNo:b.visitNo+1),
+    code:b.code,codeColor:b.codeColor,color:b.color==='#ffe599'?'':b.color,visited:false,note:b.note})(ctx);},false);
+  if(!r)return;
+  const tn=(thById(tid)||{}).name||'';
+  if(move){const d2=await commitDay(R.q.date,opBookingDelete(b.id));EDIT=null;MSG='';renderEditor();safeRender();
+    toast(d2.ok?`${to} ${hm(st)} ${tn} 로 옮겼습니다`:`${to} 로 넣었지만 원래 예약을 지우지 못했습니다 — 직접 지워 주세요`,4000);return;}
+  MSG=`${to} ${hm(st)} ${tn} 로 복사했습니다 (메모 포함).`;renderEditor();};
 window.edSaveBlock=async()=>{const e=EDIT,d=Object.assign({},e.draft);
   if(e.kind==='band'){const old=e.band;const tids=(D_().allTherapists||D_().therapists).map(t=>t.id);
     const r=await commitDay(R.q.date,ctx=>{const c1=opBandClear(tids,old.startMin,old.endMin)(ctx);if(!c1.ok)return c1;return opBlockSet(Object.assign(d,{all:true}))(ctx);});
