@@ -1455,6 +1455,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* ═══ 비급여 동의서 (2026-09-26): 태블릿에서 쓰기 좋게 큼직하게 ═══ */
   .cst-screen{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px}
   .cst-screen.show{display:flex}
+  .cst-cmp-row td{font-size:13px;color:var(--sub)}
+  .cst-cmp.ok{color:#15803d}.cst-cmp.bad{color:#dc2626}
   .cst-price.from-hint{background:#fff7ed;border-color:#fb923c;color:#9a3412}
   .cst-hint-tag{color:#c2410c;font-weight:700}
   .cst-box{background:var(--panel);border-radius:16px;box-shadow:0 24px 60px rgba(15,23,42,.3);width:min(860px,100%);max-height:96vh;display:flex;flex-direction:column;overflow:hidden}
@@ -11523,11 +11525,11 @@ function consentBitAmounts(p){
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;
   const pay=(rx&&Array.isArray(rx.pay))?rx.pay:[];
   const byItem=CONSENT_ITEMS.map(()=>0), used=new Set();
-  pay.forEach((ln,j)=>{const amt=Number(String(ln.amt||'').replace(/[^\d.]/g,''))||0;if(amt<=0)return;
+  pay.forEach((ln,j)=>{const amt=Number(String(ln.amt||'').replace(/[^\d.]/g,''))||0;if(amt<=0)return;if(String(ln.ins||'').trim()==='0')return;   // 급여 줄은 동의서 금액에 넣지 않는다 — 비트 비급여 합계와 맞추려고 (2026-10-07)
     const cod=String(ln.cod||'').trim(), nam=String(ln.nam||'').trim();
     const i=CONSENT_ITEMS.findIndex(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(cod))||(it.bit.nam&&it.bit.nam.test(nam))));
     if(i>=0){byItem[i]+=amt;used.add(j);}});
-  const lines=pay.map((ln,j)=>Object.assign({j},ln)).filter(ln=>String(ln.ins||'')==='2'&&(Number(ln.amt)||0)>0);
+  const lines=pay.map((ln,j)=>Object.assign({j},ln)).filter(ln=>String(ln.ins||'').trim()!=='0'&&(Number(ln.amt)||0)>0);   // 비급여 줄(급여 '0' 이 아닌 것) — 비트 수납 비급여 합계
   return {byItem,used,lines,has:pay.length>0};
 }
 const CONSENT_NOTICE=[
@@ -11549,6 +11551,7 @@ function cstBold(t){return esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');}   // �
 let CONSENTS={};            // 차트번호 → [동의서…] (열람 중인 환자만 담아 둔다)
 let consentSign=null;       // 서명판 상태
 let consentFor=null;        // 지금 작성 중인 환자
+let CST_BIT_TOTAL=null;     // 이 환자의 비트 비급여 처방 금액 합계(수납 금액과 맞추는 기준) — 없으면 null
 
 function consentCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('consent'):null;}
 /* 이 환자의 동의서를 불러온다(차트번호 기준). 색인이 필요 없도록 정렬은 화면에서 한다.
@@ -11622,7 +11625,8 @@ function consentFormHtml(p){
     <table class="cst-ftbl cst-items-tbl"><thead><tr><th class="c" style="width:44px">시행</th><th>비급여 항목</th><th class="r" style="width:130px">금액(원)</th></tr></thead><tbody>${rows}
       <tr><td class="c"><input type="checkbox" id="cstChkEtc" onchange="consentSum()"></td><td><input id="cstEtc" placeholder="기타 (직접 입력)" oninput="if(this.value)document.getElementById('cstChkEtc').checked=true;consentSum()"></td>
         <td class="r"><input class="cst-price" id="cstEtcPrc" inputmode="numeric" placeholder="금액" oninput="consentSum()"></td></tr>
-      <tr class="sum"><th colspan="2" class="r">합계 금액</th><th class="r" id="cstTotal">0원</th></tr></tbody></table>
+      <tr class="sum"><th colspan="2" class="r">합계 금액</th><th class="r" id="cstTotal">0원</th></tr>
+      <tr class="cst-cmp-row"><td colspan="2" class="r">비트 수납 비급여 합계</td><td class="r" id="cstBitCmp"></td></tr></tbody></table>
     <div class="hint cst-bitinfo" id="cstBitInfo"></div>
     <div class="cst-sect-t">3. 안내 사항 <span class="hint">(담당 의료인의 설명 내용 — 별도 체크 없음)</span></div>
     <div class="cst-notice"><ul>${CONSENT_NOTICE.map(t=>`<li>${cstBold(t)}</li>`).join('')}</ul><div class="hint">※ 위 안내에 대한 확인·동의는 5. 동의 사항에서 한 번에 받습니다.</div></div>
@@ -11661,11 +11665,16 @@ function openConsent(pid){
        if(hint>0&&pr){pr.value=String(Math.round(hint));pr.classList.add('from-hint');pr.title='이 환자 금액이 아직 비트에 없어 오늘 다른 환자의 같은 처방('+cods.join(', ')+') 금액을 넣었습니다 — 확인하세요';hinted++;}
        else noPrice.push(x.it.name);});}catch(e){console.warn('consent hint',e);}
      const rest=B.lines.filter(ln=>!B.used.has(ln.j));
+     /* 합계가 비트 수납 금액과 같아야 한다 (2026-10-07 요청): 항목에 안 맞는 비급여 줄은 '기타'에 자동으로 넣고, 비트 비급여 합계를 기준으로 비교 */
+     CST_BIT_TOTAL=B.has?B.lines.reduce((a,ln)=>a+(Number(String(ln.amt||'').replace(/[^\d.]/g,''))||0),0):null;
+     if(rest.length){const e=document.getElementById('cstEtc'),ec=document.getElementById('cstChkEtc'),ep=document.getElementById('cstEtcPrc');
+       if(e)e.value=rest.map(ln=>ln.nam||ln.cod).join(' · ');if(ec)ec.checked=true;
+       if(ep){ep.value=String(Math.round(rest.reduce((a,ln)=>a+(Number(String(ln.amt||'').replace(/[^\d.]/g,''))||0),0)));ep.classList.add('from-bit');ep.title='비트 비급여 처방 금액 (동의서 항목에 없는 처방)';}}
      if(info){
        const extra=(hinted?` · <span class="cst-hint-tag">오늘 같은 처방 금액으로 ${hinted}개 채움 — 확인하세요</span>`:'')+(noPrice.length?` · 금액 없음(직접 입력): ${noPrice.map(esc).join(', ')}`:'');
        if(!B.has)info.innerHTML='<i data-lucide="info"></i> 이 환자의 비트 처방 금액이 아직 없습니다 (처방 항목은 체크했습니다)'+extra;
        else info.innerHTML=`<i data-lucide="pill"></i> 비트 처방에서 <b>${filled}개 항목</b> 금액을 불러왔습니다`+extra+
-         (rest.length?` · 항목에 안 맞는 비급여: ${rest.map(ln=>`<span class="cst-bitrest" title="${esc(ln.cod)}">${esc(ln.nam||ln.cod)} ${esc(wonTxt(Number(ln.amt)||0))}</span>`).join(' ')} (필요하면 '기타'에)`:'');}
+         (rest.length?` · 항목에 안 맞는 비급여는 '기타'에 넣었습니다: ${rest.map(ln=>`<span class="cst-bitrest" title="${esc(ln.cod)}">${esc(ln.nam||ln.cod)} ${esc(wonTxt(Number(ln.amt)||0))}</span>`).join(' ')}`:'');}
    }catch(e){console.warn('consent bit',e);if(info)info.textContent='';}}
   consentSum();
   if(window.lucide)try{lucide.createIcons();}catch(e){}
@@ -11687,6 +11696,8 @@ function consentSum(){
   const P=consentPicked();
   const t=P.reduce((a,b)=>a+(Number(b.price)||0),0);
   const el=document.getElementById('cstTotal');if(el)el.textContent=t?wonTxt(t):'0원';
+  {const c=document.getElementById('cstBitCmp');if(c){if(CST_BIT_TOTAL==null)c.innerHTML='<span class="hint">비트 금액이 아직 없습니다</span>';
+    else{const d=t-CST_BIT_TOTAL;c.innerHTML=esc(wonTxt(CST_BIT_TOTAL)||'0원')+(d===0?' <b class="cst-cmp ok">✔ 같음</b>':` <b class="cst-cmp bad">⚠ ${d>0?'동의서가':'비트가'} ${esc(wonTxt(Math.abs(d)))} 많음</b>`);}}}
   const d=document.getElementById('cstDesc');if(d){const h=consentDescHtml(P.map(x=>x.key).filter(Boolean));if(d.dataset.h!==h){d.dataset.h=h;d.innerHTML=h;}}
 }
 /* 서명판 — 손가락·펜·마우스 모두 (pointer 이벤트) */
