@@ -363,25 +363,33 @@ function todayRx(){const today=todayYmd();if(RXT.docs&&RXT.day===today&&Date.now
     .catch(e=>{console.warn('bitRx',e);RXT={at:Date.now(),day:today,docs:[],loading:false};});}
   return RXT.docs||[];}
 const RX4=/^(CRYO|EES|CE|ES)\d+$/;
+/* 1회차 = 그 치료(신장분사 / 충격파)를 예약표에서 처음 받는 환자 (2026-10-07 고침: 예전에 도수만 받았던 환자도 신장분사는 1회차).
+   치료 갈래: CRYO… = 신장분사, EES·CE·ES… = 충격파. 처방 코드가 아직 없으면 동선의 방(신장분사·충격파)으로. 오늘 예약표에 이미 있으면 빠짐 */
+const txFam=c=>{c=normalizeCode(c);return /^CRYO\d/.test(c)?'신장분사':/^(EES|CE|ES)\d/.test(c)?'충격파':'';};
 function newPtCands(D){if(D.date!==todayYmd()||!BOARD)return [];const hist=ALLDOCS.docs;if(!hist){recentDocs().then(()=>safeRender()).catch(()=>{});return [];}
-  const rx=todayRx();const seen=new Set();hist.forEach(d=>(d.bookings||[]).forEach(b=>{if(mrnKey(b.mrn))seen.add(mrnKey(b.mrn));}));
-  (DAYDOC?DAYDOC.bookings:[]).forEach(b=>{if(mrnKey(b.mrn))seen.add(mrnKey(b.mrn));});
-  const out=[];
-  BOARD.forEach(p=>{if(p.discharged)return;const mrn=mrnKey(p.mrn);if(!mrn||seen.has(mrn))return;const route=Array.isArray(p.route)?p.route:[];
+  const rx=todayRx();const had=new Map();   // 차트번호 → 예전에 받은 치료 갈래
+  hist.forEach(d=>{if(d.date>=D.date)return;(d.bookings||[]).forEach(b=>{const m=mrnKey(b.mrn),fm=txFam(b.code);if(m&&fm){if(!had.has(m))had.set(m,new Set());had.get(m).add(fm);}});});
+  const today=new Set((DAYDOC?DAYDOC.bookings:[]).map(b=>mrnKey(b.mrn)).filter(Boolean));
+  const out=[],seen=new Set();
+  BOARD.forEach(p=>{if(p.discharged)return;const mrn=mrnKey(p.mrn);if(!mrn||seen.has(mrn)||today.has(mrn))return;const route=Array.isArray(p.route)?p.route:[];
     const codes=[];let cryo3=false;rx.filter(r=>mrnKey(r.mrn)===mrn).forEach(r=>(r.items||[]).forEach(it=>{const c=normalizeCode(it.cod);if(c==='CRYO3'){cryo3=true;return;}if(RX4.test(c)&&!codes.includes(c))codes.push(c);}));
     if(!codes.length&&(cryo3||!route.some(r=>r==='신장분사'||r==='충격파')))return;   // CRYO3 만 나온 환자는 빼기 (2026-10-07 요청)
+    const fams=codes.length?[...new Set(codes.map(txFam).filter(Boolean))]:route.filter(r=>r==='신장분사'||r==='충격파');
+    const prev=had.get(mrn)||new Set();const first=fams.filter(fm=>!prev.has(fm));
+    if(!first.length)return;   // 그 치료를 예전에 받은 적이 있음 — 1회차 아님
+    const fc=codes.filter(c=>first.includes(txFam(c)));
     const clinic=[...route].reverse().find(r=>/^진료실\s*\d/.test(r));
-    out.push({mrn,name:String(p.name||'').trim(),room:clinic?clinic.replace(/\D/g,''):'',code:codes[0]||'',codes});seen.add(mrn);});
+    out.push({mrn,name:String(p.name||'').trim(),room:clinic?clinic.replace(/\D/g,''):'',code:(fc[0]||codes[0]||''),codes:fc.length?fc:codes,fams:first});seen.add(mrn);});
   return out;}
 function newPtBar(D){const L=newPtCands(D);if(!L.length)return '';
-  return `<div class="hint" style="margin:6px 0;justify-content:flex-start"><b style="white-space:nowrap">처방 나온 첫 방문</b>${L.map((c,i)=>`<span class="np-chip">${esc(c.name)} <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''}${c.code?' · '+esc(c.codes.join(' ')):''}</span> <button type="button" class="ghost" onclick="newPtAdd(${i})">+ 추가</button></span>`).join('')}</div>`;}
+  return `<div class="hint" style="margin:6px 0;justify-content:flex-start"><b style="white-space:nowrap">처방 나온 1회차</b>${L.map((c,i)=>`<span class="np-chip">${esc(c.name)} <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''}${c.code?' · '+esc(c.codes.join(' ')):' · '+esc(c.fams.join('·'))} 1회차</span> <button type="button" class="ghost" onclick="newPtAdd(${i})">+ 추가</button></span>`).join('')}</div>`;}
 window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
   const now=new Date();let st=Math.ceil((now.getHours()*60+now.getMinutes())/SLOT)*SLOT;st=Math.max(DAY_START,Math.min(st,D.endMin-SLOT));
   const dur=Math.min(codeMinutes(c.code)||30,D.endMin-st);
   const occ=D.occ||new Map();const free=t=>{const a=occ.get(t.id);if(!a)return false;for(let m=st;m<st+dur;m+=SLOT){const k=(m-DAY_START)/SLOT;if(!a[k]||a[k].type!=='free')return false;}return true;};
   const th=D.therapists.find(free)||D.therapists[0];if(!th){toast('이 날 치료사 명단이 없습니다');return;}
   openEd({kind:'new',therapistId:th.id,startMin:st,maxDuration:dur,draft:{therapistId:th.id,startMin:st,durationMin:dur,mrn:c.mrn,room:c.room,patientName:c.name,visitNo:1,code:c.code,codeColor:'',color:'',visited:false,note:''}});
-  MSG=`처방 나온 첫 방문 환자입니다. 치료사(${th.name})·시간(${hm(st)})을 확인하고 저장하세요.`;renderEditor();};
+  MSG=`처방 나온 1회차 환자입니다. 치료사(${th.name})·시간(${hm(st)})을 확인하고 저장하세요.`;renderEditor();};
 
 /* ═════ SASO 환자 → Manual Tx 자동 (2026-10-07 요청: Manual Tx = SASO 명단) ═════
    오늘 날짜를 보고 있으면, 동선관리 보드에서 동선에 SASO 가 있는 환자를 Manual Tx 에 넣는다(차트번호로 한 번만).
