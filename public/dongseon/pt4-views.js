@@ -452,13 +452,13 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <label class="wide">메모<input value="${A(d.note)}" oninput="dset('note',this.value)"></label></div>
       <div class="swatch-row"><span class="who small">코드 색</span>${PALETTE.map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.codeColor||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('codeColor','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
       <div class="swatch-row"><span class="who small">환자 칸 색</span>${PALETTE.filter(p=>p.hex!=='#ffe599'&&p.hex!=='#999999').map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.color||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('color','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
-      <label class="check"><input type="checkbox" ${d.visited?'checked':''} onchange="dset('visited',this.checked)"> 내원 (표시 "." + 환자 칸 노란색)</label>
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap"><label class="check" style="margin:0"><input type="checkbox" ${d.visited?'checked':''} onchange="dset('visited',this.checked)"> 내원 (표시 "." + 환자 칸 노란색)</label>
+        ${(d.mrn||d.patientName)?`<button type="button" class="pt-info-btn" onclick="openPatientInfo()" title="동선관리 환자 정보 창 (보드에 카드가 있으면 그 카드, 없으면 보기 전용)">👤 환자 정보</button>`:''}</div>
       ${e.kind==='restore'?'<p class="info">시간·치료사를 확인하고 저장하면 예약이 다시 생기고 취소/변경 기록은 지워집니다.</p>':''}
       ${e.kind==='copyin'?'<p class="info">과거 기록의 환자 정보·치료코드·메모가 채워져 있습니다. 시간과 치료사를 확인하고 저장하세요.</p>':''}
       ${isEdit?`<div class="row"><span class="who small">다른 날로 복사 (같은 치료사·시간, 메모 포함)</span><input type="date" id="cpDate"><button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCopy()">복사</button></div>`:''}
       ${msgHtml()}
       <div class="editor-actions"><button type="button" ${BUSY?'disabled':''} onclick="edSaveBooking()">${BUSY?'저장 중...':'저장'}</button>
-        ${(d.mrn||d.patientName)?`<button type="button" class="ghost" onclick="openPatientInfo()" title="동선관리 환자 정보 창 (보드에 카드가 있으면 그 카드, 없으면 보기 전용)">환자 정보</button>`:''}
         ${isEdit?`<button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edVisit()">${e.booking.visited?'방문 체크 해제':'✔ 방문 체크'}</button>`:''}
         ${e.kind==='new'?`<button type="button" class="ghost" onclick="openEd({kind:'off',therapistId:${d.therapistId},startMin:${d.startMin}})">이 시간을 비근무로</button>`:''}
         ${isEdit?`<button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCancelMove('cancel')">취소로 옮기기</button><button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCancelMove('change')">변경 기록 남기기</button>
