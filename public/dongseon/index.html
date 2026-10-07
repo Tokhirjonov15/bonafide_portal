@@ -634,6 +634,7 @@
 .ds-bar i{display:block;height:100%;background:var(--blue);border-radius:6px}
 .card-doc .doc-two{display:inline-flex;align-items:center;gap:3px;flex-wrap:nowrap;white-space:nowrap}   /* 진료·술기 한 줄로 (2026-10-06) */
 .card-top .card-doc-top:has(.doc-two){max-width:none}
+.card-top .card-doc-top.card-staff2{max-width:none;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}.card-staff2 .cs2{display:inline-flex;align-items:center;gap:2px;max-width:130px}.card-staff2 .cs2 .doc-sel{max-width:108px}   /* 간호·방사선 한 줄 (2026-10-07) */
 .card-doc .doc-two .doc-sel{max-width:78px;padding-left:4px;padding-right:2px}
 .card-doc .doc-lbl{font-size:10.5px;font-weight:800;color:var(--sub);margin-left:2px}
 .card-doc .doc-sel{background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:2px 5px;font-size:12px;font-weight:700;max-width:120px}
@@ -8113,8 +8114,9 @@ function cardEl(p,colRoom){
       ${p.bitCancel?`<span class="bitcancel-mark" title="비트에서 접수가 취소된 환자입니다${p.bitCancel.at?' ('+hhmm(p.bitCancel.at)+')':''} — 확인 후 카드를 삭제하거나 비트에서 재접수하세요"><i data-lucide="circle-x"></i> 비트 접수취소</span>`:''}
       ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
       ${isConsultRoom(_chipRoom)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p,_chipRoom)}</span>`}
-      ${nurseChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${nurseChipHtml(p,_chipRoom)}</span>`:''}
-      ${radChipHtml(p,_chipRoom)?`<span class="card-doc card-doc-top">${radChipHtml(p,_chipRoom)}</span>`:''}
+      ${(function(){const nu=nurseChipHtml(p,_chipRoom),ra=radChipHtml(p,_chipRoom);   // 간호·방사선은 한 줄에 나란히 (2026-10-07 요청: 진료·술기 / 간호·방사 두 줄)
+        if(nu&&ra)return `<span class="card-doc card-doc-top card-staff2"><span class="cs2">${nu}</span><span class="cs2">${ra}</span></span>`;
+        return nu?`<span class="card-doc card-doc-top">${nu}</span>`:ra?`<span class="card-doc card-doc-top">${ra}</span>`:'';})()}
       ${(function(){const t=lobbyWaitLabel(p);return `<span class="lobby-wait${t.lv>1?' lv2':''}" style="${t.text?'':'display:none'}">${esc(t.text)}</span>`;})()}
     </div>
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
