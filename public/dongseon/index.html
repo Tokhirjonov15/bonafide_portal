@@ -3561,7 +3561,7 @@ function renderBitPill(){
       st.lastErr?`마지막 오류: ${st.lastErr}`:'',st.cycMaxMs>3000?`최장 주기 ${Math.round(st.cycMaxMs/1000)}초`:'',st.logTail?'--- 로그 ---\n'+st.logTail:''].filter(Boolean).join('\n');
     return `<span class="bp ${cls}" title="${esc(tip)}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{renderBitBar();renderBitPill();renderSlipScreen();if(bitResvOpen)renderBitResvScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();bitApplyHold();}}catch(e){}},30000);   // 만료·날짜 변경 반영
+setInterval(()=>{try{pt4AutoAdd();}catch(e){}try{renderBitBar();renderBitPill();renderSlipScreen();if(bitResvOpen)renderBitResvScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();bitApplyHold();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 /* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
    문서 하나 = 오늘 그 환자(차트번호). 카드와는 차트번호로 연결(카드가 없어도 목록은 보임). ?slip 주소로 열면 로그인 뒤 이 화면만 뜬다(태블릿용), &room=물리치료 로 그 방 동선의 환자만. */
 /* 진료실 처방 블록 해석 — 감시 스크립트는 'med' 줄부터 원문만 보낸다. 원내 표기 규칙(2026-09-13 공지):
@@ -7349,7 +7349,46 @@ function pt4ToBk(doc){if(!doc)return null;const T=(PT4_META&&Array.isArray(PT4_M
     cancels:(doc.cancels||[]).map(c=>({th:c.therapistName||'',t:hhmm2(c.startMin),text:c.text||'',mrn:c.mrn||'',name:c.patientName||'',color:c.color||'',note:c.note||''})),
     manual:(doc.manual||[]).map(m=>({no:String(m.no),mrn:m.mrn||'',name:m.patientName||'',th:m.therapistName||'',color:m.color||'',note:m.note||''})),
     stats:[{label:'당월 누적 상담수',value:Object.values(cons).reduce((a,n)=>a+(+n||0),0)},{label:'도수+충격파',key:'CME',value:visited.length-cry},{label:'신장분사+Hilt',key:'CRY',value:cry}]};}
-function bkPick(D){const p=PT4_DAYS[D];const usePt4=p&&Array.isArray(p.th)&&p.th.length&&((Array.isArray(p.bookings)&&p.bookings.length)||!BK_SHEET[D]);
+/* ═════ 신장분사 방에 들어온 환자 → 4층 비급여 예약표에 자동 추가 (2026-10-07 요청) ═════
+   오늘 보드에서 지금 방이 '신장분사'인 환자가 오늘 예약표(pt4Day/오늘)에 없으면 넣는다(차트번호로 확인, 트랜잭션이라 여러 PC 가 동시에 해도 한 번).
+   시간 = 지금이 속한 15분 칸, 치료사 = 그 시간에 비어 있는 첫 치료사(없으면 15분씩 미뤄 1시간까지), 코드 = 오늘 비트 처방의 CRYO 코드(CRYO3 만이면 넣지 않음),
+   길이 = 코드 숫자 ≤10 → 30분 …(스케줄과 같은 규칙, CRYO 는 30분), 방문수 = 예전 예약표의 신장분사(CRYO) 예약 중 가장 큰 방문수 + 1 (없으면 1) */
+let PT4_AUTO_BUSY=false;const PT4_AUTO_DONE={};
+function pt4AutoCand(){const today=localYMD(new Date());const doc=PT4_DAYS[today];if(!doc||!Array.isArray(doc.th)||!doc.th.length)return [];
+  const have=new Set((doc.bookings||[]).map(b=>normMrn(b.mrn)).filter(Boolean));const out=[];
+  data.forEach(p=>{if(!p||p._viewOnly||p.discharged||curRoom(p)!=='신장분사')return;const m=normMrn(p.mrn);if(!m||have.has(m)||PT4_AUTO_DONE[m]===today)return;
+    const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const cods=((rx&&rx.items)||[]).map(x=>String(x.cod||'').replace(/\s+/g,'').toUpperCase()).filter(c=>/^CRYO\d+$/.test(c));
+    const real=cods.filter(c=>c!=='CRYO3');if(cods.length&&!real.length)return;   // CRYO3 만 = 급여 → 비급여 예약표에 넣지 않음
+    out.push({p,mrn:m,code:real[0]||''});});
+  return out;}
+async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!currentUser)return;const L=pt4AutoCand();if(!L.length)return;
+  PT4_AUTO_BUSY=true;const today=localYMD(new Date());
+  /* 예전 신장분사 방문수 — 최근 문서에서 (한 번 읽고 10분 보관) */
+  try{if(!pt4AutoAdd.hist||Date.now()-pt4AutoAdd.at>600000){const s=await cloud.pt4Col.where('date','>=',localYMD(new Date(Date.now()-400*864e5))).get();pt4AutoAdd.hist=s.docs.map(d=>d.data()||{});pt4AutoAdd.at=Date.now();}}catch(e){pt4AutoAdd.hist=[];}
+  for(const c of L){
+    let prevMax=0;(pt4AutoAdd.hist||[]).forEach(d=>{if(d.date>=today)return;(d.bookings||[]).forEach(b=>{if(normMrn(b.mrn)===c.mrn&&/^CRYO/i.test(String(b.code||'').replace(/\s+/g,'')))prevMax=Math.max(prevMax,Number(b.visitNo)||0);});});
+    const now=new Date();const nowMin=now.getHours()*60+now.getMinutes();
+    try{const ok=await cloud.db.runTransaction(async t=>{const ref=cloud.pt4Col.doc(today);const sn=await t.get(ref);if(!sn.exists)return false;const d=sn.data()||{};
+        const B=Array.isArray(d.bookings)?d.bookings:[];if(B.some(b=>normMrn(b.mrn)===c.mrn))return false;   // 그새 누가 넣음
+        const blocks=Array.isArray(d.blocks)?d.blocks:[];const T=(PT4_META&&PT4_META.therapists)||[];
+        const ths=(d.th||[]).filter(id=>{const x=T.find(y=>y.id===id);return !x||(x.active!==false&&!x.single);});
+        const dur=30;const wd=new Date().getDay();const endMin=(wd===0||wd===6)?18*60:21*60;
+        const free=(tid,s)=>s>=540&&s+dur<=endMin&&!B.some(b=>b.therapistId===tid&&b.startMin<s+dur&&s<b.startMin+b.durationMin)&&!blocks.some(k=>k.therapistId===tid&&k.startMin<s+dur&&s<k.endMin);
+        let st=Math.max(540,Math.floor(nowMin/15)*15),tid=null;
+        for(let k=0;k<=4&&tid==null;k++){const s=st+k*15;const f=ths.find(id=>free(id,s));if(f!=null){tid=f;st=s;}}
+        if(tid==null)return false;   // 1시간 안에 빈 치료사가 없음 — 직원이 직접
+        const id=(Number(d.nid)||Math.max(0,...B.map(b=>Number(b.id)||0)))+1;
+        const nowIso=new Date().toISOString(),by='동선관리 자동 (신장분사 방)';
+        B.push({id,therapistId:tid,startMin:st,durationMin:dur,mrn:c.mrn,room:String((c.p.route||[]).slice().reverse().find(r=>/^진료실\s*\d/.test(r))||'').replace(/\D/g,''),
+          patientName:String(c.p.name||'').trim(),visitNo:prevMax+1,rawText:'',code:c.code,codeColor:'',color:'',visited:false,mark:'',note:'',createdBy:by,updatedBy:by,createdAt:nowIso,updatedAt:nowIso,auto:'cryo-room'});
+        t.set(ref,{bookings:B,nid:id,updatedAt:nowIso,updatedBy:by},{merge:true});return {tid,st};});
+      PT4_AUTO_DONE[c.mrn]=today;
+      if(ok){try{audit('4층 예약표 자동 추가',(c.p.name||'')+' ('+c.mrn+') · 신장분사 '+(c.code||'')+' '+String(Math.floor(ok.st/60))+':'+String(ok.st%60).padStart(2,'0'));}catch(e){}
+        try{cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',action:'create',entity:'bookings',entityId:'',date:today,before:null,after:{patientName:c.p.name||'',mrn:c.mrn,code:c.code,auto:'신장분사 방'}});}catch(e){}}
+    }catch(e){console.warn('pt4 auto',e);}
+  }
+  PT4_AUTO_BUSY=false;}
+function bkPick(D){if(D===localYMD(new Date()))setTimeout(()=>{try{pt4AutoAdd();}catch(e){}},1500);const p=PT4_DAYS[D];const usePt4=p&&Array.isArray(p.th)&&p.th.length&&((Array.isArray(p.bookings)&&p.bookings.length)||!BK_SHEET[D]);
   BOOKINGS[D]=usePt4?pt4ToBk(p):(BK_SHEET[D]||(p&&Array.isArray(p.th)&&p.th.length?pt4ToBk(p):null));
   try{if(resvOpen)renderResvScreen();bkChangedRedraw();}catch(e){}}
 /* [예약 스케줄] — 포털 스케줄(입력·내원률 통계·치료 통계·그래프·변경 기록)을 이 화면 위에 띄운다 */
