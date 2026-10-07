@@ -69,7 +69,7 @@ function renderSchedule(){
         const arr=occ.get(t.id),done=rendered.get(t.id);if(done.has(i))continue;const o=arr[i];
         if(o.type==='booking'){const b=o.b;const span=b.durationMin/SLOT;for(let k=i;k<i+span;k++)done.add(k);
           if(t.single){const bg=b.visited?'#ffe599':b.color||'#ffffff';
-            h+=`<td rowspan="${span}" class="pt single ${ed} ${b.note?'has-note':''}" style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>`;}
+            h+=`<td rowspan="${span}" class="pt single ${ed} ${b.note?'has-note':''}${SEL.has(b.id)?' sel':''}" data-bid="${b.id}" data-tid="${t.id}" data-min="${b.startMin}" style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>`;}
           else h+=bookingCells(b,span);
           continue;}
         if(o.type==='block'){let span=0;while(i+span<slots&&arr[i+span].type==='block'&&arr[i+span].k.id===o.k.id)span++;for(let k=i;k<i+span;k++)done.add(k);
@@ -81,8 +81,9 @@ function renderSchedule(){
           continue;}
         const span=i%2===0&&i+1<slots&&arr[i+1].type==='free'&&!done.has(i+1)?2:1;for(let k=i;k<i+span;k++)done.add(k);
         const oc=`cellNew(${t.id},${min},${span})`;
-        if(t.single)h+=`<td rowspan="${span}" class="free pt single ${ed}" onclick="${oc}"></td>`;
-        else h+=`<td rowspan="${span}" class="free pt ${ed}" onclick="${oc}"></td><td rowspan="${span}" class="free ${ed}" onclick="${oc}"></td><td rowspan="${span}" class="free mark"></td>`;}
+        const dm=`data-tid="${t.id}" data-min="${min}"`;
+        if(t.single)h+=`<td rowspan="${span}" class="free pt single ${ed}" ${dm} onclick="${oc}"></td>`;
+        else h+=`<td rowspan="${span}" class="free pt ${ed}" ${dm} onclick="${oc}"></td><td rowspan="${span}" class="free ${ed}" ${dm} onclick="${oc}"></td><td rowspan="${span}" class="free mark" ${dm}></td>`;}
       h+=`</tr>`;});
     h+=`</tbody><tfoot><tr><td class="time">당월 누적<br>상담수</td>`;
     D.therapists.forEach(t=>{const v=D.consults[t.id]??0;h+=`<td colspan="${t.single?1:3}" class="center big"><input class="consult" value="${A(v)}" onblur="consultBlur(${t.id},this,${Number(v)})" onkeydown="if(event.key==='Enter')this.blur()"></td>`;});
@@ -117,18 +118,19 @@ function notePop(b){return `<div class="note-pop" onclick="event.stopPropagation
   <textarea rows="6" placeholder="예: 11:00 CRYO10 수납 +20&#10;**항상 PT 먼저" onblur="bNoteBlur(${b.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(b.note||'')}</textarea>
   <div class="note-foot"><span class="who small">창 밖을 누르거나 Ctrl+Enter 로 저장</span></div></div>`;}
 function bookingCells(b,span){const bg=b.visited?'#ffe599':b.color||'#ffffff';const shown=b.mark||(b.visited?'.':'');
-  return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}" style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>
-    <td rowspan="${span}" class="code editable" style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}</td>
-    <td rowspan="${span}" class="mark editable" title="클릭해서 점(.)이나 치료 시작 시각을 입력. 내용이 있으면 내원 · 두 번 누르면 방문 체크" onclick="markClick(${b.id},this,event)" ondblclick="event.stopPropagation();bVisit(${b.id})">${esc(shown)}</td>`;}
+  const dm=`data-bid="${b.id}" data-tid="${b.therapistId}" data-min="${b.startMin}"`,sc=SEL.has(b.id)?' sel':'';
+  return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}${sc}" ${dm} style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>
+    <td rowspan="${span}" class="code editable${sc}" ${dm} style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}</td>
+    <td rowspan="${span}" class="mark editable${sc}" ${dm} title="클릭해서 점(.)이나 치료 시작 시각을 입력. 내용이 있으면 내원 · 두 번 누르면 방문 체크" onclick="markClick(${b.id},this,event)" ondblclick="event.stopPropagation();bVisit(${b.id})">${esc(shown)}</td>`;}
 
 let HIDE_OFF=(()=>{try{return localStorage.getItem('pt4HideOff')==='1';}catch(e){return false;}})();
 window.toggleHideOff=()=>{HIDE_OFF=!HIDE_OFF;try{localStorage.setItem('pt4HideOff',HIDE_OFF?'1':'0');}catch(e){}render();};
 /* ── 표 칸 동작 ── */
 const D_=()=>window.DV;
 function freeRun(tid,startMin){const arr=D_().occ.get(tid);let n=0;for(let i=(startMin-DAY_START)/SLOT;i<D_().slots&&arr[i].type==='free';i++)n+=SLOT;return n;}
-window.cellNew=(tid,startMin,span)=>{if(PAINT){paintFree(tid,startMin,startMin+span*SLOT);return;}openEd({kind:'choose',therapistId:tid,startMin,maxDuration:freeRun(tid,startMin)});};
+window.cellNew=(tid,startMin,span)=>{if(eatClick())return;if(PAINT){paintFree(tid,startMin,startMin+span*SLOT);return;}openEd({kind:'choose',therapistId:tid,startMin,maxDuration:freeRun(tid,startMin)});};
 window.memoNew=(tid,startMin,span)=>{if(PAINT){paintFree(tid,startMin,startMin+span*SLOT);return;}openEd({kind:'new',therapistId:tid,startMin,maxDuration:span*SLOT});};
-window.bOpen=id=>{const b=D_().bookings.find(x=>x.id===id);if(!b)return;if(PAINT){paintBooking(b);return;}openEd({kind:'booking',booking:b});};
+window.bOpen=id=>{if(eatClick())return;const b=D_().bookings.find(x=>x.id===id);if(!b)return;if(PAINT){paintBooking(b);return;}openEd({kind:'booking',booking:b});};
 window.bVisit=id=>{const b=D_().bookings.find(x=>x.id===id);if(!b)return;if(PAINT){paintBooking(b);return;}run(R.q.date,opBookingVisit(id),false);};
 window.blkOpen=id=>{const k=D_().blocks.find(x=>x.id===id);if(!k)return;if(PAINT){paintBlock(k);return;}
   if(k.preview){openEd({kind:'off',therapistId:k.therapistId,startMin:k.startMin});return;}openEd({kind:'block',block:k});};
@@ -136,7 +138,7 @@ window.bandClick=i=>{const band=D_().bands[i];if(!band)return;if(PAINT){paintBlo
 window.cxOpen=(ti,startMin)=>{const t=D_().cancelTh[ti];if(!t)return;const c=D_().cancels.find(x=>x.therapistName===t.name&&x.startMin===startMin)||null;
   if(PAINT){if(c)run(R.q.date,opCancelSave({id:c.id,therapistName:c.therapistName,startMin:c.startMin,kind:c.kind,text:c.text,color:PAINT==='#ffffff'?'':PAINT}),false);return;}
   openEd({kind:'cancel',therapistName:t.name,startMin,cancel:c});};
-window.markClick=(id,td,ev)=>{ev.stopPropagation();if(PAINT){bVisit(id);return;}if(td.classList.contains('editing'))return;
+window.markClick=(id,td,ev)=>{ev.stopPropagation();if(eatClick())return;if(PAINT){bVisit(id);return;}if(td.classList.contains('editing'))return;
   const b=D_().bookings.find(x=>x.id===id);if(!b)return;const shown=b.mark||(b.visited?'.':'');
   td.classList.add('editing');td.innerHTML=`<input value="${A(shown)}" maxlength="10" title="점(.) 또는 숫자. 비우면 내원 해제">`;
   const inp=td.querySelector('input');inp.focus();inp.select();let gone=false;
@@ -147,6 +149,53 @@ window.markClick=(id,td,ev)=>{ev.stopPropagation();if(PAINT){bVisit(id);return;}
 window.bNoteBlur=(id,ta)=>{const b=D_().bookings.find(x=>x.id===id);if(!b||ta.value===(b.note||''))return;run(R.q.date,opBookingNote(id,ta.value),false);};
 window.consultBlur=(tid,inp,orig)=>{if(String(inp.value)===String(orig))return;runMeta(saveConsult(R.q.date,tid,Number(inp.value)),false);};
 window.copyLayout=async()=>{const from=D_().borrowedFrom;if(!from)return;const s=await C.day.doc(from).get();if(!s.exists)return;run(R.q.date,opCopyLayout(normDay(s.data(),from)));};
+
+/* ═════ 엑셀처럼 복사·붙여넣기 (2026-10-07 요청) ═════
+   예약 칸을 끌어서(드래그) 여러 개 고르거나 Ctrl+클릭으로 하나씩 고른 뒤 Ctrl+C → 다른 날(또는 같은 날) 칸을 누르고 Ctrl+V (또는 [여기에 붙여넣기]).
+   누른 칸이 붙여넣을 자리의 왼쪽 위 — 고른 예약들의 치료사 간격·시간 간격을 그대로 유지. 칸을 고르지 않고 Ctrl+V 면 같은 치료사·같은 시간으로.
+   다른 날에 붙이면 방문수 +1, 내원 표시는 지움, 메모는 함께. 겹치는 자리는 건너뛰고 알려 준다. 고른 것은 Esc 로 해제 */
+let SEL=new Set(),CLIP=(()=>{try{return JSON.parse(localStorage.getItem('pt4Clip')||'null');}catch(e){return null;}})(),DRAG=null,EAT=false;
+function eatClick(){if(EAT){EAT=false;return true;}return false;}
+function selPaint(){document.querySelectorAll('table.grid td[data-bid]').forEach(td=>td.classList.toggle('sel',SEL.has(Number(td.dataset.bid))));}
+function selRect(a,b){const D=D_();if(!D)return;const ids=D.therapists.map(t=>t.id);const i1=Math.min(ids.indexOf(a.tid),ids.indexOf(b.tid)),i2=Math.max(ids.indexOf(a.tid),ids.indexOf(b.tid));
+  const m1=Math.min(a.min,b.min),m2=Math.max(a.min,b.min)+SLOT;SEL=new Set(DRAG.base);
+  D.bookings.forEach(x=>{const i=ids.indexOf(x.therapistId);if(i>=i1&&i<=i2&&x.startMin<m2&&m1<x.startMin+x.durationMin)SEL.add(x.id);});selPaint();}
+const cellAt=e=>{const td=e.target&&e.target.closest&&e.target.closest('table.grid:not(.cancel-grid) td[data-tid]');return td&&!td.closest('.note-pop')&&!e.target.closest('.note-pop')?td:null;};
+document.addEventListener('mousedown',e=>{if(R.page!=='schedule'||PAINT||e.button!==0)return;const td=cellAt(e);if(!td)return;
+  const pos={tid:Number(td.dataset.tid),min:Number(td.dataset.min)};const bid=td.dataset.bid?Number(td.dataset.bid):null;
+  if((e.ctrlKey||e.metaKey)&&bid!=null){e.preventDefault();SEL.has(bid)?SEL.delete(bid):SEL.add(bid);selPaint();EAT=true;selHint();return;}
+  DRAG={start:pos,moved:false,base:(e.shiftKey?[...SEL]:[])};});
+document.addEventListener('mouseover',e=>{if(!DRAG)return;const td=cellAt(e);if(!td)return;const pos={tid:Number(td.dataset.tid),min:Number(td.dataset.min)};
+  if(!DRAG.moved&&pos.tid===DRAG.start.tid&&pos.min===DRAG.start.min)return;DRAG.moved=true;selRect(DRAG.start,pos);});
+document.addEventListener('mouseup',()=>{if(!DRAG)return;const moved=DRAG.moved;DRAG=null;if(moved){EAT=true;setTimeout(()=>{EAT=false;},400);selHint();}});
+function selHint(){if(SEL.size)toast(`예약 ${SEL.size}건 골랐습니다 — Ctrl+C 로 복사, Esc 로 해제`,2200);}
+function copySel(){const D=D_();if(!D||!SEL.size)return false;const ids=D.therapists.map(t=>t.id);
+  const items=D.bookings.filter(b=>SEL.has(b.id)).map(b=>({therapistId:b.therapistId,ti:ids.indexOf(b.therapistId),startMin:b.startMin,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,
+    visitNo:b.visitNo,code:b.code,codeColor:b.codeColor,color:b.color==='#ffe599'?'':b.color,note:b.note||''}));
+  CLIP={date:D.date,items};try{localStorage.setItem('pt4Clip',JSON.stringify(CLIP));}catch(e){}
+  toast(`예약 ${items.length}건 복사했습니다 — 붙여넣을 날의 칸을 누르고 Ctrl+V (또는 [여기에 붙여넣기])`,3500);return true;}
+window.pasteClip=async anchor=>{const D=D_();if(!D||!CLIP||!CLIP.items.length)return;const date=R.q.date;const ids=D.therapists.map(t=>t.id);
+  const ti0=Math.min(...CLIP.items.map(x=>x.ti)),m0=Math.min(...CLIP.items.map(x=>x.startMin));const other=CLIP.date!==date;
+  const plan=[],skip=[];
+  for(const x of CLIP.items){let tid,st;
+    if(anchor){const ai=ids.indexOf(anchor.tid);tid=ids[ai+(x.ti-ti0)];st=anchor.min+(x.startMin-m0);}else{tid=x.therapistId;st=x.startMin;}
+    const who=x.patientName||x.mrn;
+    if(tid==null||(!anchor&&!ids.includes(tid))){skip.push(`${who}(치료사 없음)`);continue;}
+    if(st<DAY_START||st+x.durationMin>D.endMin){skip.push(`${who}(시간 밖)`);continue;}
+    plan.push({therapistId:tid,startMin:st,durationMin:x.durationMin,mrn:x.mrn,room:x.room,patientName:x.patientName,visitNo:x.visitNo==null?null:(other?x.visitNo+1:x.visitNo),
+      code:x.code,codeColor:x.codeColor,color:x.color,visited:false,note:x.note});}
+  let added=0;
+  const r=await commitDay(date,ctx=>{added=0;const sk=[];for(const p of plan){const res=opBookingSave(p)(ctx);if(res.ok)added++;else sk.push(`${p.patientName||p.mrn}(${/겹|이미/.test(res.message)?'자리 겹침':res.message})`);}
+    ctx.extra.skipped=sk;return added?{ok:true}:{ok:false,message:'붙여넣을 수 있는 예약이 없습니다'+(sk.length?': '+sk.join(', '):'')};});
+  const sk2=skip.concat((r.extra&&r.extra.skipped)||[]);
+  if(!r.ok){toast(r.message||'붙여넣지 못했습니다',4500);return;}
+  EDIT=null;renderEditor();SEL.clear();
+  toast(`${added}건 붙여넣었습니다${sk2.length?` · 건너뜀: ${sk2.join(', ')}`:''}`,sk2.length?6000:3000);safeRender();};
+document.addEventListener('keydown',e=>{if(R.page!=='schedule'||!(e.ctrlKey||e.metaKey))return;const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;
+  const k=e.key.toLowerCase();
+  if(k==='c'&&SEL.size){if(copySel())e.preventDefault();}
+  else if(k==='v'&&CLIP&&CLIP.items.length){e.preventDefault();pasteClip(EDIT&&EDIT.kind==='choose'?{tid:EDIT.therapistId,min:EDIT.startMin}:null);}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&SEL.size){SEL.clear();selPaint();}});
 
 /* ── 칠하기 모드 ── */
 function paintFree(tid,s,e){if(PAINT==='#ffffff')return;run(R.q.date,opBlockSet({therapistId:tid,startMin:s,endMin:e,kind:PAINT==='#999999'?'off':'memo',text:'',color:PAINT}),false);}
@@ -303,6 +352,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <button type="button" onclick="openEd({kind:'new',therapistId:${e.therapistId},startMin:${e.startMin},maxDuration:${e.maxDuration}})">예약 입력</button>
       <button type="button" class="ghost" onclick="openEd({kind:'off',therapistId:${e.therapistId},startMin:${e.startMin}})">비근무 (회색)</button>
       <button type="button" class="ghost" onclick="openEd({kind:'memo',therapistId:${e.therapistId},startMin:${e.startMin}})">메모 / 차단 (색+글자)</button>
+      ${CLIP&&CLIP.items.length?`<button type="button" class="ghost" style="border-color:var(--accent);color:var(--accent)" onclick="pasteClip({tid:${e.therapistId},min:${e.startMin}})">여기에 붙여넣기 (${CLIP.items.length}건)</button>`:''}
       <span class="who small">점심시간처럼 전원에게 칠하려면 비근무를 고른 뒤 전원 적용에 체크</span></div>`;}
   else if(['new','booking','restore','copyin'].includes(e.kind)){const d=e.draft;const isEdit=e.kind==='booking';
     const title=e.kind==='restore'?'취소/변경에서 스케줄로 되돌리기':e.kind==='copyin'?`${esc(e.source.date)} 기록을 이 날로 가져오기`:isEdit?'예약 수정':'새 예약';
