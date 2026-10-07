@@ -168,7 +168,7 @@ document.addEventListener('mousedown',e=>{if(R.page!=='schedule'||PAINT||e.butto
 document.addEventListener('mouseover',e=>{if(!DRAG)return;const td=cellAt(e);if(!td)return;const pos={tid:Number(td.dataset.tid),min:Number(td.dataset.min)};
   if(!DRAG.moved&&pos.tid===DRAG.start.tid&&pos.min===DRAG.start.min)return;DRAG.moved=true;selRect(DRAG.start,pos);});
 document.addEventListener('mouseup',()=>{if(!DRAG)return;const moved=DRAG.moved;DRAG=null;if(moved){EAT=true;setTimeout(()=>{EAT=false;},400);selHint();}});
-function selHint(){if(SEL.size)toast(`예약 ${SEL.size}건 골랐습니다 — Ctrl+C 로 복사, Esc 로 해제`,2200);}
+function selHint(){if(SEL.size)toast(`예약 ${SEL.size}건 골랐습니다 — Ctrl+C 복사 · Delete 지우기 · Esc 해제`,2600);}
 function copySel(){const D=D_();if(!D||!SEL.size)return false;const ids=D.therapists.map(t=>t.id);
   const items=D.bookings.filter(b=>SEL.has(b.id)).map(b=>({therapistId:b.therapistId,ti:ids.indexOf(b.therapistId),startMin:b.startMin,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,
     visitNo:b.visitNo,code:b.code,codeColor:b.codeColor,color:b.color==='#ffe599'?'':b.color,note:b.note||''}));
@@ -196,6 +196,14 @@ document.addEventListener('keydown',e=>{if(R.page!=='schedule'||!(e.ctrlKey||e.m
   if(k==='c'&&SEL.size){if(copySel())e.preventDefault();}
   else if(k==='v'&&CLIP&&CLIP.items.length){e.preventDefault();pasteClip(EDIT&&EDIT.kind==='choose'?{tid:EDIT.therapistId,min:EDIT.startMin}:null);}});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&SEL.size){SEL.clear();selPaint();}});
+/* Delete(또는 Backspace) — 고른 예약을 한꺼번에 지우기 (2026-10-07 요청). 입력 중에는 동작하지 않음 */
+document.addEventListener('keydown',async e=>{if(R.page!=='schedule'||!SEL.size||!(e.key==='Delete'||e.key==='Backspace'))return;
+  const a=document.activeElement;if(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))return;e.preventDefault();
+  const D=D_();const list=D.bookings.filter(b=>SEL.has(b.id));if(!list.length){SEL.clear();return;}
+  if(!confirm(`예약 ${list.length}건을 지울까요?\n${list.slice(0,8).map(b=>`${hm(b.startMin)} ${b.patientName||b.mrn} ${b.code||''}`).join('\n')}${list.length>8?'\n…':''}`))return;
+  const ids=list.map(b=>b.id);
+  const r=await commitDay(R.q.date,ctx=>{let n=0;ids.forEach(id=>{if(opBookingDelete(id)(ctx).ok)n++;});return n?{ok:true}:{ok:false,message:'이미 지워진 예약입니다'};});
+  SEL.clear();toast(r.ok?`예약 ${ids.length}건을 지웠습니다`:(r.message||'지우지 못했습니다'));safeRender();});
 
 /* ── 칠하기 모드 ── */
 function paintFree(tid,s,e){if(PAINT==='#ffffff')return;run(R.q.date,opBlockSet({therapistId:tid,startMin:s,endMin:e,kind:PAINT==='#999999'?'off':'memo',text:'',color:PAINT}),false);}
@@ -340,9 +348,16 @@ window.openEd=e=>{EDIT=e;MSG='';
   renderEditor();
   setTimeout(()=>{const f=document.querySelector('#editor [autofocus]');if(f)f.focus();},0);};
 window.closeEd=()=>{EDIT=null;MSG='';renderEditor();};
+/* 치료코드 → 예약 시간 (2026-10-07 요청: 프로그램이 바뀌면 시간도 맞춰서). 9~10월 실제 예약에서 뽑은 규칙:
+   CRYO·EES·CE(충격파·신장분사) = 30분 / CM·CME·ES 뒤 숫자 ≤10 → 30분, ≤20 → 60분, ≤30 → 90분, 그 위 → 120분. 모르는 코드는 그대로 */
+function codeMinutes(code){const c=normalizeCode(code);if(/^(CRYO|EES|CE)\d/.test(c))return 30;
+  const m=/^(CME|CM|ES)(\d+)$/.exec(c);if(!m)return null;const n=+m[2];return n<=10?30:n<=20?60:n<=30?90:120;}
+window.codeDur=v=>{if(!EDIT||!EDIT.draft)return;const want=codeMinutes(v);if(!want||want===EDIT.draft.durationMin)return;const D=D_();
+  if(EDIT.draft.startMin+want>D.endMin){MSG=`${normalizeCode(v)} 는 ${want}분인데 마감 시간을 넘습니다. 시작 시간을 당겨 주세요.`;renderEditor();return;}
+  const from=EDIT.draft.durationMin;EDIT.draft.durationMin=want;MSG=`치료코드에 맞춰 길이를 ${from}분 → ${want}분으로 바꿨습니다.`;renderEditor();};
 window.dset=(k,v,re)=>{if(!EDIT||!EDIT.draft)return;EDIT.draft[k]=v;if(re)renderEditor();};
 const opt=(v,cur,label)=>`<option value="${A(v)}" ${String(v)===String(cur)?'selected':''}>${esc(label)}</option>`;
-function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
+function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다|바꿨습니다/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
 function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.page!=='schedule'){box.innerHTML='';return;}
   const e=EDIT,D=D_();if(!D){box.innerHTML='';return;}
   const head=t=>`<div class="editor-head"><strong>${t}</strong><button type="button" class="ghost" onclick="closeEd()">닫기</button></div>`;
@@ -364,7 +379,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <label>진료실<input value="${A(d.room)}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);dset('room',this.value)"></label>
       <label>이름<input value="${A(d.patientName)}" placeholder="함수진" oninput="dset('patientName',this.value)"></label>
       <label>방문수<input value="${A(d.visitNo??'')}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);dset('visitNo',this.value===''?null:Number(this.value))"></label>
-      <label>치료코드<input value="${A(d.code)}" placeholder="CME15" oninput="this.value=this.value.toUpperCase();dset('code',this.value)"></label>
+      <label>치료코드<input value="${A(d.code)}" placeholder="CME15" oninput="this.value=this.value.toUpperCase();dset('code',this.value)" onchange="codeDur(this.value)"></label>
       <label class="wide">메모<input value="${A(d.note)}" oninput="dset('note',this.value)"></label></div>
       <div class="swatch-row"><span class="who small">코드 색</span>${PALETTE.map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.codeColor||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('codeColor','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
       <div class="swatch-row"><span class="who small">환자 칸 색</span>${PALETTE.filter(p=>p.hex!=='#ffe599'&&p.hex!=='#999999').map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.color||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('color','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
