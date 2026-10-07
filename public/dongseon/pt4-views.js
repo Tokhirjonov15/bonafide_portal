@@ -350,8 +350,8 @@ function newPtCands(D){if(D.date!==todayYmd()||!BOARD)return [];const hist=ALLDO
   (DAYDOC?DAYDOC.bookings:[]).forEach(b=>{if(mrnKey(b.mrn))seen.add(mrnKey(b.mrn));});
   const out=[];
   BOARD.forEach(p=>{if(p.discharged)return;const mrn=mrnKey(p.mrn);if(!mrn||seen.has(mrn))return;const route=Array.isArray(p.route)?p.route:[];
-    const codes=[];rx.filter(r=>mrnKey(r.mrn)===mrn).forEach(r=>(r.items||[]).forEach(it=>{const c=normalizeCode(it.cod);if(RX4.test(c)&&!codes.includes(c))codes.push(c);}));
-    if(!codes.length&&!route.some(r=>r==='신장분사'||r==='충격파'))return;
+    const codes=[];let cryo3=false;rx.filter(r=>mrnKey(r.mrn)===mrn).forEach(r=>(r.items||[]).forEach(it=>{const c=normalizeCode(it.cod);if(c==='CRYO3'){cryo3=true;return;}if(RX4.test(c)&&!codes.includes(c))codes.push(c);}));
+    if(!codes.length&&(cryo3||!route.some(r=>r==='신장분사'||r==='충격파')))return;   // CRYO3 만 나온 환자는 빼기 (2026-10-07 요청)
     const clinic=[...route].reverse().find(r=>/^진료실\s*\d/.test(r));
     out.push({mrn,name:String(p.name||'').trim(),room:clinic?clinic.replace(/\D/g,''):'',code:codes[0]||'',codes});seen.add(mrn);});
   return out;}
