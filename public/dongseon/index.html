@@ -1188,6 +1188,35 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .role-tag.chief{background:var(--blue-bg,#e8f0fe);color:var(--blue)}
   .sdir-names{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .sdir-n{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-weight:600}
+  .cdesk{position:fixed;inset:0;z-index:900;background:var(--bg,#f6f7f9);display:none;flex-direction:column}
+  .cdesk.show{display:flex}
+  body.wp-on .cdesk{bottom:var(--wpPad,0px)}
+  .cd-top{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .cd-top input{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:var(--bg);color:var(--text);width:200px}
+  .cd-top .spacer{flex:1}
+  .cd-body{flex:1;display:flex;min-height:0}
+  .cd-list{width:320px;flex:none;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--line)}
+  .cd-card{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel);cursor:pointer;display:flex;flex-direction:column;gap:3px}
+  .cd-card.on{border:2px solid #4f6bed;background:#eef2ff}
+  .cd-card.done{opacity:.7}
+  .cd-nm{font-size:16px;font-weight:800;display:flex;align-items:center;gap:6px}
+  .cd-sub{font-size:12px;color:var(--sub)}
+  .cd-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+  .cd-it{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+  .cd-st{margin-left:auto;font-size:11px;font-weight:800;padding:1px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c}
+  .cd-st.ok{background:#dcfce7;color:#15803d}
+  .cd-detail{flex:1;overflow:auto;padding:14px 18px}
+  .cd-who{font-size:20px;margin-bottom:10px}
+  .cd-sect{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px 14px;margin-bottom:12px}
+  .cd-h{font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .cd-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .cd-tbl th,.cd-tbl td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left}
+  .cd-tbl .r{text-align:right}
+  .cd-tbl tr.sum th{border-top:2px solid var(--line)}
+  .cd-tbl tr.cd-hit td{background:#fffbeb}
+  .cd-sign{margin-top:10px;background:#1d4ed8;color:#fff;border-color:#1d4ed8;font-weight:700}
+  .cd-pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;line-height:1.5;background:var(--bg);border-radius:8px;padding:8px 10px}
+  .cd-med{margin-top:8px;border-left:3px solid #6366f1}
   .sp-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);display:flex;flex-direction:column;gap:5px}
   .sp-head{cursor:pointer;font-size:15px}
   .sp-dc{color:var(--red);font-size:13.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
@@ -1713,6 +1742,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="4층 관리 — 오늘 주사를 맞고 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 4층 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
+    <button class="btn" id="cdeskBtn" onclick="openConsentDesk()" title="오늘 비급여 처방이 나온 환자 — 동의서 받기 (처방 금액 자동 · 원장님 차팅 · 처방내역)"><i data-lucide="pen-line"></i> 동의서</button>
   </div>
   <div class="user-pill" id="userPill" style="display:none" onclick="openAccount()">
     <span class="av" id="userAv">?</span><span style="display:inline-block;line-height:1.15;text-align:left"><span id="userName">-</span><span id="userSub" style="display:none;font-size:10.5px;color:var(--sub)"></span></span>
@@ -11596,8 +11626,8 @@ function consentDescHtml(keys){const L=CONSENT_ITEMS.filter(it=>keys.includes(it
   if(!L.length)return '<div class="hint">2.에서 시행할 항목을 체크하면 그 항목의 설명이 여기에 나옵니다.</div>';
   return `<table class="cst-ftbl cst-desc"><thead><tr><th style="width:22%">항목</th><th>목적 및 방법</th><th style="width:38%">예상되는 부작용 및 주의사항</th></tr></thead><tbody>${L.map(it=>
     `<tr><td class="c"><b>${esc(it.name)}</b></td><td>${cstBold(it.how)} <span class="hint">(${esc(it.time)})</span></td><td>${cstBold(it.risk)}</td></tr>`).join('')}</tbody></table>`;}
-function openConsent(){
-  const p=data.find(x=>x.id===editId); if(!p)return;
+function openConsent(pid){
+  const p=data.find(x=>x.id===(pid||editId)); if(!p)return;
   if(!String(p.mrn||'').trim()){alert('차트번호가 없는 환자는 동의서를 쓸 수 없습니다.');return;}
   consentFor=p;
   document.getElementById('cstWho').textContent=`${p.name||''} · ${p.mrn||''}${p.birth?' · '+p.birth:''}${p.sex?' · '+p.sex:''}`;
@@ -11683,7 +11713,7 @@ async function saveConsent(){
     await col.doc(rec.id).set(rec);
     const arr=CONSENTS[rec.mrn]||[]; CONSENTS[rec.mrn]=[rec,...arr];
     try{audit('비급여 동의서',(p.name||'')+' ('+rec.mrn+') · '+items.map(i=>i.name).join(', '));}catch(e){}
-    closeConsent(); renderConsentSection();
+    closeConsent(); renderConsentSection(); try{if(CDESK_OPEN)renderConsentDesk();}catch(e){}
   }catch(e){console.error(e);alert('저장하지 못했습니다: '+(e.message||e));}
   finally{if(btn){btn.disabled=false;btn.textContent='저장';}}
 }
@@ -12432,6 +12462,63 @@ window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자
   if(!confirm(`'${n}' 님을 ${g} 명단에서 뺄까요? (퇴사)
 로그인 계정은 그대로 남습니다 — 계정 삭제는 계정 관리에서 하세요.`))return;
   R[g].splice(i,1);audit('직원 삭제',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}};
+/* ───── 동의서 창 (2026-10-07 요청) ─────
+   [진료지원] 오른쪽 [동의서]: 왼쪽 = 오늘 보드에서 비급여 처방(동의서 항목: 신장분사·충격파·초음파·프롤로·신경주사·수액 …)이 나온 환자 카드,
+   오른쪽 = 고른 환자의 ① 동의서 항목(비트 처방 금액 자동, 항목별 서명 여부) + [동의서 작성 (서명)] ② 원장님 차팅 전체(med 위 — 진료실 감시 v3.6) 와 med 아래 처방 줄
+   ③ 비트 처방내역 전체. 서명을 마친 환자는 목록 아래로 */
+let CDESK_OPEN=false, CDESK_PID='';
+function cdItemsFor(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;if(!rx)return [];
+  let B={byItem:CONSENT_ITEMS.map(()=>0)};try{B=consentBitAmounts(p);}catch(e){}
+  const its=Array.isArray(rx.items)?rx.items:[];
+  return CONSENT_ITEMS.map((it,i)=>({it,i,amt:B.byItem[i]||0,hit:B.byItem[i]>0||its.some(x=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))})).filter(x=>x.hit);}
+function cdRows(){const out=[];
+  data.forEach(p=>{if(!p||p._viewOnly||p.discharged)return;const mrn=String(p.mrn||'').trim();const items=cdItemsFor(p);if(!items.length)return;
+    if(mrn&&CONSENTS[mrn]===undefined&&!CONSENT_LOADING[mrn])loadConsents(mrn).then(()=>{if(CDESK_OPEN)renderConsentDesk();});
+    const sv=mrn?consentSaved(mrn):{};const done=items.filter(x=>sv[x.it.key]).length;
+    out.push({p,items,done,all:done===items.length,loading:mrn&&CONSENTS[mrn]===undefined});});
+  return out.sort((a,b)=>(a.all-b.all)||String(a.p.arrivedAt||'').localeCompare(String(b.p.arrivedAt||'')));}
+window.openConsentDesk=function(){CDESK_OPEN=true;let ov=document.getElementById('cdesk');
+  if(!ov){ov=document.createElement('div');ov.id='cdesk';ov.className='cdesk';
+    ov.innerHTML='<div class="cd-top"><b><i data-lucide="pen-line"></i> 동의서</b><span class="hint" id="cdSum"></span><input id="cdSearch" placeholder="이름·차트번호 검색" oninput="renderConsentDesk()"><span class="spacer"></span><button type="button" class="btn sm" onclick="closeConsentDesk()">닫기</button></div><div class="cd-body"><div class="cd-list" id="cdList"></div><div class="cd-detail" id="cdDetail"></div></div>';
+    document.body.appendChild(ov);}
+  ov.classList.add('show');renderConsentDesk();};
+window.closeConsentDesk=function(){CDESK_OPEN=false;const ov=document.getElementById('cdesk');if(ov)ov.classList.remove('show');};
+window.cdPick=function(pid){CDESK_PID=pid;renderConsentDesk();const d=document.getElementById('cdDetail');if(d)d.scrollTop=0;};
+function renderConsentDesk(){const L=document.getElementById('cdList'),Dt=document.getElementById('cdDetail');if(!L||!Dt)return;
+  const q=((document.getElementById('cdSearch')||{}).value||'').trim().toLowerCase();
+  const all=cdRows();const rows=all.filter(r=>!q||String(r.p.name||'').toLowerCase().includes(q)||String(r.p.mrn||'').startsWith(q));
+  const sum=document.getElementById('cdSum');if(sum)sum.textContent=`오늘 비급여 처방 ${all.length}명 · 서명 필요 ${all.filter(r=>!r.all).length}명`;
+  if(CDESK_PID&&!all.some(r=>r.p.id===CDESK_PID))CDESK_PID='';
+  if(!CDESK_PID&&rows.length)CDESK_PID=rows[0].p.id;
+  L.innerHTML=rows.map(r=>{const p=r.p;const f4=(typeof cardFloor4Times==='function')?cardFloor4Times(p):[];
+    return `<div class="cd-card${p.id===CDESK_PID?' on':''}${r.all?' done':''}" onclick="cdPick('${esc(p.id)}')">
+      <div class="cd-nm">${esc(p.name||'')}${r.all?'<span class="cd-st ok">✔ 서명 완료</span>':r.loading?'':`<span class="cd-st">${r.done?`서명 ${r.done}/${r.items.length}`:'미서명'}</span>`}</div>
+      <div class="cd-sub">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''}</div>
+      <div class="cd-sub">원내 ${esc(fmtClock(totalMsNow(p)))}${recvHM(p)?' · 접수 '+esc(recvHM(p)):''} · ${esc(curRoom(p)||'')}</div>
+      <div class="cd-chips">${p.reserveAt?`<span class="rb rb-bit">비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(t=>`<span class="rb rb-4f">4층 ${esc(t)}</span>`).join('')}${r.items.map(x=>`<span class="cd-it">${esc(x.it.name.replace(/\(.*\)/,''))}</span>`).join('')}</div></div>`;}).join('')
+    ||`<p class="hint" style="padding:12px">${q?'검색 결과가 없습니다.':'오늘 보드에 비급여 처방(동의서 항목)이 나온 환자가 없습니다.'}</p>`;
+  const r=all.find(x=>x.p.id===CDESK_PID);
+  Dt.innerHTML=r?cdDetailHtml(r):'<p class="hint" style="padding:16px">왼쪽에서 환자를 고르세요.</p>';
+  if(window.lucide)try{lucide.createIcons();}catch(e){}}
+function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?consentSaved(mrn):{};
+  const total=r.items.reduce((a,x)=>a+x.amt,0);
+  const cons=`<div class="cd-sect"><div class="cd-h"><i data-lucide="file-pen-line"></i> 비급여 동의서 <span class="hint">비트 처방에서 자동</span></div>
+    <table class="cd-tbl"><thead><tr><th>비급여 항목</th><th class="r">금액(비트)</th><th>서명</th></tr></thead><tbody>
+    ${r.items.map(x=>`<tr><td><button type="button" class="cst-iname" onclick="consentInfo('${x.it.key}')" title="설명 보기">${esc(x.it.name)}</button></td><td class="r">${x.amt?esc(wonTxt(x.amt)):'<span class="hint">금액 없음</span>'}</td><td>${sv[x.it.key]?consentSavedTag(sv[x.it.key]):'<span class="hint">미서명</span>'}</td></tr>`).join('')}
+    <tr class="sum"><th class="r">합계</th><th class="r">${esc(wonTxt(total)||'0원')}</th><th></th></tr></tbody></table>
+    ${mrn?`<button type="button" class="btn cd-sign" onclick="openConsent('${esc(p.id)}')"><i data-lucide="pen-line"></i> 동의서 작성 (서명)</button>`:'<div class="hint">차트번호가 없는 환자는 동의서를 쓸 수 없습니다.</div>'}
+    <button type="button" class="btn sm" style="margin-left:6px" onclick="closeConsentDesk();openEdit('${esc(p.id)}')">환자 정보 창</button></div>`;
+  const n=bitNoteFor(p);
+  const chart=`<div class="cd-sect"><div class="cd-h"><i data-lucide="stethoscope"></i> 원장님 차팅${n&&n.updatedAt?` <span class="hint">${esc(hhmm(n.updatedAt))}${n.pc?' · '+esc(n.pc):''}</span>`:''}</div>
+    ${n&&String(n.chart||'').trim()?`<pre class="cd-pre">${esc(n.chart)}</pre>`:`<div class="hint">차팅이 아직 없습니다${n?' — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 다음 환자부터 올라옵니다':' (진료실 처방 목록이 아직 오지 않았습니다)'}.</div>`}
+    ${n&&String(n.rx||'').trim()?`<pre class="cd-pre cd-med">${esc(n.rx)}</pre>`:''}</div>`;
+  const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;let rxh='<div class="hint">비트 처방이 아직 없습니다.</div>';
+  if(rx&&Array.isArray(rx.items)&&rx.items.length){const payOf=rxPayLookup(rx);
+    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th>코드</th><th class="r">총투여량</th><th class="r">횟수</th><th class="r">일수</th><th class="r">금액</th><th>급/비</th><th>시각</th></tr></thead><tbody>${rx.items.map(x=>{const pay=payOf(x),ib=rxInsLabel(pay&&pay.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))));
+      return `<tr${hit?' class="cd-hit"':''}><td>${esc(String(x.nam||'').trim())}</td><td class="hint">${esc(String(x.cod||'').trim())}</td><td class="r">${esc(String(x.qty||'').trim())}${x.unt?' '+esc(x.unt):''}</td><td class="r">${esc(String(x.tms||'').trim())}</td><td class="r">${esc(String(x.day||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td><td class="hint">${esc(String(x.t||'').trim())}</td></tr>`;}).join('')}</tbody></table>`;}
+  const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 항목은 노란 줄</span></div>${rxh}</div>`;
+  return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}
+
 /* ───── 진료지원 창 (2026-10-05 요청) ─────
    오늘 처방 D/C(p.rxDc) 와 오늘 새로 쓴 차팅(p.chartAt — markChartWritten) 을 환자별로 모아 최근 것부터. 직원 모두.
    보드 카드 + 오늘 내보낸 내원 기록(VISITS — archiveVisit 이 rxDc·chartAt 을 함께 보관). 창이 열려 있으면 render() 때마다 다시 그린다 */
