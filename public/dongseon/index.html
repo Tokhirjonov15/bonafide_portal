@@ -8090,6 +8090,13 @@ function treatCountAuto(p,room){
   return n+1;   // + 오늘(현재 내원)
 }
 /* 화면에 보이는 회차 = 자동 계산 + 직원 보정(treatBase) */
+/* 4층 비급여 예약표(오늘)의 방문수 = 회차 (2026-10-07 요청: '박인호18' 이면 18회차). 차트번호(없으면 이름)로 그 환자의 오늘 예약을 찾고,
+   여럿이면 방에 맞는 치료코드(신장분사 = CRYO, 충격파 = EES·CE·ES)를 먼저, 없으면 방문수가 가장 큰 것. 예약표에 방문수가 없으면 null → 예전처럼 내원 기록으로 셈 */
+function schedVisitNo(p,room){try{const M=bkMerged(localYMD(new Date()));const mrn=String(p.mrn||'').trim(),nm=String(p.name||'').trim();
+  const mine=((M&&M.items)||[]).filter(x=>!x.removed&&(String(x.mrn||'').trim()?String(x.mrn).trim()===mrn&&!!mrn:(nm&&String(x.name||'').trim()===nm))).map(x=>({x,n:parseInt(String(x.visit==null?'':x.visit),10)})).filter(o=>o.n>0);
+  if(!mine.length)return null;const code=o=>String(o.x.code||'').replace(/\s+/g,'').toUpperCase();
+  const fit=room==='신장분사'?mine.filter(o=>/^CRYO/.test(code(o))):room==='충격파'?mine.filter(o=>/^(EES|CE|ES)\d/.test(code(o))):[];
+  const pick=(fit.length?fit:mine).sort((a,b)=>b.n-a.n)[0];return {n:pick.n,label:((pick.x.t||'')+' '+(pick.x.code||'')).trim()};}catch(e){return null;}}
 function treatCount(p,room){
   const base=p.mrn?(Number(regTreatBase(p.mrn)[treatKey(room)])||0):0;
   return Math.max(1, treatCountAuto(p,room)+base);
@@ -8181,7 +8188,8 @@ function cardEl(p,colRoom){
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
     ${''/* 비트 처방내역 요약은 카드에서 빼고 환자 정보 창의 '처방내역' 표에서만 본다 (2026-09-23) */}
-    ${TREAT_COUNT_ROOMS.includes(_cur)?`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`:''}
+    ${TREAT_COUNT_ROOMS.includes(_cur)?(()=>{const sv=schedVisitNo(p,_cur);return sv?`<div class="treat-count" title="4층 비급여 예약표의 방문수 (${esc(sv.label)}) — 예약표에서 고치면 여기도 바뀝니다"><i data-lucide="zap"></i> ${esc(_cur)} <b>${sv.n}회차</b></div>`
+      :`<div class="treat-count click" title="이 환자가 ${esc(_cur)} 치료를 받은 총 횟수 (과거 내원 기록 + 오늘) — 누르면 회차를 직접 고칠 수 있어요" onclick="event.stopPropagation();editTreatCount('${p.id}','${esc(_cur)}')"><i data-lucide="zap"></i> ${esc(_cur)} <b>${treatCount(p,_cur)}회차</b></div>`;})():''}
     ${(function(){const ent=Object.entries(p.progLog||{}).filter(([r,d])=>d&&r!==_cur);if(!ent.length)return '';
       return `<div class="prog-log" title="오늘 진행(치료)한 방과 담당 — 진료실·C-Arm·Sono 는 의사, x-ray실 은 방사선, 비용 상담·처치실 은 간호"><i data-lucide="stethoscope"></i> ${ent.map(([r,d])=>`${esc(r)} <b>${esc(d)}</b>`).join(' · ')}</div>`;})()}
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
