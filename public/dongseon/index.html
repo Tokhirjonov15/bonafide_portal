@@ -1700,7 +1700,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="waitScreenBtn" onclick="openWaitScreen()"><i data-lucide="monitor"></i> 대기화면</button>
     <button class="btn" id="slipBtn" onclick="openSlipScreen()" title="진료실 처방 목록 보기·슬립 인쇄 (태블릿: 주소 뒤에 ?slip)"><i data-lucide="pill"></i> 슬립 화면</button>
     <!-- 4층 비급여 치료: SHOW_RESV 로 표시 여부를 켜고 끈다 (2026-09-21 숨김 → 2026-09-23 다시 표시) -->
-    <button class="btn" id="resvBtn" onclick="openResvScreen()" title="4층 비급여 치료(충격파·신장분사·SASO·자동차도수) 예약리스트 — 직원용 (별도 모니터: 주소 뒤에 ?resv)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
+    <button class="btn" id="resvBtn" onclick="openPt4()" title="4층 비급여 치료 예약 스케줄 — 예약 입력·내원률 통계·치료 통계·그래프 (예전 visit-stats 와 같은 화면, 2026-10-07)"><i data-lucide="calendar-check"></i> 4층 비급여 치료</button>
     <button class="btn" id="bitResvBtn" onclick="openBitResvScreen()" title="비트 진료 예약(1진료실·16진료실) — 오늘부터 7일, 접수 PC 가 비트에서 바꾸면 몇 초 안에 반영 (별도 모니터: 주소 뒤에 ?bitresv)"><i data-lucide="calendar-clock"></i> 진료 예약</button>
     <button class="btn" id="patMgrBtn" onclick="openHistory()"><i data-lucide="users"></i> 환자 관리</button>
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
@@ -3133,7 +3133,7 @@ async function doLogin(){
     // 이후는 onAuthStateChanged → establishSession 이 처리
   }catch(e){loginMsg(authErrMsg(e));}
 }
-function finishLogin(){showReconnecting(false);localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openResvScreen();if(BITRESV_MODE)openBitResvScreen();if(BONUS_MODE)openBonusMgr();}
+function finishLogin(){showReconnecting(false);localStorage.setItem(SESSION_KEY,currentUser.id);document.getElementById('loginOverlay').classList.remove('show');updateUserPill();render();scanAlarms();if(SLIP_MODE)openSlipScreen();if(RESV_MODE)openPt4();if(BITRESV_MODE)openBitResvScreen();if(BONUS_MODE)openBonusMgr();}
 /* ───── 비트플러스 접수 연동 ─────
    접수 PC의 감시 스크립트(tools/bitplus_watcher.ps1)가 비트 '접수' 창의 인적정보 패널을 읽어
    bitIntake/{날짜_병록번호} 문서로 올린다. 여기서는 오늘 문서만 구독해 보드 위에 '비트 접수 대기' 줄로 보여주고,
@@ -5906,7 +5906,7 @@ function afterCloud(){
   renderThrottled();
   try{autoCloseDay();}catch(e){console.warn(e);}
   if(SLIP_MODE&&!slipOpen)openSlipScreen();
-  if(RESV_MODE&&!resvOpen)openResvScreen();
+  if(RESV_MODE&&!document.querySelector('#pt4Ov.show'))openPt4();
 }
 
 function loadRooms(){try{const r=JSON.parse(localStorage.getItem(ROOMS_STORE));if(Array.isArray(r)&&r.length)return r;}catch(e){}return [...DEFAULT_ROOMS];}
@@ -7311,7 +7311,7 @@ function bkPick(D){const p=PT4_DAYS[D];BOOKINGS[D]=(p&&Array.isArray(p.th)&&p.th
 /* [예약 스케줄] — 포털 스케줄(입력·내원률 통계·치료 통계·그래프·변경 기록)을 이 화면 위에 띄운다 */
 function openPt4(date){let ov=document.getElementById('pt4Ov');
   if(!ov){ov=document.createElement('div');ov.id='pt4Ov';ov.className='pt4-ov';
-    ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
+    ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><button type="button" class="btn sm" onclick="closePt4();openResvScreen()" title="예전 4층 비급여 치료 화면(시간표·도착 표시)">예전 화면</button><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
     document.body.appendChild(ov);}
   document.getElementById('pt4Frame').src='pt4.html?embed#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
   ov.classList.add('show');}
