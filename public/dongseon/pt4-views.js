@@ -8,6 +8,7 @@ function renderSchedule(){
   const date=R.q.date;
   if(DAYDOC===undefined)return LOADING;
   const D=dayView(date,DAYDOC,NEARDOC);window.DV=D;
+  if(date===todayYmd()){watchBoard();setTimeout(sasoSync,0);}   // SASO 환자 → Manual Tx
   const {year,month,day:dd}=splitYmd(date);
   const slots=(D.endMin-DAY_START)/SLOT;D.slots=slots;
   const times=TIMES.slice(0,slots);
@@ -204,7 +205,7 @@ function manualPanel(D){
   for(let no=1;no<=rowCount;no++){const list=byNo.get(no)||[];
     if(!list.length){rows+=MAN.no===no&&MAN.id==null?edRow(no):`<tr class="blank editable" onclick="manNew(${no})"><td>${no}</td><td></td><td></td><td></td><td></td></tr>`;continue;}
     for(const m of list){if(MAN.id===m.id){rows+=edRow(no);continue;}
-      rows+=`<tr style="${m.color?`background:${A(m.color)}`:''}" class="${m.color?'colored':''} ${PAINT?'paintable':''}" onclick="manRowClick(${m.id})">
+      rows+=`<tr style="${m.color?`background:${A(m.color)}`:''}" class="${m.color?'colored':''} ${PAINT?'paintable':''}" ${m.auto==='saso'?'title="SASO 환자 — 동선관리 보드에서 자동으로 들어옴"':''} onclick="manRowClick(${m.id})">
         <td>${m.no}</td><td class="ed" onclick="manEdit(${m.id},event)">${esc(m.mrn)}</td>
         <td class="name-cell ${m.note?'has-note':''}"><span class="ed" onclick="manEdit(${m.id},event)">${esc(m.patientName)}</span>
           <div class="note-pop" onclick="event.stopPropagation()"><div class="note-head">메모 · ${esc(m.patientName||m.mrn)}</div><textarea rows="5" placeholder="메모" onblur="manNoteBlur(${m.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(m.note||'')}</textarea>
@@ -222,6 +223,27 @@ function manualPanel(D){
     <table class="mini manual-count summary"><tbody>
       <tr><td class="lbl green">도수+충격파</td><td>${D.bookings.filter(b=>b.visited&&!/^CRYO/i.test(normalizeCode(b.code))).length}</td></tr>
       <tr><td class="lbl blue">신장분사+Hilt</td><td>${D.bookings.filter(b=>b.visited&&/^CRYO/i.test(normalizeCode(b.code))).length}</td></tr></tbody></table></section>`;}
+/* ═════ SASO 환자 → Manual Tx 자동 (2026-10-07 요청: Manual Tx = SASO 명단) ═════
+   오늘 날짜를 보고 있으면, 동선관리 보드에서 동선에 SASO 가 있는 환자를 Manual Tx 에 넣는다(차트번호로 한 번만).
+   치료사: 카드에서 SASO 방 담당으로 고른 사람(없으면 SASO 에서 [진행]을 누른 사람). 이미 있는 줄은 치료사가 비었거나 'null' 일 때만 채운다.
+   보드에서 빠지거나 SASO 가 지워져도 줄은 지우지 않는다(직원이 ✕ 로) */
+let BOARD=null,BOARD_SUB=null,SASO_BUSY=false;
+const nullTh=s=>!String(s||'').trim()||/^null$/i.test(String(s).trim());
+const mrnKey=s=>String(s||'').replace(/\D/g,'');
+function watchBoard(){if(BOARD_SUB)return;
+  BOARD_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('patients').onSnapshot(s=>{BOARD=s.docs.map(d=>d.data()||{});sasoSync();},e=>console.warn('board',e));}
+function sasoCands(){return (BOARD||[]).filter(p=>!p.discharged&&Array.isArray(p.route)&&p.route.includes('SASO')&&mrnKey(p.mrn))
+  .map(p=>({mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(((p.roomDocs||{}).SASO)||((p.progLog||{}).SASO)||'').trim()}));}
+function sasoTodo(d,cands){const out=[];for(const c of cands){const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
+const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
+  for(const c of sasoTodo(d,cands)){const m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
+    if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'saso',updatedBy:'SASO 자동',updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
+    else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy='SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
+    if(c.th)ctx.extra.manualName=c.th;n++;}
+  return n?{ok:true}:{ok:false,noop:true};};
+async function sasoSync(){const date=R.q.date;if(SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
+  const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length)return;
+  SASO_BUSY=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}SASO_BUSY=false;}
 const focusMan=()=>setTimeout(()=>{const e=document.getElementById('mnMrn');if(e)e.focus();},0);
 window.manNew=no=>{if(PAINT)return;MAN={no,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};render();focusMan();};
 window.manEdit=(id,ev)=>{if(PAINT)return;ev.stopPropagation();const m=D_().manual.find(x=>x.id===id);if(!m)return;MAN={no:m.no,id,f:{mrn:m.mrn,patientName:m.patientName,therapistName:m.therapistName},colorFor:null};render();focusMan();};
@@ -359,6 +381,7 @@ let MOB={tid:0,ed:null,f:null};
 function renderMobile(){
   const date=R.q.date;if(DAYDOC===undefined)return LOADING;
   const D=dayView(date,DAYDOC,NEARDOC);window.DV=D;
+  if(date===todayYmd()){watchBoard();setTimeout(sasoSync,0);}   // SASO 환자 → Manual Tx
   if(!D.therapists.some(t=>t.id===MOB.tid))MOB.tid=Number(R.q.t)||(D.therapists[0]||{}).id||0;
   const t=D.therapists.find(x=>x.id===MOB.tid);
   const rows=[];
