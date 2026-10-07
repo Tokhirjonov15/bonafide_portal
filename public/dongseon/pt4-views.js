@@ -148,6 +148,14 @@ function paintBooking(b){if(PAINT==='#999999'){MSG='예약 칸은 비근무(회�
   if(PAINT==='#ffe599'){run(R.q.date,opBookingVisit(b.id),false);return;}run(R.q.date,opBookingColor(b.id,PAINT==='#ffffff'?'':PAINT),false);}
 window.setPaint=hex=>{PAINT=PAINT===hex?null:hex;render();};
 
+/* 메모 말풍선: Manual Tx·표는 스크롤 칸 안이라 옆으로 띄우면 잘렸다 → 마우스를 올린 칸 옆에 화면 기준(fixed)으로, 화면 밖으로 나가지 않게 (2026-10-07) */
+function placePop(td,pop){const r=td.getBoundingClientRect();const W=260,H=pop.offsetHeight||200;pop.classList.add('fixed');
+  const leftSide=td.classList.contains('name-cell');let left=leftSide?r.left-W-6:r.right+6;
+  if(left+W>innerWidth-8)left=r.left-W-6;if(left<8)left=Math.max(8,Math.min(innerWidth-W-8,r.right+6));
+  const top=Math.max(8,Math.min(r.top,innerHeight-H-8));pop.style.left=left+'px';pop.style.top=top+'px';}
+function popHost(e){const td=e.target&&e.target.closest&&e.target.closest('td.pt, td.name-cell');if(!td)return;const pop=td.querySelector(':scope > .note-pop');if(!pop||pop.contains(e.target))return;placePop(td,pop);}
+document.addEventListener('mouseover',popHost);document.addEventListener('focusin',popHost);
+
 /* ═════════ 오른쪽 구역: 환자 검색 · 달력 · 범례 · 특이사항 · Manual Tx ═════════ */
 let SEARCH={q:'',rows:null,busy:false};
 let MAN={no:null,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};
