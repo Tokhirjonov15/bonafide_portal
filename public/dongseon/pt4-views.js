@@ -539,12 +539,114 @@ function renderAuditPage(){
       <td>${esc(ENTITY_L[r.entity]||r.entity)} ${r.entityId?`<span class="who small">#${esc(r.entityId)}</span>`:''}</td>
       <td class="nowrap">${r.date?`<a href="${href('schedule',{date:r.date})}">${esc(r.date)}</a>`:''}</td><td class="small">${esc(brief(r.before))}</td><td class="small">${esc(brief(r.after))}</td></tr>`).join('')}</tbody></table></div>`;}
 
-/* ═════════ 가져오기 (관리자) — visit-stats 데이터베이스 백업(JSON) → 포털 ═════════ */
+/* ═════════ 구글 시트(예약리스트) 링크로 가져오기 (2026-10-07 요청) ═════════
+   visit-stats 의 lib/sheet-import.ts 와 같은 규칙. 시트를 xlsx 로 내려받아(링크 공유된 시트, 구글이 브라우저에서 받게 허용) 날짜 탭(1일~31일)마다 읽는다.
+   4행 치료사(B·E·H… 3칸 = 환자·치료코드·표시), 6~53행 = 9:00부터 15분, 병합 행 수 = 치료 시간, 회색 #999999 = 비근무, 노랑 #ffe599 또는 표시 칸 글자 = 내원,
+   AU~BC 취소/변경(취소선 = 취소), BK~BN Manual Tx, 55행 당월 누적 상담수. 연·월은 '1일' 탭 BD1(연)·BG1(월) */
+const SH={rowFrom:6,rowTo:53,headerRow:4,bFrom:1,bTo:45,W:3,cancelFrom:46,cancelTo:54,manualFrom:62,consultRow:55,gray:'#999999'};
+function sheetIdOf(s){const m=/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/.exec(String(s||''))||/^([A-Za-z0-9_-]{30,})$/.exec(String(s||'').trim());return m?m[1]:'';}
+function loadXlsxLib(){if(window.XLSX)return Promise.resolve();return new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';s.onload=ok;s.onerror=()=>no(new Error('엑셀 읽기 도구를 불러오지 못했습니다'));document.head.appendChild(s);});}
+function zipText(f){if(!f)return '';if(typeof f.asText==='function')return f.asText();const c=f.content||f._data;if(!c)return '';if(typeof c==='string')return c;return new TextDecoder().decode(c instanceof Uint8Array?c:new Uint8Array(c));}
+function parsePatientSheet(text){const m=/^\s*(\d{1,7})\s*\(\s*(\d{1,2})\s*\)\s*([^\d\n]+?)\s*(\d{1,3})?\s*$/.exec(String(text).replace(/\r?\n/g,' '));
+  return m?{mrn:m[1],room:m[2],name:m[3].replace(/\s+/g,''),visit:m[4]?parseInt(m[4],10):null}:null;}
+/* 탭 하나 → {therapists, bookings, blocks, cancels, manual, consults} */
+function parseSheetDay(ws,strikeAt){
+  const cell=(r,c)=>ws[XLSX.utils.encode_cell({r:r-1,c})];
+  const textOf=(r,c)=>{const x=cell(r,c);if(!x)return '';return String(x.w!=null?x.w:(x.v!=null?x.v:'')).trim();};
+  const bgOf=(r,c)=>{const x=cell(r,c);const s=x&&x.s;if(!s||s.patternType!=='solid'||!s.fgColor||!s.fgColor.rgb)return '';const h='#'+String(s.fgColor.rgb).slice(-6).toLowerCase();return h==='#ffffff'?'':h;};
+  const noteOf=(r,c)=>{const x=cell(r,c);return x&&Array.isArray(x.c)?x.c.map(n=>n.t||'').join('\n').trim():'';};
+  const mergeAt=new Map();(ws['!merges']||[]).forEach(m=>{const mm={r1:m.s.r+1,r2:m.e.r+1,c1:m.s.c,c2:m.e.c};for(let r=mm.r1;r<=mm.r2;r++)for(let c=mm.c1;c<=mm.c2;c++)mergeAt.set(r+','+c,mm);});
+  const isStart=(r,c)=>{const m=mergeAt.get(r+','+c);return !m||(m.r1===r&&m.c1===c);};
+  const spanRows=(r,c)=>{const m=mergeAt.get(r+','+c);return m?m.r2-m.r1+1:1;};
+  const wideMerge=(r,c)=>{const m=mergeAt.get(r+','+c);return !!m&&m.c1<=SH.bFrom&&m.c2>=SH.bTo;};
+  const minOfRow=r=>DAY_START+(r-SH.rowFrom)*SLOT;
+  const out={therapists:[],bookings:[],blocks:[],cancels:[],manual:[],consults:[]};
+  for(let c=SH.bFrom;c+SH.W-1<=SH.bTo;c+=SH.W){
+    const name=textOf(SH.headerRow,c);if(!name)continue;
+    out.therapists.push({name,color:bgOf(SH.headerRow,c)});
+    let grayStart=null;const flush=endRow=>{if(grayStart!=null){out.blocks.push({therapist:name,startMin:minOfRow(grayStart),endMin:minOfRow(endRow),kind:'off',text:'',color:SH.gray,note:''});grayStart=null;}};
+    for(let r=SH.rowFrom;r<=SH.rowTo;r++){
+      if(wideMerge(r,c)){const m=mergeAt.get(r+','+c);if(r===m.r1){flush(r);out.blocks.push({therapist:name,startMin:minOfRow(m.r1),endMin:minOfRow(m.r2+1),kind:'memo',text:textOf(m.r1,m.c1),color:bgOf(m.r1,m.c1)||SH.gray,note:''});}continue;}
+      if(!isStart(r,c))continue;
+      const text=textOf(r,c),color=bgOf(r,c),rows=spanRows(r,c);
+      if(!text){if(color===SH.gray){if(grayStart==null)grayStart=r;}else flush(r);continue;}
+      flush(r);const p=parsePatientSheet(text);
+      if(!p||color===SH.gray){out.blocks.push({therapist:name,startMin:minOfRow(r),endMin:minOfRow(r+rows),kind:'memo',text,color,note:noteOf(r,c)});continue;}
+      const mark=textOf(r,c+2);
+      out.bookings.push({therapist:name,startMin:minOfRow(r),durationMin:rows*SLOT,rawText:text,mrn:p.mrn,room:p.room,patientName:p.name,visitNo:p.visit,
+        code:textOf(r,c+1),codeColor:bgOf(r,c+1),color,visited:mark!==''||color==='#ffe599',mark,note:noteOf(r,c)});}
+    flush(SH.rowTo+1);
+    const cnt=textOf(SH.consultRow,c);if(/^\d+$/.test(cnt))out.consults.push({therapist:name,count:parseInt(cnt,10)});}
+  for(let c=SH.cancelFrom;c<=SH.cancelTo;c++){const th=textOf(SH.headerRow,c);
+    for(let r=SH.rowFrom;r<=SH.rowTo;r++){const tx=textOf(r,c);if(!tx||!isStart(r,c))continue;const q=parsePatientSheet(tx);
+      out.cancels.push({therapist:th,startMin:minOfRow(r),kind:strikeAt(XLSX.utils.encode_cell({r:r-1,c}))?'cancel':'change',text:tx,mrn:q?q.mrn:'',patientName:q?q.name:'',color:bgOf(r,c),note:noteOf(r,c)});}}
+  for(let r=SH.rowFrom;r<=SH.rowTo+20;r++){const mrn=textOf(r,SH.manualFrom+1).replace(/\.0+$/,''),nm=textOf(r,SH.manualFrom+2);
+    if(!mrn&&!nm)continue;if(!/^[가-힣A-Za-z]/.test(nm)||/^(null|0)$/i.test(mrn))continue;
+    out.manual.push({no:parseInt(textOf(r,SH.manualFrom),10)||0,mrn,patientName:nm,therapist:textOf(r,SH.manualFrom+3),
+      color:bgOf(r,SH.manualFrom+2)||bgOf(r,SH.manualFrom+1),note:noteOf(r,SH.manualFrom+2)||noteOf(r,SH.manualFrom+1)});}
+  return out;}
+/* 통합 문서 → {year, month, days:[{date, parsed}]} */
+function parseSheetBook(wb){
+  const one=wb.Sheets['1일'];if(!one)throw new Error("'1일' 탭이 없습니다. 예약리스트 시트가 맞는지 확인하세요.");
+  const year=parseInt(String((one.BD1||{}).v||''),10),month=parseInt(String((one.BG1||{}).v||''),10);
+  if(!(year>2000&&month>=1&&month<=12))throw new Error("'1일' 탭에서 연·월(BD1·BG1)을 찾지 못했습니다.");
+  /* 취소선: 스타일 표(styles.xml)의 글꼴 → 칸의 스타일 번호 */
+  const files=wb.files||{};const sx=zipText(files['xl/styles.xml']);
+  const fontsXml=(/<fonts[^>]*>([\s\S]*?)<\/fonts>/.exec(sx)||[])[1]||'';const fonts=[...fontsXml.matchAll(/<font>([\s\S]*?)<\/font>|<font\/>/g)].map(m=>/<strike(?!\s+val="(0|false)")/.test(m[0]));
+  const xfXml=(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(sx)||[])[1]||'';const xfStrike=[...xfXml.matchAll(/<xf\b[^>]*>/g)].map(m=>{const f=/fontId="(\d+)"/.exec(m[0]);return !!(f&&fonts[+f[1]]);});
+  const days=[];const last=daysInMonth(year,month);
+  wb.SheetNames.forEach((name,idx)=>{const m=/^(\d{1,2})일$/.exec(name);if(!m)return;const day=+m[1];if(day<1||day>last)return;
+    const path=String((wb.Directory&&wb.Directory.sheets||[])[idx]||'').replace(/^\//,'');const xml=zipText(files[path]);
+    const strikeSet=new Set();for(const c of xml.matchAll(/<c r="([A-Z]+\d+)"[^>]*?\ss="(\d+)"/g))if(xfStrike[+c[2]])strikeSet.add(c[1]);
+    days.push({date:ymd(year,month,day),parsed:parseSheetDay(wb.Sheets[name],a=>strikeSet.has(a))});});
+  days.sort((a,b)=>a.date<b.date?-1:1);
+  return {year,month,days};}
+/* 시트에서 읽은 것 → 가져오기 계획(planImport 와 같은 모양). 치료사는 이름으로 맞추고, 없으면 새로 만든다. 전체 삭제한 치료사는 빼고 */
+function planFromSheets(books){
+  const ths=META.therapists.map(t=>Object.assign({},t));let nextId=Math.max(Number(META.nextTid)||0,0,...ths.map(t=>t.id));
+  const idOf=name=>{let t=ths.find(x=>x.name===name);if(!t){t={id:++nextId,name,color:'',single:false,inStats:true,active:true,sortOrder:ths.length};ths.push(t);}return t;};
+  const consults={};const out=[];const manualNames={};
+  books.forEach(bk=>bk.days.forEach(({date,parsed})=>{const d=emptyDay(date);let nid=0;const id=()=>++nid;
+    const keep=parsed.therapists.filter(t=>{const x=ths.find(y=>y.name===t.name);return !x||x.active!==false;});
+    keep.forEach(t=>{const x=idOf(t.name);if(t.color)x.color=t.color;d.th.push(x.id);});
+    const tid=name=>idOf(name).id;
+    parsed.bookings.forEach(b=>d.bookings.push({id:id(),therapistId:tid(b.therapist),startMin:b.startMin,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,visitNo:b.visitNo,
+      rawText:b.rawText,code:b.code,codeColor:b.codeColor,color:b.color,visited:b.visited,mark:b.mark,note:b.note,createdBy:'시트 가져오기',updatedBy:'시트 가져오기'}));
+    parsed.blocks.forEach(k=>d.blocks.push({id:id(),therapistId:tid(k.therapist),startMin:k.startMin,endMin:k.endMin,kind:k.kind,text:k.text,color:k.color,note:k.note,updatedBy:'시트 가져오기'}));
+    parsed.cancels.forEach(c=>d.cancels.push({id:id(),therapistName:c.therapist,startMin:c.startMin,kind:c.kind,text:c.text,mrn:c.mrn,patientName:c.patientName,color:c.color,note:c.note,updatedBy:'시트 가져오기'}));
+    parsed.manual.forEach(m=>{d.manual.push({id:id(),no:m.no,mrn:m.mrn,patientName:m.patientName,therapistName:m.therapist,color:m.color,note:m.note,updatedBy:'시트 가져오기'});
+      const n=String(m.therapist||'').trim();if(n){const L=manualNames[d.ym]=manualNames[d.ym]||[];if(!L.includes(n))L.push(n);}});
+    parsed.consults.forEach(c=>{const ym=d.ym;consults[ym]=consults[ym]||{};consults[ym][tid(c.therapist)]=c.count;});
+    d.nid=nid;d.updatedAt=new Date().toISOString();d.updatedBy='시트 가져오기';
+    if(d.th.length||d.bookings.length)out.push(d);}));
+  const meta={therapists:ths,nextTid:nextId,consults:Object.assign({},META.consults,consults),manualNames:Object.assign({},META.manualNames,manualNames),dataDays:out.filter(d=>d.th.length).map(d=>d.date)};
+  const sum=k=>out.reduce((a,d)=>a+d[k].length,0);
+  return {meta,days:out,audits:[],sheet:true,n:{bookings:sum('bookings'),blocks:sum('blocks'),cancels:sum('cancels'),manual:sum('manual'),notes:0,consults:Object.values(consults).reduce((a,o)=>a+Object.keys(o).length,0)}};}
+window.impLinks=async()=>{const txt=(document.getElementById('impLinks')||{}).value||'';IMP={name:'',links:txt};
+  const ids=[...new Set(txt.split(/[\s,]+/).map(sheetIdOf).filter(Boolean))];
+  if(!ids.length){IMP.err='구글 시트 링크를 넣어 주세요 (https://docs.google.com/spreadsheets/d/…).';render();return;}
+  IMP.busy=true;IMP.log='엑셀 읽기 도구 불러오는 중…';render();
+  try{await loadXlsxLib();const books=[];
+    for(let i=0;i<ids.length;i++){IMP.log=`시트 ${i+1}/${ids.length} 내려받는 중…`;render();
+      const res=await fetch(`https://docs.google.com/spreadsheets/d/${ids[i]}/export?format=xlsx`);
+      if(!res.ok)throw new Error(`시트를 내려받지 못했습니다 (${res.status}). 공유 설정이 '링크가 있는 모든 사용자'인지 확인하세요.`);
+      IMP.log=`시트 ${i+1}/${ids.length} 읽는 중… (몇 초 걸립니다)`;render();await new Promise(r=>setTimeout(r,30));
+      const wb=XLSX.read(new Uint8Array(await res.arrayBuffer()),{type:'array',cellStyles:true,bookFiles:true});
+      books.push(parseSheetBook(wb));}
+    IMP.name=books.map(b=>`${b.year}년 ${b.month}월 시트`).join(' · ');IMP.plan=planFromSheets(books);}
+  catch(e){console.error(e);IMP.err=(e&&e.message)||String(e);if(/Failed to fetch|NetworkError/i.test(IMP.err))IMP.err='시트를 내려받지 못했습니다. 공유 설정이 \'링크가 있는 모든 사용자 — 뷰어\'인지 확인하세요.';}
+  IMP.busy=false;IMP.log='';render();};
+
+/* ═════════ 가져오기 (관리자) — 구글 시트 링크 또는 visit-stats 데이터베이스 백업(JSON) → 포털 ═════════ */
 let IMP=null;   // {name, plan, busy, done, log}
 function renderImportPage(){
   if(!isAdmin())return `<p class="err">관리자만 쓸 수 있습니다.</p>`;
-  let h=`<h1>가져오기</h1><p class="sub">visit-stats 데이터베이스 백업 파일(JSON)을 포털로 옮깁니다. 파일에 있는 날짜는 포털의 그 날짜를 <b>통째로 덮어씁니다</b>. 파일에 없는 날짜는 그대로입니다.</p>
-    <div class="row"><input type="file" accept=".json,application/json" onchange="impFile(this.files[0])"></div>`;
+  let h=`<h1>가져오기</h1>
+    <div class="panel"><h2>구글 시트 링크로</h2><p class="sub">비급여 예약리스트 시트 링크를 붙여 넣으세요. 여러 달이면 한 줄에 하나씩 (예: 9월 시트, 10월 시트). 시트에 있는 날짜는 포털의 그 날짜를 <b>통째로 덮어씁니다</b>.</p>
+      <textarea id="impLinks" rows="3" style="width:100%" placeholder="https://docs.google.com/spreadsheets/d/…/edit?usp=sharing">${esc(IMP&&IMP.links||'')}</textarea>
+      <div class="row"><button type="button" ${IMP&&IMP.busy?'disabled':''} onclick="impLinks()">${IMP&&IMP.busy&&IMP.log?esc(IMP.log):'시트 읽기'}</button></div></div>
+    <div class="panel" style="margin-top:10px"><h2>visit-stats 백업 파일로</h2><p class="sub">visit-stats 데이터베이스 백업(JSON). 파일에 있는 날짜는 포털의 그 날짜를 통째로 덮어씁니다.</p>
+      <div class="row"><input type="file" accept=".json,application/json" onchange="impFile(this.files[0])"></div></div>`;
   if(IMP&&IMP.err)h+=`<p class="err">${esc(IMP.err)}</p>`;
   if(IMP&&IMP.plan){const p=IMP.plan;
     h+=`<div class="panel" style="margin-top:12px"><h2>${esc(IMP.name)}</h2><ul class="list">
