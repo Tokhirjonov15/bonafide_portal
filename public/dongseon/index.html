@@ -7301,7 +7301,7 @@ function pt4ToBk(doc){if(!doc)return null;const T=(PT4_META&&Array.isArray(PT4_M
   return {date:doc.date,file:'4층 비급여 예약 (포털)',src:'pt4',updatedAt:doc.updatedAt||'',
     therapists:(doc.th||[]).filter(id=>{const t=th(id);return !t||t.active!==false;}).map(nm),
     items:B.map(b=>({kind:'pt',th:nm(b.therapistId),t:hhmm2(b.startMin),dur:b.durationMin,text:(b.mrn+(b.room?'('+b.room+')':'')+' '+(b.patientName||'')+(b.visitNo==null?'':b.visitNo)).trim(),
-      color:b.visited?'#ffe599':(b.color||''),note:b.note||'',mrn:b.mrn||'',room:b.room||'',name:b.patientName||'',visit:b.visitNo==null?'':b.visitNo,code:b.code||'',codeColor:b.codeColor||'',mark:b.mark||''})),
+      color:b.visited?'#ffe599':(b.color||''),visited:!!b.visited,note:b.note||'',mrn:b.mrn||'',room:b.room||'',name:b.patientName||'',visit:b.visitNo==null?'':b.visitNo,code:b.code||'',codeColor:b.codeColor||'',mark:b.mark||''})),
     blocks:(doc.blocks||[]).filter(k=>k.text).map(k=>({kind:'block',th:nm(k.therapistId),t:hhmm2(k.startMin),dur:k.endMin-k.startMin,text:k.text,color:k.kind==='off'?'#999999':(k.color||''),note:k.note||''})),
     cancels:(doc.cancels||[]).map(c=>({th:c.therapistName||'',t:hhmm2(c.startMin),text:c.text||'',mrn:c.mrn||'',name:c.patientName||'',color:c.color||'',note:c.note||''})),
     manual:(doc.manual||[]).map(m=>({no:String(m.no),mrn:m.mrn||'',name:m.patientName||'',th:m.therapistName||'',color:m.color||'',note:m.note||''})),
@@ -8168,7 +8168,7 @@ function cardEl(p,colRoom){
         return `<span class="nudge-grp" title="대기실 순서 바꾸기 (위/아래 한 칸)"><button class="icon-btn nudge" ${np.i===0?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',-1)">▲</button><button class="icon-btn nudge" ${np.i===np.n-1?'disabled':''} onclick="event.stopPropagation();nudgeCard('${p.id}',1)">▼</button></span>`;})()}</div>
     ${(function(){   /* 예약 뱃지 (2026-10-01): [비트 19:20] = 비트 진료 예약, 그 오른쪽 [14:30] = 4층 비급여 치료 예약 시트의 오늘 시간 */
       const f4=cardFloor4Times(p);if(!p.reserveAt&&!f4.length)return '';
-      return `<div class="card-time res-badges">${p.reserveAt?`<span class="rb rb-bit" title="비트 예약 시간"><i data-lucide="calendar"></i> 비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(t=>{const a=cardFloor4Arrived(p,t);return `<span class="rb rb-4f${a?' arr':''}" title="4층 비급여 치료 예약${a?' — 도착':''}">4층 ${esc(t)}${a?' ✓':''}</span>`;}).join('')}${p.reserveAt?resTagHtml:''}</div>`;})()}
+      return `<div class="card-time res-badges">${p.reserveAt?`<span class="rb rb-bit" title="비트 예약 시간"><i data-lucide="calendar"></i> 비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(t=>{const a=cardFloor4Arrived(p,t);return `<span class="rb rb-4f${a?' arr':''}" title="4층 비급여 치료 예약${a?' — 받음(표시 .)·도착':''}">4층 ${esc(t)}${a?' ✓':''}</span>`;}).join('')}${p.reserveAt?resTagHtml:''}</div>`;})()}
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     ${''/* 공공보험 뱃지는 카드에서 빼고 환자 정보 창 '환자 정보' 줄로 옮겼다 (2026-10-01 요청) */}
     ${xrayRxHtml(p,_cur)}
@@ -10697,7 +10697,7 @@ let _F4C={at:0,items:[]};
 function bkChangedRedraw(){_F4C.at=0;try{renderThrottled();}catch(e){}try{refreshPtSoon();}catch(e){}}   // 보드를 그릴 때 카드마다 시트를 다시 합치지 않도록 1초 동안 재사용
 /* 이 시각의 4층 예약에 '도착'이 눌렸는가 — 카드 뱃지를 빨간색으로 (2026-10-03 요청) */
 function cardFloor4Arrived(p,t){try{cardFloor4Times(p);const mrn=String(p.mrn||'').trim(),nm=String(p.name||'').trim();
-  return _F4C.items.some(x=>String(x.t||'').trim()===t&&!!x.arrivedAt&&(String(x.mrn||'').trim()?String(x.mrn).trim()===mrn:String(x.name||'').trim()===nm));}catch(e){return false;}}
+  return _F4C.items.some(x=>String(x.t||'').trim()===t&&(!!x.arrivedAt||!!x.visited||!!String(x.mark||'').trim())&&(String(x.mrn||'').trim()?String(x.mrn).trim()===mrn:String(x.name||'').trim()===nm));}catch(e){return false;}}
 function cardFloor4Times(p){try{if(!p||(typeof SHOW_RESV!=='undefined'&&!SHOW_RESV))return [];
   if(Date.now()-_F4C.at>1000){const M=bkMerged(localYMD(new Date()));_F4C={at:Date.now(),items:((M&&M.items)||[]).filter(x=>!x.removed&&/^\d{1,2}:\d{2}$/.test(String(x.t||'').trim()))};}
   const mrn=String(p.mrn||'').trim(),nm=String(p.name||'').trim();
