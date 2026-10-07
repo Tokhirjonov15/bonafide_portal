@@ -901,6 +901,12 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #waitPop button{padding:5px 14px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:15px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
   @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-row{flex-wrap:wrap}#waitPop .wp-t{font-size:15px;white-space:normal}}
   #modal.view-only button[onclick="savePatient()"],#modal.view-only #delBtn,#modal.view-only #editStatusRow,#modal.view-only #modalRail{display:none !important}   /* 보기 전용 — 저장·삭제·상태 단추 숨김 */
+  .pt4-ov{position:fixed;inset:0;z-index:450;background:var(--bg,#f6f7f9);display:none;flex-direction:column}
+  .pt4-ov.show{display:flex}
+  .pt4-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line,#e5e7eb);background:var(--panel,#fff)}
+  .pt4-bar .spacer{flex:1}
+  .pt4-ov iframe{flex:1;border:0;width:100%;background:#fff}
+  .btn.pt4-open{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
   #modal.over-resv{z-index:500}   /* 4층 비급여 치료 화면(300) 위에서 열릴 때 */
   .modal-back{margin-right:6px;flex-shrink:0}
   .sheet-tbl td.hascard{cursor:pointer}
@@ -1905,6 +1911,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <input type="date" id="resvDate" class="sheet-date-inp dark" onchange="setSheetDate(this.value)" title="지난/예정 날짜 보기">
     <span class="hint" id="resvSync"></span>
     <div class="spacer"></div>
+    <button class="btn sm pt4-open" onclick="openPt4(sheetDate||'')" title="예약 입력·수정, 내원률 통계·치료 통계·그래프·변경 기록 (예전 visit-stats)"><i data-lucide="table-2"></i> 예약 스케줄</button>
     <a class="btn sm" href="?resv" target="_blank" rel="noopener" title="별도 모니터·창용 주소"><i data-lucide="external-link"></i> 새 창</a>
     <button class="btn sm" id="resvCloseBtn" onclick="closeResvScreen()"><i data-lucide="x"></i> 닫기</button>
   </div>
@@ -3335,7 +3342,7 @@ const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
 function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
-function bitUnsubAll(){['unsubSlipMark','unsubIntake','unsubLookup','unsubNote','unsubBk','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
+function bitUnsubAll(){['unsubSlipMark','unsubIntake','unsubLookup','unsubNote','unsubBk','unsubPt4','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
 /* ── 감시 PC 하트비트 읽기 ── 실시간(onSnapshot)으로 들으면 "하트비트 1건 = 듣는 화면 수만큼 읽기"라 PC 24대 × 5분 × 화면 10개 = 하루 7만 회에 달했다(2026-09-14·15 무료 한도 초과).
    그래서 주기적으로 한 번씩만 읽는다: v3.4 부터 모든 PC 가 bitStatus/_all 한 문서에 모아 쓰므로 5분마다 그 1건만, 아직 v3.3 이하(PC 별 문서)인 PC 는 60분마다 컬렉션을 한 번 읽어 합친다(최근 lastSeen 우선).
    pill 을 누르면 즉시 새로고침. 화면 역할이 staff 일 때만 */
@@ -3412,7 +3419,9 @@ function subscribeBitIntake(){
       },err=>console.warn('slipMark',err));}
   }
   if(role!=='tv'&&cloud.bookingsCol){   // 예약 시트(오늘) — 직원용 예약관리 화면(환자용 TV 는 듣지 않음)
-    cloud.unsubBk=cloud.bookingsCol.doc(today).onSnapshot(s=>{BOOKINGS[today]=s.exists?s.data():null;if(resvOpen)renderResvScreen();bkChangedRedraw();},err=>console.warn('bookings',err));
+    cloud.unsubBk=cloud.bookingsCol.doc(today).onSnapshot(s=>{BK_SHEET[today]=s.exists?s.data():null;bkPick(today);},err=>console.warn('bookings',err));
+    if(cloud.pt4Col){cloud.unsubPt4=cloud.pt4Col.doc(today).onSnapshot(s=>{PT4_DAYS[today]=s.exists?s.data():null;bkPick(today);},err=>console.warn('pt4Day',err));
+      if(!cloud.unsubPt4Meta&&cloud.pt4MetaRef)cloud.unsubPt4Meta=cloud.pt4MetaRef.onSnapshot(s=>{PT4_META=s.exists?s.data():null;Object.keys(PT4_DAYS).forEach(bkPick);},err=>console.warn('pt4Meta',err));}
     if(cloud.bookingEditsCol)cloud.unsubBkEd=cloud.bookingEditsCol.doc(today).onSnapshot(s=>{BK_EDITS[today]=s.exists?s.data():null;if(resvOpen)renderResvScreen();bkChangedRedraw();},err=>console.warn('bookingEdits',err));
   }
   if(role==='staff'){   // 감시 PC 하트비트 pill — 직원 보드만
@@ -5784,6 +5793,8 @@ async function startHosted(){
     cloud.resvCol=cloud.db.collection('bitResv');          // 비트 진료 예약(RsvInf) 하루치 — DB 에이전트(tools/bit_db_agent.ps1)가 바뀔 때마다 쓴다 (id: YYYY-MM-DD, _summary=날짜별 건수)
     cloud.noteCol=cloud.db.collection('bitNote');          // 진료실 PC 감시 스크립트가 쓰는 처방 목록(슬립용, id: YYYY-MM-DD_병록번호)
     cloud.bookingsCol=cloud.db.collection('bookings');    // 물리치료센터 예약리스트(Google Sheet) 하루치 — Apps Script(tools/sheet_bookings.gs)가 쓴다 (id: YYYY-MM-DD)
+    cloud.pt4Col=cloud.db.collection('pt4Day');            // 4층 비급여 예약 스케줄(포털 원본, pt4.html — 2026-10-07 visit-stats 이전). 있으면 예약 시트 문서 대신 이것을 쓴다
+    cloud.pt4MetaRef=cloud.db.collection('pt4Meta').doc('main');
     cloud.bookingEditsCol=cloud.db.collection('bookingEdits');   // 직원이 4층 비급여 치료 화면에서 고친 예약(수정·취소·추가) — 시트 문서 위에 겹쳐 보임 (id: YYYY-MM-DD)
     cloud.lookupCol=cloud.db.collection('bitLookup');      // 접수 창에서 조회된 인적정보(어느 PC든, id: YYYY-MM-DD_병록번호) — 차트번호 없는 캐스트 카드를 이름으로 채움
     firebase.auth().onAuthStateChanged(async(user)=>{
@@ -7278,6 +7289,33 @@ function bkMerged(D){
 }
 const BK_LEGEND={'#ffe599':'내원','#ffff00':'임시치료실','#ff0000':'치료실 없음','#00ff00':'시트·비트확인','#00ffff':'실손 청구여부 확인','#9900ff':'카톡친추 확인'};   // 시트 범례 색 → 뜻
 function bookingsFor(D){return BOOKINGS[D]||null;}
+/* ═════ 4층 비급여 예약 스케줄(포털, pt4.html) → 예전 시트 문서 모양 (2026-10-07: visit-stats 를 포털로 옮기고 구글 시트를 그만 씀) ═════
+   그날 포털 문서(pt4Day/{날짜})가 있으면 그것을, 없으면 예전 시트 문서(bookings/{날짜})를 쓴다. 이 화면·카드의 예약 시각·도착 표시는 그대로 */
+var PT4_DAYS={}, PT4_META=null, BK_SHEET={};
+function pt4ToBk(doc){if(!doc)return null;const T=(PT4_META&&Array.isArray(PT4_META.therapists))?PT4_META.therapists:[];
+  const th=id=>T.find(t=>t.id===id)||null;const nm=id=>{const t=th(id);return t?t.name:'#'+id;};
+  const hhmm2=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+  const B=Array.isArray(doc.bookings)?doc.bookings:[];
+  const ym=String(doc.date||'').slice(0,7);const cons=(PT4_META&&PT4_META.consults&&PT4_META.consults[ym])||{};
+  const visited=B.filter(b=>b.visited&&!(th(b.therapistId)||{}).single);const cry=visited.filter(b=>/^CRYO/i.test(String(b.code||'').replace(/\s+/g,''))).length;
+  return {date:doc.date,file:'4층 비급여 예약 (포털)',src:'pt4',updatedAt:doc.updatedAt||'',
+    therapists:(doc.th||[]).filter(id=>{const t=th(id);return !t||t.active!==false;}).map(nm),
+    items:B.map(b=>({kind:'pt',th:nm(b.therapistId),t:hhmm2(b.startMin),dur:b.durationMin,text:(b.mrn+(b.room?'('+b.room+')':'')+' '+(b.patientName||'')+(b.visitNo==null?'':b.visitNo)).trim(),
+      color:b.visited?'#ffe599':(b.color||''),note:b.note||'',mrn:b.mrn||'',room:b.room||'',name:b.patientName||'',visit:b.visitNo==null?'':b.visitNo,code:b.code||'',codeColor:b.codeColor||'',mark:b.mark||''})),
+    blocks:(doc.blocks||[]).filter(k=>k.text).map(k=>({kind:'block',th:nm(k.therapistId),t:hhmm2(k.startMin),dur:k.endMin-k.startMin,text:k.text,color:k.kind==='off'?'#999999':(k.color||''),note:k.note||''})),
+    cancels:(doc.cancels||[]).map(c=>({th:c.therapistName||'',t:hhmm2(c.startMin),text:c.text||'',mrn:c.mrn||'',name:c.patientName||'',color:c.color||'',note:c.note||''})),
+    manual:(doc.manual||[]).map(m=>({no:String(m.no),mrn:m.mrn||'',name:m.patientName||'',th:m.therapistName||'',color:m.color||'',note:m.note||''})),
+    stats:[{label:'당월 누적 상담수',value:Object.values(cons).reduce((a,n)=>a+(+n||0),0)},{label:'도수+충격파',key:'CME',value:visited.length-cry},{label:'신장분사+Hilt',key:'CRY',value:cry}]};}
+function bkPick(D){const p=PT4_DAYS[D];BOOKINGS[D]=(p&&Array.isArray(p.th)&&p.th.length)?pt4ToBk(p):(BK_SHEET[D]||null);
+  try{if(resvOpen)renderResvScreen();bkChangedRedraw();}catch(e){}}
+/* [예약 스케줄] — 포털 스케줄(입력·내원률 통계·치료 통계·그래프·변경 기록)을 이 화면 위에 띄운다 */
+function openPt4(date){let ov=document.getElementById('pt4Ov');
+  if(!ov){ov=document.createElement('div');ov.id='pt4Ov';ov.className='pt4-ov';
+    ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
+    document.body.appendChild(ov);}
+  document.getElementById('pt4Frame').src='pt4.html?embed#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
+  ov.classList.add('show');}
+function closePt4(){const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');const f=document.getElementById('pt4Frame');if(f)f.src='about:blank';}}
 /* ═════ 4층 치료사 명단 (2026-10-03 요청: 월별 구글 시트 없이 동선관리에서 예약) ═════
    한 줄에 한 명: '이름 [평일 근무] [주말·공휴일 근무]'  예) 'Jack 09:00-18:00 09:00-13:00' · 시간을 비우면 기본(평일 09:00-21:00, 주말 09:00-18:00).
    휴무 관리(OFF_SCHED)에 같은 이름으로 휴무가 있으면 그날 열에서 뺀다. 설정 문서 bkRoster 에 글 그대로 저장 */
@@ -7318,7 +7356,9 @@ function saveBkRoster(){const ta=document.getElementById('bkRosterTa');if(!ta)re
   BK_ROSTER_TEXT=ta.value.trim();cloudSaveConfig();try{audit('4층 치료사 명단 수정',bkRosterParse(BK_ROSTER_TEXT).map(x=>x.name).join(', '));}catch(e){}
   const d=document.getElementById('bkRosterDlg');if(d)d.remove();renderResvScreen();}
 function bkLoad(D){if(!D||!cloud.bookingsCol)return;
-  if(BOOKINGS[D]===undefined){BOOKINGS[D]=null;cloud.bookingsCol.doc(D).get().then(sn=>{if(sn.exists){BOOKINGS[D]=sn.data();if(resvOpen)renderResvScreen();}}).catch(e=>console.warn('bookings get',e));}
+  if(BOOKINGS[D]===undefined){BOOKINGS[D]=null;
+    cloud.bookingsCol.doc(D).get().then(sn=>{BK_SHEET[D]=sn.exists?sn.data():null;bkPick(D);}).catch(e=>console.warn('bookings get',e));
+    if(cloud.pt4Col)cloud.pt4Col.doc(D).get().then(sn=>{PT4_DAYS[D]=sn.exists?sn.data():null;bkPick(D);}).catch(e=>console.warn('pt4 get',e));}
   if(BK_EDITS[D]===undefined&&cloud.bookingEditsCol){BK_EDITS[D]=null;cloud.bookingEditsCol.doc(D).get().then(sn=>{if(sn.exists){BK_EDITS[D]=sn.data();if(resvOpen)renderResvScreen();}}).catch(e=>console.warn('bookingEdits get',e));}}
 const bkSlot=t=>{const m=/^(\d{1,2}):(\d{2})/.exec(t||'');return m?(+m[1])*2+((+m[2])>=30?1:0):null;};
 /* 예약 칸 — pf(환자용)면 이름 가림·차트번호·메모 없음. 직원용은 누르면 수정 */
