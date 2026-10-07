@@ -262,6 +262,15 @@ function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+
   $out = @(); foreach ($l in (($text -replace "`r`n", "`n") -split "[`r`n]")) { $t = $l.Trim(); if ($t -and $t -notmatch '^[\s+\-_.·ㆍ,~*]*$') { $out += ($t -replace '\s{2,}', ' ') } }
   return ($out -join "`n")
 }
+function ExtractChart($text) {   # 증상 칸에서 맨 위 'med' 줄보다 위(차팅). 'med' 줄이 없으면 전체. 빈 줄은 한 줄로 줄임 (2026-10-07: 슬립 [전체보기])
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $stop = $lines.Count; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match $RX_HEAD) { $stop = $i; break } }
+  $out = @(); $blank = $false
+  for ($i = 0; $i -lt $stop; $i++) { $t = $lines[$i].Trim(); if (-not $t) { if ($out.Count -and -not $blank) { $out += ''; $blank = $true }; continue }; $out += $t; $blank = $false }
+  while ($out.Count -and -not $out[$out.Count - 1]) { $out = @($out[0..($out.Count - 2)]) }
+  $txt = ($out -join "`n"); if ($txt.Length -gt 8000) { $txt = $txt.Substring(0, 8000) }
+  return $txt
+}
 function ExtractRx($text) {   # 증상 전체 → 처방 블록(맨 위 'med' 줄부터 끝까지, 빈 줄 제외, 원문 그대로). 'med' 줄이 없으면 처방 없음
   # 2026-10-06 요청: med 가 위아래 두 번 있으면 아래 것부터만 잡혀 위쪽 처방이 빠졌다 → 맨 위 med 줄부터 긁는다
   $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
@@ -498,7 +507,7 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.5'; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.6'; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
@@ -512,17 +521,18 @@ while ($true) {
           if ($dr -and $dr.mrn) {
             $ex = if ($dr.note.Trim()) { ExtractRx $dr.note } else { @{ lines = @(); marker = $false } }
             $rxText = ($ex.lines -join "`n")
+            $chartText = if ($dr.note.Trim()) { ExtractChart $dr.note } else { '' }
             $memo = CleanMemo $dr.memo
-            if ($rxText -or $memo) {
-              $nk = "$($dr.mrn)|$rxText|$memo"
+            if ($rxText -or $memo -or $chartText) {
+              $nk = "$($dr.mrn)|$rxText|$memo|$chartText"
               if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
-              if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo") {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
+              if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo|$chartText") {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
                 # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
                 $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
-                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso) }
+                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; chart = $chartText; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso) }
                 if ($rev -eq 1) { $nf.firstAt = (NowIso) }
                 FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
-                $script:NoteSent[$dr.mrn] = "$rxText|$memo"
+                $script:NoteSent[$dr.mrn] = "$rxText|$memo|$chartText"
                 Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
               }
             }

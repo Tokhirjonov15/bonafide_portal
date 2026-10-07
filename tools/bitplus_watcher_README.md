@@ -1,7 +1,9 @@
 # 비트플러스 접수 연동 — 설치 안내
 
-`bitplus_watcher.ps1`(v3.5)은 세 채널을 합쳐 동선관리(Firebase `bitIntake`·`bitNote`)에 올립니다. 같은 스크립트를 접수 PC와 진료실 PC에 설치하며,
+`bitplus_watcher.ps1`(v3.6)은 세 채널을 합쳐 동선관리(Firebase `bitIntake`·`bitNote`)에 올립니다. 같은 스크립트를 접수 PC와 진료실 PC에 설치하며,
 열려 있는 비트 창(접수 / 외래진료실)을 보고 스스로 무엇을 읽을지 정합니다.
+
+> **v3.6 (2026-10-07) — 차팅도 전송.** 진료실 PC 가 증상 칸의 'med' 줄 위(차팅·소견)도 `bitNote.chart` 로 올립니다. 동선관리 슬립 화면의 [전체보기]로 봅니다. 진료실 PC 마다 `bitplus_install.ps1 -Pc 진료실N` 을 다시 실행해야 적용됩니다.
 
 > **v3.5 (2026-09-16) — DB 에이전트 우선.** 접수 PC 에 비트 DB 를 직접 읽는 에이전트(`bit_db_agent.ps1`, `bit_db_agent_README.md`)가 함께 돌면
 > 캐스트(채널 ①)로는 `bitIntake` 에 쓰지 않습니다. 확인은 LAN 상태 포트(TCP 9001)로만 하므로 Firestore 비용이 없고, 이 PC(127.0.0.1)와 `bitplus_peers.txt` 의
