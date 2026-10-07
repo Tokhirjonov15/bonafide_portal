@@ -8120,6 +8120,7 @@ function cardEl(p,colRoom){
       return `<div class="card-time res-badges">${p.reserveAt?`<span class="rb rb-bit" title="비트 예약 시간"><i data-lucide="calendar"></i> 비트 ${esc(p.reserveAt)}</span>`:''}${f4.map(t=>{const a=cardFloor4Arrived(p,t);return `<span class="rb rb-4f${a?' arr':''}" title="4층 비급여 치료 예약${a?' — 도착':''}">4층 ${esc(t)}${a?' ✓':''}</span>`;}).join('')}${p.reserveAt?resTagHtml:''}</div>`;})()}
     ${p.extraFee>0?`<div class="extrafee ${p.paid?'paid':''}"><span>${p.paid?'✅ 수납완료':'<i data-lucide="wallet"></i> 미수납'} ${won(p.extraFee)}원</span><button class="pay-btn ${p.paid?'on':''}" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'수납취소':'수납완료'}</button></div>`:''}
     ${''/* 공공보험 뱃지는 카드에서 빼고 환자 정보 창 '환자 정보' 줄로 옮겼다 (2026-10-01 요청) */}
+    ${xrayRxHtml(p,_cur)}
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
@@ -8344,6 +8345,15 @@ function applyStatus(d,st){accrue(d);d.status=st;
   return d;}
 /* 방마다 '담당'으로 남길 사람 (2026-10-06 요청): 진료실 = 의사 · C-Arm·Sono·근전도 = 술기 의사 · x-ray실 = 방사선 · 비용 상담·처치실 = 간호.
    그 방 담당을 아직 안 골랐으면 비워 둔다(예전처럼 접수 진료의로 채우지 않음 — 비용 상담에 의사 이름이 찍혔다) */
+/* x-ray실 카드에만 엑스레이 처방 내역 (2026-10-07 요청) — XRAY_CODES 에 있는 처방의 명칭(예: 안와 3매, 비골 2매). 다른 방에서는 안 보임 */
+function xrayRxHtml(p,room){
+  if(!/x-?ray/i.test(room||''))return '';
+  const seen=new Set(),out=[];
+  rxItemsOf(p).forEach(it=>{const cod=String(it.cod||'').trim();if(!XRAY_CODES.has(cod.toLowerCase()))return;
+    const nam=String(it.nam||'').trim()||cod;const q=Number(it.qty)||0;
+    const t=nam+((q>1&&!/매/.test(nam))?' ×'+q:'');if(seen.has(t))return;seen.add(t);out.push(t);});
+  if(!out.length)return '';
+  return `<div class="xray-rx" title="엑스레이 처방 (비트)"><i data-lucide="scan-line"></i> ${out.map(t=>`<b>${esc(t)}</b>`).join(', ')}</div>`;}
 function progStaffFor(d,r){
   if(/x-?ray/i.test(r||''))return radFor(d,r);
   if(isConsultRoom(r)){const c=(d.consults||{})[r];return (c&&c.who)||nurseFor(d,r);}
@@ -12892,6 +12902,7 @@ boot();
   .offhour.today{text-decoration:underline}
   /* 비트플러스 연동 */
   .memo-today{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;color:#7c4a03;background:#fff7e6;border:1px solid #fde4b5;border-radius:7px;padding:3px 7px;margin:4px 12px 0;line-height:1.3;word-break:break-all}
+  .xray-rx{display:flex;align-items:flex-start;gap:5px;font-size:12.5px;color:#1e3a8a;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:4px 8px;margin:6px 12px 0;line-height:1.4;word-break:keep-all}.xray-rx svg{width:14px;height:14px;flex:none;margin-top:2px}.xray-rx b{font-weight:800}   /* x-ray실 처방 내역 (2026-10-07) */
   .memo-today svg.lucide{width:12px;height:12px;flex-shrink:0;margin-top:1px}
   .bit-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;color:var(--sub);flex-wrap:wrap;max-width:100%;min-width:0}   /* PC 20대: 넘치면 줄바꿈(페이지 폭을 넓히지 않음) */
   .bit-pill .bp{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;background:var(--panel2)}
