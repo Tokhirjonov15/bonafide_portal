@@ -101,6 +101,7 @@ table.grid td.mark input{width:100%;height:100%;border:2px solid var(--accent);b
 input.consult{width:44px;text-align:center;font:inherit;border:1px solid var(--line);border-radius:4px;background:#fff;color:#1f2328}
 .cancel-wrap{margin-top:14px}
 /* 메모 말풍선 */
+#selBox{position:fixed;display:none;pointer-events:none;z-index:40;border:2px solid #2563eb;background:rgba(37,99,235,.10);border-radius:3px}   /* 드래그 범위 */
 table.grid td.sel{box-shadow:inset 0 0 0 2px #2563eb;filter:brightness(.93)}   /* 복사하려고 고른 예약 */
 table.grid:not(.cancel-grid){user-select:none;-webkit-user-select:none}
 table.grid .note-pop,table.grid .note-pop textarea{user-select:text;-webkit-user-select:text}

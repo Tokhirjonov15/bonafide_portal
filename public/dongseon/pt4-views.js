@@ -157,17 +157,33 @@ window.copyLayout=async()=>{const from=D_().borrowedFrom;if(!from)return;const s
 let SEL=new Set(),CLIP=(()=>{try{return JSON.parse(localStorage.getItem('pt4Clip')||'null');}catch(e){return null;}})(),DRAG=null,EAT=false;
 function eatClick(){if(EAT){EAT=false;return true;}return false;}
 function selPaint(){document.querySelectorAll('table.grid td[data-bid]').forEach(td=>td.classList.toggle('sel',SEL.has(Number(td.dataset.bid))));}
-function selRect(a,b){const D=D_();if(!D)return;const ids=D.therapists.map(t=>t.id);const i1=Math.min(ids.indexOf(a.tid),ids.indexOf(b.tid)),i2=Math.max(ids.indexOf(a.tid),ids.indexOf(b.tid));
-  const m1=Math.min(a.min,b.min),m2=Math.max(a.min,b.min)+SLOT;SEL=new Set(DRAG.base);
-  D.bookings.forEach(x=>{const i=ids.indexOf(x.therapistId);if(i>=i1&&i<=i2&&x.startMin<m2&&m1<x.startMin+x.durationMin)SEL.add(x.id);});selPaint();}
-const cellAt=e=>{const td=e.target&&e.target.closest&&e.target.closest('table.grid:not(.cancel-grid) td[data-tid]');return td&&!td.closest('.note-pop')&&!e.target.closest('.note-pop')?td:null;};
-document.addEventListener('mousedown',e=>{if(R.page!=='schedule'||PAINT||e.button!==0)return;const td=cellAt(e);if(!td)return;
-  const pos={tid:Number(td.dataset.tid),min:Number(td.dataset.min)};const bid=td.dataset.bid?Number(td.dataset.bid):null;
+/* 드래그 선택 (2026-10-07: 매끄럽게) — 칸 위를 지날 때가 아니라 마우스 좌표로 치료사 열·시간 줄을 바로 계산한다.
+   회색(비근무)·점심 띠 위를 지나도 끊기지 않고, 끄는 동안 파란 네모로 범위를 보여 준다. 5px 넘게 움직여야 드래그(그 전엔 보통 클릭) */
+function gridGeom(){const tb=document.querySelector('table.grid:not(.cancel-grid)');if(!tb)return null;
+  const cols=[...tb.querySelectorAll('thead th.th-name')].map(th=>th.getBoundingClientRect());const rows=[...tb.querySelectorAll('tbody tr')].map(tr=>tr.getBoundingClientRect());
+  return cols.length&&rows.length?{cols,rows}:null;}
+function pick(list,v,lo,hi){if(v<=list[0][lo])return 0;if(v>=list[list.length-1][hi])return list.length-1;for(let i=0;i<list.length;i++)if(v<list[i][hi])return i;return list.length-1;}
+function dragUpdate(){DRAG.raf=0;const g=gridGeom();if(!g)return;const D=D_();if(!D)return;
+  const c1=pick(g.cols,DRAG.x0,'left','right'),c2=pick(g.cols,DRAG.x,'left','right'),r1=pick(g.rows,DRAG.y0,'top','bottom'),r2=pick(g.rows,DRAG.y,'top','bottom');
+  const ci=Math.min(c1,c2),cj=Math.max(c1,c2),ri=Math.min(r1,r2),rj=Math.max(r1,r2);
+  const key=[ci,cj,ri,rj].join();
+  let box=document.getElementById('selBox');if(!box){box=document.createElement('div');box.id='selBox';document.body.appendChild(box);}
+  Object.assign(box.style,{left:g.cols[ci].left+'px',top:g.rows[ri].top+'px',width:(g.cols[cj].right-g.cols[ci].left)+'px',height:(g.rows[rj].bottom-g.rows[ri].top)+'px',display:'block'});
+  if(key===DRAG.key)return;DRAG.key=key;
+  const tids=D.therapists.slice(ci,cj+1).map(t=>t.id),m1=DAY_START+ri*SLOT,m2=DAY_START+(rj+1)*SLOT;
+  SEL=new Set(DRAG.base);D.bookings.forEach(x=>{if(tids.includes(x.therapistId)&&x.startMin<m2&&m1<x.startMin+x.durationMin)SEL.add(x.id);});selPaint();}
+function dragEnd(){const box=document.getElementById('selBox');if(box)box.style.display='none';}
+document.addEventListener('mousedown',e=>{EAT=false;if(R.page!=='schedule'||PAINT||e.button!==0)return;
+  const t=e.target;if(!t||!t.closest||t.closest('.note-pop')||/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(t.tagName))return;
+  const td=t.closest('table.grid:not(.cancel-grid) tbody td');if(!td||td.classList.contains('time'))return;
+  const bid=td.dataset.bid?Number(td.dataset.bid):null;
   if((e.ctrlKey||e.metaKey)&&bid!=null){e.preventDefault();SEL.has(bid)?SEL.delete(bid):SEL.add(bid);selPaint();EAT=true;selHint();return;}
-  DRAG={start:pos,moved:false,base:(e.shiftKey?[...SEL]:[])};});
-document.addEventListener('mouseover',e=>{if(!DRAG)return;const td=cellAt(e);if(!td)return;const pos={tid:Number(td.dataset.tid),min:Number(td.dataset.min)};
-  if(!DRAG.moved&&pos.tid===DRAG.start.tid&&pos.min===DRAG.start.min)return;DRAG.moved=true;selRect(DRAG.start,pos);});
-document.addEventListener('mouseup',()=>{if(!DRAG)return;const moved=DRAG.moved;DRAG=null;if(moved){EAT=true;setTimeout(()=>{EAT=false;},400);selHint();}});
+  DRAG={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,moved:false,raf:0,key:'',base:(e.shiftKey?[...SEL]:[])};});
+document.addEventListener('mousemove',e=>{if(!DRAG)return;DRAG.x=e.clientX;DRAG.y=e.clientY;
+  if(!DRAG.moved){if(Math.abs(DRAG.x-DRAG.x0)+Math.abs(DRAG.y-DRAG.y0)<5)return;DRAG.moved=true;}
+  e.preventDefault();if(!DRAG.raf)DRAG.raf=requestAnimationFrame(dragUpdate);});
+document.addEventListener('mouseup',()=>{if(!DRAG)return;const moved=DRAG.moved;if(DRAG.raf){cancelAnimationFrame(DRAG.raf);dragUpdate();}DRAG=null;dragEnd();
+  if(moved){EAT=true;setTimeout(()=>{EAT=false;},0);selHint();}});   // 드래그를 끝낸 바로 그 클릭만 무시
 function selHint(){if(SEL.size)toast(`예약 ${SEL.size}건 골랐습니다 — Ctrl+C 복사 · Delete 지우기 · Esc 해제`,2600);}
 function copySel(){const D=D_();if(!D||!SEL.size)return false;const ids=D.therapists.map(t=>t.id);
   const items=D.bookings.filter(b=>SEL.has(b.id)).map(b=>({therapistId:b.therapistId,ti:ids.indexOf(b.therapistId),startMin:b.startMin,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,
