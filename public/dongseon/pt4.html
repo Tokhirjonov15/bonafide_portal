@@ -177,6 +177,10 @@ table.manual tr.blank.editable:hover td{background:#eef4ff;color:#1f2328}
 table.manual tr.editing-row td{padding:2px}
 table.manual tr.editing-row input{width:100%;font:inherit;font-size:12px;padding:3px 4px;border:1px solid var(--accent);border-radius:4px;background:#fff;color:#1f2328}
 table.manual td.name-cell{position:relative;overflow:visible}
+table.grid td.cancel.cx-cell{position:relative}
+table.grid td.cancel.has-note::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 7px 7px 0;border-color:transparent #1f2328 transparent transparent}
+table.grid td.cx-cell:hover .note-pop,table.grid td.cx-cell:focus-within .note-pop{visibility:visible;opacity:1;transition-delay:.45s}
+table.grid td.cx-cell .note-pop{text-decoration:none;text-align:left;font-weight:normal}
 table.manual td.name-cell.has-note::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 7px 7px 0;border-color:transparent #1f2328 transparent transparent}
 table.manual td.name-cell .note-pop{left:auto;right:100%;margin-left:0;margin-right:4px}
 table.manual tr.paintable{cursor:crosshair}
@@ -589,6 +593,7 @@ const opCopyLayout=from=>ctx=>{const d=ctx.d;d.th=from.th.slice();d.blocks=from.
   aud(ctx,'create','day',d.date,null,{copiedFrom:from.date});return {ok:true};};
 
 /* ── 취소/변경, Manual Tx, 특이사항 ── */
+const opCancelNote=(id,note)=>ctx=>{const c=ctx.d.cancels.find(x=>x.id===id);if(!c)return {ok:false,message:'기록을 찾지 못했습니다.'};const bf=c.note||'';c.note=clean(note,1000);c.updatedBy=ME.name;c.updatedAt=new Date().toISOString();aud(ctx,'update','cancels',id,{note:bf},{note:c.note});return {ok:true};};
 const opCancelSave=input=>ctx=>{const d=ctx.d;const s=Number(input.startMin);if(!timeOk(s,s+SLOT))return {ok:false,message:'시간이 잘못되었습니다.'};
   const text=clean(input.text,60);if(!text)return {ok:false,message:'내용을 입력하세요.'};const color=clean(input.color,7).toLowerCase();if(!colorOk(color))return {ok:false,message:'잘못된 색입니다.'};
   const m=/^(\d{1,7})/.exec(text);const kind=input.kind==='change'?'change':'cancel';

@@ -103,7 +103,7 @@ function renderSchedule(){
     times.forEach((min,i)=>{h+=`<tr class="${i%2===0?'half':'quarter'}">`;if(i%2===0)h+=`<td rowspan="2" class="time">${hm(min)}</td>`;
       cancelTh.forEach((t,ti)=>{const done=cRend.get(t.name);if(done.has(i))return;const c=cancelAt.get(`${t.name}|${min}`)||null;
         const span=i%2===0&&i+1<slots&&!cancelAt.has(`${t.name}|${min+SLOT}`)?2:1;for(let k=i;k<i+span;k++)done.add(k);
-        h+=`<td rowspan="${span}" class="cancel ${c?(c.kind==='cancel'?'strike':''):'free'} ${ed}" style="${c&&c.color?`background:${A(c.color)}`:''}" title="${c?(c.kind==='cancel'?'취소':'변경'):''}" onclick="cxOpen(${ti},${min})">${c?esc(c.text):''}</td>`;});
+        h+=`<td rowspan="${span}" class="cancel ${c?(c.kind==='cancel'?'strike':'')+' cx-cell'+(c.note?' has-note':''):'free'} ${ed}" style="${c&&c.color?`background:${A(c.color)}`:''}" title="${c?(c.kind==='cancel'?'취소':'변경'):''}" onclick="cxOpen(${ti},${min})"><span class="cx-text">${c?esc(c.text):''}</span>${c?cxNotePop(c):''}</td>`;});
       h+=`</tr>`;});
     h+=`</tbody><tfoot><tr><td class="time">취소 및<br>변경 합계</td>${cancelTh.map(t=>`<td class="center">${D.cancels.filter(c=>c.therapistName===t.name).length}</td>`).join('')}</tr>
       <tr><td class="time">총계</td><td colspan="${cancelTh.length}" class="center muted">총 ${D.cancels.length}건</td></tr></tfoot></table></div>`;}
@@ -159,6 +159,10 @@ window.bVisit=id=>{const b=D_().bookings.find(x=>x.id===id);if(!b)return;if(PAIN
 window.blkOpen=id=>{const k=D_().blocks.find(x=>x.id===id);if(!k)return;if(PAINT){paintBlock(k);return;}
   if(k.preview){openEd({kind:'off',therapistId:k.therapistId,startMin:k.startMin});return;}openEd({kind:'block',block:k});};
 window.bandClick=i=>{const band=D_().bands[i];if(!band)return;if(PAINT){paintBlock(band.blocks[0]);return;}openEd({kind:'band',band});};
+/* 취소/변경 칸 메모 — Manual Tx 메모처럼 마우스를 올리면 말풍선, 바로 적고 창 밖을 누르면 저장 (2026-10-08 요청) */
+function cxNotePop(c){return `<div class="note-pop" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"><div class="note-head">메모 · ${esc(c.patientName||c.text)}</div><textarea rows="5" placeholder="메모" onblur="cxNoteBlur(${c.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(c.note||'')}</textarea>
+    <div class="note-foot"><span class="who small">창 밖을 누르거나 Ctrl+Enter 로 저장</span></div></div>`;}
+window.cxNoteBlur=(id,ta)=>{const c=D_().cancels.find(x=>x.id===id);if(!c||ta.value===(c.note||''))return;run(R.q.date,opCancelNote(id,ta.value),false);};
 window.cxOpen=(ti,startMin)=>{const t=D_().cancelTh[ti];if(!t)return;const c=D_().cancels.find(x=>x.therapistName===t.name&&x.startMin===startMin)||null;
   if(PAINT){if(c)run(R.q.date,opCancelSave({id:c.id,therapistName:c.therapistName,startMin:c.startMin,kind:c.kind,text:c.text,color:PAINT==='#ffffff'?'':PAINT}),false);return;}
   openEd({kind:'cancel',therapistName:t.name,startMin,cancel:c});};
@@ -258,7 +262,7 @@ function placePop(td,pop){const r=td.getBoundingClientRect();const W=260,H=pop.o
   const leftSide=td.classList.contains('name-cell');let left=leftSide?r.left-W-6:r.right+6;
   if(left+W>innerWidth-8)left=r.left-W-6;if(left<8)left=Math.max(8,Math.min(innerWidth-W-8,r.right+6));
   const top=Math.max(8,Math.min(r.top,innerHeight-H-8));pop.style.left=left+'px';pop.style.top=top+'px';}
-function popHost(e){const td=e.target&&e.target.closest&&e.target.closest('td.pt, td.name-cell');if(!td)return;const pop=td.querySelector(':scope > .note-pop');if(!pop||pop.contains(e.target))return;placePop(td,pop);}
+function popHost(e){const td=e.target&&e.target.closest&&e.target.closest('td.pt, td.name-cell, td.cx-cell');if(!td)return;const pop=td.querySelector(':scope > .note-pop');if(!pop||pop.contains(e.target))return;placePop(td,pop);}
 document.addEventListener('mouseover',popHost);document.addEventListener('focusin',popHost);
 
 /* ═════════ 오른쪽 구역: 환자 검색 · 달력 · 범례 · 특이사항 · Manual Tx ═════════ */
