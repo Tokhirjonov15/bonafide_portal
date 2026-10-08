@@ -411,7 +411,9 @@ async function myIsPt(email){
 const thById=id=>META.therapists.find(t=>t.id===id)||null;
 const activeTh=()=>META.therapists.filter(t=>t.active!==false).slice().sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)||a.name.localeCompare(b.name));
 /* 하루 문서의 치료사 순서 → 치료사 정보 (전체 삭제한 치료사는 빠짐 — visit-stats 의 removeTherapist 와 같은 결과) */
-function thOfDay(ids){return (ids||[]).map(thById).filter(t=>t&&t.active!==false).map(t=>({id:t.id,name:t.name,color:t.color||'',single:!!t.single,inStats:t.inStats!==false}));}
+/* 숨긴(퇴사) 치료사는 빼되, 그 날 그 사람 예약이 있으면 그 날만 보인다 (2026-10-08: 예전 시트의 퇴사자 환자도 가져와 보이게) */
+function thOfDay(ids,bookings){const has=new Set((bookings||[]).map(b=>b.therapistId));
+  return (ids||[]).map(thById).filter(t=>t&&(t.active!==false||has.has(t.id))).map(t=>({id:t.id,name:t.name,color:t.color||'',single:!!t.single,inStats:t.inStats!==false}));}
 
 /* ═════════ 하루 문서 ═════════ */
 function emptyDay(date){return {date,ym:ymOf(date),th:[],bookings:[],blocks:[],cancels:[],manual:[],note:'',nid:0};}
@@ -438,7 +440,7 @@ function dayRatios(ids,bookings,blocks,endMin){
 /* 화면용 하루 (lib/day.ts getDay) */
 function dayView(date,doc,near){
   const d=doc||emptyDay(date);
-  let therapists=thOfDay(d.th),borrowedFrom=null,blocks=sortBy(d.blocks,'startMin');
+  let therapists=thOfDay(d.th,d.bookings),borrowedFrom=null,blocks=sortBy(d.blocks,'startMin');
   if(!therapists.length&&near&&near.th.length){borrowedFrom=near.date;therapists=thOfDay(near.th);
     blocks=lunchBlocks(date,therapists.map(t=>t.id),b=>Object.assign(b,{id:-b.therapistId,preview:true}));}
   const endMin=dayEndMin(date);const ym=ymOf(date);

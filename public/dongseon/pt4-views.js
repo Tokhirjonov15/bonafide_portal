@@ -660,8 +660,8 @@ function pickYm(q){const months=listMonths();const now=new Date();let year=now.g
   else if(months.length&&!months.some(x=>x.year===year&&x.month===month))({year,month}=months[months.length-1]);
   return {year,month,ym:`${year}-${pad2(month)}`,months};}
 function monthMatrix(docs){
-  const ths=[];docs.forEach(d=>thOfDay(d.th).forEach(t=>{if(t.inStats&&!ths.some(x=>x.id===t.id))ths.push({id:t.id,name:t.name});}));
-  const days=docs.filter(d=>d.th.length).map(d=>{const present=thOfDay(d.th).map(t=>t.id);const r=dayRatios(present,d.bookings,d.blocks,dayEndMin(d.date));
+  const ths=[];docs.forEach(d=>thOfDay(d.th,d.bookings).forEach(t=>{if(t.inStats&&!ths.some(x=>x.id===t.id))ths.push({id:t.id,name:t.name});}));
+  const days=docs.filter(d=>d.th.length).map(d=>{const present=thOfDay(d.th,d.bookings).map(t=>t.id);const r=dayRatios(present,d.bookings,d.blocks,dayEndMin(d.date));
     const cells=ths.map(t=>present.includes(t.id)?r.get(t.id)||null:null);const pos=cells.filter(c=>c&&c.ratio>0).map(c=>c.ratio);
     return {date:d.date,day:Number(d.date.slice(8)),cells,average:pos.length?pos.reduce((a,b)=>a+b,0)/pos.length:null};});
   const monthly=ths.map((_,i)=>{const v=days.map(d=>d.cells[i]).filter(c=>c&&c.ratio>0).map(c=>c.ratio);return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;});
@@ -684,7 +684,7 @@ function renderStatsPage(){const {year,month,ym}=pickYm(R.q);const docs=monthDoc
 function emptyTables(n){return CODE_GROUPS.map(g=>({group:g.name,codes:g.codes.slice(),counts:g.codes.map(()=>Array(n).fill(0)),rowTotals:Array(g.codes.length).fill(0),colTotals:Array(n).fill(0),total:0}));}
 function addCount(tables,code,ti){for(const t of tables){const ri=t.codes.indexOf(code);if(ri<0)continue;t.counts[ri][ti]++;t.rowTotals[ri]++;t.colTotals[ti]++;t.total++;return true;}return false;}
 function breakdown(docs){
-  const ths=[];docs.forEach(d=>thOfDay(d.th).forEach(t=>{if(!t.single&&!ths.some(x=>x.id===t.id))ths.push({id:t.id,name:t.name});}));
+  const ths=[];docs.forEach(d=>thOfDay(d.th,d.bookings).forEach(t=>{if(!t.single&&!ths.some(x=>x.id===t.id))ths.push({id:t.id,name:t.name});}));
   docs.forEach(d=>d.bookings.forEach(b=>{const t=thById(b.therapistId);if(t&&!t.single&&!ths.some(x=>x.id===b.therapistId))ths.push({id:b.therapistId,name:t.name});}));
   const ti=new Map(ths.map((t,i)=>[t.id,i]));const monthT=emptyTables(ths.length);const dayMap=new Map();const other=new Map();
   docs.forEach(d=>d.bookings.forEach(b=>{const t=thById(b.therapistId);if(!t||t.single||!b.visited)return;const code=normalizeCode(b.code);
@@ -857,14 +857,14 @@ function parseSheetBook(wb){
     days.push({date:ymd(year,month,day),parsed:parseSheetDay(wb.Sheets[name],a=>strikeSet.has(a))});});
   days.sort((a,b)=>a.date<b.date?-1:1);
   return {year,month,days};}
-/* 시트에서 읽은 것 → 가져오기 계획(planImport 와 같은 모양). 치료사는 이름으로 맞추고, 없으면 새로 만든다. 전체 삭제한 치료사는 빼고 */
+/* 시트에서 읽은 것 → 가져오기 계획(planImport 와 같은 모양). 치료사는 이름으로 맞춘다.
+   포털에 없는 이름 = 퇴사자 (2026-10-08) → 숨김(active:false)으로만 만들어 명단·새 날짜엔 안 나오고, 그 날 예약이 있는 날에만 열이 보인다(thOfDay). 환자는 모두 가져온다 */
 function planFromSheets(books){
   const ths=META.therapists.map(t=>Object.assign({},t));let nextId=Math.max(Number(META.nextTid)||0,0,...ths.map(t=>t.id));
-  const idOf=name=>{let t=ths.find(x=>x.name===name);if(!t){t={id:++nextId,name,color:'',single:false,inStats:true,active:true,sortOrder:ths.length};ths.push(t);}return t;};
-  const consults={};const out=[];const manualNames={};
+  const idOf=name=>{let t=ths.find(x=>x.name===name);if(!t){t={id:++nextId,name,color:'',single:false,inStats:true,active:false,sortOrder:ths.length};ths.push(t);NEWTH.push(name);}return t;};
+  const consults={};const out=[];const manualNames={};const NEWTH=[];
   books.forEach(bk=>bk.days.forEach(({date,parsed})=>{const d=emptyDay(date);let nid=0;const id=()=>++nid;
-    const keep=parsed.therapists.filter(t=>{const x=ths.find(y=>y.name===t.name);return !x||x.active!==false;});
-    keep.forEach(t=>{const x=idOf(t.name);if(t.color)x.color=t.color;d.th.push(x.id);});
+    parsed.therapists.forEach(t=>{const x=idOf(t.name);if(t.color)x.color=t.color;d.th.push(x.id);});
     const tid=name=>idOf(name).id;
     parsed.bookings.forEach(b=>d.bookings.push({id:id(),therapistId:tid(b.therapist),startMin:b.startMin,durationMin:b.durationMin,mrn:b.mrn,room:b.room,patientName:b.patientName,visitNo:b.visitNo,
       rawText:b.rawText,code:b.code,codeColor:b.codeColor,color:b.color,visited:b.visited,mark:b.mark,note:b.note,createdBy:'시트 가져오기',updatedBy:'시트 가져오기'}));
@@ -877,7 +877,7 @@ function planFromSheets(books){
     if(d.th.length||d.bookings.length)out.push(d);}));
   const meta={therapists:ths,nextTid:nextId,consults:Object.assign({},META.consults,consults),manualNames:Object.assign({},META.manualNames,manualNames),dataDays:out.filter(d=>d.th.length).map(d=>d.date)};
   const sum=k=>out.reduce((a,d)=>a+d[k].length,0);
-  return {meta,days:out,audits:[],sheet:true,n:{bookings:sum('bookings'),blocks:sum('blocks'),cancels:sum('cancels'),manual:sum('manual'),notes:0,consults:Object.values(consults).reduce((a,o)=>a+Object.keys(o).length,0)}};}
+  return {meta,days:out,audits:[],sheet:true,newTh:NEWTH,n:{bookings:sum('bookings'),blocks:sum('blocks'),cancels:sum('cancels'),manual:sum('manual'),notes:0,consults:Object.values(consults).reduce((a,o)=>a+Object.keys(o).length,0)}};}
 window.impLinks=async()=>{const txt=(document.getElementById('impLinks')||{}).value||'';IMP={name:'',links:txt};
   const ids=[...new Set(txt.split(/[\s,]+/).map(sheetIdOf).filter(Boolean))];
   if(!ids.length){IMP.err='구글 시트 링크를 넣어 주세요 (https://docs.google.com/spreadsheets/d/…).';render();return;}
@@ -911,6 +911,7 @@ function renderImportPage(){
     h+=`<div class="panel" style="margin-top:12px"><h2>${esc(IMP.name)}</h2><ul class="list">
       <li>날짜 ${p.days.length}일 (${esc(p.days[0]?p.days[0].date:'')} ~ ${esc(p.days.length?p.days[p.days.length-1].date:'')})</li>
       <li>예약 ${p.n.bookings} · 비근무/차단 ${p.n.blocks} · 취소/변경 ${p.n.cancels} · Manual Tx ${p.n.manual} · 특이사항 ${p.n.notes}</li>
+      ${p.newTh&&p.newTh.length?`<li>포털에 없는 치료사 ${p.newTh.length}명(${esc(p.newTh.join(', '))}) — 퇴사자로 보고 <b>명단에는 넣지 않고</b>, 그 사람 환자 예약은 그 날짜에 가져옵니다</li>`:''}
       <li>치료사 ${p.meta.therapists.length}명 · 상담수 ${p.n.consults}건 · 변경 기록 ${p.audits.length}건</li></ul>
       ${IMP.done?`<p class="info">가져오기를 마쳤습니다. 일별 스케줄에서 확인하세요.</p>`:`<div class="row"><button type="button" ${IMP.busy?'disabled':''} onclick="impRun()">${IMP.busy?esc(IMP.log||'옮기는 중…'):'포털로 가져오기'}</button></div>`}</div>`;}
   return h;}
