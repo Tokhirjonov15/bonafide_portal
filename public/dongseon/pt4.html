@@ -383,7 +383,8 @@ AUTH.onAuthStateChanged(async u=>{
     if(ok&&Array.isArray(d.boardEmails)&&role!=='admin'&&!d.boardEmails.includes(u.email))ok=false;
   }catch(e){console.warn('acl',e);}
   if(!ok){document.getElementById('lgMsg').textContent='이 계정은 접근 권한이 없습니다. 관리자에게 문의하세요.';try{await AUTH.signOut();}catch(e){}return;}
-  ME={name:name||u.email,email:u.email,role};
+  ME={name:name||u.email,email:u.email,role,pt:false};
+  myIsPt(u.email).then(v=>{ME.pt=v;if(v)safeRender();});   // 물리치료 직원 → [가져오기] 열림 (2026-10-08)
   document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;
   C.meta.onSnapshot(s=>{const d=s.exists?s.data():{};
     META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0,txMinutes:d.txMinutes||{}};
@@ -391,6 +392,20 @@ AUTH.onAuthStateChanged(async u=>{
   window.addEventListener('hashchange',route);route();
 });
 const isAdmin=()=>!!(ME&&ME.role==='admin');
+/* 가져오기 = 관리자 + 물리치료 직원 (2026-10-08 요청). 물리치료 직원 = 동선관리 직원 목록(설정 staffRoster)의 '물리치료사' 파트 — 동선관리 partOf 와 같은 기준:
+   명단에서 이름(한글·영문·'한글 (영문)')을 먼저 찾고, 명단에 없으면 계정의 팀. 동선관리 안에서 열렸으면 그 화면의 partOf 를 그대로 쓴다 */
+const canImport=()=>isAdmin()||!!(ME&&ME.pt);
+async function myIsPt(email){
+  try{const a=await DB.collection('acl').doc('main').get();const mem=((a.exists?a.data():{}).members||[]).find(x=>x.email===email);if(!mem)return false;
+    try{if(window.parent!==window&&typeof window.parent.partOf==='function')return window.parent.partOf(mem)==='물리치료사';}catch(e){}
+    const TEAMS=['의사','물리치료사','간호사','진료지원','방사선사','행정'];const norm=x=>String(x||'').replace(/\s+/g,'').toLowerCase();
+    const keys=e=>{const m=/^(.*?)\s*\((.*)\)\s*$/.exec(String(e||''));return [norm(e),m?norm(m[1]):'',m?norm(m[2]):''].filter(Boolean);};
+    let ro=null;try{const c=await DB.collection('patientboard_v3').doc('반듯한정형외과').get();ro=c.exists?c.data().staffRoster:null;}catch(e){}
+    const k=norm(mem.name);let part='';
+    if(ro&&k){for(const g of TEAMS){if((ro[g]||[]).some(e=>keys(e).includes(k))){part=g;break;}}
+      const m=/^(.*?)\((.*)\)$/.exec(k);if(!part&&m)for(const g of TEAMS){if((ro[g]||[]).some(e=>{const ks=keys(e);return ks.includes(m[1])||ks.includes(m[2]);})){part=g;break;}}}
+    if(!part){const t=String(mem.team||'').trim();part=t==='간호'?'간호사':t==='방사선'?'방사선사':t==='행정실'?'행정':t;}
+    return part==='물리치료사';}catch(e){console.warn('part',e);return false;}}
 
 /* ═════════ 치료사 ═════════ */
 const thById=id=>META.therapists.find(t=>t.id===id)||null;
@@ -619,7 +634,7 @@ function watchDay(date){if(SUB_DATE===date)return;if(SUB)SUB();SUB_DATE=date;DAY
 let PENDING=false;
 function typing(){const a=document.activeElement;return !!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('#app'));}
 function safeRender(){if(typing()){if(!PENDING){PENDING=true;document.activeElement.addEventListener('blur',()=>{setTimeout(()=>{PENDING=false;safeRender();},0);},{once:true});}return;}render();}
-function navHtml(){return `<header class="nav"><nav>${PAGES.filter(p=>p[0]!=='import'||isAdmin()).map(([k,l])=>`<a href="${href(k,(k==='schedule'||k==='m')&&R.q.date?{date:R.q.date}:{})}" class="${R.page===k?'on':''}">${l}</a>`).join('')}</nav>
+function navHtml(){return `<header class="nav"><nav>${PAGES.filter(p=>p[0]!=='import'||canImport()).map(([k,l])=>`<a href="${href(k,(k==='schedule'||k==='m')&&R.q.date?{date:R.q.date}:{})}" class="${R.page===k?'on':''}">${l}</a>`).join('')}</nav>
   <span class="who">${esc(ME?ME.name:'')}${EMBED?'':` <button type="button" class="ghost" onclick="AUTH.signOut()">로그아웃</button>`}</span></header>`;}
 function render(){const app=document.getElementById('app');if(!ME)return;
   if(!metaReady){app.innerHTML=navHtml()+'<div class="loading">불러오는 중…</div>';return;}

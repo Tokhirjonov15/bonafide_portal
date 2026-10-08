@@ -873,10 +873,10 @@ window.impLinks=async()=>{const txt=(document.getElementById('impLinks')||{}).va
   catch(e){console.error(e);IMP.err=(e&&e.message)||String(e);if(/Failed to fetch|NetworkError/i.test(IMP.err))IMP.err='시트를 내려받지 못했습니다. 공유 설정이 \'링크가 있는 모든 사용자 — 뷰어\'인지 확인하세요.';}
   IMP.busy=false;IMP.log='';render();};
 
-/* ═════════ 가져오기 (관리자) — 구글 시트 링크 또는 visit-stats 데이터베이스 백업(JSON) → 포털 ═════════ */
+/* ═════════ 가져오기 (관리자·물리치료 직원) — 구글 시트 링크 또는 visit-stats 데이터베이스 백업(JSON) → 포털 ═════════ */
 let IMP=null;   // {name, plan, busy, done, log}
 function renderImportPage(){
-  if(!isAdmin())return `<p class="err">관리자만 쓸 수 있습니다.</p>`;
+  if(!canImport())return `<p class="err">관리자와 물리치료 직원만 쓸 수 있습니다.</p>`;
   let h=`<h1>가져오기</h1>
     <div class="panel"><h2>구글 시트 링크로</h2><p class="sub">비급여 예약리스트 시트 링크를 붙여 넣으세요. 여러 달이면 한 줄에 하나씩 (예: 9월 시트, 10월 시트). 시트에 있는 날짜는 포털의 그 날짜를 <b>통째로 덮어씁니다</b>.</p>
       <textarea id="impLinks" rows="3" style="width:100%" placeholder="https://docs.google.com/spreadsheets/d/…/edit?usp=sharing">${esc(IMP&&IMP.links||'')}</textarea>
