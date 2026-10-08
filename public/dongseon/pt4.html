@@ -557,7 +557,9 @@ const opBookingColor=(id,color)=>ctx=>{const c=clean(color,7).toLowerCase();if(!
   Object.assign(b,{color:c==='#ffe599'?'':c,visited,mark:visited?'.':'',updatedBy:ME.name,updatedAt:new Date().toISOString()});aud(ctx,'update','bookings',id,bf,{color:c,visited});return {ok:true};};
 const opBookingCancel=(id,kind)=>ctx=>{const d=ctx.d;const b=findB(d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const t=thById(b.therapistId);
   const text=b.mrn||b.patientName?`${b.mrn}${b.room?`(${b.room})`:''} ${b.patientName}${b.visitNo??''}`.trim():b.rawText;
-  const row={id:newId(d),therapistName:t?t.name:'',startMin:b.startMin,kind,text,mrn:b.mrn,patientName:b.patientName,color:b.visited?'':b.color,note:b.code?`코드 ${b.code}`:'',updatedBy:ME.name,updatedAt:new Date().toISOString()};
+  const row={id:newId(d),therapistName:t?t.name:'',startMin:b.startMin,kind,text,mrn:b.mrn,patientName:b.patientName,color:b.visited?'':b.color,note:'',
+    /* 취소 칸 메모는 취소 메모만 — 예약의 메모·코드·길이 등은 bk 에 기억해 두었다가 [스케줄로 되돌리기] 때 그대로 (2026-10-08 요청) */
+    bk:{therapistId:b.therapistId,durationMin:b.durationMin,room:b.room||'',visitNo:b.visitNo??null,code:b.code||'',codeColor:b.codeColor||'',color:b.visited?'':(b.color||''),note:b.note||''},updatedBy:ME.name,updatedAt:new Date().toISOString()};
   d.cancels.push(row);aud(ctx,'create','cancels',row.id,null,Object.assign({},row,{fromBooking:b.id}));
   if(kind==='cancel'){d.bookings.splice(d.bookings.indexOf(b),1);aud(ctx,'delete','bookings',id,b,{movedToCancel:row.id});}
   return {ok:true};};
@@ -593,7 +595,8 @@ const opCopyLayout=from=>ctx=>{const d=ctx.d;d.th=from.th.slice();d.blocks=from.
   aud(ctx,'create','day',d.date,null,{copiedFrom:from.date});return {ok:true};};
 
 /* ── 취소/변경, Manual Tx, 특이사항 ── */
-const opCancelNote=(id,note)=>ctx=>{const c=ctx.d.cancels.find(x=>x.id===id);if(!c)return {ok:false,message:'기록을 찾지 못했습니다.'};const bf=c.note||'';c.note=clean(note,1000);c.updatedBy=ME.name;c.updatedAt=new Date().toISOString();aud(ctx,'update','cancels',id,{note:bf},{note:c.note});return {ok:true};};
+const opCancelNote=(id,note)=>ctx=>{const c=ctx.d.cancels.find(x=>x.id===id);if(!c)return {ok:false,message:'기록을 찾지 못했습니다.'};const bf=c.note||'';const oc=/^코드\s*([A-Za-z0-9]+)$/.exec(bf.trim());if(oc&&!c.bk)c.bk={code:oc[1]};   // 예전 취소의 '코드 X' 는 되돌리기용으로 옮겨 둔다
+  c.note=clean(note,1000);c.updatedBy=ME.name;c.updatedAt=new Date().toISOString();aud(ctx,'update','cancels',id,{note:bf},{note:c.note});return {ok:true};};
 const opCancelSave=input=>ctx=>{const d=ctx.d;const s=Number(input.startMin);if(!timeOk(s,s+SLOT))return {ok:false,message:'시간이 잘못되었습니다.'};
   const text=clean(input.text,60);if(!text)return {ok:false,message:'내용을 입력하세요.'};const color=clean(input.color,7).toLowerCase();if(!colorOk(color))return {ok:false,message:'잘못된 색입니다.'};
   const m=/^(\d{1,7})/.exec(text);const kind=input.kind==='change'?'change':'cancel';

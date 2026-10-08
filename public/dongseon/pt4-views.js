@@ -103,7 +103,7 @@ function renderSchedule(){
     times.forEach((min,i)=>{h+=`<tr class="${i%2===0?'half':'quarter'}">`;if(i%2===0)h+=`<td rowspan="2" class="time">${hm(min)}</td>`;
       cancelTh.forEach((t,ti)=>{const done=cRend.get(t.name);if(done.has(i))return;const c=cancelAt.get(`${t.name}|${min}`)||null;
         const span=i%2===0&&i+1<slots&&!cancelAt.has(`${t.name}|${min+SLOT}`)?2:1;for(let k=i;k<i+span;k++)done.add(k);
-        h+=`<td rowspan="${span}" class="cancel ${c?(c.kind==='cancel'?'strike':'')+' cx-cell'+(c.note?' has-note':''):'free'} ${ed}" style="${c&&c.color?`background:${A(c.color)}`:''}" title="${c?(c.kind==='cancel'?'취소':'변경'):''}" onclick="cxOpen(${ti},${min})"><span class="cx-text">${c?esc(c.text):''}</span>${c?cxNotePop(c):''}</td>`;});
+        h+=`<td rowspan="${span}" class="cancel ${c?(c.kind==='cancel'?'strike':'')+' cx-cell'+(cxMemo(c)?' has-note':''):'free'} ${ed}" style="${c&&c.color?`background:${A(c.color)}`:''}" title="${c?(c.kind==='cancel'?'취소':'변경'):''}" onclick="cxOpen(${ti},${min})"><span class="cx-text">${c?esc(c.text):''}</span>${c?cxNotePop(c):''}</td>`;});
       h+=`</tr>`;});
     h+=`</tbody><tfoot><tr><td class="time">취소 및<br>변경 합계</td>${cancelTh.map(t=>`<td class="center">${D.cancels.filter(c=>c.therapistName===t.name).length}</td>`).join('')}</tr>
       <tr><td class="time">총계</td><td colspan="${cancelTh.length}" class="center muted">총 ${D.cancels.length}건</td></tr></tfoot></table></div>`;}
@@ -160,9 +160,12 @@ window.blkOpen=id=>{const k=D_().blocks.find(x=>x.id===id);if(!k)return;if(PAINT
   if(k.preview){openEd({kind:'off',therapistId:k.therapistId,startMin:k.startMin});return;}openEd({kind:'block',block:k});};
 window.bandClick=i=>{const band=D_().bands[i];if(!band)return;if(PAINT){paintBlock(band.blocks[0]);return;}openEd({kind:'band',band});};
 /* 취소/변경 칸 메모 — Manual Tx 메모처럼 마우스를 올리면 말풍선, 바로 적고 창 밖을 누르면 저장 (2026-10-08 요청) */
-function cxNotePop(c){return `<div class="note-pop" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"><div class="note-head">메모 · ${esc(c.patientName||c.text)}</div><textarea rows="5" placeholder="메모" onblur="cxNoteBlur(${c.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(c.note||'')}</textarea>
+/* 예전 방식으로 취소한 칸은 메모 자리에 '코드 CM15' 가 들어 있다(되돌리기용) — 취소 메모로는 보이지 않게 */
+const CX_CODE=/^코드\s*[A-Za-z0-9]+$/;
+function cxMemo(c){const n=String(c.note||'');return CX_CODE.test(n.trim())?'':n;}
+function cxNotePop(c){return `<div class="note-pop" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"><div class="note-head">메모 · ${esc(c.patientName||c.text)}</div><textarea rows="5" placeholder="메모" onblur="cxNoteBlur(${c.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(cxMemo(c))}</textarea>
     <div class="note-foot"><span class="who small">창 밖을 누르거나 Ctrl+Enter 로 저장</span></div></div>`;}
-window.cxNoteBlur=(id,ta)=>{const c=D_().cancels.find(x=>x.id===id);if(!c||ta.value===(c.note||''))return;run(R.q.date,opCancelNote(id,ta.value),false);};
+window.cxNoteBlur=(id,ta)=>{const c=D_().cancels.find(x=>x.id===id);if(!c||ta.value===cxMemo(c))return;run(R.q.date,opCancelNote(id,ta.value),false);};
 window.cxOpen=(ti,startMin)=>{const t=D_().cancelTh[ti];if(!t)return;const c=D_().cancels.find(x=>x.therapistName===t.name&&x.startMin===startMin)||null;
   if(PAINT){if(c)run(R.q.date,opCancelSave({id:c.id,therapistName:c.therapistName,startMin:c.startMin,kind:c.kind,text:c.text,color:PAINT==='#ffffff'?'':PAINT}),false);return;}
   openEd({kind:'cancel',therapistName:t.name,startMin,cancel:c});};
@@ -458,7 +461,9 @@ window.openEd=e=>{EDIT=e;MSG='';
   if(e.kind==='restore'){const c=e.cancel;const m=/^\s*(\d{1,7})\s*(?:\(\s*(\d{1,2})\s*\))?\s*([^\d\n]+?)?\s*(\d{1,3})?\s*$/.exec(String(c.text||'').replace(/\r?\n/g,' '));
     const code=(/코드\s*([A-Za-z0-9]+)/.exec(c.note||'')||[])[1]||'';
     e.draft={therapistId:(D.therapists.find(t=>t.name===c.therapistName)||D.therapists[0]||{}).id,startMin:c.startMin,durationMin:30,mrn:(m&&m[1])||c.mrn||'',room:(m&&m[2])||'',
-      patientName:String((m&&m[3])||c.patientName||'').replace(/\s+/g,''),visitNo:m&&m[4]?Number(m[4]):null,code,codeColor:'',color:c.color&&c.color!=='#ffe599'?c.color:'',visited:false,note:''};}
+      patientName:String((m&&m[3])||c.patientName||'').replace(/\s+/g,''),visitNo:m&&m[4]?Number(m[4]):null,code,codeColor:'',color:c.color&&c.color!=='#ffe599'?c.color:'',visited:false,note:''};
+    const k=c.bk;if(k){const x=e.draft;const th=D.therapists.find(t=>t.id===k.therapistId);if(th)x.therapistId=th.id;   // 취소할 때 기억해 둔 예약 그대로 (메모·코드·길이·방문수) — 2026-10-08
+      Object.assign(x,{durationMin:k.durationMin||30,room:k.room||x.room,visitNo:k.visitNo??x.visitNo,code:k.code||x.code,codeColor:k.codeColor||'',color:k.color||x.color,note:k.note||''});}}
   if(e.kind==='off'||e.kind==='memo')e.draft={therapistId:e.therapistId,startMin:e.startMin,endMin:Math.min(e.startMin+(e.kind==='off'?60:30),D.endMin),kind:e.kind,text:'',color:e.kind==='memo'?'#d9d9d9':'#999999',all:false};
   if(e.kind==='block')e.draft=Object.assign({},e.block,{kind:e.block.kind==='memo'?'memo':'off',all:false});
   if(e.kind==='band')e.draft={therapistId:D.therapists[0].id,startMin:e.band.startMin,endMin:e.band.endMin,kind:e.band.kind==='memo'?'memo':'off',text:e.band.text,color:e.band.color||'#999999',all:true};
