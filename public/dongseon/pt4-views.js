@@ -785,19 +785,38 @@ function loadXlsxLib(){if(window.XLSX)return Promise.resolve();return new Promis
 function zipText(f){if(!f)return '';if(typeof f.asText==='function')return f.asText();const c=f.content||f._data;if(!c)return '';if(typeof c==='string')return c;return new TextDecoder().decode(c instanceof Uint8Array?c:new Uint8Array(c));}
 function parsePatientSheet(text){const m=/^\s*(\d{1,7})\s*\(\s*(\d{1,2})\s*\)\s*([^\d\n]+?)\s*(\d{1,3})?\s*$/.exec(String(text).replace(/\r?\n/g,' '));
   return m?{mrn:m[1],room:m[2],name:m[3].replace(/\s+/g,''),visit:m[4]?parseInt(m[4],10):null}:null;}
+/* 2026-10-08: 치료사 수가 달마다·날마다 달라 열 위치가 밀린다(5월 시트는 취소/변경이 AR, 8월 1일은 AX) → 탭마다 머리글로 위치를 찾는다.
+   '취소/변경'(1~4행) = 취소 칸 시작, 그 앞까지 치료사 칸 / 2행 '일'(달력) 앞까지 취소 칸 / 2행 'Manual Tx' = Manual Tx 칸.
+   연·월은 '취소/변경' 위 1행 칸의 날짜(엑셀 날짜 숫자), 없으면 달력 위 연·월 칸. 머리글을 못 찾으면 위 고정 위치(SH) */
+function sheetLayout(ws){
+  const cell=(r,c)=>ws[XLSX.utils.encode_cell({r:r-1,c})];
+  const textOf=(r,c)=>{const x=cell(r,c);if(!x)return '';return String(x.w!=null?x.w:(x.v!=null?x.v:'')).trim();};
+  const L={bTo:SH.bTo,cancelFrom:SH.cancelFrom,cancelTo:SH.cancelTo,manualFrom:SH.manualFrom,year:0,month:0};
+  let cc=-1;for(let r=1;r<=4&&cc<0;r++)for(let c=4;c<160;c++){if(textOf(r,c).replace(/\s+/g,'')==='취소/변경'){cc=c;break;}}
+  if(cc<0)return L;
+  L.cancelFrom=cc;L.bTo=cc-1;
+  let cal=-1;for(let c=cc+1;c<cc+40;c++)if(textOf(2,c)==='일'){cal=c;break;}
+  L.cancelTo=cal>0?cal-1:cc+8;
+  for(let c=cc+1;c<cc+60;c++)if(/^Manual\s*Tx/i.test(textOf(2,c))){L.manualFrom=c;break;}
+  const v=(cell(1,cc)||{}).v;
+  if(typeof v==='number'&&v>40000){const d=XLSX.SSF.parse_date_code(v);if(d){L.year=d.y;L.month=d.m;}}
+  if(!L.year&&cal>0){const y=parseInt(textOf(1,cal),10),m=parseInt(textOf(1,cal+3),10);if(y>2000&&m>=1&&m<=12){L.year=y;L.month=m;}}
+  return L;}
 /* 탭 하나 → {therapists, bookings, blocks, cancels, manual, consults} */
 function parseSheetDay(ws,strikeAt){
   const cell=(r,c)=>ws[XLSX.utils.encode_cell({r:r-1,c})];
   const textOf=(r,c)=>{const x=cell(r,c);if(!x)return '';return String(x.w!=null?x.w:(x.v!=null?x.v:'')).trim();};
+  const L=sheetLayout(ws),MF=L.manualFrom;
+  const consultOk=!textOf(SH.consultRow,0)||/상담/.test(textOf(SH.consultRow,0));   // 55행이 '당월 누적 상담수' 줄일 때만 (5월 시트는 안내 문구)
   const bgOf=(r,c)=>{const x=cell(r,c);const s=x&&x.s;if(!s||s.patternType!=='solid'||!s.fgColor||!s.fgColor.rgb)return '';const h='#'+String(s.fgColor.rgb).slice(-6).toLowerCase();return h==='#ffffff'?'':h;};
   const noteOf=(r,c)=>{const x=cell(r,c);return x&&Array.isArray(x.c)?x.c.map(n=>n.t||'').join('\n').trim():'';};
   const mergeAt=new Map();(ws['!merges']||[]).forEach(m=>{const mm={r1:m.s.r+1,r2:m.e.r+1,c1:m.s.c,c2:m.e.c};for(let r=mm.r1;r<=mm.r2;r++)for(let c=mm.c1;c<=mm.c2;c++)mergeAt.set(r+','+c,mm);});
   const isStart=(r,c)=>{const m=mergeAt.get(r+','+c);return !m||(m.r1===r&&m.c1===c);};
   const spanRows=(r,c)=>{const m=mergeAt.get(r+','+c);return m?m.r2-m.r1+1:1;};
-  const wideMerge=(r,c)=>{const m=mergeAt.get(r+','+c);return !!m&&m.c1<=SH.bFrom&&m.c2>=SH.bTo;};
+  const wideMerge=(r,c)=>{const m=mergeAt.get(r+','+c);return !!m&&m.c1<=SH.bFrom&&m.c2>=L.bTo;};
   const minOfRow=r=>DAY_START+(r-SH.rowFrom)*SLOT;
   const out={therapists:[],bookings:[],blocks:[],cancels:[],manual:[],consults:[]};
-  for(let c=SH.bFrom;c+SH.W-1<=SH.bTo;c+=SH.W){
+  for(let c=SH.bFrom;c+SH.W-1<=L.bTo;c+=SH.W){
     const name=textOf(SH.headerRow,c);if(!name)continue;
     out.therapists.push({name,color:bgOf(SH.headerRow,c)});
     let grayStart=null;const flush=endRow=>{if(grayStart!=null){out.blocks.push({therapist:name,startMin:minOfRow(grayStart),endMin:minOfRow(endRow),kind:'off',text:'',color:SH.gray,note:''});grayStart=null;}};
@@ -812,20 +831,21 @@ function parseSheetDay(ws,strikeAt){
       out.bookings.push({therapist:name,startMin:minOfRow(r),durationMin:rows*SLOT,rawText:text,mrn:p.mrn,room:p.room,patientName:p.name,visitNo:p.visit,
         code:textOf(r,c+1),codeColor:bgOf(r,c+1),color,visited:mark!==''||color==='#ffe599',mark,note:noteOf(r,c)});}
     flush(SH.rowTo+1);
-    const cnt=textOf(SH.consultRow,c);if(/^\d+$/.test(cnt))out.consults.push({therapist:name,count:parseInt(cnt,10)});}
-  for(let c=SH.cancelFrom;c<=SH.cancelTo;c++){const th=textOf(SH.headerRow,c);
+    const cnt=consultOk?textOf(SH.consultRow,c):'';if(/^\d+$/.test(cnt))out.consults.push({therapist:name,count:parseInt(cnt,10)});}
+  for(let c=L.cancelFrom;c<=L.cancelTo;c++){const th=textOf(SH.headerRow,c);
     for(let r=SH.rowFrom;r<=SH.rowTo;r++){const tx=textOf(r,c);if(!tx||!isStart(r,c))continue;const q=parsePatientSheet(tx);
       out.cancels.push({therapist:th,startMin:minOfRow(r),kind:strikeAt(XLSX.utils.encode_cell({r:r-1,c}))?'cancel':'change',text:tx,mrn:q?q.mrn:'',patientName:q?q.name:'',color:bgOf(r,c),note:noteOf(r,c)});}}
-  for(let r=SH.rowFrom;r<=SH.rowTo+20;r++){const mrn=textOf(r,SH.manualFrom+1).replace(/\.0+$/,''),nm=textOf(r,SH.manualFrom+2);
+  for(let r=SH.rowFrom;r<=SH.rowTo+20;r++){const mrn=textOf(r,MF+1).replace(/\.0+$/,''),nm=textOf(r,MF+2);
     if(!mrn&&!nm)continue;if(!/^[가-힣A-Za-z]/.test(nm)||/^(null|0)$/i.test(mrn))continue;
-    out.manual.push({no:parseInt(textOf(r,SH.manualFrom),10)||0,mrn,patientName:nm,therapist:textOf(r,SH.manualFrom+3),
-      color:bgOf(r,SH.manualFrom+2)||bgOf(r,SH.manualFrom+1),note:noteOf(r,SH.manualFrom+2)||noteOf(r,SH.manualFrom+1)});}
+    out.manual.push({no:parseInt(textOf(r,MF),10)||0,mrn,patientName:nm,therapist:textOf(r,MF+3),
+      color:bgOf(r,MF+2)||bgOf(r,MF+1),note:noteOf(r,MF+2)||noteOf(r,MF+1)});}
   return out;}
 /* 통합 문서 → {year, month, days:[{date, parsed}]} */
 function parseSheetBook(wb){
   const one=wb.Sheets['1일'];if(!one)throw new Error("'1일' 탭이 없습니다. 예약리스트 시트가 맞는지 확인하세요.");
-  const year=parseInt(String((one.BD1||{}).v||''),10),month=parseInt(String((one.BG1||{}).v||''),10);
-  if(!(year>2000&&month>=1&&month<=12))throw new Error("'1일' 탭에서 연·월(BD1·BG1)을 찾지 못했습니다.");
+  const L1=sheetLayout(one);let year=L1.year,month=L1.month;
+  if(!year){year=parseInt(String((one.BD1||{}).v||''),10);month=parseInt(String((one.BG1||{}).v||''),10);}
+  if(!(year>2000&&month>=1&&month<=12))throw new Error("'1일' 탭에서 날짜를 찾지 못했습니다. '취소/변경' 칸 바로 위(1행)에 그 날 날짜가 있어야 합니다.");
   /* 취소선: 스타일 표(styles.xml)의 글꼴 → 칸의 스타일 번호 */
   const files=wb.files||{};const sx=zipText(files['xl/styles.xml']);
   const fontsXml=(/<fonts[^>]*>([\s\S]*?)<\/fonts>/.exec(sx)||[])[1]||'';const fonts=[...fontsXml.matchAll(/<font>([\s\S]*?)<\/font>|<font\/>/g)].map(m=>/<strike(?!\s+val="(0|false)")/.test(m[0]));
