@@ -335,6 +335,9 @@ const ymOf=date=>date.slice(0,7);
 const PALETTE=[{hex:"#ffffff",label:"없음 (원래대로)"},{hex:"#ffff00",label:"임시치료실"},{hex:"#ff0000",label:"치료실 없음"},{hex:"#00ff00",label:"시트, 비트확인"},
   {hex:"#00ffff",label:"실손 청구여부 확인"},{hex:"#c58cff",label:"카톡친추 확인"},{hex:"#ffe599",label:"내원 (표시 .)"},{hex:"#999999",label:"비근무"}];
 const LEGEND=[{hex:"#ffffff",label:"지우개 (원래대로)"}].concat(PALETTE.slice(1));
+/* 이전 시트에서 쓰던 색 (2026-10-08: 코드 칸 연보라 등이 고르는 칸에 없었다 — 백업 데이터에서 많이 쓴 순). 고르기 칸에만 넣고 왼쪽 색 안내(칠하기)에는 넣지 않는다 */
+const PALETTE_OLD=[{hex:"#a9abff",label:"연보라 (이전 시트 코드 색)"},{hex:"#b7e1cd",label:"연초록 (이전 시트)"},{hex:"#ead1dc",label:"연분홍 (이전 시트)"},{hex:"#d0b3ee",label:"연자주 (이전 시트)"}];
+PALETTE.splice(PALETTE.length-2,0,...PALETTE_OLD);   // 내원·비근무 앞에
 const HEADER_FALLBACK=["#d9d9d9","#b6e2c8","#f4c7c3","#e06666","#ffe599","#b4a7d6","#a2d5e2","#f9cb9c","#ffffff"];
 const CODE_GROUPS=[
   {name:"도수",codes:["ES9","ES10","ES14","ES15","ES19","ES20","ES24","ES25","ES29","ES30","ES35","ES40","ES45","ES50","CM9","CM10","CM14","CM15","CM19","CM20","CM24","CM25","CM29","CM30","CM35","CM40","CM45","CM50",
