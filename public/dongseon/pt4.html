@@ -676,6 +676,7 @@ async function run(date,op,closeOnOk=true){if(BUSY)return false;BUSY=true;MSG=''
   renderEditor();safeRender();return r;}
 async function runMeta(promise,closeOnOk){BUSY=true;renderEditor();const r=await promise;BUSY=false;if(!r.ok){MSG=r.message||'실패';renderEditor();toast(MSG);return false;}if(closeOnOk){EDIT=null;MSG='';}renderEditor();safeRender();return r;}
 </script>
-<script src="pt4-views.js"></script>
+<!-- 2026-10-08: 고친 뒤에도 브라우저가 예전 pt4-views.js 를 써서(가져오기 오류 문구가 옛것) 열 때마다 새로 받는다 -->
+<script>document.write('<script src="pt4-views.js?v='+Date.now()+'"><\/script>');</script>
 </body>
 </html>

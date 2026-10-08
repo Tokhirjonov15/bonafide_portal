@@ -7405,7 +7405,7 @@ function openPt4(date){let ov=document.getElementById('pt4Ov');
   if(!ov){ov=document.createElement('div');ov.id='pt4Ov';ov.className='pt4-ov';
     ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
     document.body.appendChild(ov);}
-  document.getElementById('pt4Frame').src='pt4.html?embed#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
+  document.getElementById('pt4Frame').src='pt4.html?embed&t='+Date.now()+'#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
   ov.classList.add('show');}
 function closePt4(){const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');const f=document.getElementById('pt4Frame');if(f)f.src='about:blank';}}
 /* ═════ 4층 치료사 명단 (2026-10-03 요청: 월별 구글 시트 없이 동선관리에서 예약) ═════
