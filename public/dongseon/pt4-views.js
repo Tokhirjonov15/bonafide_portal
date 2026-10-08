@@ -471,6 +471,9 @@ window.codeDur=v=>{if(!EDIT||!EDIT.draft)return;const want=codeMinutes(v);if(!wa
   if(EDIT.draft.startMin+want>D.endMin){MSG=`${normalizeCode(v)} 는 ${want}분인데 마감 시간을 넘습니다. 시작 시간을 당겨 주세요.`;renderEditor();return;}
   const from=EDIT.draft.durationMin;EDIT.draft.durationMin=want;MSG=`치료코드에 맞춰 길이를 ${from}분 → ${want}분으로 바꿨습니다.`;renderEditor();};
 window.dset=(k,v,re)=>{if(!EDIT||!EDIT.draft)return;EDIT.draft[k]=v;if(re)renderEditor();};
+/* 치료코드 드롭다운 (CODE_LIST = 예전 시트 목록). 목록에 없는 지금 값(예: CRYO24(PT-))은 맨 위에 그대로 두고, [직접 입력…]으로 다른 코드도 넣을 수 있다 */
+function codeSelect(cur,set){const c=String(cur||'');const extra=c&&!CODE_LIST.includes(c)?[c]:[];
+  return `<select class="code-sel" onchange="let v=this.value;if(v==='__other'){v=(prompt('치료코드를 입력하세요','')||'').trim().toUpperCase();if(!v){this.value='${A(c)}';return;}const o=document.createElement('option');o.value=o.textContent=v;this.insertBefore(o,this.options[1]);this.value=v;}${A(set)}">${opt('',c,'— 선택 —')}${extra.concat(CODE_LIST).map(x=>opt(x,c,x)).join('')}<option value="__other">직접 입력…</option></select>`;}
 const opt=(v,cur,label)=>`<option value="${A(v)}" ${String(v)===String(cur)?'selected':''}>${esc(label)}</option>`;
 function msgHtml(){return MSG?`<p class="${/남겼습니다|복사했습니다|바꿨습니다|확인하고 저장|옮겼습니다/.test(MSG)?'info':'err'}">${esc(MSG)}</p>`:'';}
 function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.page!=='schedule'){box.innerHTML='';return;}
@@ -494,7 +497,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <label>진료실<input value="${A(d.room)}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);dset('room',this.value)"></label>
       <label>이름<input value="${A(d.patientName)}" placeholder="함수진" oninput="dset('patientName',this.value)"></label>
       <label>방문수<input value="${A(d.visitNo??'')}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);dset('visitNo',this.value===''?null:Number(this.value))"></label>
-      <label>치료코드<input value="${A(d.code)}" placeholder="CME15" oninput="this.value=this.value.toUpperCase();dset('code',this.value)" onchange="codeDur(this.value)"></label>
+      <label>치료코드${codeSelect(d.code,"dset('code',v);codeDur(v)")}</label>
       <label class="wide">메모<textarea rows="5" class="ed-note" oninput="dset('note',this.value)">${esc(d.note||'')}</textarea></label></div>
       <div class="swatch-row"><span class="who small">코드 색</span>${PALETTE.map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.codeColor||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('codeColor','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
       <div class="swatch-row"><span class="who small">환자 칸 색</span>${PALETTE.filter(p=>p.hex!=='#ffe599'&&p.hex!=='#999999').map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.color||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('color','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
@@ -627,7 +630,7 @@ function renderMobile(){
         <label>진료실<input inputmode="numeric" value="${A(f.room)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);MOB.f.room=this.value"></label>
         <label>이름<input value="${A(f.patientName)}" oninput="MOB.f.patientName=this.value"></label>
         <label>방문수<input inputmode="numeric" value="${A(f.visitNo)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);MOB.f.visitNo=this.value"></label>
-        <label>치료코드<input value="${A(f.code)}" placeholder="CME15" oninput="this.value=this.value.toUpperCase();MOB.f.code=this.value"></label>
+        <label>치료코드${codeSelect(f.code,"MOB.f.code=v")}</label>
         <label>길이<select onchange="MOB.f.durationMin=Number(this.value)">${[15,30,45,60,90].filter(x=>ed.b||x<=ed.maxMin).map(x=>opt(x,f.durationMin,x+'분')).join('')}</select></label>
         <label class="wide">메모<textarea rows="2" oninput="MOB.f.note=this.value">${esc(f.note)}</textarea></label></div>
       ${MSG?`<p class="err">${esc(MSG)}</p>`:''}

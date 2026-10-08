@@ -345,6 +345,11 @@ const CODE_GROUPS=[
   {name:"충격파",codes:["EES6","EES9","EES10","EES14","EES15","EES19","EES20","EES24","EES25","EES29","EES30","EES35","EES40","EES45","EES50","CRYO10","CRYO16","CRYO20","CRYO26","CRYO30",
     "CE9","CE10","CE14","CE15","CE19","CE20","CE24","CE25","CE29","CE30","CE35","CE40","CE45","CE50"]}];
 const ALL_CODES=new Set(CODE_GROUPS.flatMap(g=>g.codes));
+/* 예약 창 치료코드 드롭다운 — 예전 구글 시트(8월) 치료코드 칸의 드롭다운 목록 그대로, 시트 순서 (2026-10-08 요청) */
+const CODE_LIST=["CRYO10","MT9","MT10","MT14","MT15","MT18","MT19","MT20","MT24","MT25","MT29","MT30","ES9","ES10","ES14","ES15","ES19","ES20","ES24","ES25","ES29","ES30",
+  "EES6","EES9","EES10","EES14","EES15","EES19","EES20","EES24","EES25","EES29","EES30","TMT10","TMT15","TMT20","TMT25","TMT30","MT35","MT40","MT45","MT50","ES35","ES40","ES45","ES50",
+  "EES35","EES40","EES45","EES50","CRYO15","CRYO20","CRYO25","CRYO30","CM9","CM10","CM14","CM15","CM19","CM20","CM24","CM25","CM29","CM30","CM35","CM40","CM45","CM50",
+  "CME9","CME10","CME14","CME15","CME19","CME20","CME24","CME25","CME29","CME30","CME35","CME40","CME45","CME50","CE9","CE10","CE14","CE15","CE19","CE20","CE24","CE25","CE29","CE30","CE35","CE40","CE45","CE50"];
 const normalizeCode=c=>String(c||'').replace(/\s+/g,'').toUpperCase();
 /* Manual Tx 건수 표에 늘 보일 이름 (stats.config.json manualTherapists, 시트 순서) */
 const MANUAL_FIXED=["NULL","서효성","김지은","허빈","한상훈","조현신","이세영","황지현","김건휘","김재하","신소현","고민정","박승규","임현주"];
