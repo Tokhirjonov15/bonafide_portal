@@ -852,6 +852,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-printed.big{font-size:14px;line-height:26px;padding:0 10px;align-self:center}
   .si-top{display:flex;justify-content:space-between;align-items:baseline;font-size:16px}.si-t{font-size:12px;color:var(--muted)}
   .si-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .si-proc{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+  .si-proc span{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid #cbd5e1;background:#f1f5f9;color:#475569;white-space:nowrap}
+  .si-proc span.prog{border-color:#3b82f6;background:#dbeafe;color:#1d4ed8}
+  .si-proc span.done{border-color:#22c55e;background:#dcfce7;color:#15803d}
   .slip-detail{flex:1;overflow:auto;padding:18px 22px}
   .sd-name{font-size:30px;font-weight:800;line-height:1.2}.sd-sa{font-size:16px;font-weight:700;margin-left:10px;color:var(--sub)}
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
@@ -1489,6 +1493,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cst-signer label{display:flex;align-items:center;gap:6px}
   .cst-signer input[type=radio]{width:18px;height:18px}
   .cst-signer input:not([type=radio]){padding:6px 8px;border:1px solid var(--line);border-radius:8px}
+  .cst-sign-wrap{position:relative}
+  .cst-sign-lock{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:12px;border-radius:12px;background:rgba(241,245,249,.92);color:#475569;font-size:15px}
+  .cst-sign-wrap.locked .cst-sign-lock{display:flex}
   .cst-canvas{width:100%;box-sizing:border-box;height:200px;border:2px dashed var(--line);border-radius:12px;background:#fff;touch-action:none;display:block}
   .cst-box input,.cst-box textarea{box-sizing:border-box;font-family:inherit}
   .cst-body{overflow-x:hidden}
@@ -2049,7 +2056,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
         <span class="cst-spacer"></span>
         <label class="cst-by-lbl">상담자 <input id="cstBy" style="width:120px"></label>
       </div>
-      <canvas id="cstSign" class="cst-canvas"></canvas>
+      <div class="cst-sign-wrap"><canvas id="cstSign" class="cst-canvas"></canvas><div class="cst-sign-lock" id="cstSignLock">위 <b>개인정보 수집·이용</b>에 <b>동의</b>를 눌러야 서명할 수 있습니다</div></div>
       <div class="cst-sign-tip"><span class="hint">위 칸에 손가락이나 펜으로 서명해 주세요.</span>
         <button type="button" class="btn sm" onclick="signClear()">다시 서명</button></div>
     </div>
@@ -3678,6 +3685,15 @@ function slipClinicOf(it){const doc=slipDoctorOf(it);
 function slipFloor4Of(it){try{const m=normMrn(it&&it.mrn);if(!m)return [];const M=bkMerged(localYMD(new Date()));
   const mn=t=>{const q=String(t).split(':');return (+q[0])*60+(+q[1]);};
   return [...new Set(M.items.filter(x=>normMrn(x.mrn)===m&&/^\d{1,2}:\d{2}$/.test(String(x.t||''))).map(x=>String(x.t)))].sort((a,b)=>mn(a)-mn(b));}catch(e){return [];}}
+/* 슬립 목록의 3층 시술 상태 (2026-10-09 요청) — 처방·동선에 C-Arm·Sono·근전도·처치가 있으면 방마다
+   보드 카드에서 [진행] 전 = 대기, [진행] = 진행중, [종결](다음 방으로 감) = 완료. 보기만 하는 표시 */
+const SLIP_PROC=[["근전도검사","근전도"],["C-Arm","C-Arm"],["Sono","Sono"],["처치실","처치"]];
+function slipProcHtml(it){const p=it.p;if(!p)return "";const route=Array.isArray(p.route)?p.route:[];const rx=spaceRoomsFromRx(p)||[];
+  const L=SLIP_PROC.filter(([r])=>route.includes(r)||rx.includes(r));if(!L.length)return "";
+  const done=new Set([...roomsDoneBefore(p),...(p.spaceDone||[])]);const cur=curRoom(p),step=p.step||0;
+  return '<div class="si-proc">'+L.map(([r,lb])=>{const i=route.indexOf(r);
+    const st=(done.has(r)&&r!==cur)||(i>=0&&i<step&&r!==cur)?"done":(r===cur&&p.status==="진행")?"prog":"wait";
+    return `<span class="${st}">${esc(lb)} ${st==="done"?"완료":st==="prog"?"진행중":"대기"}</span>`;}).join("")+"</div>";}
 function slipHeaderInfo(it){const p=it.p,n=it.note;
   const lk=(!p||!p.birth)&&!n.rrn7?bitLookupByMrn(it.mrn):null;   // 진료실 창에서도 못 읽었으면 접수 창 조회 기록으로
   const rr7=n.rrn7||(lk&&lk.rrn7)||'';
@@ -3779,7 +3795,7 @@ function renderSlipScreen(){
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
   const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
-      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div></div>`;}).join('')
+      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div>${slipProcHtml(it)}</div>`;}).join('')
     :(qq?`<div class="slip-empty">'${esc(SLIP_Q)}' — 오늘 처방 목록에 없는 환자입니다</div>`:'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>');
   if(box.dataset.h!==listHtml){box.dataset.h=listHtml;box.innerHTML=listHtml;}
   const it=items.find(x=>x.mrn===slipSel);
@@ -11696,7 +11712,7 @@ function consentFormHtml(p){
     <div id="cstDesc"></div>
     <div class="cst-sect-t">5. 동의 사항</div>
     <div class="cst-notice">${cstBold(CONSENT_AGREE)}</div>
-    <div class="cst-priv">${cstBold(CONSENT_PRIV)} <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivY"> 동의</label> <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivN"> 미동의</label></div>
+    <div class="cst-priv">${cstBold(CONSENT_PRIV)} <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivY" onchange="signLock()"> 동의</label> <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivN" onchange="signLock()"> 미동의</label></div>
     <div class="hint" style="margin-top:4px">${esc(CONSENT_FOOT)}</div>`;
 }
 function consentDescHtml(keys){const L=CONSENT_ITEMS.filter(it=>keys.includes(it.key));
@@ -11741,7 +11757,7 @@ function openConsent(pid){
   consentSum();
   if(window.lucide)try{lucide.createIcons();}catch(e){}
   document.getElementById('consentScreen').classList.add('show');
-  requestAnimationFrame(()=>{signInit();});
+  requestAnimationFrame(()=>{signInit();signLock();});
   /* 저장 상태를 아직 안 불러왔으면 불러와서 '저장됨' 표시만 다시 그린다(체크·금액은 그대로) */
   if(CONSENTS[String(p.mrn).trim()]===undefined)loadConsents(p.mrn).then(()=>{if(consentFor!==p)return;const sv=consentSaved(p.mrn);
     CONSENT_ITEMS.forEach((it,i)=>{const c=document.getElementById('cstChk'+i);const td=c&&c.closest('tr').children[1];if(td&&sv[it.key]&&!td.querySelector('.cst-saved'))td.insertAdjacentHTML('beforeend',consentSavedTag(sv[it.key]));});});
@@ -11771,17 +11787,21 @@ function signInit(){
   g.clearRect(0,0,r.width,r.height);
   consentSign={cv,g,drawing:false,dirty:false};
   const pos=e=>{const b=cv.getBoundingClientRect();return {x:e.clientX-b.left,y:e.clientY-b.top};};
-  cv.onpointerdown=e=>{e.preventDefault();cv.setPointerCapture(e.pointerId);const q=pos(e);consentSign.drawing=true;consentSign.dirty=true;g.beginPath();g.moveTo(q.x,q.y);};
+  cv.onpointerdown=e=>{e.preventDefault();if(cv.parentElement.classList.contains("locked"))return;cv.setPointerCapture(e.pointerId);const q=pos(e);consentSign.drawing=true;consentSign.dirty=true;g.beginPath();g.moveTo(q.x,q.y);};
   cv.onpointermove=e=>{if(!consentSign.drawing)return;e.preventDefault();const q=pos(e);g.lineTo(q.x,q.y);g.stroke();};
   cv.onpointerup=cv.onpointercancel=cv.onpointerleave=()=>{consentSign.drawing=false;};
 }
+/* 개인정보 수집·이용에 [동의]를 고르기 전(또는 미동의)에는 서명판을 잠근다 — 미동의면 받은 서명도 지운다 (2026-10-09 요청) */
+function signLock(){const y=document.getElementById("cstPrivY"),cv=document.getElementById("cstSign");if(!cv)return;const ok=!!(y&&y.checked);
+  cv.parentElement.classList.toggle("locked",!ok);if(!ok&&consentSign&&consentSign.dirty)signClear();
+  const n=document.getElementById("cstPrivN"),lk=document.getElementById("cstSignLock");if(lk)lk.innerHTML=n&&n.checked?"개인정보 수집·이용에 <b>미동의</b>하면 서명할 수 없습니다":"위 <b>개인정보 수집·이용</b>에 <b>동의</b>를 눌러야 서명할 수 있습니다";}
 function signClear(){if(!consentSign)return;const{cv,g}=consentSign;g.clearRect(0,0,cv.width,cv.height);consentSign.dirty=false;}
 async function saveConsent(){
   const p=consentFor; if(!p)return;
   const items=consentPicked();
   if(!items.length){alert('시행할 비급여 항목을 하나 이상 체크해 주세요.');return;}
   const py=document.getElementById('cstPrivY'),pn=document.getElementById('cstPrivN');
-  if(!(py&&py.checked)&&!(pn&&pn.checked)){alert('개인정보 수집·이용 동의 여부(동의 / 미동의)를 골라 주세요.');return;}
+  if(!(py&&py.checked)){alert('개인정보 수집·이용에 [동의]를 눌러야 서명·저장할 수 있습니다.');return;}
   if(!consentSign||!consentSign.dirty){alert('환자(또는 보호자) 서명을 받아 주세요.');return;}
   const col=consentCol(); if(!col){alert('클라우드에 연결되어 있지 않습니다.');return;}
   const self=document.getElementById('cstSignerSelf').checked;
