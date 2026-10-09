@@ -8546,7 +8546,7 @@ function xrayRxHtml(p,room){
     const nam=String(it.nam||'').trim()||cod;const q=Number(it.qty)||0;
     const t=nam+((q>1&&!/매/.test(nam))?' ×'+q:'');if(seen.has(t))return;seen.add(t);out.push(t);});
   if(!out.length)return '';
-  return `<div class="xray-rx" title="엑스레이 처방 (비트)"><i data-lucide="scan-line"></i> ${out.map(t=>`<b>${esc(t)}</b>`).join(', ')}</div>`;}
+  return `<div class="xray-rx" title="엑스레이 처방 (비트)"><i data-lucide="scan-line"></i> <span class="xr-list">${out.map(t=>`<b>${esc(t)}</b>`).join(', ')}</span></div>`;}
 function progStaffFor(d,r){
   if(/x-?ray/i.test(r||''))return radFor(d,r);
   if(isConsultRoom(r)){const c=(d.consults||{})[r];return (c&&c.who)||nurseFor(d,r);}
@@ -13235,7 +13235,7 @@ boot();
   .offhour.today{text-decoration:underline}
   /* 비트플러스 연동 */
   .memo-today{display:flex;align-items:flex-start;gap:5px;font-size:11.5px;color:#7c4a03;background:#fff7e6;border:1px solid #fde4b5;border-radius:7px;padding:3px 7px;margin:4px 12px 0;line-height:1.3;word-break:break-all}
-  .xray-rx{display:flex;align-items:flex-start;gap:5px;font-size:12.5px;color:#1e3a8a;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:4px 8px;margin:6px 12px 0;line-height:1.4;word-break:keep-all}.xray-rx svg{width:14px;height:14px;flex:none;margin-top:2px}.xray-rx b{font-weight:800}   /* x-ray실 처방 내역 (2026-10-07) */
+  .xray-rx{display:flex;align-items:flex-start;gap:5px;font-size:12.5px;color:#1e3a8a;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:4px 8px;margin:6px 12px 0;line-height:1.4;word-break:keep-all}.xray-rx svg{width:14px;height:14px;flex:none;margin-top:2px}.xray-rx b{font-weight:800;white-space:nowrap}.xray-rx .xr-list{flex:1;min-width:0}   /* 처방이 많으면 여러 줄로 다 보이게 (2026-10-09: 한 줄로 늘어서 잘렸다) */   /* x-ray실 처방 내역 (2026-10-07) */
   .memo-today svg.lucide{width:12px;height:12px;flex-shrink:0;margin-top:1px}
   .bit-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;color:var(--sub);flex-wrap:wrap;max-width:100%;min-width:0}   /* PC 20대: 넘치면 줄바꿈(페이지 폭을 넓히지 않음) */
   .bit-pill .bp{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);border-radius:999px;padding:1px 8px;background:var(--panel2)}
