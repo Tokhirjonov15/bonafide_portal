@@ -548,7 +548,9 @@ function opBookingSave(input){return ctx=>{const d=ctx.d;
   if(input.fromCancelId){const i=d.cancels.findIndex(c=>c.id===Number(input.fromCancelId));if(i>=0){const c=d.cancels.splice(i,1)[0];aud(ctx,'delete','cancels',c.id,c,{restoredToBooking:row.id});}}
   return {ok:true,value:row};};}
 function findB(d,id){return d.bookings.find(b=>b.id===id)||null;}
-const opBookingDelete=id=>ctx=>{const i=ctx.d.bookings.findIndex(b=>b.id===id);if(i<0)return {ok:false,message:'이미 삭제된 예약입니다.'};const b=ctx.d.bookings.splice(i,1)[0];aud(ctx,'delete','bookings',id,b,null);return {ok:true};};
+/* 오늘 지우거나 취소한 환자는 동선관리의 신장분사 방 자동 추가가 다시 넣지 않게 기억 (2026-10-09: 지워도 다른 PC·새로고침에서 다시 들어왔다) */
+const noAuto=(d,b)=>{const m=String(b.mrn||'').replace(/D/g,'');if(m&&!(d.autoNo||[]).includes(m))d.autoNo=[...(d.autoNo||[]),m];};
+const opBookingDelete=id=>ctx=>{const i=ctx.d.bookings.findIndex(b=>b.id===id);if(i<0)return {ok:false,message:'이미 삭제된 예약입니다.'};const b=ctx.d.bookings.splice(i,1)[0];noAuto(ctx.d,b);aud(ctx,'delete','bookings',id,b,null);return {ok:true};};
 const opBookingVisit=id=>ctx=>{const b=findB(ctx.d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const visited=!b.visited;const was=b.visited;
   Object.assign(b,{visited,mark:visited?'.':'',color:visited?'#ffe599':b.color==='#ffe599'?'':b.color,updatedBy:ME.name,updatedAt:new Date().toISOString()});aud(ctx,'update','bookings',id,{visited:was},{visited});return {ok:true};};
 const opBookingMark=(id,mark)=>ctx=>{const b=findB(ctx.d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const m=String(mark??'').trim().slice(0,10);const visited=m!=='';
@@ -565,7 +567,7 @@ const opBookingCancel=(id,kind)=>ctx=>{const d=ctx.d;const b=findB(d,id);if(!b)r
     /* 취소 칸 메모는 취소 메모만 — 예약의 메모·코드·길이 등은 bk 에 기억해 두었다가 [스케줄로 되돌리기] 때 그대로 (2026-10-08 요청) */
     bk:{therapistId:b.therapistId,durationMin:b.durationMin,room:b.room||'',visitNo:b.visitNo??null,code:b.code||'',codeColor:b.codeColor||'',color:b.visited?'':(b.color||''),note:b.note||''},updatedBy:ME.name,updatedAt:new Date().toISOString()};
   d.cancels.push(row);aud(ctx,'create','cancels',row.id,null,Object.assign({},row,{fromBooking:b.id}));
-  if(kind==='cancel'){d.bookings.splice(d.bookings.indexOf(b),1);aud(ctx,'delete','bookings',id,b,{movedToCancel:row.id});}
+  if(kind==='cancel'){d.bookings.splice(d.bookings.indexOf(b),1);noAuto(d,b);aud(ctx,'delete','bookings',id,b,{movedToCancel:row.id});}
   return {ok:true};};
 
 /* ── 비근무 / 메모 차단 ── */
