@@ -374,6 +374,7 @@
   .col.col-drop-left{box-shadow:-3px 0 0 0 var(--blue)}
   .col.col-drop-right{box-shadow:3px 0 0 0 var(--blue)}
   .col-title{font-weight:700;font-size:15px}
+  .col-order{display:flex;gap:3px;padding:0 10px 6px}.col-order button{flex:1;font-size:11.5px;font-weight:700;padding:3px 0;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--sub);cursor:pointer}.col-order button.on{background:#e0e7ff;border-color:#818cf8;color:#3730a3}
   .col-count{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;min-width:30px;padding:2px 10px;border-radius:999px;color:var(--sub);background:var(--panel);border:1px solid var(--line);font-weight:800;font-size:12px;font-variant-numeric:tabular-nums}
   .col-count.has{color:#fff;background:var(--blue);border-color:transparent}
   /* 방(컬럼) 접기 — 내 화면에만(기기별 저장). 접힌 방은 세로 띠(이름·인원)로만 보이고, 카드를 그 위에 놓으면 그 방으로 이동 (2026-09-17) */
@@ -6599,6 +6600,18 @@ function roomSort(a,b,room){
   }
   return (a.ord||0)-(b.ord||0);
 }
+/* 진료실 카드 보는 순서 (2026-10-09 요청) — 방 머리의 [기본 · 예약순 · 접수순] 탭. 이 PC 화면에만(대기 순번·문자 안내는 그대로 기본 순서).
+   기본 = 지금까지 순서(들어온 순·직원이 옮긴 순), 예약순 = 비트 예약 시각(예약 없는 환자는 뒤에 접수순), 접수순 = 접수 시각. 외출자는 늘 맨 아래 */
+const COL_ORDER=(()=>{try{return JSON.parse(localStorage.getItem('dsColOrder')||'{}')||{};}catch(e){return {};}})();
+const colOrderable=room=>/진료실/.test(room||'');
+function setColOrder(room,v){if(v)COL_ORDER[room]=v;else delete COL_ORDER[room];try{localStorage.setItem('dsColOrder',JSON.stringify(COL_ORDER));}catch(e){}render();}
+function viewSort(room){const mode=colOrderable(room)?COL_ORDER[room]:'';if(!mode)return (a,b)=>roomSort(a,b,room);
+  const rv=p=>{const m=hmMin(p.reserveAt);return m==null||isNaN(m)?1e9:m;};
+  return (a,b)=>{if(!!a.out!==!!b.out)return a.out?1:-1;
+    if(mode==='resv'){const d=rv(a)-rv(b);if(d)return d;}
+    return (recvMs(a)||Infinity)-(recvMs(b)||Infinity)||(a.ord||0)-(b.ord||0);};}
+function colOrderTabs(room){if(!colOrderable(room))return '';const cur=COL_ORDER[room]||'';
+  return `<div class="col-order">${[['','기본'],['resv','예약순'],['recv','접수순']].map(([v,l])=>`<button type="button" class="${cur===v?'on':''}" onclick="event.stopPropagation();setColOrder('${esc(room)}','${v}')" title="${v==='resv'?'비트 예약 시각 순 (예약 없는 환자는 뒤에 접수순)':v==='recv'?'접수 시각 순':'지금까지 순서 (들어온 순)'} — 이 PC 화면에만">${l}</button>`).join('')}</div>`;}
 /* ───── 대기 순번·예상시간 ───── */
 function roomSvcSec(room){const m=meta(room);const s=Number(m.svcSec);return (s>0)?s:300;}   // 환자당 예상 소요(초), 기본 5분
 function curRoomOf(d){return (d&&Array.isArray(d.route))?d.route[d.step||0]:'';}
@@ -6653,11 +6666,11 @@ function render(){
   }else{
   let _qShown=0;
   visibleRooms().forEach(room=>{
-    let list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room).sort((a,b)=>roomSort(a,b,room));
+    let list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room).sort(viewSort(room));
     if(q) list=list.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
     /* 거울 표시: 실제 위치가 짝 방이면 이 방에도 카드를 함께 표시 (환자 데이터는 하나 —
        어느 쪽에서든 종결·이동하면 실제 환자가 움직이므로 두 카드가 같이 사라지고 하나로 돌아감) */
-    let mirrors=data.filter(p=>!p.discharged&&p.route.length&&mirroredHere(p,room)).sort((a,b)=>roomSort(a,b,room));
+    let mirrors=data.filter(p=>!p.discharged&&p.route.length&&mirroredHere(p,room)).sort(viewSort(room));
     if(q) mirrors=mirrors.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
     const shown=list.length+mirrors.length;
     /* 환자 검색 중에는 찾은 환자가 있는 방만 보인다 (2026-10-01 원장님들: 검색해도 보이지 않아 좌우로 밀어 찾아야 했다) */
@@ -6683,6 +6696,7 @@ function render(){
         ${shown?`<button class="col-search-btn${COL_Q[room]?' on':''}" title="이 방에서 환자 검색 (이름·병록번호)" onclick="event.stopPropagation();toggleColSearch('${esc(room)}')"><i data-lucide="search"></i></button>`:''}
         <span class="col-count${shown?' has':''}" title="이 방 환자 수">${shown}명</span>
       </div>
+      ${folded?'':colOrderTabs(room)}
       ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
       ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}`;
     const body=document.createElement("div");
