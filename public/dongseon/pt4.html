@@ -32,6 +32,10 @@ th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
 th{color:var(--muted);font-weight:600;font-size:13px}
 .err{color:#dc2626}
 .info{color:#16a34a;font-weight:600}
+.imp-mode{display:flex;flex-direction:column;gap:6px;margin:8px 0;padding:8px;border:1px solid #d0d7de;border-radius:6px}
+.imp-mode label{cursor:pointer}
+.imp-mode .list{margin:0 0 0 22px}
+table.imp-skip{border-collapse:collapse;margin:8px 0;font-size:12px}table.imp-skip th,table.imp-skip td{border:1px solid #d0d7de;padding:3px 8px;text-align:left}
 .note{color:var(--muted);font-size:13px;margin-top:14px}
 a{color:var(--accent)}
 .sub{color:var(--muted);font-size:13px;margin:0 0 8px}
@@ -113,11 +117,11 @@ table.grid td.sel{box-shadow:inset 0 0 0 2px #2563eb;filter:brightness(.93)}   /
 table.grid:not(.cancel-grid){user-select:none;-webkit-user-select:none}
 table.grid .note-pop,table.grid .note-pop textarea{user-select:text;-webkit-user-select:text}
 table.grid td.pt.has-note::after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 7px 7px 0;border-color:transparent #1f2328 transparent transparent}
-.note-pop{display:block;visibility:hidden;opacity:0;transition:opacity .15s ease,visibility 0s linear .45s;position:absolute;top:0;left:100%;z-index:20;width:240px;margin-left:4px;background:#fffbe6;color:#1f2328;border:1px solid #c9b458;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.2);padding:8px;text-align:left;font-weight:400;font-size:12px;cursor:default;white-space:normal}
+.note-pop{display:block;visibility:hidden;opacity:0;transition:opacity .15s ease,visibility 0s linear .45s;position:absolute;top:0;left:100%;z-index:20;width:400px;margin-left:4px;background:#fffbe6;color:#1f2328;border:1px solid #c9b458;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.2);padding:8px;text-align:left;font-weight:400;font-size:12px;cursor:default;white-space:normal}
 table.grid td.pt:hover .note-pop,table.grid td.pt:focus-within .note-pop,table.manual td.name-cell:hover .note-pop,table.manual td.name-cell:focus-within .note-pop{visibility:visible;opacity:1;transition-delay:.45s}
-.note-pop.fixed{position:fixed;margin:0;width:260px;z-index:60}   /* 스크롤 칸 밖으로도 보이게 — 화면 기준 위치 (2026-10-07) */
+.note-pop.fixed{position:fixed;margin:0;width:400px;z-index:60}   /* 스크롤 칸 밖으로도 보이게 — 화면 기준 위치 (2026-10-07) */
 .note-head{font-weight:700;margin-bottom:4px}
-.note-pop textarea{width:100%;font:inherit;font-size:12px;padding:6px;border:1px solid #d6c98a;border-radius:4px;background:#fff;color:#1f2328;resize:vertical}
+.note-pop textarea{width:100%;min-height:260px;font:inherit;font-size:13px;line-height:1.45;padding:6px;border:1px solid #d6c98a;border-radius:4px;background:#fff;color:#1f2328;resize:vertical}
 .note-foot{margin-top:4px}
 .note-text{white-space:pre-line;margin:0}
 /* 시트형 배치 */

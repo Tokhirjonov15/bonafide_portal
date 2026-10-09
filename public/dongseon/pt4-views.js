@@ -261,7 +261,7 @@ function paintBooking(b){if(PAINT==='#999999'){MSG='예약 칸은 비근무(회�
 window.setPaint=hex=>{PAINT=PAINT===hex?null:hex;render();};
 
 /* 메모 말풍선: Manual Tx·표는 스크롤 칸 안이라 옆으로 띄우면 잘렸다 → 마우스를 올린 칸 옆에 화면 기준(fixed)으로, 화면 밖으로 나가지 않게 (2026-10-07) */
-function placePop(td,pop){const r=td.getBoundingClientRect();const W=260,H=pop.offsetHeight||200;pop.classList.add('fixed');
+function placePop(td,pop){const r=td.getBoundingClientRect();const W=400,H=pop.offsetHeight||340;pop.classList.add('fixed');
   const leftSide=td.classList.contains('name-cell');let left=leftSide?r.left-W-6:r.right+6;
   if(left+W>innerWidth-8)left=r.left-W-6;if(left<8)left=Math.max(8,Math.min(innerWidth-W-8,r.right+6));
   const top=Math.max(8,Math.min(r.top,innerHeight-H-8));pop.style.left=left+'px';pop.style.top=top+'px';}
@@ -901,7 +901,7 @@ window.impLinks=async()=>{const txt=(document.getElementById('impLinks')||{}).va
       IMP.log=`시트 ${i+1}/${ids.length} 읽는 중… (몇 초 걸립니다)`;render();await new Promise(r=>setTimeout(r,30));
       const wb=XLSX.read(new Uint8Array(await res.arrayBuffer()),{type:'array',cellStyles:true,bookFiles:true});
       books.push(parseSheetBook(wb));}
-    IMP.name=books.map(b=>`${b.year}년 ${b.month}월 시트`).join(' · ');IMP.plan=planFromSheets(books);}
+    IMP.name=books.map(b=>`${b.year}년 ${b.month}월 시트`).join(' · ');IMP.plan=planFromSheets(books);IMP.mode='merge';IMP.pv=await previewMerge(IMP.plan);}
   catch(e){console.error(e);IMP.err=(e&&e.message)||String(e);if(/Failed to fetch|NetworkError/i.test(IMP.err))IMP.err='시트를 내려받지 못했습니다. 공유 설정이 \'링크가 있는 모든 사용자 — 뷰어\'인지 확인하세요.';}
   IMP.busy=false;IMP.log='';render();};
 
@@ -910,7 +910,7 @@ let IMP=null;   // {name, plan, busy, done, log}
 function renderImportPage(){
   if(!canImport())return `<p class="err">관리자와 물리치료 직원만 쓸 수 있습니다.</p>`;
   let h=`<h1>가져오기</h1>
-    <div class="panel"><h2>구글 시트 링크로</h2><p class="sub">비급여 예약리스트 시트 링크를 붙여 넣으세요. 여러 달이면 한 줄에 하나씩 (예: 9월 시트, 10월 시트). 시트에 있는 날짜는 포털의 그 날짜를 <b>통째로 덮어씁니다</b>.</p>
+    <div class="panel"><h2>구글 시트 링크로</h2><p class="sub">비급여 예약리스트 시트 링크를 붙여 넣으세요. 여러 달이면 한 줄에 하나씩 (예: 9월 시트, 10월 시트). 시트를 읽은 뒤 <b>빠진 것만 추가</b>(포털에서 넣고 고친 내용은 그대로)와 통째로 덮어쓰기 중에 고릅니다.</p>
       <textarea id="impLinks" rows="3" style="width:100%" placeholder="https://docs.google.com/spreadsheets/d/…/edit?usp=sharing">${esc(IMP&&IMP.links||'')}</textarea>
       <div class="row"><button type="button" ${IMP&&IMP.busy?'disabled':''} onclick="impLinks()">${IMP&&IMP.busy&&IMP.log?esc(IMP.log):'시트 읽기'}</button></div></div>
     <div class="panel" style="margin-top:10px"><h2>visit-stats 백업 파일로</h2><p class="sub">visit-stats 데이터베이스 백업(JSON). 파일에 있는 날짜는 포털의 그 날짜를 통째로 덮어씁니다.</p>
@@ -925,6 +925,15 @@ function renderImportPage(){
       <li>예약 ${p.n.bookings} · 비근무/차단 ${p.n.blocks} · 취소/변경 ${p.n.cancels} · Manual Tx ${p.n.manual} · 특이사항 ${p.n.notes}</li>
       ${p.newTh&&p.newTh.length?`<li>포털에 없는 치료사 ${p.newTh.length}명(${esc(p.newTh.join(', '))}) — 퇴사자로 보고 <b>명단에는 넣지 않고</b>, 그 사람 환자 예약은 그 날짜에 가져옵니다</li>`:''}
       <li>치료사 ${p.meta.therapists.length}명 · 상담수 ${p.n.consults}건 · 변경 기록 ${p.audits.length}건</li></ul>
+      ${p.sheet&&IMP.pv&&!IMP.done?`<div class="imp-mode">
+        <label><input type="radio" name="impMode" ${IMP.mode==='merge'?'checked':''} onchange="IMP.mode='merge';render()"> <b>빠진 것만 추가 (권장)</b> — 포털 내용은 그대로 두고 시트에만 있는 것을 넣습니다</label>
+        ${IMP.mode==='merge'?`<ul class="list"><li>추가할 것: 예약 <b>${IMP.pv.tot.b}</b> · 비근무/차단 ${IMP.pv.tot.k} · 취소/변경 ${IMP.pv.tot.c} · Manual Tx ${IMP.pv.tot.m}${IMP.pv.tot.whole?` (포털에 아직 없는 날 ${IMP.pv.tot.whole}일 포함)`:''}</li>
+          <li>이미 포털에 있거나 포털에서 옮김·취소·삭제한 예약 ${IMP.pv.tot.same}건은 건드리지 않습니다</li>
+          ${IMP.pv.skip.length?`<li class="err">자리가 겹쳐 넣지 못하는 예약 ${IMP.pv.skip.length}건 — 가져온 뒤 직접 넣어 주세요 (아래 목록)</li>`:''}</ul>`:''}
+        <label><input type="radio" name="impMode" ${IMP.mode==='all'?'checked':''} onchange="IMP.mode='all';render()"> 통째로 덮어쓰기 — 포털에서 넣거나 고친 내용(표시·메모·취소 등)이 <b>사라집니다</b></label></div>`:''}
+      ${(()=>{const sk=IMP.done?(IMP.result&&IMP.result.skip)||[]:(p.sheet&&IMP.mode==='merge'&&IMP.pv?IMP.pv.skip:[]);
+        return sk.length?`<table class="imp-skip"><tr><th>날짜</th><th>환자</th><th>시트 자리</th><th>못 넣은 이유</th></tr>${sk.map(x=>`<tr><td><a href="#" onclick="go('schedule',{date:'${x.date}'});return false">${esc(x.date.slice(5))}</a></td><td>${esc(x.who)}</td><td>${esc(x.at)}</td><td>${esc(x.why)}</td></tr>`).join('')}</table>`:'';})()}
+      ${IMP.done&&IMP.result?`<p class="info">추가했습니다: 예약 ${IMP.result.tot.b} · 비근무/차단 ${IMP.result.tot.k} · 취소/변경 ${IMP.result.tot.c} · Manual Tx ${IMP.result.tot.m}${IMP.result.skip.length?` · 자리가 겹쳐 못 넣은 ${IMP.result.skip.length}건은 위 목록을 보고 직접 넣어 주세요`:''}</p>`:''}
       ${IMP.done?`<p class="info">가져오기를 마쳤습니다. 일별 스케줄에서 확인하세요.</p>`:`<div class="row"><button type="button" ${IMP.busy?'disabled':''} onclick="impRun()">${IMP.busy?esc(IMP.log||'옮기는 중…'):'포털로 가져오기'}</button></div>`}</div>`;}
   return h;}
 window.saveTxMin=async()=>{const t={};const bad=[];String((document.getElementById('txMinTa')||{}).value||'').split(/\r?\n/).forEach(l=>{l=l.trim();if(!l)return;const m=/^([A-Za-z]+\s*\d+)\s*[:=\s]\s*(\d{1,3})\s*분?$/.exec(l);if(!m){bad.push(l);return;}t[normalizeCode(m[1])]=+m[2];});
@@ -955,16 +964,78 @@ function planImport(j){
   const audits=(j.audit_log||[]).map(a=>({at:a.at,user:a.user_email||'',email:a.user_email||'',action:a.action,entity:a.entity,entityId:String(a.entity_id||''),date:a.date?D10(a.date):null,before:a.before??null,after:a.after??null,legacy:true}));
   const sum=k=>list.reduce((a,d)=>a+d[k].length,0);
   return {meta,days:list,audits,n:{bookings:sum('bookings'),blocks:sum('blocks'),cancels:sum('cancels'),manual:sum('manual'),notes:list.filter(d=>d.note).length,consults:(j.month_consults||[]).length}};}
-window.impRun=async()=>{if(!IMP||!IMP.plan||IMP.busy)return;const p=IMP.plan;
-  if(!confirm(`${p.days.length}일치를 포털로 가져올까요? 포털의 같은 날짜는 덮어씁니다.`))return;
-  IMP.busy=true;render();
+/* ═════ 시트에서 빠진 것만 추가 (2026-10-09 요청) ═════
+   포털을 쓰기 시작한 뒤에도 시트에 예약이 더 들어갔다 → 시트를 통째로 덮어쓰면 포털에서 고친 것(표시·메모·옮김·취소)이 사라지므로,
+   포털 하루 문서는 그대로 두고 시트에만 있는 것만 넣는다. 환자는 병록번호(없으면 이름)로 맞춘다.
+   · 같은 환자가 포털에 같은 시각으로 있으면 = 이미 있음. 시각이 다르면 포털에서 옮긴 것으로 보고 넣지 않는다.
+   · 포털에서 취소/변경·삭제(다른 날로 옮김 포함)한 환자도 다시 넣지 않는다 (변경 기록으로 확인).
+   · 넣을 자리에 이미 다른 예약·비근무가 있으면 넣지 않고 목록으로 알린다 → 직접 넣기.
+   · 비근무/차단은 그 칸이 비어 있고 포털에서 지운 적이 없을 때만, 취소/변경·Manual Tx 는 같은 환자가 없을 때만 넣는다. 특이사항은 포털 것 그대로 */
+const pkey=x=>{const m=String(x.mrn||'').trim();if(m)return 'm'+m;const n=String(x.patientName||'').replace(/\s+/g,'');if(n)return 'n'+n;const r=String(x.rawText||x.text||'').replace(/\s+/g,'');return r?'r'+r:'';};
+function groupBy(arr,f){const g=new Map();arr.forEach(x=>{const k=f(x);if(!k)return;if(!g.has(k))g.set(k,[]);g.get(k).push(x);});return g;}
+const dayEmpty=d=>!d||!(d.th.length||d.bookings.length||d.blocks.length||d.cancels.length||d.manual.length);
+async function portalDeletes(date){   // 포털에서 한 삭제 (visit-stats 에서 옮겨 온 예전 기록은 빼고)
+  const s=await C.audit.where('date','==',date).get();return s.docs.map(x=>x.data()).filter(a=>a.action==='delete'&&!a.legacy);}
+function mergeSheetDay(cur,s,auds){
+  const add={b:0,k:0,c:0,m:0},skip=[];let same=0;
+  if(dayEmpty(cur))return {d:jclone(s),add:{b:s.bookings.length,k:s.blocks.length,c:s.cancels.length,m:s.manual.length},skip,same,whole:true};
+  const d=jclone(cur);const nm=x=>String(x.patientName||x.mrn||x.rawText||'').trim();
+  const delB=groupBy(auds.filter(a=>a.entity==='bookings'&&a.before&&!a.after).map(a=>a.before),pkey);   // 그냥 삭제·다른 날로 옮김 (취소/변경으로 간 것은 취소 칸으로 센다)
+  const delC=groupBy(auds.filter(a=>a.entity==='cancels'&&a.before).map(a=>a.before),pkey);
+  const delM=groupBy(auds.filter(a=>a.entity==='manual_tx'&&a.before).map(a=>a.before),pkey);
+  const delK=auds.filter(a=>a.entity==='work_blocks').map(a=>String(a.entityId||''));
+  const sheetCx=groupBy(s.cancels,pkey),portCx=groupBy(d.cancels,pkey),portB=groupBy(d.bookings,pkey);
+  const thName=id=>(thById(id)||{}).name||'';
+  const hit=(tid,a,e)=>d.bookings.find(x=>x.therapistId===tid&&x.startMin<e&&a<x.startMin+x.durationMin)||d.blocks.find(x=>x.therapistId===tid&&x.startMin<e&&a<x.endMin);
+  for(const [k,list] of groupBy(s.bookings,pkey)){const pb=(portB.get(k)||[]).slice();const rest=[];
+    list.forEach(b=>{const i=pb.findIndex(x=>x.startMin===b.startMin);if(i>=0){pb.splice(i,1);same++;}else rest.push(b);});
+    let spare=pb.length+Math.max(0,(portCx.get(k)||[]).length-(sheetCx.get(k)||[]).length)+(delB.get(k)||[]).length;
+    rest.forEach(b=>{if(spare>0){spare--;same++;return;}
+      const h=hit(b.therapistId,b.startMin,b.startMin+b.durationMin);
+      if(h){skip.push({date:d.date,who:nm(b),at:`${thName(b.therapistId)} ${hm(b.startMin)}`,why:h.endMin!=null?`그 자리가 ${h.text||'비근무'}`:`그 자리에 ${nm(h)} 예약`});return;}
+      d.bookings.push(Object.assign({},b,{id:newId(d)}));if(!d.th.includes(b.therapistId))d.th.push(b.therapistId);add.b++;});}
+  s.blocks.forEach(k=>{if(!d.th.includes(k.therapistId)||hit(k.therapistId,k.startMin,k.endMin))return;
+    if(delK.some(e=>e.startsWith(k.therapistId+':')||e.startsWith('전원:')))return;
+    d.blocks.push(Object.assign({},k,{id:newId(d)}));add.k++;});
+  s.cancels.forEach(c=>{const k=pkey(c);if(d.cancels.some(x=>x.therapistName===c.therapistName&&x.startMin===c.startMin)||(k&&(portCx.has(k)||delC.has(k))))return;
+    d.cancels.push(Object.assign({},c,{id:newId(d)}));add.c++;});
+  const nos=new Set(d.manual.map(m=>m.no));const portM=groupBy(d.manual,pkey);
+  s.manual.forEach(m=>{const k=pkey(m);if(k&&(portM.has(k)||delM.has(k)))return;
+    let no=m.no;if(nos.has(no))no=Math.max(0,...nos)+1;nos.add(no);d.manual.push(Object.assign({},m,{id:newId(d),no}));add.m++;});
+  return {d,add,skip,same,whole:false};}
+/* 미리보기: 지금 포털 상태로 무엇이 들어가는지 (실제 넣을 때는 그 순간의 포털 문서로 다시 계산) */
+async function previewMerge(p){const tot={b:0,k:0,c:0,m:0,same:0,whole:0},skip=[];
+  for(let i=0;i<p.days.length;i++){const s=p.days[i];IMP.log=`포털과 비교 중… ${i+1}/${p.days.length}`;if(i%5===0)render();
+    const snap=await C.day.doc(s.date).get();const cur=snap.exists?normDay(snap.data(),s.date):null;
+    const r=mergeSheetDay(cur,s,dayEmpty(cur)?[]:await portalDeletes(s.date));
+    tot.b+=r.add.b;tot.k+=r.add.k;tot.c+=r.add.c;tot.m+=r.add.m;tot.same+=r.same;if(r.whole)tot.whole++;skip.push(...r.skip);}
+  return {tot,skip};}
+/* 설정 문서(치료사·상담수·Manual Tx 이름·데이터 있는 날) — 통째로 바꾸지 않고 합친다 (치료 시간표 등 다른 설정이 지워지지 않게).
+   빠진 것만 추가할 때는 포털의 치료사 색·상담수를 그대로 둔다 */
+function mergeMeta(m,pm,keep){
+  const ths=Array.isArray(m.therapists)?m.therapists:[];
+  (pm.therapists||[]).forEach(t=>{const x=ths.find(y=>y.id===t.id);if(!x)ths.push(t);else if(!keep)Object.assign(x,t);});
+  m.therapists=ths;m.nextTid=Math.max(Number(m.nextTid)||0,Number(pm.nextTid)||0,...ths.map(t=>t.id));
+  const cs=m.consults||{};Object.entries(pm.consults||{}).forEach(([ym,o])=>{cs[ym]=cs[ym]||{};Object.entries(o).forEach(([tid,n])=>{if(!keep||cs[ym][tid]==null)cs[ym][tid]=n;});});m.consults=cs;
+  const mn=m.manualNames||{};Object.entries(pm.manualNames||{}).forEach(([ym,L])=>{mn[ym]=[...new Set([...(mn[ym]||[]),...L])];});m.manualNames=mn;
+  m.dataDays=[...new Set([...(m.dataDays||[]),...(pm.dataDays||[])])].sort();return m;}
+window.impRun=async()=>{if(!IMP||!IMP.plan||IMP.busy)return;const p=IMP.plan;const merge=!!(p.sheet&&IMP.mode==='merge');
+  if(!confirm(merge?'시트에만 있는 예약 등을 포털에 추가할까요? 포털에 이미 있는 것과 포털에서 고친 내용은 그대로 둡니다.':`${p.days.length}일치를 포털로 가져올까요? 포털의 같은 날짜는 통째로 덮어써서, 포털에서 넣거나 고친 내용(표시·메모·취소 등)이 사라집니다.`))return;
+  IMP.busy=true;IMP.err='';render();
   try{
-    for(let i=0;i<p.days.length;i+=20){const b=DB.batch();p.days.slice(i,i+20).forEach(d=>b.set(C.day.doc(d.date),JSON.parse(JSON.stringify(d))));IMP.log=`날짜 ${Math.min(i+20,p.days.length)}/${p.days.length}`;render();await b.commit();}
-    const old=await C.meta.get();const om=old.exists?old.data():{};
-    const meta=Object.assign({},p.meta,{dataDays:[...new Set([...(om.dataDays||[]),...p.meta.dataDays])].sort()});
-    await C.meta.set(JSON.parse(JSON.stringify(meta)));
+    if(merge){const tot={b:0,k:0,c:0,m:0},skip=[];
+      for(let i=0;i<p.days.length;i++){const s=p.days[i];IMP.log=`날짜 ${i+1}/${p.days.length}`;render();
+        const auds=await portalDeletes(s.date);
+        const r=await DB.runTransaction(async t=>{const ref=C.day.doc(s.date);const snap=await t.get(ref);const cur=snap.exists?normDay(snap.data(),s.date):null;
+          const m=mergeSheetDay(cur,s,auds);
+          if(m.add.b+m.add.k+m.add.c+m.add.m){m.d.updatedAt=new Date().toISOString();m.d.updatedBy=ME.name+' (시트에서 추가)';t.set(ref,JSON.parse(JSON.stringify(m.d)));}
+          return m;});
+        tot.b+=r.add.b;tot.k+=r.add.k;tot.c+=r.add.c;tot.m+=r.add.m;skip.push(...r.skip);}
+      IMP.result={tot,skip};}
+    else for(let i=0;i<p.days.length;i+=20){const b=DB.batch();p.days.slice(i,i+20).forEach(d=>b.set(C.day.doc(d.date),JSON.parse(JSON.stringify(d))));IMP.log=`날짜 ${Math.min(i+20,p.days.length)}/${p.days.length}`;render();await b.commit();}
+    const mr=await commitMeta(m=>{mergeMeta(m,p.meta,merge);return {ok:true};});if(!mr.ok)throw new Error(mr.message||'설정을 저장하지 못했습니다');
     for(let i=0;i<p.audits.length;i+=200){const b=DB.batch();p.audits.slice(i,i+200).forEach(a=>b.set(C.audit.doc(),JSON.parse(JSON.stringify(a))));await b.commit();}
-    writeAudits([{action:'import',entity:'sheet',entityId:IMP.name,date:null,before:null,after:{days:p.days.length,bookings:p.n.bookings}}]);
+    writeAudits([{action:'import',entity:'sheet',entityId:IMP.name,date:null,before:null,after:merge?Object.assign({mode:'빠진 것만 추가'},IMP.result.tot):{days:p.days.length,bookings:p.n.bookings}}]);
     Object.keys(MONTHS).forEach(k=>delete MONTHS[k]);ALLDOCS={at:0,docs:null};IMP.done=true;}
   catch(e){console.error(e);IMP.err='가져오지 못했습니다: '+e.message;}
-  IMP.busy=false;render();};
+  IMP.busy=false;IMP.log='';render();};
