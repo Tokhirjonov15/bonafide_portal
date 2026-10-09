@@ -368,15 +368,17 @@ function IdleWait($ms) {   # 다음 주기까지 기다리는 동안에도 상�
 # ── 진료 예약(RsvInf) → bitResv/{날짜} (2026-09-17) ──
 #  접수 PC 가 비트 예약관리에서 예약을 넣거나 시각을 옮기거나 취소하면 RsvInf 가 바로 바뀐다. 오늘~ResvDays 일치를 ResvEvery 주기마다 읽어
 #  날짜별 해시가 바뀐 날만 문서를 다시 쓴다(items 배열 통째로). 담당(leader)만 쓴다. bitResv/_summary 에는 날짜별 건수만(동선관리 상단 7일 띠).
-#  항목: k(접수번호) t(HH:MM) room(진료실 이름) dr mrn name birth sex div(R/X/Z) sts(OS/OC) ostt(OcmInf 상태: WR 미도착, WN·TN·PN… 도착, CN 취소) acp(도착 HH:MM) memo by naver
+#  항목: k(접수번호) t(HH:MM) room(진료실 이름) dr mrn name birth sex div(R/X/Z) sts(OS/OC) ostt(OcmInf 상태: WR 미도착, WN·TN·PN… 도착, CN 취소) acp(도착 HH:MM) memo by naver spc(특이사항)
 $RSV_QUERY = @"
 SELECT RTRIM(r.RsvOcmNum) AS k, RTRIM(r.RsvDtm) AS dtm, RTRIM(r.RsvSts) AS sts, RTRIM(r.RsvDivTyp) AS div, RTRIM(r.RsvDepCod) AS dep, RTRIM(r.RsvUidCod) AS uid,
        RTRIM(r.RsvRefCmt) AS memo, COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), RTRIM(o.OcmChtNum)) AS mrn, RTRIM(p.PbsPatNam) AS name, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex,
        RTRIM(u.UidNam) AS dr, RTRIM(o.OcmComStt) AS ostt, RTRIM(o.OcmAcpDtm) AS acp,
-       COALESCE(NULLIF(RTRIM(p.PbsCelPhn),''), RTRIM(p.PbsPhnNum)) AS tel
+       COALESCE(NULLIF(RTRIM(p.PbsCelPhn),''), RTRIM(p.PbsPhnNum)) AS tel,
+       CAST(m.PbsSpcCmt AS nvarchar(max)) AS spc
 FROM RsvInf r WITH (NOLOCK)
 LEFT JOIN OcmInf o WITH (NOLOCK) ON o.OcmNum = r.RsvOcmNum
 LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), o.OcmChtNum)
+LEFT JOIN PbsCmtInf m WITH (NOLOCK) ON m.PbsChtNum = p.PbsChtNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = r.RsvDtrCod
 WHERE LEFT(r.RsvDtm, 8) BETWEEN '{0}' AND '{1}'
 ORDER BY r.RsvDtm, r.RsvOcmNum
@@ -400,14 +402,14 @@ function PollResv() {
     $it = [ordered]@{ k = ([string]$r.k -replace '\D', ''); t = $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2); room = $(if ($script:DepName.ContainsKey($dep)) { $script:DepName[$dep] } else { $dep })
                       dr = ([string]$r.dr).Trim(); mrn = $mrn; name = $nm; birth = (DateOf $r.bir); sex = ([string]$r.sex).Trim()
                       div = ([string]$r.div).Trim(); sts = $sts; ostt = $ostt; acp = ''; memo = $memo; by = ([string]$r.uid).Trim()
-                      naver = ($memo -match '네이버|naver'); block = [bool]$isBlock; tel = (([string]$r.tel) -replace '\D', '') }
-    if ($isBlock) { $it.name = '예약금지'; $it.birth = ''; $it.sex = ''; $it.tel = '' }
+                      naver = ($memo -match '네이버|naver'); block = [bool]$isBlock; tel = (([string]$r.tel) -replace '\D', ''); spc = (CleanMemo $r.spc) }   # spc: 특이사항(원외처방) — 예약 명단 인쇄 (2026-10-09)
+    if ($isBlock) { $it.name = '예약금지'; $it.birth = ''; $it.sex = ''; $it.tel = ''; $it.spc = '' }
     $a = [string]$r.acp; if ($it.ostt -and $it.ostt -ne 'WR' -and $it.ostt -ne 'CN' -and $a.Length -ge 12 -and $a.Substring(0, 8) -eq $dtm.Substring(0, 8)) { $it.acp = $a.Substring(8, 2) + ':' + $a.Substring(10, 2) }
     [void]$byDay[$day].Add($it)
   }
   $changed = @()
   foreach ($day in ($byDay.Keys | Sort-Object)) {
-    $h = (($byDay[$day] | ForEach-Object { "$($_.k)|$($_.t)|$($_.room)|$($_.mrn)|$($_.sts)|$($_.ostt)|$($_.acp)|$($_.memo)|$($_.div)|$($_.dr)" }) -join "`n")
+    $h = (($byDay[$day] | ForEach-Object { "$($_.k)|$($_.t)|$($_.room)|$($_.mrn)|$($_.sts)|$($_.ostt)|$($_.acp)|$($_.memo)|$($_.div)|$($_.dr)|$($_.spc)" }) -join "`n")
     if ($script:RsvHash[$day] -eq $h) { continue }
     if ($DryRun) { Log "DRY 예약 문서: $day $($byDay[$day].Count)건"; $script:RsvHash[$day] = $h; $changed += $day; continue }
     if (-not $script:IsLeader -and -not $ResvAlways) { $script:RsvHash[$day] = $h; continue }   # 대기 중엔 쓰지 않고 해시만 따라감(담당이 되면 해시를 비워 전부 다시 씀)
