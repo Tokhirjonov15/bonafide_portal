@@ -11138,7 +11138,7 @@ function fillRxBox(p){
   const agoTx=rxAgoText(last);
   box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역 ${nfsBadge(rx.nfs)}
       <span class="hint">비트 · 오늘 ${rx.items.length}건${dr?' · '+esc(dr):''}${span?' · '+esc(span):''}${agoTx?` <b style="color:var(--t-indigosoft)">마지막 ${esc(agoTx)}</b>`:''}</span></div>
-    <div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th title="D/C(중지)된 처방에 체크하면 그 방 텔레그램으로 알림">D/C</th><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th><th class="rx-gv-h" title="환자에게 드렸으면 체크 (모든 화면 공유)">드림?</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    ${rxDcGroupBar(p,rx)}<div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th title="D/C(중지)된 처방에 체크하면 그 방 텔레그램으로 알림">D/C</th><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th><th class="rx-gv-h" title="환자에게 드렸으면 체크 (모든 화면 공유)">드림?</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   box.style.display='';
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
@@ -11208,6 +11208,35 @@ function toggleRxDc(pid,kEnc,el){
   if(!confirm(`'${label}' 의 D/C 표시를 취소할까요?\n(취소 알림이 갑니다)`)){if(el)el.checked=true;return;}
   rxDcCommit(p,pid,k,it,label,targets,false,'');
 }
+/* ═════ 묶음 D/C (2026-10-09 요청) — 물리치료(MM… 처방 전부) · C-Arm · Sono 를 한꺼번에, 사유는 한 번만 ═════
+   C-Arm 묶음 = C-ARM 처방 + 같이 나가는 주사 처방(Rocaine·SM196 같은 SM…·KK061 같은 KK…·LA357 같은 LA…), Sono 묶음도 같다.
+   C-Arm·Sono 가 둘 다 있으면 주사 처방은 처방 목록에서 더 가까운 쪽으로. 알림·변경 기록은 묶음마다 한 번 */
+const RX_INJ=/^(rocaine|sm\d+|kk\d+|la\d+)$/i;
+function rxDcGroups(rx){const items=(rx&&rx.items)||[];const rule=n=>ROUTE_RX_RULES.find(r=>r.room===n);
+  const hit=(n,x)=>rxRuleHit(rule(n),String(x.cod||"").trim(),String(x.nam||"").trim());
+  const anc=[];items.forEach((x,i)=>{if(hit("C-Arm",x))anc.push({i,g:"C-Arm"});else if(hit("Sono",x))anc.push({i,g:"Sono"});});
+  const G={"물리치료":[],"C-Arm":[],"Sono":[]};
+  items.forEach((x,i)=>{const c=String(x.cod||"").trim();
+    if(/^mm\d/i.test(c)){G["물리치료"].push(x);return;}
+    const a=anc.find(a=>a.i===i);if(a){G[a.g].push(x);return;}
+    if(RX_INJ.test(c)&&anc.length){const n=anc.slice().sort((p,q)=>Math.abs(p.i-i)-Math.abs(q.i-i))[0];G[n.g].push(x);}});
+  return Object.entries(G).filter(([g,L])=>L.length>=2).map(([g,L])=>({g,items:L}));}
+function rxDcGroupBar(p,rx){const dcs=(p&&p.rxDc)||{};const L=rxDcGroups(rx).map(x=>Object.assign(x,{left:x.items.filter(it=>!dcs[rxDcKey(it)])})).filter(x=>x.left.length);
+  if(!L.length)return "";
+  return '<div class="rx-dcgrp"><span class="hint">묶음 D/C (사유 한 번):</span>'+L.map(x=>`<button type="button" class="btn sm" title="${esc(x.left.map(it=>String(it.nam||it.cod||"").trim()).join(", "))}" onclick="event.stopPropagation();rxDcGroup('${p.id}','${esc(x.g)}')">⛔ ${esc(x.g)} ${x.left.length}건</button>`).join("")+"</div>";}
+function rxDcGroup(pid,g){const p=data.find(x=>x.id===pid);if(!p)return;const rx=bitRxFor(p);const grp=rxDcGroups(rx).find(x=>x.g===g);if(!grp)return;
+  const dcs=p.rxDc||{};const left=grp.items.filter(it=>!dcs[rxDcKey(it)]);if(!left.length)return;
+  const targets=[...new Set(left.flatMap(rxItemRooms))];if(!targets.length&&curRoom(p))targets.push(curRoom(p));
+  const label=g+" "+left.length+"건";
+  askDcReason(label+" ("+left.map(it=>String(it.nam||it.cod||"").trim()).join(", ")+")",targets).then(reason=>{if(!reason)return;
+    const by=(currentUser&&currentUser.name)||"",at=new Date().toISOString();
+    const recs=left.map(it=>[rxDcKey(it),{at,by,cod:String(it.cod||"").trim(),nam:String(it.nam||"").trim(),reason,group:g}]);
+    const apply=d=>{d.rxDc=Object.assign({},d.rxDc||{});recs.forEach(([k,r])=>{d.rxDc[k]=r;});return d;};
+    apply(p);saveLocal();cloudPatientTxn(pid,apply);
+    try{audit("처방 D/C",(p.name||"")+(p.mrn?" ("+p.mrn+")":"")+" "+label+": "+left.map(it=>String(it.nam||it.cod||"").trim()).join(", ")+" · 사유 "+reason);}catch(e){}
+    roomNotify(p,"__all__","dc",{item:label+" ("+left.map(it=>String(it.nam||it.cod||"").trim()).join(", ")+")",by,rooms:targets.join(", "),reason});
+    try{toast(`${dispName(p.name)} 님 ${label} D/C → 모두에게 알림`);}catch(e){}
+    try{fillRxBox(p);}catch(e){}render();});}
 function rxDcCommit(p,pid,k,it,label,targets,on,reason){
   const by=(currentUser&&currentUser.name)||'';
   const rec={at:new Date().toISOString(),by,cod:String(it.cod||'').trim(),nam:String(it.nam||'').trim(),reason:reason||''};
@@ -13082,6 +13111,8 @@ boot();
   .bb-tag.ok{background:var(--green-bg);color:var(--green)}
   .bb-tag.add{background:rgba(99,102,241,.16);color:var(--t-indigosoft)}
   .rx-tblwrap{max-height:320px;overflow:auto;margin-top:6px}
+  .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+  .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
   .dcr-back{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:16px}
   .dcr-box{background:var(--panel);color:var(--text);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:16px;width:min(380px,100%)}
   .dcr-t{font-size:15px;margin-bottom:10px;overflow-wrap:anywhere}
