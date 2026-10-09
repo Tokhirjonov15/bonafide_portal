@@ -422,6 +422,8 @@ window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
    오늘 날짜를 보고 있으면, 동선관리 보드에서 동선에 SASO 가 있는 환자를 Manual Tx 에 넣는다(차트번호로 한 번만).
    치료사: 카드에서 SASO 방 담당으로 고른 사람(없으면 SASO 에서 [진행]을 누른 사람). 이미 있는 줄은 치료사가 비었거나 'null' 일 때만 채운다.
    보드에서 빠지거나 SASO 가 지워져도 줄은 지우지 않는다(직원이 ✕ 로) */
+/* 2026-10-09 요청: Manual Tx 에 환자가 자동으로 들어가지 않게 껐다 — 직원이 직접 넣는다. 다시 켜려면 true */
+const SASO_AUTO=false;
 let BOARD=null,BOARD_SUB=null,SASO_BUSY=false;
 const nullTh=s=>!String(s||'').trim()||/^null$/i.test(String(s).trim());
 const mrnKey=s=>String(s||'').replace(/\D/g,'');
@@ -436,7 +438,7 @@ const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Num
     else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy='SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
     if(c.th)ctx.extra.manualName=c.th;n++;}
   return n?{ok:true}:{ok:false,noop:true};};
-async function sasoSync(){const date=R.q.date;if(SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
+async function sasoSync(){const date=R.q.date;if(!SASO_AUTO||SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
   const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length)return;
   SASO_BUSY=true;NO_UNDO=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}NO_UNDO=false;SASO_BUSY=false;}
 const focusMan=()=>setTimeout(()=>{const e=document.getElementById('mnMrn');if(e)e.focus();},0);
