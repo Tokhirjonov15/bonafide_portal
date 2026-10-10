@@ -376,7 +376,7 @@ const txFam=c=>{c=normalizeCode(c);return /^CRYO\d/.test(c)?'신장분사':/^(EE
 function newPtCands(D){if(D.date!==todayYmd()||!BOARD)return [];const hist=ALLDOCS.docs;if(!hist){recentDocs().then(()=>safeRender()).catch(()=>{});return [];}
   const rx=todayRx();const had=new Map();   // 차트번호 → 예전에 받은 치료 갈래
   hist.forEach(d=>{if(d.date>=D.date)return;(d.bookings||[]).forEach(b=>{const m=mrnKey(b.mrn),fm=txFam(b.code);if(m&&fm){if(!had.has(m))had.set(m,new Set());had.get(m).add(fm);}});});
-  const today=new Set((DAYDOC?DAYDOC.bookings:[]).map(b=>mrnKey(b.mrn)).filter(Boolean));
+  const today=new Set((DAYDOC?DAYDOC.bookings:[]).map(b=>mrnKey(b.mrn)).concat(DAYDOC&&DAYDOC.npHide||[]).filter(Boolean));   // npHide: ✕ 로 지운 환자 (2026-10-10)
   const out=[],seen=new Set();
   BOARD.forEach(p=>{if(p.discharged)return;const mrn=mrnKey(p.mrn);if(!mrn||seen.has(mrn)||today.has(mrn))return;const route=Array.isArray(p.route)?p.route:[];
     const codes=[];let cryo3=false;rx.filter(r=>mrnKey(r.mrn)===mrn).forEach(r=>(r.items||[]).forEach(it=>{const c=normalizeCode(it.cod);if(c==='CRYO3'){cryo3=true;return;}if(RX4.test(c)&&!codes.includes(c))codes.push(c);}));
@@ -394,15 +394,15 @@ function newPtBar(D){const L=newPtCands(D);if(!L.length)return '';
   const withPast=L.map((c,i)=>Object.assign({i},c)).filter(c=>c.past.length),none=L.map((c,i)=>Object.assign({i},c)).filter(c=>!c.past.length);
   let h='';
   /* 예전 예약이 있는 환자 — 환자 검색 결과처럼: 날짜·치료사·시간, 이름·코드, 메모, [이 날로 가져오기] (2026-10-07 요청) */
-  if(withPast.length)h+=`<div class="hint np-past" style="margin:6px 0;display:block"><b>처방 나온 1회차</b> <span class="who small">— 예전 예약이 있는 환자는 그 기록을 바탕으로 가져오세요 (치료코드는 오늘 처방으로)</span>
-    <ul class="list search np-list">${withPast.map(c=>`<li><div class="np-who"><b>${esc(c.name)}</b> <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''} · 오늘 ${esc(c.codes.join(' ')||c.fams.join('·'))} 1회차</span></div>
+  if(withPast.length)h+=`<div class="hint np-past" style="margin:6px 0;display:block"><b>처방 나온 1회차</b> <span class="who small">— 예전 예약이 있는 환자는 그 기록을 바탕으로 가져오세요 (치료코드는 예전 기록 그대로 · 안 할 환자는 ✕)</span>
+    <ul class="list search np-list">${withPast.map(c=>`<li><div class="np-who"><button type="button" class="ghost np-x" title="이 목록에서 지우기 (오늘 안 함) — 모든 PC" onclick="npHide('${esc(c.mrn)}','${A(c.name)}')">✕</button><b>${esc(c.name)}</b> <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''} · 오늘 ${esc(c.codes.join(' ')||c.fams.join('·'))} 1회차</span></div>
       ${c.past.map((r,k)=>`<div class="search-row"><div>
         <div><strong>${esc(r.date)}</strong> <span class="who small">${esc(r.therapist)} · ${hm(r.startMin)} · ${r.durationMin}분</span></div>
         <div>${esc(r.mrn)}${r.room?`(${esc(r.room)})`:''} ${esc(r.patientName)}${r.visitNo??''} ${r.code?`<span class="who small">${esc(r.code)}</span>`:''} ${r.visited?'<span class="who small">내원</span>':''}</div>
         ${r.note?`<div class="search-note">${esc(r.note)}</div>`:''}</div>
         <button type="button" class="ghost" onclick="newPtPast(${c.i},${k})">이 날로<br>가져오기</button></div>`).join('')}</li>`).join('')}</ul></div>`;
   /* 예전 기록이 아예 없는 환자 — 지금처럼 */
-  if(none.length)h+=`<div class="hint" style="margin:6px 0;justify-content:flex-start"><b style="white-space:nowrap">처방 나온 1회차</b>${none.map(c=>`<span class="np-chip">${esc(c.name)} <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''}${c.code?' · '+esc(c.codes.join(' ')):' · '+esc(c.fams.join('·'))} 1회차</span> <button type="button" class="ghost" onclick="newPtAdd(${c.i})">+ 추가</button></span>`).join('')}</div>`;
+  if(none.length)h+=`<div class="hint" style="margin:6px 0;justify-content:flex-start"><b style="white-space:nowrap">처방 나온 1회차</b>${none.map(c=>`<span class="np-chip">${esc(c.name)} <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''}${c.code?' · '+esc(c.codes.join(' ')):' · '+esc(c.fams.join('·'))} 1회차</span> <button type="button" class="ghost" onclick="newPtAdd(${c.i})">+ 추가</button><button type="button" class="ghost np-x" title="이 목록에서 지우기 (오늘 안 함) — 모든 PC" onclick="npHide('${esc(c.mrn)}','${A(c.name)}')">✕</button></span>`).join('')}</div>`;
   return h;}
 /* 예전 기록으로 가져오기 — 환자 검색의 [이 날로 가져오기]와 같다: 치료코드·길이는 예전 치료 그대로 (2026-10-10 요청: 오늘 처방(CRYO10 등)으로 바뀌었다), 진료실은 오늘 진료실 */
 window.newPtPast=(i,k)=>{const D=D_();const c=newPtCands(D)[i];const p=c&&c.past[k];if(!p)return;
@@ -410,6 +410,9 @@ window.newPtPast=(i,k)=>{const D=D_();const c=newPtCands(D)[i];const p=c&&c.past
   const startMin=p.startMin+dur<=D.endMin?p.startMin:DAY_START;
   openEd({kind:'copyin',source:p,draft:{therapistId:same?same.id:(D.therapists[0]||{}).id,startMin,durationMin:dur,mrn:p.mrn,room:c.room||p.room,patientName:p.patientName||c.name,
     visitNo:Math.max(0,...(c.allPast||[]))+1,code,codeColor:p.codeColor||'',color:'',visited:false,note:p.note||''}});};   // 방문수 = 예전 기록의 마지막 방문수 + 1 (환자 검색과 이어지게)
+/* 처방 나온 1회차 목록에서 지우기 (2026-10-10 요청: 한다고 했다가 안 하면 지울 수 없었다) — 그 날 문서의 npHide 에 차트번호, 모든 PC 에서 빠진다 */
+window.npHide=(mrn,name)=>{if(!mrn||!confirm((name||mrn)+' 님을 처방 나온 1회차 목록에서 지울까요? (오늘만, 모든 PC)'))return;
+  run(R.q.date,ctx=>{const L=ctx.d.npHide||[];if(!L.includes(mrn))ctx.d.npHide=L.concat(mrn);aud(ctx,'update','day',ctx.d.date,null,{npHide:mrn,patientName:name||''});return {ok:true};},false);};
 window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
   const now=new Date();let st=Math.ceil((now.getHours()*60+now.getMinutes())/SLOT)*SLOT;st=Math.max(DAY_START,Math.min(st,D.endMin-SLOT));
   const dur=Math.min(codeMinutes(c.code)||30,D.endMin-st);
