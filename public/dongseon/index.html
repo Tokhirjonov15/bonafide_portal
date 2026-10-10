@@ -12650,11 +12650,34 @@ window.rosterAdd=function(gi){if(!isAdmin()){alert('명단 수정은 관리자�
   const R=staffRoster();if(R[g].includes(n)){alert('이미 '+g+' 명단에 있습니다.');return;}
   R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}
   const ni=document.getElementById('sdirIn'+gi);if(ni)ni.focus();};
+/* 퇴사 정리 한 번에 (2026-10-11 요청: 퇴사자가 많아 여러 곳을 따로 고치기 힘들다) — 직원 목록에서 ✕ 하면
+   ① 모든 방의 진료의·간호사·방사선·담당자 ② 진료의 목록 ③ (물리치료사면) 4층 비급여 스케줄 치료사(숨김 = 퇴사, 예전 기록은 그대로) 에서도 함께 뺀다.
+   이름은 '한글 (영문)' 어느 쪽으로 적혀 있어도 맞춘다 (rosterKeys) */
+function retireTargets(entry){const keys=rosterKeys(entry);const hit=x=>{const k=String(x||'').replace(/\s+/g,'').toLowerCase();return !!k&&(keys.includes(k)||rosterKeys(x).some(y=>keys.includes(y)));};
+  const rooms=[];ROOMS.forEach(r=>{const m=meta(r);const w=[];
+    if((m.doctors||[]).some(hit))w.push('진료의');if((m.nurses||[]).some(hit))w.push('간호사');if((m.rads||[]).some(hit))w.push('방사선');if((m.owners||[]).some(o=>hit(o&&o.name)))w.push('담당');
+    if(w.length)rooms.push(r+'('+w.join('·')+')');});
+  const pt4=((PT4_META&&Array.isArray(PT4_META.therapists))?PT4_META.therapists:[]).filter(t=>t.active!==false&&hit(t.name)).map(t=>t.name);
+  return {hit,rooms,docs:(DOCTORS||[]).filter(hit),pt4};}
 window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
   const g=STAFF_TEAMS[gi],R=staffRoster(),n=g&&R[g][i];if(!n)return;
-  if(!confirm(`'${n}' 님을 ${g} 명단에서 뺄까요? (퇴사)
+  const T=retireTargets(n);
+  const where=[T.rooms.length?'· 방: '+T.rooms.join(', '):'',T.docs.length?'· 진료의 목록':'',T.pt4.length?'· 4층 비급여 스케줄 치료사('+T.pt4.join(', ')+') — 숨김, 예전 기록은 그대로':''].filter(Boolean);
+  if(!confirm(`'${n}' 님을 퇴사 처리할까요?
+
+${g} 명단에서 빼고, 아래에서도 함께 뺍니다:
+${where.length?where.join('\n'):'· (다른 곳에는 이름이 없습니다)'}
+
 로그인 계정은 그대로 남습니다 — 계정 삭제는 계정 관리에서 하세요.`))return;
-  R[g].splice(i,1);audit('직원 삭제',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}};
+  R[g].splice(i,1);
+  ROOMS.forEach(r=>{const m=meta(r);['doctors','nurses','rads'].forEach(k=>{if(Array.isArray(m[k]))m[k]=m[k].filter(x=>!T.hit(x));});m.owners=(m.owners||[]).filter(o=>!T.hit(o&&o.name));});
+  if(T.docs.length){DOCTORS=(DOCTORS||[]).filter(x=>!T.hit(x));try{localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();}catch(e){}}
+  saveRooms();   // 방·명단·진료의 목록을 설정 문서 하나로 저장(cloudSaveConfig)
+  if(T.pt4.length&&cloud.pt4MetaRef&&cloud.db)cloud.db.runTransaction(async t=>{const sn=await t.get(cloud.pt4MetaRef);if(!sn.exists)return;const m=sn.data()||{};
+      const th=(Array.isArray(m.therapists)?m.therapists:[]).map(x=>T.hit(x.name)?Object.assign({},x,{active:false}):x);t.set(cloud.pt4MetaRef,{therapists:th},{merge:true});})
+    .catch(e=>{console.warn('pt4 retire',e);alert('4층 스케줄 치료사 숨기기는 하지 못했습니다 — 4층 화면의 치료사 설정에서 직접 숨겨 주세요.');});
+  audit('직원 삭제(퇴사 정리)',g+' · '+n+(where.length?' · '+where.join(' '):''));
+  renderStaffDir();try{renderStaffList();}catch(e){}try{render();}catch(e){}try{if(document.getElementById('roomsModal')&&document.getElementById('roomsModal').classList.contains('show'))renderRoomsList();}catch(e){}};
 /* ───── 동의서 창 (2026-10-07 요청) ─────
    [진료지원] 오른쪽 [동의서]: 왼쪽 = 오늘 보드에서 비급여 처방(동의서 항목: 신장분사·충격파·초음파·프롤로·신경주사·수액 …)이 나온 환자 카드,
    오른쪽 = 고른 환자의 ① 동의서 항목(비트 처방 금액 자동, 항목별 서명 여부) + [동의서 작성 (서명)] ② 원장님 차팅 전체(med 위 — 진료실 감시 v3.6) 와 med 아래 처방 줄
