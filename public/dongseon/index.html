@@ -3730,7 +3730,7 @@ function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=d
   const cb=document.getElementById('slipCloseBtn');if(cb)cb.style.display=SLIP_MODE?'none':'';
   {const wb=document.getElementById('slipWordsBtn');if(wb)wb.style.display=currentUser?'':'none';}
   renderSlipScreen();try{renderWaitPop();}catch(e){}}
-function closeSlipScreen(){slipOpen=false;const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
+function closeSlipScreen(){slipOpen=false;try{sessionStorage.removeItem('slipKeep');}catch(e){}const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
 /* 슬립 화면 환자 검색 (2026-10-01 요청): 성함·차트번호 일부로 왼쪽 목록을 거른다. 검색 중에는 새 처방이 와도 선택이 옮겨 가지 않는다 */
 var SLIP_Q='';
 /* 검색 칸 자동 채움 막기: 직원이 이 칸에 키를 누르거나 붙여넣지 않았는데 글자가 들어 있으면 브라우저 자동 채움(로그인 아이디)으로 보고 지운다 */
@@ -3803,13 +3803,14 @@ function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨
   renderSlipScreen();}
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
 function renderSlipScreen(){
-  if(!slipOpen)return;const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
+  if(!slipOpen)return;
+  try{sessionStorage.setItem('slipKeep',JSON.stringify({sel:slipSel,full:[...SLIP_FULL]}));}catch(e){}   // 새로고침(새 버전·메모리) 뒤 같은 환자 슬립으로 되돌리기 (2026-10-10: 원장님 주사 중 보드로 넘어갔다)const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
   const all=SLIP_SOLO?slipItems().filter(it=>normMrn(it.mrn)===normMrn(SLIP_SOLO)):slipItems();
   if(SLIP_SOLO&&all[0])slipSel=all[0].mrn;
   const qq=SLIP_Q.replace(/\s+/g,''), qm=normMrn(SLIP_Q);
   const items=qq?all.filter(it=>String(it.name||'').replace(/\s+/g,'').includes(qq)||(qm&&String(it.mrn||'').includes(qm))):all;
   const newest=all[0];if(newest&&newest.t>slipLastSeen)slipLastSeen=newest.t;   // 2026-10-03 요청: 새 처방이 와도 보고 있던 환자에서 넘어가지 않는다 — 직접 누를 때만 바뀐다
-  if(!items.some(it=>it.mrn===slipSel))slipSel=items[0]?items[0].mrn:'';
+  if(items.length&&!items.some(it=>it.mrn===slipSel))slipSel=items[0].mrn;   // 목록이 아직 비었으면(새로고침 직후) 고른 환자를 지우지 않는다
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
   const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
@@ -5984,6 +5985,8 @@ function afterCloud(){
   renderThrottled();
   try{autoCloseDay();}catch(e){console.warn(e);}
   if(SLIP_MODE&&!slipOpen)openSlipScreen();
+  if(!SLIP_MODE&&!afterCloud.slipTried){afterCloud.slipTried=true;   /* 슬립 화면을 보던 중 새로고침됐으면 같은 환자 슬립으로 되돌린다 (2026-10-10) */
+    try{const k=JSON.parse(sessionStorage.getItem('slipKeep')||'null');if(k&&!slipOpen){(k.full||[]).forEach(x=>SLIP_FULL.add(x));openSlipScreen(k.sel||'');}}catch(e){}}
   if(RESV_MODE&&!document.querySelector('#pt4Ov.show'))openPt4();
 }
 
@@ -13035,6 +13038,7 @@ async function checkNewBuild(){try{
   if(sig===APP_SIG)return;
   const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''));
   if(busy){setTimeout(checkNewBuild,3*60000);return;} // 쓰는 중이면 3분 뒤 다시
+  if(slipOpen){if(!checkNewBuild.slipSince)checkNewBuild.slipSince=Date.now();if(Date.now()-checkNewBuild.slipSince<60*60000){setTimeout(checkNewBuild,3*60000);return;}}   // 슬립 화면(주사 중 처방 보기)은 손을 못 대므로 미룬다 — 1시간 넘으면 새로고침(슬립은 되살아남) (2026-10-10)
   try{audit('새 버전 자동 새로고침');}catch(e){}
   setTimeout(()=>location.reload(),800);   /* 기록이 서버에 닿을 시간 — 바로 새로고침하면 이 기록이 빠져 원인 추적이 어려웠다 */
 }catch(_){}}
