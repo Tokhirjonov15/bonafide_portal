@@ -404,12 +404,12 @@ function newPtBar(D){const L=newPtCands(D);if(!L.length)return '';
   /* 예전 기록이 아예 없는 환자 — 지금처럼 */
   if(none.length)h+=`<div class="hint" style="margin:6px 0;justify-content:flex-start"><b style="white-space:nowrap">처방 나온 1회차</b>${none.map(c=>`<span class="np-chip">${esc(c.name)} <span class="who small">${esc(c.mrn)}${c.room?' · 진료실'+esc(c.room):''}${c.code?' · '+esc(c.codes.join(' ')):' · '+esc(c.fams.join('·'))} 1회차</span> <button type="button" class="ghost" onclick="newPtAdd(${c.i})">+ 추가</button></span>`).join('')}</div>`;
   return h;}
-/* 예전 기록으로 가져오기 — 환자 검색의 [이 날로 가져오기]와 같고, 치료코드·길이는 오늘 처방으로(있으면), 진료실은 오늘 진료실 */
+/* 예전 기록으로 가져오기 — 환자 검색의 [이 날로 가져오기]와 같다: 치료코드·길이는 예전 치료 그대로 (2026-10-10 요청: 오늘 처방(CRYO10 등)으로 바뀌었다), 진료실은 오늘 진료실 */
 window.newPtPast=(i,k)=>{const D=D_();const c=newPtCands(D)[i];const p=c&&c.past[k];if(!p)return;
-  const same=D.therapists.find(t=>t.name===p.therapist);const code=c.code||p.code;const dur=(c.code&&codeMinutes(c.code))||p.durationMin;
+  const same=D.therapists.find(t=>t.name===p.therapist);const code=p.code;const dur=p.durationMin;
   const startMin=p.startMin+dur<=D.endMin?p.startMin:DAY_START;
   openEd({kind:'copyin',source:p,draft:{therapistId:same?same.id:(D.therapists[0]||{}).id,startMin,durationMin:dur,mrn:p.mrn,room:c.room||p.room,patientName:p.patientName||c.name,
-    visitNo:Math.max(0,...(c.allPast||[]))+1,code,codeColor:'',color:'',visited:false,note:p.note||''}});};   // 방문수 = 예전 기록의 마지막 방문수 + 1 (환자 검색과 이어지게)
+    visitNo:Math.max(0,...(c.allPast||[]))+1,code,codeColor:p.codeColor||'',color:'',visited:false,note:p.note||''}});};   // 방문수 = 예전 기록의 마지막 방문수 + 1 (환자 검색과 이어지게)
 window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
   const now=new Date();let st=Math.ceil((now.getHours()*60+now.getMinutes())/SLOT)*SLOT;st=Math.max(DAY_START,Math.min(st,D.endMin-SLOT));
   const dur=Math.min(codeMinutes(c.code)||30,D.endMin-st);
