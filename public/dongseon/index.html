@@ -3203,11 +3203,22 @@ let BIT_LOOKUP=[];                                       // 오늘 접수 창 �
    BIT_RESV[날짜] = {date, updatedAt, count, items:[{k,t,room,dr,mrn,name,birth,sex,div,sts,ostt,acp,memo,by,naver}]}, BIT_RESV_SUM = {days:{날짜:{n,canc,arrived,naver}}} */
 let BIT_RX={}, BIT_RX_MRN={};   // 비트 처방내역(오늘) — 접수번호별 / 병록번호별 (2026-09-23)
 /* 이 카드의 처방: 병록번호 우선, 없으면 비트 접수번호로 찾는다 */
+/* 2026-10-11: 처방이 있는데 일부 환자만 처방내역(D/C)이 안 보였다 → 더 너그럽게 찾는다:
+   ① 차트번호 그대로 ② 숫자만·앞 0 뗀 차트번호(카드 '0624' ↔ 비트 '624', 공백·전각) ③ 카드의 접수번호
+   ④ 오늘 비트 접수 문서에서 같은 차트번호(차트번호 없는 카드는 이름이 한 명뿐일 때)의 접수번호 */
+const rxMrnKey=m=>String(m==null?'':m).normalize('NFKC').replace(/\D/g,'').replace(/^0+/,'');
+let RX_MK_SRC=null,RX_MK={};
+function rxByMk(k){if(RX_MK_SRC!==BIT_RX_MRN){RX_MK={};Object.keys(BIT_RX_MRN||{}).forEach(m=>{const kk=rxMrnKey(m);if(kk&&!RX_MK[kk])RX_MK[kk]=BIT_RX_MRN[m];});RX_MK_SRC=BIT_RX_MRN;}return k?RX_MK[k]||null:null;}
 function bitRxFor(p){ if(!p)return null;
   const mrn=String(p.mrn||'').trim();
   {const o=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,'');if(o&&BIT_RX[o]&&mrnTwins(p))return BIT_RX[o];}   // 같은 환자 카드가 둘(보험별 접수)이면 이 카드의 접수 처방만
   if(mrn&&BIT_RX_MRN[mrn])return BIT_RX_MRN[mrn];
+  const mk=rxMrnKey(mrn);{const r=rxByMk(mk);if(r)return r;}
   const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,''); if(ocm&&BIT_RX[ocm])return BIT_RX[ocm];
+  try{const nm=String(p.name||'').replace(/\s+/g,'');
+    const L=(BIT_INTAKE||[]).filter(d=>d&&!(d.status==='취소'||d.cancelled)&&(mk?rxMrnKey(d.mrn)===mk:(nm&&String(d.name||'').replace(/\s+/g,'')===nm)));
+    if(!mk&&new Set(L.map(d=>rxMrnKey(d.mrn)||d.ocmNum)).size>1)return null;   // 차트번호 없는 카드인데 같은 이름 접수가 둘 이상 — 고르지 않는다
+    for(const d of L){const o=String(d.ocmNum||'').replace(/\D/g,'');if(o&&BIT_RX[o])return BIT_RX[o];const r=rxByMk(rxMrnKey(d.mrn));if(r)return r;}}catch(e){}
   return null; }
 let BIT_RESV={}, BIT_RESV_SUM={}, BIT_RESV_DATE='';
 const SHOW_RESV=true;   // 4층 비급여 치료(시트 예약·통계·다음 예약) 표시 여부 — 2026-09-21 회의로 잠시 숨겼다가 2026-09-23 다시 켬. false 로 바꾸면 버튼·다음 예약 블록이 숨겨진다
@@ -11157,7 +11168,10 @@ function rxHistRender(box,mrn,docs){
 function fillRxBox(p){
   const box=document.getElementById('rxBox');if(!box)return;
   const rx=bitRxFor(p);
-  if(!rx||!rx.items.length){box.innerHTML='';box.style.display='none';return;}
+  if(!rx||!rx.items.length){   /* 못 찾았을 때 이유를 한 줄로 — 처방이 있는데 안 보이면 이 줄을 캡처해 알려 주세요 (2026-10-11) */
+    const o=String((p&&p.bit&&p.bit.ocmNum)||'').replace(/\D/g,'');
+    box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역 <span class="hint">비트에서 오늘 처방을 아직 못 받았습니다 · 차트 ${esc(String((p&&p.mrn)||'-'))} · 접수 ${esc(o||'-')} · 오늘 받은 처방 ${Object.keys(BIT_RX||{}).length}건</span></div>`;
+    box.style.display='';if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
   const times=rx.items.map(x=>String(x.t||'').trim()).filter(Boolean).sort();
   const last=times.length?times[times.length-1]:'';
   const first=times.length?times[0]:'';
