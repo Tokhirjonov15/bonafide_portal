@@ -5996,6 +5996,7 @@ function afterCloud(){
   renderThrottled();
   try{autoCloseDay();}catch(e){console.warn(e);}
   if(SLIP_MODE&&!slipOpen)openSlipScreen();
+  if(!RESV_MODE&&!SLIP_MODE&&!afterCloud.pt4Tried){afterCloud.pt4Tried=true;try{if(sessionStorage.getItem('pt4Keep')==='1'&&!document.querySelector('#pt4Ov.show'))openPt4();}catch(e){}}   // 4층 화면을 띄운 채 새로고침됐으면 다시 (2026-10-11)
   if(!SLIP_MODE&&!afterCloud.slipTried){afterCloud.slipTried=true;   /* 슬립 화면을 보던 중 새로고침됐으면 같은 환자 슬립으로 되돌린다 (2026-10-10) */
     try{const k=JSON.parse(sessionStorage.getItem('slipKeep')||'null');if(k&&!slipOpen){(k.full||[]).forEach(x=>SLIP_FULL.add(x));openSlipScreen(k.sel||'');}}catch(e){}}
   if(RESV_MODE&&!document.querySelector('#pt4Ov.show'))openPt4();
@@ -7482,8 +7483,9 @@ function openPt4(date){let ov=document.getElementById('pt4Ov');
     ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
     document.body.appendChild(ov);}
   document.getElementById('pt4Frame').src='pt4.html?embed&t='+Date.now()+'#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
+  try{sessionStorage.setItem('pt4Keep','1');}catch(e){}   // 새로고침(새 버전) 뒤 4층 화면을 다시 띄우려고 (2026-10-11)
   ov.classList.add('show');}
-function closePt4(){const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');const f=document.getElementById('pt4Frame');if(f)f.src='about:blank';}}
+function closePt4(){try{sessionStorage.removeItem('pt4Keep');}catch(e){}const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');const f=document.getElementById('pt4Frame');if(f)f.src='about:blank';}}
 /* ═════ 4층 치료사 명단 (2026-10-03 요청: 월별 구글 시트 없이 동선관리에서 예약) ═════
    한 줄에 한 명: '이름 [평일 근무] [주말·공휴일 근무]'  예) 'Jack 09:00-18:00 09:00-13:00' · 시간을 비우면 기본(평일 09:00-21:00, 주말 09:00-18:00).
    휴무 관리(OFF_SCHED)에 같은 이름으로 휴무가 있으면 그날 열에서 뺀다. 설정 문서 bkRoster 에 글 그대로 저장 */

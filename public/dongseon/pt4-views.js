@@ -445,10 +445,10 @@ function sasoCands(){const today=todayYmd();
       return usedToday||(injRecent4(b,today)&&(!!b.review||p.route.includes('기본물리치료')));})
     .map(p=>{const th=BONUS_ROOMS4.map(r=>((p.roomDocs||{})[r])||((p.progLog||{})[r])).find(Boolean)||'';
       return {mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(th).trim()};});}
-const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>m.auto==='saso'&&m.updatedBy==='SASO 자동'&&nullTh(m.therapistName)&&!String(m.note||'').trim()&&!m.color&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
+const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>m.auto==='saso'&&!((d.manGone||[]).includes(mrnKey(m.mrn)))&&m.updatedBy==='SASO 자동'&&nullTh(m.therapistName)&&!String(m.note||'').trim()&&!m.color&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
 function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
 const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
-  sasoStale(d,cands).forEach(m=>{d.manual.splice(d.manual.indexOf(m),1);aud(ctx,'delete','manual_tx',m.id,m,{reason:'주사 혜택 환자 아님 (자동 정리)'});n++;});
+  sasoStale(d,cands).forEach(m=>{d.manual.splice(d.manual.indexOf(m),1);d.manGone=[...(d.manGone||[]),mrnKey(m.mrn)];aud(ctx,'delete','manual_tx',m.id,m,{reason:'주사 혜택 환자 아님 (자동 정리)'});n++;});
   for(const c of sasoTodo(d,cands)){const m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
     if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'saso',updatedBy:'SASO 자동',updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
     else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy='SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
@@ -1057,3 +1057,15 @@ window.impRun=async()=>{if(!IMP||!IMP.plan||IMP.busy)return;const p=IMP.plan;con
     Object.keys(MONTHS).forEach(k=>delete MONTHS[k]);ALLDOCS={at:0,docs:null};IMP.done=true;}
   catch(e){console.error(e);IMP.err='가져오지 못했습니다: '+e.message;}
   IMP.busy=false;IMP.log='';render();};
+/* ═════ 새 버전 자동 적용 (2026-10-11) — 10분마다 pt4.html·pt4-views.js 를 다시 받아 바뀌었으면, 입력 중이 아닐 때 스스로 새로고침.
+   동선관리 안에 띄운 4층 화면은 동선관리가 새로고침하며 같이 바뀌지만, '새 창'으로 따로 연 4층 화면은 이게 없으면 예전 코드로 계속 돈다 ═════ */
+let PT4_SIG='';
+async function pt4CheckBuild(){try{
+  const t=(await Promise.all(['pt4.html','pt4-views.js'].map(u=>fetch(u,{cache:'no-store'}).then(r=>r.ok?r.text():'')))).join('|');
+  if(t.length<10000)return;let h=0;for(let i=0;i<t.length;i+=89)h=(h*31+t.charCodeAt(i))>>>0;const sig=t.length+'-'+h;
+  if(!PT4_SIG){PT4_SIG=sig;return;}if(sig===PT4_SIG)return;
+  const a=document.activeElement;const busy=EDIT||DRAG||(typeof MAN!=='undefined'&&MAN&&MAN.no!=null)||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName||''));
+  if(busy){setTimeout(pt4CheckBuild,2*60000);return;}
+  try{writeAudits([{action:'view',entity:'page',entityId:'새 버전 자동 새로고침',date:null,before:null,after:null}]);}catch(e){}
+  setTimeout(()=>location.reload(),600);}catch(e){}}
+setTimeout(pt4CheckBuild,20000);setInterval(pt4CheckBuild,10*60000);
