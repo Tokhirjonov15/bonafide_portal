@@ -624,7 +624,7 @@ const opManualPatch=(id,patch)=>ctx=>{const m=ctx.d.manual.find(x=>x.id===id);if
   if(patch.note!==undefined)m.note=clean(patch.note,1000);
   if(patch.color!==undefined){const c=clean(patch.color,7).toLowerCase();if(!colorOk(c))return {ok:false,message:'잘못된 색입니다.'};m.color=c;}
   m.updatedBy=ME.name;m.updatedAt=new Date().toISOString();aud(ctx,'update','manual_tx',id,bf,patch);return {ok:true};};
-const opManualDelete=id=>ctx=>{const i=ctx.d.manual.findIndex(x=>x.id===id);if(i<0)return {ok:false,message:'이미 삭제되었습니다.'};const m=ctx.d.manual.splice(i,1)[0];aud(ctx,'delete','manual_tx',id,m,null);return {ok:true};};
+const opManualDelete=id=>ctx=>{const i=ctx.d.manual.findIndex(x=>x.id===id);if(i<0)return {ok:false,message:'이미 삭제되었습니다.'};const m=ctx.d.manual.splice(i,1)[0];{const k=String(m.mrn||'').replace(/\D/g,'');if(k&&!(ctx.d.manNo||[]).includes(k))ctx.d.manNo=[...(ctx.d.manNo||[]),k];}   /* 지운 환자는 그 날 혜택 자동 추가가 다시 넣지 않게 (2026-10-11) */aud(ctx,'delete','manual_tx',id,m,null);return {ok:true};};
 const opNote=text=>ctx=>{const t=clean(text,2000);const bf=ctx.d.note||'';ctx.d.note=t;aud(ctx,'update','day_notes',ctx.d.date,bf,t);return {ok:true};};
 
 /* ── 치료사 정보·상담수 (설정 문서) ── */

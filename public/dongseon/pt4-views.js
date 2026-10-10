@@ -425,24 +425,37 @@ window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
    오늘 날짜를 보고 있으면, 동선관리 보드에서 동선에 SASO 가 있는 환자를 Manual Tx 에 넣는다(차트번호로 한 번만).
    치료사: 카드에서 SASO 방 담당으로 고른 사람(없으면 SASO 에서 [진행]을 누른 사람). 이미 있는 줄은 치료사가 비었거나 'null' 일 때만 채운다.
    보드에서 빠지거나 SASO 가 지워져도 줄은 지우지 않는다(직원이 ✕ 로) */
-/* 2026-10-09 요청: Manual Tx 에 환자가 자동으로 들어가지 않게 껐다 — 직원이 직접 넣는다. 다시 켜려면 true */
-const SASO_AUTO=false;
+/* 2026-10-09 요청으로 'SASO 환자 전부' 자동은 껐다. 2026-10-11 요청: 주사 혜택 환자만 자동으로 —
+   ① 오늘 4층 관리에서 무료 치료(SASO·아쿠아·롤러)를 고른 환자 ② 주사 맞은 지 3일 안(주사 날 포함)이고 리뷰 확인했거나 오늘 동선에 기본물리치료가 있는 환자.
+   보너스 기록 = 동선관리 patientboard_v3/…/bonus/{차트번호} (injDays·review·uses). 직원이 ✕ 로 지운 환자는 그 날 다시 넣지 않는다(manNo).
+   예전 규칙(SASO 전부)으로 들어와 아무도 손대지 않은 오늘 줄 중 위 조건이 아닌 것은 뺀다 */
+const SASO_AUTO=true;
+let BONUS4={},BONUS4_SUB=null;
+const BONUS_DAYS4=3, BONUS_ROOMS4=['SASO','아쿠아','롤러','기본물리치료'];
+function injRecent4(b,today){const t=new Date(today+'T12:00:00').getTime();return (Array.isArray(b&&b.injDays)?b.injDays:[]).some(d=>{const g=Math.round((t-new Date(String(d)+'T12:00:00').getTime())/864e5);return g>=0&&g<BONUS_DAYS4;});}
 let BOARD=null,BOARD_SUB=null,SASO_BUSY=false;
 const nullTh=s=>!String(s||'').trim()||/^null$/i.test(String(s).trim());
 const mrnKey=s=>String(s||'').replace(/\D/g,'');
-function watchBoard(){if(BOARD_SUB)return;
+function watchBoard(){if(!BONUS4_SUB)BONUS4_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('bonus').onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const k=mrnKey(v.mrn||d.id);if(k)m[k]=v;});BONUS4=m;sasoSync();},e=>console.warn('bonus',e));
+  if(BOARD_SUB)return;
   BOARD_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('patients').onSnapshot(s=>{BOARD=s.docs.map(d=>d.data()||{});sasoSync();},e=>console.warn('board',e));}
-function sasoCands(){return (BOARD||[]).filter(p=>!p.discharged&&Array.isArray(p.route)&&p.route.includes('SASO')&&mrnKey(p.mrn))
-  .map(p=>({mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(((p.roomDocs||{}).SASO)||((p.progLog||{}).SASO)||'').trim()}));}
-function sasoTodo(d,cands){const out=[];for(const c of cands){const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
+function sasoCands(){const today=todayYmd();
+  return (BOARD||[]).filter(p=>mrnKey(p.mrn)&&Array.isArray(p.route)).filter(p=>{const b=BONUS4[mrnKey(p.mrn)];if(!b)return false;
+      const usedToday=(Array.isArray(b.uses)?b.uses:[]).some(u=>u&&u.date===today);
+      return usedToday||(injRecent4(b,today)&&(!!b.review||p.route.includes('기본물리치료')));})
+    .map(p=>{const th=BONUS_ROOMS4.map(r=>((p.roomDocs||{})[r])||((p.progLog||{})[r])).find(Boolean)||'';
+      return {mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(th).trim()};});}
+const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>m.auto==='saso'&&m.updatedBy==='SASO 자동'&&nullTh(m.therapistName)&&!String(m.note||'').trim()&&!m.color&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
+function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
 const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
+  sasoStale(d,cands).forEach(m=>{d.manual.splice(d.manual.indexOf(m),1);aud(ctx,'delete','manual_tx',m.id,m,{reason:'주사 혜택 환자 아님 (자동 정리)'});n++;});
   for(const c of sasoTodo(d,cands)){const m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
     if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'saso',updatedBy:'SASO 자동',updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
     else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy='SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
     if(c.th)ctx.extra.manualName=c.th;n++;}
   return n?{ok:true}:{ok:false,noop:true};};
 async function sasoSync(){const date=R.q.date;if(!SASO_AUTO||SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
-  const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length)return;
+  const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length&&!sasoStale(DAYDOC,cands).length)return;
   SASO_BUSY=true;NO_UNDO=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}NO_UNDO=false;SASO_BUSY=false;}
 const focusMan=()=>setTimeout(()=>{const e=document.getElementById('mnMrn');if(e)e.focus();},0);
 window.manNew=no=>{if(PAINT)return;MAN={no,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};render();focusMan();};
