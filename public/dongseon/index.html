@@ -1757,7 +1757,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
-    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="4층 관리 — 오늘 주사를 맞고 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 4층 관리</button>
+    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="4층 관리 — 주사를 맞은 지 3일 안(주사 날 포함)에 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 4층 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
     <button class="btn" id="cdeskBtn" onclick="openConsentDesk()" title="오늘 비급여 처방이 나온 환자 — 동의서 받기 (처방 금액 자동 · 원장님 차팅 · 처방내역)"><i data-lucide="pen-line"></i> 동의서</button>
@@ -8780,7 +8780,7 @@ function bonusMaskName(n){n=String(n||'').trim();if(!n)return '';
   if(/[A-Za-z]/.test(n))return n.length>10?n.slice(0,10)+'...':n;
   const a=[...n.replace(/\s+/g,'')];if(a.length<=1)return a.join('');if(a.length===2)return a[0]+' O';
   return a[0]+' '+Array(a.length-2).fill('O').join(' ')+' '+a[a.length-1];}
-/* 혜택 관리 목록 (2026-10-06 요청): 지금 4층 방(보드 [4층] 탭의 방 — 수납대기·수납완료 제외)에 있고 오늘 주사를 맞은 환자만.
+/* 혜택 관리 목록 (2026-10-06 요청): 지금 4층 방(보드 [4층] 탭의 방 — 수납대기·수납완료 제외)에 있고 주사를 맞은 지 3일 안(오늘·어제·그제, 2026-10-10)인 환자.
    혜택 횟수는 예전처럼 누적(주사 날수 1·5·10일 → 1·2·3회, 리뷰 1회) */
 /* 4층 방 (2026-10-06 요청으로 직접 정함) — 이 방에 있는 환자만 4층 관리 목록에 */
 const FLOOR4_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','아쿠아','롤러','신장분사','충격파'];
@@ -8788,14 +8788,14 @@ function isFloor4Room(r){const k=x=>String(x||'').replace(/\s+/g,'').toLowerCase
 function bonusMgrList(){const today=localYMD(new Date());
   return data.filter(p=>{if(!p||p._viewOnly||p.discharged)return false;const mrn=normMrn(p.mrn);if(!mrn)return false;
     const r=curRoom(p);if(!isFloor4Room(r))return false;
-    const b=BONUS[mrn]||{};return (Array.isArray(b.injDays)&&b.injDays.includes(today))||c4Need(p);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
+    const b=BONUS[mrn]||{};return injRecent(b,today)||c4Need(p);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
 window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   let ov=document.getElementById('bonusMgr');
   if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
     ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">치료 동의 · 리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
-      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">오늘 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료 혜택을</b> 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
+      <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">최근 3일 안에 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료 혜택을</b> 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
     document.body.appendChild(ov);}
   BONUS_PID='';document.getElementById('bonusMgrOne').style.display='none';document.getElementById('bonusMgrList').style.display='';bmListing(true);
   {const v=document.getElementById('bonusMgrVerify');if(v)v.style.display='none';BV=null;}
@@ -8828,7 +8828,11 @@ function c4Done(mrn,kind){const b=BONUS[mrn]||{};
   if(kind==='daily')return Array.isArray(b.c4Days)&&b.c4Days.includes(localYMD(new Date()));
   return true;}
 function c4Need(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!bonusCol())return false;const k=c4Kind(p);return !!k&&!c4Done(mrn,k);}
-function bmInjToday(p){const b=BONUS[normMrn(p&&p.mrn)]||{};return Array.isArray(b.injDays)&&b.injDays.includes(localYMD(new Date()));}
+/* 주사 맞고 연속 3일까지 서비스 치료 (2026-10-10 요청) — 주사 맞은 날·다음 날·그다음 날(1일 주사 → 1·2·3일). 달력 날짜 기준 */
+const BONUS_INJ_DAYS=3;
+function injRecent(b,today){today=today||localYMD(new Date());const t=new Date(today+'T12:00:00').getTime();
+  return (Array.isArray(b&&b.injDays)?b.injDays:[]).some(d=>{const g=Math.round((t-new Date(String(d)+'T12:00:00').getTime())/864e5);return g>=0&&g<BONUS_INJ_DAYS;});}
+function bmInjToday(p){return injRecent(BONUS[normMrn(p&&p.mrn)]||{});}
 function c4Open(p){C4={pid:p.id,ok:false,saving:false};BV=null;BONUS_PID='';
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
   document.getElementById('bonusMgrVerify').style.display='';bmListing(false);renderC4();bmCloseLabel();}
@@ -8893,7 +8897,7 @@ window.bvStaffPass=function(){if(!BV)return;const p=data.find(x=>x.id===BV.pid);
 document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMgrVerify');if(!BV||!v||v.style.display==='none')return;
   if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
 function bonusMgrOpenOne(p){
-  /* 오늘 주사 맞은 환자: 보너스(리뷰·치료 고르기) 먼저 → 끝나면 치료 동의 (2026-10-06 요청). 주사 없는 환자는 바로 동의 */
+  /* 주사 맞은 지 3일 안인 환자(2026-10-10): 보너스(리뷰·치료 고르기) 먼저 → 끝나면 치료 동의 (2026-10-06 요청). 주사 없는 환자는 바로 동의 */
   if(!bmInjToday(p)){if(c4Need(p))c4Open(p);else c4Thanks(p);return;}
   C4=null;BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
