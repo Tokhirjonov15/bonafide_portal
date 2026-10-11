@@ -460,7 +460,8 @@ const sasoRedOk=(d,cands)=>(d?d.manual:[]).filter(m=>!m.hidden&&m.auto==='saso'&
 function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m||m.hidden&&!m.bonusBack)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
 const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.filter(m=>!m.hidden).map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
   sasoRedOk(d,cands).forEach(m=>{const c=cands.find(x=>x.mrn===mrnKey(m.mrn));m.auto='bonus';m.why=c.why||'';m.updatedBy='주사 혜택 자동';m.updatedAt=now;if(c.th&&nullTh(m.therapistName))m.therapistName=c.th;aud(ctx,'update','manual_tx',m.id,{auto:'saso'},{auto:'bonus',why:m.why});n++;});
-  {const tb=sasoThBack(d);tb.forEach(m=>{m.hidden=false;m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{hidden:true},{hidden:false,reason:'치료사 있음 — 다시 보임'});n++;});
+  {const tb=sasoThBack(d);tb.forEach(m=>{m.hidden=false;m.updatedBy='자동 (치료사 있음)';m.updatedAt=now;   /* 고친 사람 표시를 바꿔 두어야 아직 새 버전을 안 받은 다른 PC 화면이 다시 숨기지 않는다 (2026-10-11: 서로 숨기고 꺼내며 깜빡였다) */
+    aud(ctx,'update','manual_tx',m.id,{hidden:true},{hidden:false,reason:'치료사 있음 — 다시 보임'});n++;});
    if(tb.length){let k=0;d.manual.filter(m=>!m.hidden).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(m=>{m.no=++k;});no=k;}}
   {const st=sasoStale(d,cands);st.forEach(m=>{m.hidden=true;m.updatedAt=now;aud(ctx,'delete','manual_tx',m.id,m,{hidden:true,reason:'주사 혜택 환자 아님 (자동 정리 · 숨김)'});n++;});
    if(st.length){let k=0;d.manual.filter(m=>!m.hidden).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(m=>{m.no=++k;});no=k;}}   // 숨긴 줄 자리를 비워 두지 않고 번호를 1부터 다시 (빈칸 없게)
