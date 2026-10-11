@@ -678,7 +678,7 @@ function render(){const app=document.getElementById('app');if(!ME)return;
     else if(p==='charts')body=renderChartsPage();
     else if(p==='audit')body=renderAuditPage();
     else if(p==='import')body=renderImportPage();
-  }catch(e){console.error(e);body=`<p class="err">화면을 그리지 못했습니다: ${esc(e.message)}</p>`;}
+  }catch(e){console.error(e);const miss=typeof renderSchedule!=='function';body=miss?`<p class="err">화면 파일을 받지 못했습니다 — 잠시 뒤 저절로 다시 엽니다. 계속되면 새로고침(F5)해 주세요.</p>`:`<p class="err">화면을 그리지 못했습니다: ${esc(e.message)}</p>`;}
   app.innerHTML=navHtml()+body;
   if(p==='schedule'){const L=app.querySelector('.sheet-layout');if(L)L.focus({preventScroll:true});}}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(EDIT){EDIT=null;MSG='';renderEditor();render();}else if(PAINT){PAINT=null;render();}}});
@@ -694,5 +694,8 @@ async function runMeta(promise,closeOnOk){BUSY=true;renderEditor();const r=await
 </script>
 <!-- 2026-10-08: 고친 뒤에도 브라우저가 예전 pt4-views.js 를 써서(가져오기 오류 문구가 옛것) 열 때마다 새로 받는다 -->
 <script>document.write('<script src="pt4-views.js?v='+Date.now()+'"><\/script>');</script>
+<!-- 2026-10-11: 배포 중인 순간에 열면 pt4-views.js 를 못 받아 'renderSchedule is not defined' 가 났다 → 못 받았으면 몇 초 뒤 다시 연다(최대 5번) -->
+<script>if(typeof renderSchedule!=='function'){(function(){let n=0;try{n=+sessionStorage.getItem('pt4Retry')||0;}catch(e){}
+  if(n<5){try{sessionStorage.setItem('pt4Retry',String(n+1));}catch(e){}setTimeout(()=>location.reload(),2000+n*2000);}})();}else{try{sessionStorage.removeItem('pt4Retry');}catch(e){}}</script>
 </body>
 </html>
