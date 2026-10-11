@@ -427,7 +427,7 @@ window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
    치료사: 카드에서 SASO 방 담당으로 고른 사람(없으면 SASO 에서 [진행]을 누른 사람). 이미 있는 줄은 치료사가 비었거나 'null' 일 때만 채운다.
    보드에서 빠지거나 SASO 가 지워져도 줄은 지우지 않는다(직원이 ✕ 로) */
 /* 2026-10-09 요청으로 'SASO 환자 전부' 자동은 껐다. 2026-10-11 요청: 주사 혜택 환자만 자동으로 —
-   ① 오늘 4층 관리에서 무료 치료(SASO·아쿠아·롤러)를 고른 환자 ② 주사 맞은 지 3일 안(주사 날 포함)이고 리뷰 확인했거나 오늘 동선에 기본물리치료가 있는 환자.
+   오늘 4층 관리에서 무료 치료(SASO·아쿠아·롤러 중 1개)를 고른 환자만 (2026-10-11 다시 좁힘 — 리뷰만 한 환자·기본물리치료 환자는 넣지 않음).
    보너스 기록 = 동선관리 patientboard_v3/…/bonus/{차트번호} (injDays·review·uses). 직원이 ✕ 로 지운 환자는 그 날 다시 넣지 않는다(manNo).
    예전 규칙(SASO 전부)으로 들어와 아무도 손대지 않은 오늘 줄 중 위 조건이 아닌 것은 뺀다 */
 const SASO_AUTO=true;
@@ -443,7 +443,7 @@ function watchBoard(){if(!BONUS4_SUB)BONUS4_SUB=DB.collection('patientboard_v3')
 function sasoCands(){const today=todayYmd();
   return (BOARD||[]).filter(p=>mrnKey(p.mrn)&&Array.isArray(p.route)).filter(p=>{const b=BONUS4[mrnKey(p.mrn)];if(!b)return false;
       const usedToday=(Array.isArray(b.uses)?b.uses:[]).some(u=>u&&u.date===today);
-      return usedToday||(injRecent4(b,today)&&(!!b.review||p.route.includes('기본물리치료')));})
+      return usedToday;})   // 2026-10-11 요청: 4층 관리에서 무료 치료(SASO·아쿠아·롤러 중 1개)를 고른 환자만 — 나머지는 직원이 손으로
     .map(p=>{const b=BONUS4[mrnKey(p.mrn)]||{};const th=BONUS_ROOMS4.map(r=>((p.roomDocs||{})[r])||((p.progLog||{})[r])).find(Boolean)||'';
       const used=(Array.isArray(b.uses)?b.uses:[]).filter(u=>u&&u.date===today).map(u=>u.item);const inj=(Array.isArray(b.injDays)?b.injDays:[]).slice().sort().pop()||'';
       const why=used.length?'오늘 무료 '+used.join('·'):('주사 '+inj.slice(5).replace('-','/')+(b.review?' + 리뷰':'')+(p.route.includes('기본물리치료')?' · 기본물리치료':''));
