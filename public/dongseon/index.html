@@ -828,7 +828,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-chart{margin:8px 0;border:1px solid #c7d2fe;background:#f8faff;border-radius:10px;padding:8px 12px}
   .sd-chart-h{font-size:12px;font-weight:800;color:#4338ca;margin-bottom:4px}
   .sd-chart pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:15px;line-height:1.45;color:var(--text,#111)}
-  body.slip-solo .slip-top,body.slip-solo .slip-list{display:none !important}   /* [창 띄우기] 창: 환자 화면만 */
+  body.slip-solo .slip-top,body.slip-solo .slip-list,body.slip-solo .slip-split{display:none !important}   /* [창 띄우기] 창: 환자 화면만 */
   .slip-search{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:4px 9px;background:var(--panel2);min-width:0;flex:0 1 260px}
   .slip-search svg{width:15px;height:15px;color:var(--sub);flex:0 0 auto}
   .slip-search input{border:0;outline:0;background:transparent;color:inherit;font-size:14px;width:100%;min-width:0}
@@ -890,8 +890,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
   .sd-badge{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:700}
   @media(max-width:760px){.slip-top{gap:6px;padding:6px 8px}.slip-top .st-lbl,#slipRoomLbl{display:none}.slip-top .st-title{white-space:nowrap;flex:none}.slip-top .slip-search{flex:1 1 auto}.slip-top .spacer{display:none}.slip-top .btn.sm{padding:6px 8px}}   /* 핸드폰: 슬립 화면 머리줄은 아이콘만, 검색 칸은 넓게 (2026-10-11 요청) */
-  .slip-split{display:none}
-  @media(max-width:760px){.slip-split{display:flex;flex:none;justify-content:center;align-items:center;height:22px;cursor:row-resize;touch-action:none;background:var(--panel);border-bottom:1px solid var(--line)}.slip-split span{width:44px;height:5px;border-radius:3px;background:#94a3b8}.slip-list{border-bottom:0!important}}   /* 목록 높이 조절 손잡이 (2026-10-11) */
+  .slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:12px;cursor:col-resize;touch-action:none;background:var(--panel);border-left:1px solid var(--line);border-right:1px solid var(--line)}.slip-split span{width:4px;height:44px;border-radius:3px;background:#94a3b8}   /* 태블릿·PC: 좌우로 끌어 목록 너비 (2026-10-11) */
+  @media(max-width:760px){.slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:auto;height:22px;border-left:0;border-right:0;cursor:row-resize;touch-action:none;background:var(--panel);border-bottom:1px solid var(--line)}.slip-split span{width:44px;height:5px;border-radius:3px;background:#94a3b8}.slip-list{border-bottom:0!important}}   /* 목록 높이 조절 손잡이 (2026-10-11) */
   @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
@@ -1964,16 +1964,18 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
     <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()" title="닫기"><i data-lucide="x"></i><span class="st-lbl"> 닫기</span></button>
   </div>
   <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-split" id="slipSplit" title="위아래로 끌어서 목록 높이 조절"><span></span></div><div class="slip-detail" id="slipDetail"></div></div>
-<script>/* 핸드폰: 환자 목록과 처방 사이 손잡이를 끌어 목록 높이를 바꾼다 (2026-10-11 요청). 이 기기에 기억 */
+<script>/* 환자 목록과 처방 사이 손잡이 (2026-10-11 요청) — 핸드폰(세로로 쌓임): 위아래로 끌어 목록 높이, 태블릿·PC(좌우): 좌우로 끌어 목록 너비. 이 기기에 기억 */
 (function(){const sp=document.getElementById("slipSplit"),L=document.getElementById("slipList");if(!sp||!L)return;
-  const set=px=>{const h=Math.max(70,Math.min(window.innerHeight*0.8,px));L.style.maxHeight=h+"px";L.style.height=h+"px";return h;};
-  try{const v=+localStorage.getItem("dsSlipListH");if(v>0&&window.matchMedia("(max-width:760px)").matches)set(v);}catch(e){}
-  let y0=0,h0=0,on=false;
-  sp.addEventListener("pointerdown",e=>{on=true;y0=e.clientY;h0=L.getBoundingClientRect().height;sp.setPointerCapture(e.pointerId);e.preventDefault();});
-  sp.addEventListener("pointermove",e=>{if(on)set(h0+e.clientY-y0);});
-  const end=()=>{if(!on)return;on=false;try{localStorage.setItem("dsSlipListH",String(Math.round(L.getBoundingClientRect().height)));}catch(e){}};
-  sp.addEventListener("pointerup",end);sp.addEventListener("pointercancel",end);
-  window.matchMedia("(max-width:760px)").addEventListener("change",m=>{if(!m.matches){L.style.maxHeight="";L.style.height="";}});})();</script>
+  const mq=window.matchMedia("(max-width:760px)");
+  const setH=px=>{const h=Math.max(70,Math.min(window.innerHeight*0.8,px));L.style.maxHeight=h+"px";L.style.height=h+"px";};
+  const setW=px=>{const w=Math.max(160,Math.min(window.innerWidth*0.6,px));L.style.width=w+"px";L.style.flex="0 0 "+w+"px";};
+  const apply=()=>{L.style.maxHeight=L.style.height=L.style.width=L.style.flex="";try{if(mq.matches){const v=+localStorage.getItem("dsSlipListH");if(v>0)setH(v);}else{const v=+localStorage.getItem("dsSlipListW");if(v>0)setW(v);}}catch(e){}};
+  apply();mq.addEventListener("change",apply);
+  let p0=0,s0=0,on=false;
+  sp.addEventListener("pointerdown",e=>{on=true;const r=L.getBoundingClientRect();p0=mq.matches?e.clientY:e.clientX;s0=mq.matches?r.height:r.width;sp.setPointerCapture(e.pointerId);e.preventDefault();});
+  sp.addEventListener("pointermove",e=>{if(!on)return;if(mq.matches)setH(s0+e.clientY-p0);else setW(s0+e.clientX-p0);});
+  const end=()=>{if(!on)return;on=false;const r=L.getBoundingClientRect();try{localStorage.setItem(mq.matches?"dsSlipListH":"dsSlipListW",String(Math.round(mq.matches?r.height:r.width)));}catch(e){}};
+  sp.addEventListener("pointerup",end);sp.addEventListener("pointercancel",end);})();</script>
 </div>
 
 <!-- 직원용 예약관리: 물리치료센터 예약리스트(Google Sheet) 자료 — 직원 전용(환자용 대기화면에는 내지 않음) -->
