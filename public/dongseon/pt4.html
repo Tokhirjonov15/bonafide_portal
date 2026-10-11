@@ -659,7 +659,12 @@ function watchDay(date){if(SUB_DATE===date)return;if(SUB)SUB();SUB_DATE=date;DAY
 /* 글자를 치는 중에는 다시 그리지 않는다 — 다른 PC 의 저장이 들어와도 입력 중인 칸이 지워지지 않게 */
 let PENDING=false;
 function typing(){const a=document.activeElement;return !!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('#app'));}
-function safeRender(){if(typing()){if(!PENDING){PENDING=true;document.activeElement.addEventListener('blur',()=>{setTimeout(()=>{PENDING=false;safeRender();},0);},{once:true});}return;}render();}
+/* 마우스를 누르고 있는 동안에도 다시 그리지 않는다 — 누르는 사이 칸이 새로 그려지면 그 클릭이 사라져 두 번 눌러야 열렸다 (2026-10-11). 뗀 뒤(클릭이 끝난 뒤) 그린다 */
+let MOUSE_DOWN=false,RENDER_WAIT=false,DOWN_AT=0;
+document.addEventListener('mousedown',e=>{if(e.button===0){MOUSE_DOWN=true;DOWN_AT=Date.now();}},true);
+window.addEventListener('blur',()=>{if(MOUSE_DOWN){MOUSE_DOWN=false;if(RENDER_WAIT){RENDER_WAIT=false;setTimeout(safeRender,0);}}});   // 창 밖에서 뗀 경우
+document.addEventListener('mouseup',()=>{if(!MOUSE_DOWN)return;MOUSE_DOWN=false;if(RENDER_WAIT){RENDER_WAIT=false;setTimeout(safeRender,0);}},true);
+function safeRender(){if(MOUSE_DOWN&&Date.now()-DOWN_AT<4000){RENDER_WAIT=true;return;}MOUSE_DOWN=false;if(typing()){if(!PENDING){PENDING=true;document.activeElement.addEventListener('blur',()=>{setTimeout(()=>{PENDING=false;safeRender();},0);},{once:true});}return;}render();}
 function navHtml(){return `<header class="nav"><nav>${PAGES.filter(p=>p[0]!=='import'||canImport()).map(([k,l])=>`<a href="${href(k,(k==='schedule'||k==='m')&&R.q.date?{date:R.q.date}:{})}" class="${R.page===k?'on':''}">${l}</a>`).join('')}</nav>
   <span class="who">${esc(ME?ME.name:'')}${EMBED?'':` <button type="button" class="ghost" onclick="AUTH.signOut()">로그아웃</button>`}</span></header>`;}
 function render(){const app=document.getElementById('app');if(!ME)return;

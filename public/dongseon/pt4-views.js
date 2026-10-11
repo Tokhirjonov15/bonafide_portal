@@ -209,11 +209,12 @@ document.addEventListener('mousedown',e=>{EAT=false;if(R.page!=='schedule'||PAIN
   const td=t.closest('table.grid:not(.cancel-grid) tbody td');if(!td||td.classList.contains('time'))return;
   const bid=td.dataset.bid?Number(td.dataset.bid):null;
   if((e.ctrlKey||e.metaKey)&&bid!=null){e.preventDefault();SEL.has(bid)?SEL.delete(bid):SEL.add(bid);selPaint();EAT=true;selHint();return;}
-  DRAG={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,moved:false,raf:0,key:'',base:(e.shiftKey?[...SEL]:[])};});
+  DRAG={x0:e.clientX,y0:e.clientY,x:e.clientX,y:e.clientY,moved:false,raf:0,key:'',base:(e.shiftKey?[...SEL]:[]),td};});
 document.addEventListener('mousemove',e=>{if(!DRAG)return;DRAG.x=e.clientX;DRAG.y=e.clientY;
-  if(!DRAG.moved){if(Math.abs(DRAG.x-DRAG.x0)+Math.abs(DRAG.y-DRAG.y0)<5)return;DRAG.moved=true;}
+  if(!DRAG.moved){if(Math.abs(DRAG.x-DRAG.x0)+Math.abs(DRAG.y-DRAG.y0)<10)return;DRAG.moved=true;}   // 클릭하며 손이 조금 떨려도 끌기가 아니게 (5 → 10px, 2026-10-11)
   e.preventDefault();if(!DRAG.raf)DRAG.raf=requestAnimationFrame(dragUpdate);});
-document.addEventListener('mouseup',()=>{if(!DRAG)return;const moved=DRAG.moved;if(DRAG.raf){cancelAnimationFrame(DRAG.raf);dragUpdate();}DRAG=null;dragEnd();
+document.addEventListener('mouseup',e=>{if(!DRAG)return;let moved=DRAG.moved;
+  if(moved&&!DRAG.base.length){const t=document.elementFromPoint(e.clientX,e.clientY);const td=t&&t.closest&&t.closest('td');if(td&&td===DRAG.td){moved=false;SEL.clear();selPaint();}}   // 같은 칸 안에서 떼면 클릭으로 본다if(DRAG.raf){cancelAnimationFrame(DRAG.raf);dragUpdate();}DRAG=null;dragEnd();
   if(moved){EAT=true;setTimeout(()=>{EAT=false;},0);selHint();}});   // 드래그를 끝낸 바로 그 클릭만 무시
 function selHint(){if(SEL.size)toast(`예약 ${SEL.size}건 골랐습니다 — Ctrl+C 복사 · Delete 지우기 · Esc 해제`,2600);}
 function copySel(){const D=D_();if(!D||!SEL.size)return false;const ids=D.therapists.map(t=>t.id);
