@@ -890,6 +890,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
   .sd-badge{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:700}
   @media(max-width:760px){.slip-top{gap:6px;padding:6px 8px}.slip-top .st-lbl,#slipRoomLbl{display:none}.slip-top .st-title{white-space:nowrap;flex:none}.slip-top .slip-search{flex:1 1 auto}.slip-top .spacer{display:none}.slip-top .btn.sm{padding:6px 8px}}   /* 핸드폰: 슬립 화면 머리줄은 아이콘만, 검색 칸은 넓게 (2026-10-11 요청) */
+  .slip-split{display:none}
+  @media(max-width:760px){.slip-split{display:flex;flex:none;justify-content:center;align-items:center;height:22px;cursor:row-resize;touch-action:none;background:var(--panel);border-bottom:1px solid var(--line)}.slip-split span{width:44px;height:5px;border-radius:3px;background:#94a3b8}.slip-list{border-bottom:0!important}}   /* 목록 높이 조절 손잡이 (2026-10-11) */
   @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
@@ -1961,7 +1963,17 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
     <button class="btn sm" id="slipWordsBtn" style="display:none" onclick="openSlipWords()" title="슬립에서 빨갛게 강조할 낱말 — 더하고 지우기"><i data-lucide="highlighter"></i><span class="st-lbl"> 강조 낱말</span></button>
     <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()" title="닫기"><i data-lucide="x"></i><span class="st-lbl"> 닫기</span></button>
   </div>
-  <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-detail" id="slipDetail"></div></div>
+  <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-split" id="slipSplit" title="위아래로 끌어서 목록 높이 조절"><span></span></div><div class="slip-detail" id="slipDetail"></div></div>
+<script>/* 핸드폰: 환자 목록과 처방 사이 손잡이를 끌어 목록 높이를 바꾼다 (2026-10-11 요청). 이 기기에 기억 */
+(function(){const sp=document.getElementById("slipSplit"),L=document.getElementById("slipList");if(!sp||!L)return;
+  const set=px=>{const h=Math.max(70,Math.min(window.innerHeight*0.8,px));L.style.maxHeight=h+"px";L.style.height=h+"px";return h;};
+  try{const v=+localStorage.getItem("dsSlipListH");if(v>0&&window.matchMedia("(max-width:760px)").matches)set(v);}catch(e){}
+  let y0=0,h0=0,on=false;
+  sp.addEventListener("pointerdown",e=>{on=true;y0=e.clientY;h0=L.getBoundingClientRect().height;sp.setPointerCapture(e.pointerId);e.preventDefault();});
+  sp.addEventListener("pointermove",e=>{if(on)set(h0+e.clientY-y0);});
+  const end=()=>{if(!on)return;on=false;try{localStorage.setItem("dsSlipListH",String(Math.round(L.getBoundingClientRect().height)));}catch(e){}};
+  sp.addEventListener("pointerup",end);sp.addEventListener("pointercancel",end);
+  window.matchMedia("(max-width:760px)").addEventListener("change",m=>{if(!m.matches){L.style.maxHeight="";L.style.height="";}});})();</script>
 </div>
 
 <!-- 직원용 예약관리: 물리치료센터 예약리스트(Google Sheet) 자료 — 직원 전용(환자용 대기화면에는 내지 않음) -->
