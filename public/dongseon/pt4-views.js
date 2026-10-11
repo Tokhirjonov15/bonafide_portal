@@ -261,10 +261,11 @@ function paintBooking(b){if(PAINT==='#999999'){MSG='예약 칸은 비근무(회�
 window.setPaint=hex=>{PAINT=PAINT===hex?null:hex;render();};
 
 /* 메모 말풍선: Manual Tx·표는 스크롤 칸 안이라 옆으로 띄우면 잘렸다 → 마우스를 올린 칸 옆에 화면 기준(fixed)으로, 화면 밖으로 나가지 않게 (2026-10-07) */
-function placePop(td,pop){const r=td.getBoundingClientRect();const W=400,H=pop.offsetHeight||340;pop.classList.add('fixed');
+function placePop(td,pop){const r=td.getBoundingClientRect();const host=td.closest('.sheet-side');const z=host?(parseFloat(getComputedStyle(host).zoom)||1):1;   // 오른쪽 칸은 80%로 줄여 그린다(zoom) — 화면 좌표로 계산한 뒤 zoom 으로 나눠 넣는다 (2026-10-11)
+  const W=400*z,H=(pop.getBoundingClientRect().height||340*z);pop.classList.add('fixed');
   const leftSide=td.classList.contains('name-cell');let left=leftSide?r.left-W-6:r.right+6;
   if(left+W>innerWidth-8)left=r.left-W-6;if(left<8)left=Math.max(8,Math.min(innerWidth-W-8,r.right+6));
-  const top=Math.max(8,Math.min(r.top,innerHeight-H-8));pop.style.left=left+'px';pop.style.top=top+'px';}
+  const top=Math.max(8,Math.min(r.top,innerHeight-H-8));pop.style.left=(left/z)+'px';pop.style.top=(top/z)+'px';}
 function popHost(e){const td=e.target&&e.target.closest&&e.target.closest('td.pt, td.name-cell, td.cx-cell');if(!td)return;const pop=td.querySelector(':scope > .note-pop');if(!pop||pop.contains(e.target))return;placePop(td,pop);}
 document.addEventListener('mouseover',popHost);document.addEventListener('focusin',popHost);
 

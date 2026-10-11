@@ -137,6 +137,7 @@ table.grid td.pt:hover .note-pop,table.grid td.pt:focus-within .note-pop,table.m
 .side-col:last-child{width:330px}
 @media (max-width:1500px){.sheet-layout{flex-wrap:wrap}.sheet-side{width:100%}}
 @media (max-width:700px){.sheet-side{flex-direction:column}.side-col,.side-col:last-child{width:100%}}
+@media (min-width:701px){.sheet-side{zoom:.8}}   /* 오른쪽 두 칸(검색·달력·특이사항 / Manual Tx) 20% 작게 (2026-10-11 요청) */
 .panel{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--card)}
 .panel-head{display:flex;justify-content:space-between;align-items:center}
 .panel h2{font-size:15px;margin:0 0 8px}
