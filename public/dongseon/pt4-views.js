@@ -326,8 +326,8 @@ function manualPanel(D){
   for(let no=1;no<=rowCount;no++){const list=byNo.get(no)||[];
     if(!list.length){rows+=MAN.no===no&&MAN.id==null?edRow(no):`<tr class="blank editable" onclick="manNew(${no})"><td>${no}</td><td></td><td></td><td></td><td></td></tr>`;continue;}
     for(const m of list){if(MAN.id===m.id){rows+=edRow(no);continue;}
-      rows+=`<tr style="${m.color?`background:${A(m.color)}`:''}" class="${m.color?'colored':''} ${PAINT?'paintable':''}" ${m.auto==='saso'?'title="SASO 환자 — 동선관리 보드에서 자동으로 들어옴"':''} onclick="manRowClick(${m.id})">
-        <td>${m.no}</td><td class="ed" onclick="manEdit(${m.id},event)">${esc(m.mrn)}</td>
+      rows+=`<tr style="${m.color?`background:${A(m.color)}`:''}" class="${m.color?'colored':''} ${PAINT?'paintable':''}" title="${A(manSrcTitle(m))}" onclick="manRowClick(${m.id})">
+        <td>${m.no}${manSrcTag(m)}</td><td class="ed" onclick="manEdit(${m.id},event)">${esc(m.mrn)}</td>
         <td class="name-cell ${m.note?'has-note':''}"><span class="ed" onclick="manEdit(${m.id},event)">${esc(m.patientName)}</span>
           <div class="note-pop" onclick="event.stopPropagation()"><div class="note-head">메모 · ${esc(m.patientName||m.mrn)}</div><textarea rows="5" placeholder="메모" onblur="manNoteBlur(${m.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(m.note||'')}</textarea>
           <div class="note-foot"><span class="who small">창 밖을 누르거나 Ctrl+Enter 로 저장</span></div></div></td>
@@ -444,20 +444,30 @@ function sasoCands(){const today=todayYmd();
   return (BOARD||[]).filter(p=>mrnKey(p.mrn)&&Array.isArray(p.route)).filter(p=>{const b=BONUS4[mrnKey(p.mrn)];if(!b)return false;
       const usedToday=(Array.isArray(b.uses)?b.uses:[]).some(u=>u&&u.date===today);
       return usedToday||(injRecent4(b,today)&&(!!b.review||p.route.includes('기본물리치료')));})
-    .map(p=>{const th=BONUS_ROOMS4.map(r=>((p.roomDocs||{})[r])||((p.progLog||{})[r])).find(Boolean)||'';
-      return {mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(th).trim()};});}
-const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>m.auto==='saso'&&!((d.manGone||[]).includes(mrnKey(m.mrn)))&&m.updatedBy==='SASO 자동'&&nullTh(m.therapistName)&&!String(m.note||'').trim()&&!m.color&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
+    .map(p=>{const b=BONUS4[mrnKey(p.mrn)]||{};const th=BONUS_ROOMS4.map(r=>((p.roomDocs||{})[r])||((p.progLog||{})[r])).find(Boolean)||'';
+      const used=(Array.isArray(b.uses)?b.uses:[]).filter(u=>u&&u.date===today).map(u=>u.item);const inj=(Array.isArray(b.injDays)?b.injDays:[]).slice().sort().pop()||'';
+      const why=used.length?'오늘 무료 '+used.join('·'):('주사 '+inj.slice(5).replace('-','/')+(b.review?' + 리뷰':'')+(p.route.includes('기본물리치료')?' · 기본물리치료':''));
+      return {mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(th).trim(),why};});}
+const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>(m.auto==='saso'||m.auto==='bonus')&&!((d.manGone||[]).includes(mrnKey(m.mrn)))&&(m.updatedBy==='SASO 자동'||m.updatedBy==='주사 혜택 자동')&&nullTh(m.therapistName)&&!String(m.note||'').trim()&&!m.color&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
 function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
 const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
   sasoStale(d,cands).forEach(m=>{d.manual.splice(d.manual.indexOf(m),1);d.manGone=[...(d.manGone||[]),mrnKey(m.mrn)];aud(ctx,'delete','manual_tx',m.id,m,{reason:'주사 혜택 환자 아님 (자동 정리)'});n++;});
   for(const c of sasoTodo(d,cands)){const m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
-    if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'saso',updatedBy:'SASO 자동',updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
-    else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy='SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
+    if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'bonus',why:c.why||'',updatedBy:'주사 혜택 자동',createdAt:now,updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
+    else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy=m.auto==='bonus'?'주사 혜택 자동':'SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
     if(c.th)ctx.extra.manualName=c.th;n++;}
   return n?{ok:true}:{ok:false,noop:true};};
 async function sasoSync(){const date=R.q.date;if(!SASO_AUTO||SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
   const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length&&!sasoStale(DAYDOC,cands).length)return;
   SASO_BUSY=true;NO_UNDO=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}NO_UNDO=false;SASO_BUSY=false;}
+/* Manual Tx 줄이 어디서 왔는지 (2026-10-11 요청: 주사 맞은 환자인지, 동선관리 SASO 목록인지 확인)
+   주사 = 지금 규칙(주사 혜택 환자)으로 자동 · SASO = 예전 규칙(동선에 SASO 가 있는 환자 전부)으로 자동 · 표시 없음 = 직원이 직접 넣음 */
+const hhmm4=v=>{const d=new Date(v||'');return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+function manSrcTag(m){return m.auto==='bonus'?'<span class="man-src b">주사</span>':m.auto==='saso'?'<span class="man-src s">SASO</span>':'';}
+function manSrcTitle(m){const t=hhmm4(m.createdAt||m.updatedAt);
+  return m.auto==='bonus'?`주사 혜택 환자 — 동선관리에서 자동 (${m.why||''})${t?' · '+t:''}`
+    :m.auto==='saso'?`예전 규칙: 동선관리 SASO 목록에서 자동${t?' · '+t:''}${m.updatedBy&&m.updatedBy!=='SASO 자동'?' · 고친 사람 '+m.updatedBy:''}`
+    :`직접 입력${m.updatedBy?' · '+m.updatedBy:''}${t?' · '+t:''}`;}
 const focusMan=()=>setTimeout(()=>{const e=document.getElementById('mnMrn');if(e)e.focus();},0);
 window.manNew=no=>{if(PAINT)return;MAN={no,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};render();focusMan();};
 window.manEdit=(id,ev)=>{if(PAINT)return;ev.stopPropagation();const m=D_().manual.find(x=>x.id===id);if(!m)return;MAN={no:m.no,id,f:{mrn:m.mrn,patientName:m.patientName,therapistName:m.therapistName},colorFor:null};render();focusMan();};
