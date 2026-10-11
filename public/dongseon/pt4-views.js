@@ -336,7 +336,7 @@ function manualPanel(D){
           ${MAN.colorFor===m.id?`<div class="swatch-row pop" onclick="event.stopPropagation()">${PALETTE.map(c=>`<button type="button" title="${A(c.label)}" class="swatch ${(m.color||'#ffffff')===c.hex?'on':''}" style="background:${c.hex}" onclick="manColor(${m.id},'${c.hex}')"></button>`).join('')}</div>`:''}</td></tr>`;}}
   return `<section class="panel"><div class="panel-head"><h2>Manual Tx</h2></div><p class="small">TA, Finger, Sprain 외에는 모두 진행 · 빈 줄을 누르면 입력, 성함에 마우스를 올리면 메모</p>
     <datalist id="manNames">${names.map(n=>`<option value="${A(n)}">`).join('')}</datalist>
-    <div class="manual-scroll"><table class="mini manual"><thead><tr><th>번호</th><th>환자번호</th><th>성함</th><th>치료사</th><th title="색 / 삭제">색</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="manual-scroll"><table class="mini manual"><thead><tr><th>번호</th><th>환자번호</th><th>성함</th><th>치료사</th><th title="색 / 삭제">색</th></tr></thead><tbody>${rows}</tbody></table></div>${manHiddenHtml()}
     <table class="mini manual-count"><tbody>${names.map((n,i)=>`<tr><td class="no">${i+1}</td><td>${esc(n)}</td><td class="${countOf(n)?'hit':''}">${countOf(n)}</td></tr>`).join('')}
       <tr class="sum"><td></td><td title="취소/변경 칸에 들어간 기록 수">취소</td><td>${cancelled}</td></tr>
       <tr class="sum"><td></td><td title="취소 ÷ 오늘 비급여 치료 수">취소율</td><td>${total?Math.round(cancelled/total*100):0}%</td></tr>
@@ -477,6 +477,14 @@ function manSrcTitle(m){const t=hhmm4(m.createdAt||m.updatedAt);
   return m.auto==='bonus'?`주사 혜택 환자 — 동선관리에서 자동 (${m.why||''})${t?' · '+t:''}`
     :m.auto==='saso'?`예전 규칙: 동선관리 SASO 목록에서 자동${t?' · '+t:''}${m.updatedBy&&m.updatedBy!=='SASO 자동'?' · 고친 사람 '+m.updatedBy:''}`
     :`직접 입력${m.updatedBy?' · '+m.updatedBy:''}${t?' · '+t:''}`;}
+/* 숨긴 자동 줄 (2026-10-11) — 주사 혜택 환자가 아니라서 숨긴 자동 줄을 보고, 필요하면 [되살리기]. 되살린 줄은 직원 줄로 보고 다시 숨기지 않는다 */
+let MAN_HID_OPEN=false;
+function manHiddenHtml(){const L=((DAYDOC&&DAYDOC.manual)||[]).filter(m=>m.hidden);if(!L.length)return '';
+  return `<div class="man-hid"><button type="button" class="ghost" onclick="MAN_HID_OPEN=!MAN_HID_OPEN;render()">${MAN_HID_OPEN?'▾':'▸'} 숨긴 자동 줄 ${L.length}개</button>
+    ${MAN_HID_OPEN?`<ul>${L.map(m=>`<li>${manSrcTag(m)} ${esc(m.mrn)} <b>${esc(m.patientName)}</b> ${esc(m.therapistName||'')} <button type="button" class="ghost" onclick="manUnhide(${m.id})">되살리기</button></li>`).join('')}</ul>`:''}</div>`;}
+window.manUnhide=id=>run(R.q.date,ctx=>{const d=ctx.d;const m=d.manual.find(x=>x.id===id);if(!m)return {ok:false,message:'줄을 찾지 못했습니다.'};
+  m.hidden=false;m.no=Math.max(0,...d.manual.filter(x=>!x.hidden&&x!==m).map(x=>Number(x.no)||0))+1;m.updatedBy=ME.name;m.updatedAt=new Date().toISOString();
+  aud(ctx,'update','manual_tx',id,{hidden:true},{hidden:false,patientName:m.patientName});return {ok:true};},false);
 const focusMan=()=>setTimeout(()=>{const e=document.getElementById('mnMrn');if(e)e.focus();},0);
 window.manNew=no=>{if(PAINT)return;MAN={no,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};render();focusMan();};
 window.manEdit=(id,ev)=>{if(PAINT)return;ev.stopPropagation();const m=D_().manual.find(x=>x.id===id);if(!m)return;MAN={no:m.no,id,f:{mrn:m.mrn,patientName:m.patientName,therapistName:m.therapistName},colorFor:null};render();focusMan();};
