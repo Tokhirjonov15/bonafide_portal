@@ -3815,7 +3815,8 @@ function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
 function renderSlipScreen(){
   if(!slipOpen)return;
-  try{sessionStorage.setItem('slipKeep',JSON.stringify({sel:slipSel,full:[...SLIP_FULL]}));}catch(e){}   // 새로고침(새 버전·메모리) 뒤 같은 환자 슬립으로 되돌리기 (2026-10-10: 원장님 주사 중 보드로 넘어갔다)const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
+  try{sessionStorage.setItem('slipKeep',JSON.stringify({sel:slipSel,full:[...SLIP_FULL]}));}catch(e){}   // 새로고침(새 버전·메모리) 뒤 같은 환자 슬립으로 되돌리기 (2026-10-10: 원장님 주사 중 보드로 넘어갔다)
+  const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
   const all=SLIP_SOLO?slipItems().filter(it=>normMrn(it.mrn)===normMrn(SLIP_SOLO)):slipItems();
   if(SLIP_SOLO&&all[0])slipSel=all[0].mrn;
   const qq=SLIP_Q.replace(/\s+/g,''), qm=normMrn(SLIP_Q);
@@ -8962,7 +8963,8 @@ function renderBonus4Section(){
       <button type="button" class="btn sm b4-cancel" onclick="bonusUndo('${esc(u.at)}')"><i data-lucide="undo-2"></i> 취소</button></div>`).join('')
     :'<div class="hint" style="margin-top:4px">받은 무료 치료가 없습니다.</div>');
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
-window.bonusUndo=async function(at){if(!currentUser)return;const p=data.find(x=>x.id===bonusCurPid());   // 2026-10-06: 직원 누구나(환자 정보 창 4층 혜택 칸)const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
+window.bonusUndo=async function(at){if(!currentUser)return;const p=data.find(x=>x.id===bonusCurPid());   // 2026-10-06: 직원 누구나(환자 정보 창 4층 혜택 칸)
+  const mrn=normMrn(p&&p.mrn);const col=bonusCol();if(!p||!mrn||!col)return;
   if(!confirm('이 보너스 사용을 취소할까요? (남은 횟수가 1 늘어납니다. 동선의 방은 그대로입니다)'))return;
   try{await cloud.db.runTransaction(async t=>{const ref=col.doc(mrn);const sn=await t.get(ref);const v=sn.exists?(sn.data()||{}):{};
       t.set(ref,{uses:(Array.isArray(v.uses)?v.uses:[]).filter(u=>u.at!==at)},{merge:true});});
@@ -12648,7 +12650,8 @@ function renderStaffDir(){
 }
 window.rosterAdd=function(gi){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
   const g=STAFF_TEAMS[gi],inp=document.getElementById('sdirIn'+gi);if(!g||!inp)return;
-  const n=inp.value.trim().replace(/\s*\(\s*/,' (').replace(/\s*\)\s*$/,')');   // '김민수(Min)' → '김민수 (Min)'if(!n){inp.focus();return;}
+  const n=inp.value.trim().replace(/\s*\(\s*/,' (').replace(/\s*\)\s*$/,')');   // '김민수(Min)' → '김민수 (Min)'
+  if(!n){inp.focus();return;}
   const R=staffRoster();if(R[g].includes(n)){alert('이미 '+g+' 명단에 있습니다.');return;}
   R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}
   const ni=document.getElementById('sdirIn'+gi);if(ni)ni.focus();};
