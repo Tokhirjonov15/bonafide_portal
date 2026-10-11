@@ -276,7 +276,7 @@ function sidePanel(D){
   return `<aside class="sheet-side"><div class="side-col">${searchPanel()}${calendarPanel(D.date)}${legendPanel()}${notePanel(D)}</div><div class="side-col">${manualPanel(D)}</div></aside>`;}
 function searchPanel(){let h=`<section class="panel"><div class="panel-head"><h2>환자 검색</h2></div><div class="row">
   <input id="srchQ" value="${A(SEARCH.q)}" placeholder="차트번호 또는 이름" oninput="SEARCH.q=this.value" onkeydown="if(event.key==='Enter')doSearch()">
-  <button type="button" class="ghost" ${SEARCH.busy?'disabled':''} onclick="doSearch()">${SEARCH.busy?'…':'검색'}</button></div>`;
+  <button type="button" class="ghost" ${SEARCH.busy?'disabled':''} onclick="doSearch()">${SEARCH.busy?'…':'검색'}</button>${SEARCH.rows||SEARCH.q?`<button type="button" class="ghost" title="검색 결과 닫기" onclick="SEARCH={q:'',rows:null,busy:false};render()">✕</button>`:''}</div>`;
   if(SEARCH.rows&&!SEARCH.rows.length)h+=`<p class="small">기록 없음</p>`;
   if(SEARCH.rows&&SEARCH.rows.length)h+=`<ul class="list search" style="margin-top:8px">${SEARCH.rows.map((r,i)=>`<li><div class="search-row"><div>
       <div><strong>${esc(r.date)}</strong> <span class="who small">${esc(r.therapist)} · ${hm(r.startMin)} · ${r.durationMin}분</span></div>
@@ -635,7 +635,9 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
 window.openPatientInfo=()=>{const d=EDIT&&EDIT.draft;if(!d)return;const P=window.parent;
   if(P&&P!==window&&typeof P.mxOpenPatient==='function'){try{P.mxOpenPatient('',String(d.mrn||''),String(d.patientName||''));return;}catch(e){console.warn(e);}}
   toast('환자 정보는 동선관리 안에서 연 스케줄([4층 비급여 치료])에서 볼 수 있습니다',3500);};
-window.edSaveBooking=()=>{const e=EDIT;const d=Object.assign({},e.draft);if(e.kind==='booking')d.id=e.booking.id;if(e.kind==='restore')d.fromCancelId=e.cancel.id;run(R.q.date,opBookingSave(d));};
+window.edSaveBooking=async()=>{const e=EDIT;const d=Object.assign({},e.draft);if(e.kind==='booking')d.id=e.booking.id;if(e.kind==='restore')d.fromCancelId=e.cancel.id;
+  const ok=await run(R.q.date,opBookingSave(d));
+  if(ok&&e.kind==='copyin'&&SEARCH.rows&&SEARCH.rows.includes(e.source)){SEARCH={q:'',rows:null,busy:false};safeRender();}};   // 검색 결과에서 가져와 저장했으면 검색 결과를 닫는다 (2026-10-11 요청)
 window.edVisit=()=>run(R.q.date,opBookingVisit(EDIT.booking.id));
 window.edDelete=()=>{if(confirm('이 예약을 삭제할까요?'))run(R.q.date,opBookingDelete(EDIT.booking.id));};
 window.edCancelMove=async kind=>{const id=EDIT.booking.id;
