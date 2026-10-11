@@ -889,6 +889,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-sum .warn{color:var(--orange)}
   .sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
   .sd-badge{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:700}
+  @media(max-width:760px){.slip-top{gap:6px;padding:6px 8px}.slip-top .st-lbl,#slipRoomLbl{display:none}.slip-top .st-title{white-space:nowrap;flex:none}.slip-top .slip-search{flex:1 1 auto}.slip-top .spacer{display:none}.slip-top .btn.sm{padding:6px 8px}}   /* 핸드폰: 슬립 화면 머리줄은 아이콘만, 검색 칸은 넓게 (2026-10-11 요청) */
   @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
@@ -1953,12 +1954,12 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
 <!-- 슬립 화면: 왼쪽 오늘 처방 목록 환자, 오른쪽 환자 정보(위) + 약·주사 목록(아래). ?slip 으로 열면 이 화면만(태블릿) -->
 <div id="slipScreen" class="slip-screen">
   <div class="slip-top">
-    <b><i data-lucide="pill"></i> 슬립 화면</b><span class="hint" id="slipRoomLbl">전체</span><span id="slipUpd" class="slip-upd" style="display:none">새 버전이 있습니다 <button type="button" class="btn sm" onclick="slipReloadNow()" title="환자 사이에 눌러 주세요 — 슬립을 보는 동안은 자동으로 새로고침하지 않습니다">지금 새로고침</button></span>
+    <b class="st-title"><i data-lucide="pill"></i><span class="st-lbl"> 슬립 화면</span></b><span class="hint" id="slipRoomLbl">전체</span><span id="slipUpd" class="slip-upd" style="display:none">새 버전이 있습니다 <button type="button" class="btn sm" onclick="slipReloadNow()" title="환자 사이에 눌러 주세요 — 슬립을 보는 동안은 자동으로 새로고침하지 않습니다">지금 새로고침</button></span>
     <div class="slip-search"><i data-lucide="search"></i><input id="slipQ" type="search" name="ds-slip-find" placeholder="환자 성함·차트번호 검색" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" oninput="slipSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';slipSearch('');}"></div>
     <div class="spacer"></div>
-    <a class="btn sm" href="?slip" target="_blank" rel="noopener" title="태블릿·별도 창용 주소 (뒤에 &room=물리치료 를 붙이면 그 방 동선의 환자만)"><i data-lucide="external-link"></i> 새 창</a>
-    <button class="btn sm" id="slipWordsBtn" style="display:none" onclick="openSlipWords()" title="슬립에서 빨갛게 강조할 낱말 — 더하고 지우기"><i data-lucide="highlighter"></i> 강조 낱말</button>
-    <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()"><i data-lucide="x"></i> 닫기</button>
+    <a class="btn sm" href="?slip" target="_blank" rel="noopener" title="태블릿·별도 창용 주소 (뒤에 &room=물리치료 를 붙이면 그 방 동선의 환자만)"><i data-lucide="external-link"></i><span class="st-lbl"> 새 창</span></a>
+    <button class="btn sm" id="slipWordsBtn" style="display:none" onclick="openSlipWords()" title="슬립에서 빨갛게 강조할 낱말 — 더하고 지우기"><i data-lucide="highlighter"></i><span class="st-lbl"> 강조 낱말</span></button>
+    <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()" title="닫기"><i data-lucide="x"></i><span class="st-lbl"> 닫기</span></button>
   </div>
   <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-detail" id="slipDetail"></div></div>
 </div>
