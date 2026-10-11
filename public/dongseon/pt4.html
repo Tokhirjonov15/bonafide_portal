@@ -463,7 +463,7 @@ function dayView(date,doc,near){
   const seen=(META.manualNames[ym]||[]).map(n=>String(n).trim()).filter(n=>n&&!MANUAL_FIXED.includes(n));
   return {date,label:koreanDate(date),endMin,shortDay:isShortDay(date),therapists,borrowedFrom,
     ratios:dayRatios(therapists.map(t=>t.id),d.bookings,blocks,endMin),
-    bookings:sortBy(d.bookings,'startMin'),blocks,cancels:sortBy(d.cancels,'startMin'),manual:sortBy(d.manual,'no'),
+    bookings:sortBy(d.bookings,'startMin'),blocks,cancels:sortBy(d.cancels,'startMin'),manual:sortBy(d.manual.filter(m=>!m.hidden),'no'),
     manualTherapists:[...MANUAL_FIXED,...[...new Set(seen)].sort((a,b)=>a.localeCompare(b,'ko'))],note:d.note||'',consults:(META.consults||{})[ym]||{}};}
 
 /* ═════════ 쓰기 — 하루 문서를 트랜잭션으로 (동시 편집 보호) ═════════ */

@@ -450,15 +450,18 @@ function sasoCands(){const today=todayYmd();
       return {mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(th).trim(),why};});}
 /* 자동으로 들어와 아무도 손대지 않은 줄 (메모·색 없음, 마지막으로 고친 게 자동) */
 const autoUntouched=m=>(m.auto==='saso'||m.auto==='bonus')&&(m.updatedBy==='SASO 자동'||m.updatedBy==='주사 혜택 자동')&&!String(m.note||'').trim()&&!m.color;
-/* 빼야 할 자동 줄: 주사 혜택 환자가 아님 (빨간 SASO = 예전 규칙 줄 포함). 같은 환자는 하루 한 번만 — 예전 화면이 다시 넣으면 빨간 줄로 남아 알 수 있게 */
-const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>autoUntouched(m)&&!((d.manGone||[]).includes(mrnKey(m.mrn)))&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
+/* 빼야 할 자동 줄: 주사 혜택 환자가 아님 (빨간 SASO = 예전 규칙 줄 포함).
+   지우지 않고 숨긴다(hidden) — 아직 켜져 있는 예전 4층 창은 '그 환자 줄이 있다'고 보고 다시 넣지 않는다 (2026-10-11: 지우면 예전 창이 곧바로 다시 넣었다) */
+const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>!m.hidden&&autoUntouched(m)&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
 /* 빨간 SASO 줄인데 주사 혜택 환자면 파란 주사 줄로 바꾼다 (2026-10-11 요청) */
-const sasoRedOk=(d,cands)=>(d?d.manual:[]).filter(m=>m.auto==='saso'&&autoUntouched(m)&&cands.some(c=>c.mrn===mrnKey(m.mrn)));
-function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
-const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
+const sasoRedOk=(d,cands)=>(d?d.manual:[]).filter(m=>!m.hidden&&m.auto==='saso'&&autoUntouched(m)&&cands.some(c=>c.mrn===mrnKey(m.mrn)));
+function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m||m.hidden&&!m.bonusBack)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
+const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.filter(m=>!m.hidden).map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
   sasoRedOk(d,cands).forEach(m=>{const c=cands.find(x=>x.mrn===mrnKey(m.mrn));m.auto='bonus';m.why=c.why||'';m.updatedBy='주사 혜택 자동';m.updatedAt=now;if(c.th&&nullTh(m.therapistName))m.therapistName=c.th;aud(ctx,'update','manual_tx',m.id,{auto:'saso'},{auto:'bonus',why:m.why});n++;});
-  sasoStale(d,cands).forEach(m=>{d.manual.splice(d.manual.indexOf(m),1);d.manGone=[...(d.manGone||[]),mrnKey(m.mrn)];aud(ctx,'delete','manual_tx',m.id,m,{reason:'주사 혜택 환자 아님 (자동 정리)'});n++;});
-  for(const c of sasoTodo(d,cands)){const m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
+  {const st=sasoStale(d,cands);st.forEach(m=>{m.hidden=true;m.updatedAt=now;aud(ctx,'delete','manual_tx',m.id,m,{hidden:true,reason:'주사 혜택 환자 아님 (자동 정리 · 숨김)'});n++;});
+   if(st.length){let k=0;d.manual.filter(m=>!m.hidden).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(m=>{m.no=++k;});no=k;}}   // 숨긴 줄 자리를 비워 두지 않고 번호를 1부터 다시 (빈칸 없게)
+  for(const c of sasoTodo(d,cands)){let m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
+    if(m&&m.hidden){m.hidden=false;m.bonusBack=true;m.no=++no;m.auto='bonus';m.why=c.why||'';m.updatedBy='주사 혜택 자동';m.updatedAt=now;if(c.th&&nullTh(m.therapistName))m.therapistName=c.th;aud(ctx,'update','manual_tx',m.id,{hidden:true},{hidden:false,why:m.why});n++;continue;}   // 숨겼던 환자가 오늘 무료 치료를 골랐으면 다시 보이게
     if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'bonus',why:c.why||'',updatedBy:'주사 혜택 자동',createdAt:now,updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
     else{const bf=m.therapistName;m.therapistName=c.th;m.updatedBy=m.auto==='bonus'?'주사 혜택 자동':'SASO 자동';m.updatedAt=now;aud(ctx,'update','manual_tx',m.id,{therapistName:bf},{therapistName:c.th});}
     if(c.th)ctx.extra.manualName=c.th;n++;}

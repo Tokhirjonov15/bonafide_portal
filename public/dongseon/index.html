@@ -7417,7 +7417,7 @@ function pt4ToBk(doc){if(!doc)return null;const T=(PT4_META&&Array.isArray(PT4_M
       color:b.visited?'#ffe599':(b.color||''),visited:!!b.visited,note:b.note||'',mrn:b.mrn||'',room:b.room||'',name:b.patientName||'',visit:b.visitNo==null?'':b.visitNo,code:b.code||'',codeColor:b.codeColor||'',mark:b.mark||''})),
     blocks:(doc.blocks||[]).filter(k=>k.text).map(k=>({kind:'block',th:nm(k.therapistId),t:hhmm2(k.startMin),dur:k.endMin-k.startMin,text:k.text,color:k.kind==='off'?'#999999':(k.color||''),note:k.note||''})),
     cancels:(doc.cancels||[]).map(c=>({th:c.therapistName||'',t:hhmm2(c.startMin),text:c.text||'',mrn:c.mrn||'',name:c.patientName||'',color:c.color||'',note:c.note||''})),
-    manual:(doc.manual||[]).map(m=>({no:String(m.no),mrn:m.mrn||'',name:m.patientName||'',th:m.therapistName||'',color:m.color||'',note:m.note||''})),
+    manual:(doc.manual||[]).filter(m=>!m.hidden).map(m=>({no:String(m.no),mrn:m.mrn||'',name:m.patientName||'',th:m.therapistName||'',color:m.color||'',note:m.note||''})),
     stats:[{label:'당월 누적 상담수',value:Object.values(cons).reduce((a,n)=>a+(+n||0),0)},{label:'도수+충격파',key:'CME',value:visited.length-cry},{label:'신장분사+Hilt',key:'CRY',value:cry}]};}
 /* ═════ 신장분사 방에 들어온 환자 → 4층 비급여 예약표에 자동 추가 (2026-10-07 요청) ═════
    오늘 보드에서 지금 방이 '신장분사'인 환자가 오늘 예약표(pt4Day/오늘)에 없으면 넣는다(차트번호로 확인, 트랜잭션이라 여러 PC 가 동시에 해도 한 번).
