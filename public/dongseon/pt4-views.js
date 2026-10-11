@@ -431,13 +431,13 @@ window.newPtAdd=i=>{const D=D_();const c=newPtCands(D)[i];if(!c)return;
    보너스 기록 = 동선관리 patientboard_v3/…/bonus/{차트번호} (injDays·review·uses). 직원이 ✕ 로 지운 환자는 그 날 다시 넣지 않는다(manNo).
    예전 규칙(SASO 전부)으로 들어와 아무도 손대지 않은 오늘 줄 중 위 조건이 아닌 것은 뺀다 */
 const SASO_AUTO=true;
-let BONUS4={},BONUS4_SUB=null;
+let BONUS4={},BONUS4_SUB=null,BONUS4_READY=false;
 const BONUS_DAYS4=3, BONUS_ROOMS4=['SASO','아쿠아','롤러','기본물리치료'];
 function injRecent4(b,today){const t=new Date(today+'T12:00:00').getTime();return (Array.isArray(b&&b.injDays)?b.injDays:[]).some(d=>{const g=Math.round((t-new Date(String(d)+'T12:00:00').getTime())/864e5);return g>=0&&g<BONUS_DAYS4;});}
 let BOARD=null,BOARD_SUB=null,SASO_BUSY=false;
 const nullTh=s=>!String(s||'').trim()||/^null$/i.test(String(s).trim());
 const mrnKey=s=>String(s||'').replace(/\D/g,'');
-function watchBoard(){if(!BONUS4_SUB)BONUS4_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('bonus').onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const k=mrnKey(v.mrn||d.id);if(k)m[k]=v;});BONUS4=m;sasoSync();},e=>console.warn('bonus',e));
+function watchBoard(){if(!BONUS4_SUB)BONUS4_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('bonus').onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const k=mrnKey(v.mrn||d.id);if(k)m[k]=v;});BONUS4=m;BONUS4_READY=true;sasoSync();safeRender();},e=>console.warn('bonus',e));
   if(BOARD_SUB)return;
   BOARD_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('patients').onSnapshot(s=>{BOARD=s.docs.map(d=>d.data()||{});sasoSync();},e=>console.warn('board',e));}
 function sasoCands(){const today=todayYmd();
@@ -484,8 +484,30 @@ function manSrcTitle(m){const t=hhmm4(m.createdAt||m.updatedAt);
     :`직접 입력${m.updatedBy?' · '+m.updatedBy:''}${t?' · '+t:''}`;}
 /* 숨긴 자동 줄 (2026-10-11) — 주사 혜택 환자가 아니라서 숨긴 자동 줄을 보고, 필요하면 [되살리기]. 되살린 줄은 직원 줄로 보고 다시 숨기지 않는다 */
 let MAN_HID_OPEN=false;
-function manHiddenHtml(){const L=((DAYDOC&&DAYDOC.manual)||[]).filter(m=>m.hidden);if(!L.length)return '';
-  return `<div class="man-hid"><button type="button" class="ghost" onclick="MAN_HID_OPEN=!MAN_HID_OPEN;render()">${MAN_HID_OPEN?'▾':'▸'} 숨긴 자동 줄 ${L.length}개</button>
+/* 지난 날짜 자동 줄 정리 (2026-10-11 요청) — 오늘과 같은 기준: 치료사·메모·색 없는 자동 줄은 숨기고, 그 날 4층 관리에서 무료 치료를 고른 환자 줄은 파란 '주사'로 남긴다 */
+const MAN_AUTO_FROM='2026-10-07';   // 자동 넣기가 생긴 날
+function bonusCandsOn(date){return Object.entries(BONUS4||{}).map(([mrn,b])=>{const used=(Array.isArray(b.uses)?b.uses:[]).filter(u=>u&&u.date===date).map(u=>u.item);
+  return used.length?{mrn,why:date.slice(5).replace('-','/')+' 무료 '+used.join('·'),th:''}:null;}).filter(Boolean);}
+const opManClean=cands=>ctx=>{const d=ctx.d;const now=new Date().toISOString();let n=0;
+  sasoRedOk(d,cands).forEach(m=>{const c=cands.find(x=>x.mrn===mrnKey(m.mrn));m.auto='bonus';m.why=c.why;m.updatedBy='주사 혜택 자동';m.updatedAt=now;n++;});
+  const st=sasoStale(d,cands);st.forEach(m=>{m.hidden=true;m.updatedAt=now;aud(ctx,'delete','manual_tx',m.id,m,{hidden:true,reason:'지난 날짜 자동 줄 정리'});n++;});
+  if(st.length){let k=0;d.manual.filter(m=>!m.hidden).sort((a,b)=>(a.no||0)-(b.no||0)).forEach(m=>{m.no=++k;});}
+  return n?{ok:true,n:st.length}:{ok:false,noop:true,message:'정리할 자동 줄이 없습니다.'};};
+function manCleanCount(d,date){return d?sasoStale(d,bonusCandsOn(date)).length:0;}
+window.manCleanDay=()=>{const date=R.q.date;const k=manCleanCount(DAYDOC,date);if(!k)return;
+  if(!confirm(date+' Manual Tx 에서 치료사·메모·색이 없는 자동 줄 '+k+'개를 숨길까요?\n(그 날 4층 관리에서 무료 치료를 고른 환자는 남깁니다 · 숨긴 줄은 아래에서 되살릴 수 있습니다)'))return;
+  run(date,opManClean(bonusCandsOn(date)),false);};
+window.manCleanAll=async()=>{const today=todayYmd();const days=(META.dataDays||[]).filter(x=>x>=MAN_AUTO_FROM&&x<today).sort();
+  if(!days.length){toast('정리할 지난 날짜가 없습니다');return;}
+  if(!confirm(MAN_AUTO_FROM.slice(5).replace('-','/')+'부터 어제까지 '+days.length+'일의 Manual Tx 에서, 치료사·메모·색이 없는 자동 줄을 모두 숨길까요?\n(그 날 무료 치료를 고른 환자는 남깁니다 · 숨긴 줄은 그 날짜에서 되살릴 수 있습니다)'))return;
+  let total=0,dn=0;for(const day of days){const r=await commitDay(day,opManClean(bonusCandsOn(day)));if(r&&r.ok){total+=r.n||0;dn++;}}
+  toast(total?(dn+'일에서 자동 줄 '+total+'개를 숨겼습니다'):'정리할 자동 줄이 없었습니다',4000);safeRender();};
+function manHiddenHtml(){const L=((DAYDOC&&DAYDOC.manual)||[]).filter(m=>m.hidden);const date=R.q.date,today=todayYmd();
+  if(date<today&&!BONUS4_READY)watchBoard();   // 지난 날짜 정리에 쓸 보너스 기록 — 다 받기 전엔 정리 버튼을 내지 않는다
+  const k=date<today&&BONUS4_READY?manCleanCount(DAYDOC,date):0;
+  const tools=(k?`<button type="button" class="ghost" onclick="manCleanDay()" title="이 날 치료사·메모·색이 없는 자동 줄을 숨깁니다">이 날 자동 줄 정리 (${k})</button> `:'')+(date<today&&BONUS4_READY?'<button type="button" class="ghost" onclick="manCleanAll()" title="자동 넣기가 생긴 10/7부터 어제까지 한꺼번에">지난 날짜 모두 정리</button>':'');
+  if(!L.length)return tools?`<div class="man-hid">${tools}</div>`:'';
+  return `<div class="man-hid">${tools}<button type="button" class="ghost" onclick="MAN_HID_OPEN=!MAN_HID_OPEN;render()">${MAN_HID_OPEN?'▾':'▸'} 숨긴 자동 줄 ${L.length}개</button>
     ${MAN_HID_OPEN?`<ul>${L.map(m=>`<li>${manSrcTag(m)} ${esc(m.mrn)} <b>${esc(m.patientName)}</b> ${esc(m.therapistName||'')} <button type="button" class="ghost" onclick="manUnhide(${m.id})">되살리기</button></li>`).join('')}</ul>`:''}</div>`;}
 window.manUnhide=id=>run(R.q.date,ctx=>{const d=ctx.d;const m=d.manual.find(x=>x.id===id);if(!m)return {ok:false,message:'줄을 찾지 못했습니다.'};
   m.hidden=false;m.no=Math.max(0,...d.manual.filter(x=>!x.hidden&&x!==m).map(x=>Number(x.no)||0))+1;m.updatedBy=ME.name;m.updatedAt=new Date().toISOString();
