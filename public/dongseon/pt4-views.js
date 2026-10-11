@@ -448,9 +448,15 @@ function sasoCands(){const today=todayYmd();
       const used=(Array.isArray(b.uses)?b.uses:[]).filter(u=>u&&u.date===today).map(u=>u.item);const inj=(Array.isArray(b.injDays)?b.injDays:[]).slice().sort().pop()||'';
       const why=used.length?'오늘 무료 '+used.join('·'):('주사 '+inj.slice(5).replace('-','/')+(b.review?' + 리뷰':'')+(p.route.includes('기본물리치료')?' · 기본물리치료':''));
       return {mrn:mrnKey(p.mrn),name:String(p.name||'').trim(),th:String(th).trim(),why};});}
-const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>(m.auto==='saso'||m.auto==='bonus')&&!((d.manGone||[]).includes(mrnKey(m.mrn)))&&(m.updatedBy==='SASO 자동'||m.updatedBy==='주사 혜택 자동')&&nullTh(m.therapistName)&&!String(m.note||'').trim()&&!m.color&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
+/* 자동으로 들어와 아무도 손대지 않은 줄 (메모·색 없음, 마지막으로 고친 게 자동) */
+const autoUntouched=m=>(m.auto==='saso'||m.auto==='bonus')&&(m.updatedBy==='SASO 자동'||m.updatedBy==='주사 혜택 자동')&&!String(m.note||'').trim()&&!m.color;
+/* 빼야 할 자동 줄: 주사 혜택 환자가 아님 (빨간 SASO = 예전 규칙 줄 포함). 같은 환자는 하루 한 번만 — 예전 화면이 다시 넣으면 빨간 줄로 남아 알 수 있게 */
+const sasoStale=(d,cands)=>(d?d.manual:[]).filter(m=>autoUntouched(m)&&!((d.manGone||[]).includes(mrnKey(m.mrn)))&&!cands.some(c=>c.mrn===mrnKey(m.mrn)));
+/* 빨간 SASO 줄인데 주사 혜택 환자면 파란 주사 줄로 바꾼다 (2026-10-11 요청) */
+const sasoRedOk=(d,cands)=>(d?d.manual:[]).filter(m=>m.auto==='saso'&&autoUntouched(m)&&cands.some(c=>c.mrn===mrnKey(m.mrn)));
 function sasoTodo(d,cands){const no=(d&&d.manNo)||[];const out=[];for(const c of cands){if(no.includes(c.mrn))continue;const m=(d?d.manual:[]).find(x=>mrnKey(x.mrn)===c.mrn);if(!m)out.push(c);else if(c.th&&nullTh(m.therapistName))out.push(c);}return out;}
 const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Number(m.no)||0));let n=0;const now=new Date().toISOString();
+  sasoRedOk(d,cands).forEach(m=>{const c=cands.find(x=>x.mrn===mrnKey(m.mrn));m.auto='bonus';m.why=c.why||'';m.updatedBy='주사 혜택 자동';m.updatedAt=now;if(c.th&&nullTh(m.therapistName))m.therapistName=c.th;aud(ctx,'update','manual_tx',m.id,{auto:'saso'},{auto:'bonus',why:m.why});n++;});
   sasoStale(d,cands).forEach(m=>{d.manual.splice(d.manual.indexOf(m),1);d.manGone=[...(d.manGone||[]),mrnKey(m.mrn)];aud(ctx,'delete','manual_tx',m.id,m,{reason:'주사 혜택 환자 아님 (자동 정리)'});n++;});
   for(const c of sasoTodo(d,cands)){const m=d.manual.find(x=>mrnKey(x.mrn)===c.mrn);
     if(!m){const row={id:newId(d),no:++no,mrn:c.mrn,patientName:c.name,therapistName:c.th,color:'',note:'',auto:'bonus',why:c.why||'',updatedBy:'주사 혜택 자동',createdAt:now,updatedAt:now};d.manual.push(row);aud(ctx,'create','manual_tx',row.id,null,row);}
@@ -458,7 +464,7 @@ const opSaso=cands=>ctx=>{const d=ctx.d;let no=Math.max(0,...d.manual.map(m=>Num
     if(c.th)ctx.extra.manualName=c.th;n++;}
   return n?{ok:true}:{ok:false,noop:true};};
 async function sasoSync(){const date=R.q.date;if(!SASO_AUTO||SASO_BUSY||!BOARD||!(R.page==='schedule'||R.page==='m')||date!==todayYmd()||DAYDOC===undefined)return;
-  const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length&&!sasoStale(DAYDOC,cands).length)return;
+  const cands=sasoCands();if(!sasoTodo(DAYDOC,cands).length&&!sasoStale(DAYDOC,cands).length&&!sasoRedOk(DAYDOC,cands).length)return;
   SASO_BUSY=true;NO_UNDO=true;try{await commitDay(date,opSaso(cands));}catch(e){console.warn('saso',e);}NO_UNDO=false;SASO_BUSY=false;}
 /* Manual Tx 줄이 어디서 왔는지 (2026-10-11 요청: 주사 맞은 환자인지, 동선관리 SASO 목록인지 확인)
    주사 = 지금 규칙(주사 혜택 환자)으로 자동 · SASO = 예전 규칙(동선에 SASO 가 있는 환자 전부)으로 자동 · 표시 없음 = 직원이 직접 넣음 */
