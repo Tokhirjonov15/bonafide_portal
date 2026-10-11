@@ -822,6 +822,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-size:15px}
   .slip-top .hint{font-size:12px;color:var(--muted)}
   .slip-body{flex:1;display:flex;min-height:0}
+  .slip-upd{margin-left:10px;display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:999px;padding:2px 4px 2px 10px;font-size:12.5px;font-weight:800}
   body.wp-on .slip-detail,body.wp-on .slip-list{padding-bottom:var(--wpPad,16px)}
   body.wp-on .modal .body,body.wp-on #modalRail,body.wp-on .rs-modal-body{padding-bottom:var(--wpPad,16px) !important}   /* 환자 정보 등 창도 알림창 높이만큼 아래를 비운다 */   /* 대기 알림창이 떠 있으면 슬립 화면도 그만큼 아래를 비워 스크롤로 다 보이게 */
   .sd-chart{margin:8px 0;border:1px solid #c7d2fe;background:#f8faff;border-radius:10px;padding:8px 12px}
@@ -1952,7 +1953,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
 <!-- 슬립 화면: 왼쪽 오늘 처방 목록 환자, 오른쪽 환자 정보(위) + 약·주사 목록(아래). ?slip 으로 열면 이 화면만(태블릿) -->
 <div id="slipScreen" class="slip-screen">
   <div class="slip-top">
-    <b><i data-lucide="pill"></i> 슬립 화면</b><span class="hint" id="slipRoomLbl">전체</span>
+    <b><i data-lucide="pill"></i> 슬립 화면</b><span class="hint" id="slipRoomLbl">전체</span><span id="slipUpd" class="slip-upd" style="display:none">새 버전이 있습니다 <button type="button" class="btn sm" onclick="slipReloadNow()" title="환자 사이에 눌러 주세요 — 슬립을 보는 동안은 자동으로 새로고침하지 않습니다">지금 새로고침</button></span>
     <div class="slip-search"><i data-lucide="search"></i><input id="slipQ" type="search" name="ds-slip-find" placeholder="환자 성함·차트번호 검색" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" oninput="slipSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';slipSearch('');}"></div>
     <div class="spacer"></div>
     <a class="btn sm" href="?slip" target="_blank" rel="noopener" title="태블릿·별도 창용 주소 (뒤에 &room=물리치료 를 붙이면 그 방 동선의 환자만)"><i data-lucide="external-link"></i> 새 창</a>
@@ -3741,7 +3742,11 @@ function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=d
   const cb=document.getElementById('slipCloseBtn');if(cb)cb.style.display=SLIP_MODE?'none':'';
   {const wb=document.getElementById('slipWordsBtn');if(wb)wb.style.display=currentUser?'':'none';}
   renderSlipScreen();try{renderWaitPop();}catch(e){}}
-function closeSlipScreen(){slipOpen=false;try{sessionStorage.removeItem('slipKeep');}catch(e){}const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
+let SLIP_RELOAD_WAIT='';   // 슬립 때문에 미룬 새로고침 이유('새 버전'·'오래된 화면'·'메모리')
+function slipReloadWait(why){SLIP_RELOAD_WAIT=SLIP_RELOAD_WAIT||why;const b=document.getElementById('slipUpd');if(b)b.style.display='';}
+function slipReloadNow(){try{audit('새로고침(슬립 닫힘)',SLIP_RELOAD_WAIT);}catch(e){}try{flushBigLocal();}catch(e){}setTimeout(()=>location.reload(),300);}
+document.addEventListener('visibilitychange',()=>{if(SLIP_RELOAD_WAIT&&document.visibilityState==='hidden')slipReloadNow();});   // 안 보일 때 미뤘던 새로고침
+function closeSlipScreen(){if(SLIP_RELOAD_WAIT){setTimeout(slipReloadNow,0);}slipOpen=false;try{sessionStorage.removeItem('slipKeep');}catch(e){}const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
 /* 슬립 화면 환자 검색 (2026-10-01 요청): 성함·차트번호 일부로 왼쪽 목록을 거른다. 검색 중에는 새 처방이 와도 선택이 옮겨 가지 않는다 */
 var SLIP_Q='';
 /* 검색 칸 자동 채움 막기: 직원이 이 칸에 키를 누르거나 붙여넣지 않았는데 글자가 들어 있으면 브라우저 자동 채움(로그인 아이디)으로 보고 지운다 */
@@ -5660,6 +5665,7 @@ function ghostPatient(pid,why){
     if(REMOVED_PIDS.has(pid)||KNOWN_GONE.has(pid))return;   // 구독이 삭제를 봤다 — 정상 화면
     try{toast((nm?dispName(nm)+' 님 카드는 ':'이 카드는 ')+'다른 화면에서 이미 내보냈습니다. 화면이 오래되어 새로고침합니다.');}catch(e){}
     try{audit('오래된 화면 새로고침',nm+' — '+why);}catch(e){}
+    if(slipOpen&&document.visibilityState==='visible'){slipReloadWait('오래된 화면');return;}   // 슬립을 보는 중이면 닫을 때까지 미룬다 (2026-10-11)
     if(!_ghostReloadT)_ghostReloadT=setTimeout(()=>{try{flushBigLocal();}catch(e){}location.reload();},2500);
   },8000);
 }
@@ -13062,7 +13068,8 @@ function memTick(){
     try{console.warn('[mem] 높음',rec);}catch(e){}}
   if(pct<70)memWarned=false;
   if(pct>=92){   /* 곧 죽는다 — 입력 중이 아니고 창이 열려 있지 않으면 스스로 새로고침 */
-    const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''));
+    const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''))||(slipOpen&&document.visibilityState==='visible'&&pct<97);   // 슬립 보는 중은 정말 죽기 직전(97%)까지 미룸
+    if(busy&&slipOpen)slipReloadWait('메모리');
     try{console.warn('[mem] 한계 근접',rec,busy?'(사용 중이라 새로고침 보류)':'(자동 새로고침)');}catch(e){}
     if(!busy){try{sessionStorage.setItem('memReload',JSON.stringify(rec));}catch(e){} location.reload();}
   }
@@ -13080,7 +13087,9 @@ async function checkNewBuild(){try{
   if(sig===APP_SIG)return;
   const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''));
   if(busy){setTimeout(checkNewBuild,3*60000);return;} // 쓰는 중이면 3분 뒤 다시
-  if(slipOpen){if(!checkNewBuild.slipSince)checkNewBuild.slipSince=Date.now();if(Date.now()-checkNewBuild.slipSince<60*60000){setTimeout(checkNewBuild,3*60000);return;}}   // 슬립 화면(주사 중 처방 보기)은 손을 못 대므로 미룬다 — 1시간 넘으면 새로고침(슬립은 되살아남) (2026-10-10)
+  /* 2026-10-11 제보: 원장님이 주사하며 슬립을 보는 중 화면이 넘어갔다(주사 중엔 손을 못 댄다). 슬립이 열려 보이는 동안은 절대 새로고침하지 않고
+     슬립 위에 [지금 새로고침]만 띄운다 — 슬립을 닫거나 화면이 안 보일 때(다른 창·잠듦) 새로고침 */
+  if(slipOpen&&document.visibilityState==='visible'){slipReloadWait('새 버전');setTimeout(checkNewBuild,3*60000);return;}
   try{audit('새 버전 자동 새로고침');}catch(e){}
   setTimeout(()=>location.reload(),800);   /* 기록이 서버에 닿을 시간 — 바로 새로고침하면 이 기록이 빠져 원인 추적이 어려웠다 */
 }catch(_){}}
