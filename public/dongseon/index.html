@@ -890,7 +890,11 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-badges{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
   .sd-badge{background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:6px;padding:2px 9px;font-size:14px;font-weight:700}
   @media(max-width:760px){.slip-top{gap:6px;padding:6px 8px}.slip-top .st-lbl,#slipRoomLbl{display:none}.slip-top .st-title{white-space:nowrap;flex:none}.slip-top .slip-search{flex:1 1 auto}.slip-top .spacer{display:none}.slip-top .btn.sm{padding:6px 8px}}   /* 핸드폰: 슬립 화면 머리줄은 아이콘만, 검색 칸은 넓게 (2026-10-11 요청) */
-  .slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:12px;cursor:col-resize;touch-action:none;background:var(--panel);border-left:1px solid var(--line);border-right:1px solid var(--line)}.slip-split span{width:4px;height:44px;border-radius:3px;background:#94a3b8}   /* 태블릿·PC: 좌우로 끌어 목록 너비 (2026-10-11) */
+  .slip-body.list-off .slip-list{display:none!important}
+  .slip-split .sp-arrow{position:absolute;font-style:normal;font-size:11px;color:#64748b}.slip-split{position:relative}.slip-split .sp-arrow::before{content:'◀'}.slip-body.list-off .slip-split .sp-arrow::before{content:'▶'}
+  .slip-split .sp-arrow{top:8px}   /* 목록 숨기기/펴기 표시 (2026-10-12) */
+  @media(max-width:760px){.slip-split .sp-arrow{top:auto;left:12px}.slip-split .sp-arrow::before{content:'▲'}.slip-body.list-off .slip-split .sp-arrow::before{content:'▼'}}
+  .slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:14px;cursor:col-resize;touch-action:none;background:var(--panel);border-left:1px solid var(--line);border-right:1px solid var(--line)}.slip-split span{width:4px;height:44px;border-radius:3px;background:#94a3b8}   /* 태블릿·PC: 좌우로 끌어 목록 너비 (2026-10-11) */
   @media(max-width:760px){.slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:auto;height:22px;border-left:0;border-right:0;cursor:row-resize;touch-action:none;background:var(--panel);border-bottom:1px solid var(--line)}.slip-split span{width:44px;height:5px;border-radius:3px;background:#94a3b8}.slip-list{border-bottom:0!important}}   /* 목록 높이 조절 손잡이 (2026-10-11) */
   @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
@@ -1963,7 +1967,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
     <button class="btn sm" id="slipWordsBtn" style="display:none" onclick="openSlipWords()" title="슬립에서 빨갛게 강조할 낱말 — 더하고 지우기"><i data-lucide="highlighter"></i><span class="st-lbl"> 강조 낱말</span></button>
     <button class="btn sm" id="slipCloseBtn" onclick="closeSlipScreen()" title="닫기"><i data-lucide="x"></i><span class="st-lbl"> 닫기</span></button>
   </div>
-  <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-split" id="slipSplit" title="위아래로 끌어서 목록 높이 조절"><span></span></div><div class="slip-detail" id="slipDetail"></div></div>
+  <div class="slip-body"><div class="slip-list" id="slipList"></div><div class="slip-split" id="slipSplit" title="끌면 목록 크기 조절 · 한 번 누르면 목록 숨기기/펴기"><span></span><i class="sp-arrow"></i></div><div class="slip-detail" id="slipDetail"></div></div>
 <script>/* 환자 목록과 처방 사이 손잡이 (2026-10-11 요청) — 핸드폰(세로로 쌓임): 위아래로 끌어 목록 높이, 태블릿·PC(좌우): 좌우로 끌어 목록 너비. 이 기기에 기억 */
 (function(){const sp=document.getElementById("slipSplit"),L=document.getElementById("slipList");if(!sp||!L)return;
   const mq=window.matchMedia("(max-width:760px)");
@@ -1971,10 +1975,13 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
   const setW=px=>{const w=Math.max(160,Math.min(window.innerWidth*0.6,px));L.style.width=w+"px";L.style.flex="0 0 "+w+"px";};
   const apply=()=>{L.style.maxHeight=L.style.height=L.style.width=L.style.flex="";try{if(mq.matches){const v=+localStorage.getItem("dsSlipListH");if(v>0)setH(v);}else{const v=+localStorage.getItem("dsSlipListW");if(v>0)setW(v);}}catch(e){}};
   apply();mq.addEventListener("change",apply);
-  let p0=0,s0=0,on=false;
-  sp.addEventListener("pointerdown",e=>{on=true;const r=L.getBoundingClientRect();p0=mq.matches?e.clientY:e.clientX;s0=mq.matches?r.height:r.width;sp.setPointerCapture(e.pointerId);e.preventDefault();});
-  sp.addEventListener("pointermove",e=>{if(!on)return;if(mq.matches)setH(s0+e.clientY-p0);else setW(s0+e.clientX-p0);});
-  const end=()=>{if(!on)return;on=false;const r=L.getBoundingClientRect();try{localStorage.setItem(mq.matches?"dsSlipListH":"dsSlipListW",String(Math.round(mq.matches?r.height:r.width)));}catch(e){}};
+  /* 한 번 누르면(끌지 않고) 목록 숨기기/펴기 (2026-10-12 요청) */
+  const body=sp.parentElement;const setOff=v=>{body.classList.toggle("list-off",v);try{localStorage.setItem("dsSlipListOff",v?"1":"0");}catch(e){}};
+  try{if(localStorage.getItem("dsSlipListOff")==="1")body.classList.add("list-off");}catch(e){}
+  let p0=0,s0=0,on=false,mv=0;
+  sp.addEventListener("pointerdown",e=>{on=true;mv=0;const r=L.getBoundingClientRect();p0=mq.matches?e.clientY:e.clientX;s0=mq.matches?r.height:r.width;sp.setPointerCapture(e.pointerId);e.preventDefault();});
+  sp.addEventListener("pointermove",e=>{if(!on)return;mv=Math.max(mv,Math.abs((mq.matches?e.clientY:e.clientX)-p0));if(mv<5||body.classList.contains("list-off"))return;if(mq.matches)setH(s0+e.clientY-p0);else setW(s0+e.clientX-p0);});
+  const end=()=>{if(!on)return;on=false;if(mv<5){setOff(!body.classList.contains("list-off"));return;}const r=L.getBoundingClientRect();try{localStorage.setItem(mq.matches?"dsSlipListH":"dsSlipListW",String(Math.round(mq.matches?r.height:r.width)));}catch(e){}};
   sp.addEventListener("pointerup",end);sp.addEventListener("pointercancel",end);})();</script>
 </div>
 
@@ -3856,13 +3863,13 @@ function renderSlipScreen(){
   let detHtml=`<div class="sd-head">
       <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
       ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
-      <div class="sd-meta">${SLIP_SOLO?'':`차트 <b>${esc(it.mrn)}</b>`}${h.birth?(SLIP_SOLO?'':' · ')+esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
+      <div class="sd-meta">${h.birth?esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
     </div>
     ${SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:''}
     <div class="sd-body${it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,false)}</div>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
-      <button class="btn ${it.note.ack?'on':''}" onclick="ackSlip('${esc(it.id)}',${it.note.ack?'false':'true'})"><i data-lucide="check"></i> ${it.note.ack?'확인 취소':'확인'}</button>${SLIP_SOLO?'':`<button class="btn" onclick="popSlipSolo('${esc(it.mrn)}')" title="이 환자 화면만 따로 띄웁니다 (차트번호 없이, 이름 가운데 가림)"><i data-lucide="external-link"></i> 창 띄우기</button>`}<button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button></div>`;
+      <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button></div>`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
   slipShotsLoad(document);
