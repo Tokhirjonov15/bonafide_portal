@@ -11243,13 +11243,20 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
   const draw=L=>{if(!editId||!data.find(x=>x.id===editId&&String(x.mrn||'').trim()===mrn))return;
     if(!L.length){box.style.display='none';box.innerHTML='';return;}
     box.style.display='';
-    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${L.length}건 · 진료 녹음을 글로 바꾼 것 (틀린 곳이 있을 수 있음)</span></div>`+
-      L.map((r,i)=>`<div class="rt-item"><div class="rt-head"><b>${esc(String(r.startedAt||r.date||'').slice(5,10).replace('-','/'))} ${esc(hhmm(r.startedAt))}</b> · ${esc(r.room||'')} <span class="rt-src rt-${esc(r.src||'local')}">${esc(({chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'})[r.src||'local']||r.src)}</span>
-        <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div></div>`).join('');
+    /* 날짜별로 묶기 (2026-10-12 요청) — 오늘은 펼치고 지난 날은 접어 둔다(누르면 펼침, 펼친 날짜는 기억). 개수 제한 없음 */
+    const today=localYMD(new Date()),g={};L.forEach((r,i)=>{const d=String(r.date||r.startedAt||'').slice(0,10)||'날짜 없음';(g[d]=g[d]||[]).push([r,i]);});
+    const wd=['일','월','화','수','목','금','토'];const days=Object.keys(g).sort().reverse();
+    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${L.length}건 · 진료 녹음을 글로 바꾼 것 (틀린 곳이 있을 수 있음)</span></div>`+
+      days.map(d=>{const open=d===today?!REC_DAY_SHUT.has(mrn+d):REC_DAY_OPEN.has(mrn+d);const dw=/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':'';
+        return `<details class="rt-day"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} <span class="hint">${g[d].length}건</span></summary>`+
+        g[d].map(([r,i])=>`<div class="rt-item"><div class="rt-head"><b>${esc(String(r.startedAt||r.date||'').slice(5,10).replace('-','/'))} ${esc(hhmm(r.startedAt))}</b> · ${esc(r.room||'')} <span class="rt-src rt-${esc(r.src||'local')}">${esc(({chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'})[r.src||'local']||r.src)}</span>
+        <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div></div>`).join('')+'</details>';}).join('');
     box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}};
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
-  cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||''))).slice(0,20);
+  cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));   // 개수 제한 없이 (2026-10-12)
     recTextCache[mrn]={at:Date.now(),list:L};draw(L);}).catch(e=>console.warn('recText get',e));}
+const REC_DAY_OPEN=new Set(),REC_DAY_SHUT=new Set();   // 지난 날 펼친 것 / 오늘인데 접은 것 — 다시 그려도 그대로
+window.recDayToggle=function(k,open,isToday){if(isToday){open?REC_DAY_SHUT.delete(k):REC_DAY_SHUT.add(k);}else{open?REC_DAY_OPEN.add(k):REC_DAY_OPEN.delete(k);}};
 window.recTextCopy=function(i){const box=document.getElementById('recTextBox');const r=box&&box._list&&box._list[i];if(!r)return;
   navigator.clipboard.writeText(String(r.text||'')).then(()=>toast('녹음기록을 복사했습니다')).catch(()=>alert('복사하지 못했습니다'));};
 function fillRxBox(p){
@@ -13283,6 +13290,7 @@ boot();
   .rt-item{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--panel2)}.rt-head{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}.rt-head .btn{margin-left:auto}
   .rec-stt{flex-direction:column;align-items:flex-start;gap:4px}.rec-stt label{display:flex;gap:6px;align-items:center;cursor:pointer}
   .rt-src{font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;background:#e2e8f0;color:#334155}.rt-src.rt-chrome{background:#dbeafe;color:#1d4ed8}.rt-src.rt-openai{background:#dcfce7;color:#15803d}.rt-src.rt-clova{background:#fef3c7;color:#92400e}
+  .rt-day{margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:4px 8px;background:var(--panel)}.rt-day>summary{cursor:pointer;font-weight:800;font-size:14px;padding:4px 2px}.rt-day .rt-item{background:var(--panel2)}
   .rt-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;max-height:260px;overflow:auto;margin-top:4px;color:var(--text)}   /* 녹음기록 (2026-10-12) */
   .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
   .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
