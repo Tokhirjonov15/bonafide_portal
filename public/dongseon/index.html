@@ -2305,6 +2305,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
         <p class="hint">환자는 첫 번째 방에서 시작합니다.</p>
       </div>
       </div>
+      <div id="recTextBox" class="rec-text-box" style="display:none"></div>
       </div><!-- /pcol 좌(정보+동선) -->
       <div class="pcol">
       <div class="pmemo pcont" id="contBox" style="display:none">
@@ -10672,6 +10673,7 @@ function fillEditChart(p){
   try{fillNextBk(p);}catch(e){console.warn('nextBk',e);}   // 다음 예약 블록
   try{fillBookedBox(p);}catch(e){console.warn('bookedBox',e);} // 오늘 4층 예약으로 왔는지
   try{fillRxBox(p);}catch(e){console.warn('rxBox',e);}         // 비트 처방내역 표
+  try{fillRecTextBox(p);}catch(e){console.warn('recText',e);}   // 진료 녹음 받아쓰기 (2026-10-12)
   try{fillRxHist(p);}catch(e){console.warn('rxHist',e);}       // 과거 처방내역 (2026-10-01)
   try{fillRxHist(null,'rxHistAdd');}catch(e){}                  // 환자 정보 창에서는 추가용 칸을 숨긴다
   try{fillTreatBox(p);}catch(e){console.warn('treatBox',e);}   // 치료 회차 블록
@@ -11190,6 +11192,22 @@ function rxHistRender(box,mrn,docs){
   box.innerHTML=head+`<div class="rx-tblwrap rxh-wrap"><table class="rx-tbl rxh-tbl"><thead><tr><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th></tr></thead><tbody>${body}</tbody></table></div>`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
+/* ═ 녹음기록 — 진료 녹음을 진료실 PC 가 글로 바꾼 것(recText). 이 환자 차트번호로, 최근 것부터 (2026-10-12) ═ */
+window.recTextCache={};
+function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!box)return;const mrn=String((p&&p.mrn)||'').trim();
+  if(!mrn||!(cloud.active&&cloud.ref)){box.style.display='none';box.innerHTML='';return;}
+  const draw=L=>{if(!editId||!data.find(x=>x.id===editId&&String(x.mrn||'').trim()===mrn))return;
+    if(!L.length){box.style.display='none';box.innerHTML='';return;}
+    box.style.display='';
+    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${L.length}건 · 진료 녹음을 글로 바꾼 것 (틀린 곳이 있을 수 있음)</span></div>`+
+      L.map((r,i)=>`<div class="rt-item"><div class="rt-head"><b>${esc(String(r.startedAt||r.date||'').slice(5,10).replace('-','/'))} ${esc(hhmm(r.startedAt))}</b> · ${esc(r.room||'')}
+        <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div></div>`).join('');
+    box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}};
+  const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
+  cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||''))).slice(0,20);
+    recTextCache[mrn]={at:Date.now(),list:L};draw(L);}).catch(e=>console.warn('recText get',e));}
+window.recTextCopy=function(i){const box=document.getElementById('recTextBox');const r=box&&box._list&&box._list[i];if(!r)return;
+  navigator.clipboard.writeText(String(r.text||'')).then(()=>toast('녹음기록을 복사했습니다')).catch(()=>alert('복사하지 못했습니다'));};
 function fillRxBox(p){
   const box=document.getElementById('rxBox');if(!box)return;
   const rx=bitRxFor(p);
@@ -13217,6 +13235,9 @@ boot();
   .bb-tag.ok{background:var(--green-bg);color:var(--green)}
   .bb-tag.add{background:rgba(99,102,241,.16);color:var(--t-indigosoft)}
   .rx-tblwrap{max-height:320px;overflow:auto;margin-top:6px}
+  .rec-text-box{margin-top:12px}.rec-text-box .sect-t svg{width:15px;height:15px;vertical-align:-3px}
+  .rt-item{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--panel2)}.rt-head{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}.rt-head .btn{margin-left:auto}
+  .rt-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;max-height:260px;overflow:auto;margin-top:4px;color:var(--text)}   /* 녹음기록 (2026-10-12) */
   .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
   .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
   .dcr-back{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -13437,6 +13458,7 @@ boot();
     const rec={pid:p.id,who:p.name||'',mr,stream,fh,name,size:0,chain:Promise.resolve(),started:Date.now()};
     mr.ondataavailable=e=>{if(e.data&&e.data.size)append(rec,e.data);};
     mr.start(10000);REC=rec;badge();
+    pendAdd({file:name,pid:p.id,mrn:String(p.mrn||'').trim(),pname:p.name||'',room:r,at:new Date(rec.started).toISOString()});
     try{audit('진료 녹음 시작',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+name);}catch(e){}}
   async function stop(why){const rec=REC;if(!rec)return;REC=null;
     await new Promise(res=>{rec.mr.onstop=res;try{rec.mr.stop();}catch(e){res();}});
@@ -13453,6 +13475,27 @@ boot();
     BUSY=false;badge();}
   window.recCheck=recCheck;
   setInterval(()=>{recCheck();if(REC)badge();},2000);
+  /* ═ 받아쓰기 (2026-10-12) — 진료실 PC 의 변환 프로그램(tools/rec_transcribe.py)이 녹음 옆에 같은 이름의 .txt 를 만들면
+     읽어서 recText/{파일} 문서로 올린다 → 환자 정보 창 '녹음기록'. 이 PC 가 녹음한 파일만(대기 목록), 3일 지나면 포기 ═ */
+  const LS_PEND='dsRecPending';
+  const pendGet=()=>{try{return JSON.parse(localStorage.getItem(LS_PEND)||'[]')||[];}catch(e){return [];}};
+  const pendSet=L=>{try{localStorage.setItem(LS_PEND,JSON.stringify(L));}catch(e){}};
+  function pendAdd(x){const L=pendGet().filter(y=>y.file!==x.file);L.push(x);pendSet(L);}
+  let POLL_BUSY=false;
+  async function recPollTexts(){if(POLL_BUSY||!DIR||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref))return;const L=pendGet();if(!L.length)return;
+    if(!(await perm(false)))return;POLL_BUSY=true;const keep=[];
+    for(const x of L){if(REC&&REC.name===x.file){keep.push(x);continue;}
+      const txt=x.file.replace(/\.webm$/i,'.txt');let text=null;
+      try{const fh=await DIR.getFileHandle(txt);text=await (await fh.getFile()).text();}catch(e){}
+      if(text==null){if(Date.now()-new Date(x.at).getTime()<3*864e5)keep.push(x);continue;}
+      try{const id=x.file.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
+        await cloud.ref.collection('recText').doc(id).set({mrn:x.mrn,pid:x.pid,name:x.pname,room:x.room,startedAt:x.at,date:String(x.at).slice(0,10),file:x.file,
+          text:String(text).trim().slice(0,200000),at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
+        try{audit('진료 녹음 받아쓰기',x.pname+(x.mrn?' ('+x.mrn+')':'')+' · '+x.file);}catch(e){}
+        try{if(window.recTextCache)delete window.recTextCache[x.mrn];if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===x.mrn)fillRecTextBox(p);}}catch(e){}}
+      catch(e){console.warn('recText',e);keep.push(x);}}
+    pendSet(keep);POLL_BUSY=false;}
+  setInterval(recPollTexts,30000);setTimeout(recPollTexts,8000);
   window.addEventListener('beforeunload',e=>{if(REC){e.preventDefault();e.returnValue='녹음 중입니다';}});
   /* 설정 창 */
   window.recListMics=async ask=>{const sel=document.getElementById('recMicSel');if(!sel)return;
