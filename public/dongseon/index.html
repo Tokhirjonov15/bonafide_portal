@@ -13512,6 +13512,8 @@ boot();
   async function sttStop(rec){const st=rec.stt;st.on=false;clearInterval(st.timer);try{st.sr&&st.sr.stop();}catch(e){}
     await new Promise(r=>setTimeout(r,1200));   // 마지막 말이 들어올 시간
     await sttSave(rec,true);
+    try{if(DIR&&(await perm(false))){const fh=await DIR.getFileHandle(st.meta.file.replace(/.webm$/i,'.txt'),{create:true});const w=await fh.createWritable();await w.write(st.lines.join('
+')||'(받아쓴 말이 없습니다)');await w.close();}}catch(e){console.warn('stt txt',e);}   // 외장하드에도 녹음 옆에 같은 이름의 .txt (2026-10-12)
     try{audit('진료 녹음 받아쓰기(크롬)',st.meta.pname+(st.meta.mrn?' ('+st.meta.mrn+')':'')+' · '+st.lines.length+'줄');}catch(e){}}
   const LS_PEND='dsRecPending';
   const pendGet=()=>{try{return JSON.parse(localStorage.getItem(LS_PEND)||'[]')||[];}catch(e){return [];}};
