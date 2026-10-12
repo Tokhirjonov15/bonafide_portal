@@ -696,6 +696,8 @@ async function runMeta(promise,closeOnOk){BUSY=true;renderEditor();const r=await
 <script>document.write('<script src="pt4-views.js?v='+Date.now()+'"><\/script>');</script>
 <!-- 2026-10-11: 배포 중인 순간에 열면 pt4-views.js 를 못 받아 'renderSchedule is not defined' 가 났다 → 못 받았으면 몇 초 뒤 다시 연다(최대 5번) -->
 <script>if(typeof renderSchedule!=='function'){(function(){let n=0;try{n=+sessionStorage.getItem('pt4Retry')||0;}catch(e){}
-  if(n<5){try{sessionStorage.setItem('pt4Retry',String(n+1));}catch(e){}setTimeout(()=>location.reload(),2000+n*2000);}})();}else{try{sessionStorage.removeItem('pt4Retry');}catch(e){}}</script>
+  if(n<5){try{sessionStorage.setItem('pt4Retry',String(n+1));}catch(e){}setTimeout(()=>location.reload(),2000+n*2000);}})();}else{try{sessionStorage.removeItem('pt4Retry');}catch(e){}
+  /* 2026-10-12: 파일이 늦게 오는 동안 로그인이 먼저 끝나 화면을 그리면 '화면 파일을 받지 못했습니다'가 그대로 남았다 → 파일이 온 지금 다시 그린다 */
+  try{if(ME)safeRender();}catch(e){}}</script>
 </body>
 </html>
