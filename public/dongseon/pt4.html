@@ -664,7 +664,12 @@ let MOUSE_DOWN=false,RENDER_WAIT=false,DOWN_AT=0;
 document.addEventListener('mousedown',e=>{if(e.button===0){MOUSE_DOWN=true;DOWN_AT=Date.now();}},true);
 window.addEventListener('blur',()=>{if(MOUSE_DOWN){MOUSE_DOWN=false;if(RENDER_WAIT){RENDER_WAIT=false;setTimeout(safeRender,0);}}});   // 창 밖에서 뗀 경우
 document.addEventListener('mouseup',()=>{if(!MOUSE_DOWN)return;MOUSE_DOWN=false;if(RENDER_WAIT){RENDER_WAIT=false;setTimeout(safeRender,0);}},true);
-function safeRender(){if(MOUSE_DOWN&&Date.now()-DOWN_AT<4000){RENDER_WAIT=true;return;}MOUSE_DOWN=false;if(typing()){if(!PENDING){PENDING=true;document.activeElement.addEventListener('blur',()=>{setTimeout(()=>{PENDING=false;safeRender();},0);},{once:true});}return;}render();}
+/* 2026-10-12: 스크롤바를 누르면 mouseup 이 오지 않아 그리기가 사라졌다 → 4초 뒤에는 어쨌든 다시 그린다 */
+let RENDER_TIMER=0;
+function safeRender(){if(MOUSE_DOWN&&Date.now()-DOWN_AT<4000){RENDER_WAIT=true;if(!RENDER_TIMER)RENDER_TIMER=setTimeout(()=>{RENDER_TIMER=0;if(RENDER_WAIT){RENDER_WAIT=false;safeRender();}},4100-(Date.now()-DOWN_AT));return;}MOUSE_DOWN=false;if(typing()){if(!PENDING){PENDING=true;document.activeElement.addEventListener('blur',()=>{setTimeout(()=>{PENDING=false;safeRender();},0);},{once:true});}return;}render();}
+/* 2026-10-12: 자료는 왔는데 화면이 '불러오는 중…'·오류 문구로 남아 다른 탭에 갔다 와야 열리던 것 — 2초마다 확인해 다시 그린다 */
+setInterval(()=>{try{if(!ME||!metaReady||(R.page!=='schedule'&&R.page!=='m')||DAYDOC===undefined||typeof renderSchedule!=='function')return;
+  const app=document.getElementById('app');if(app&&app.querySelector(':scope > .loading, :scope > p.err'))safeRender();}catch(e){}},2000);
 function navHtml(){return `<header class="nav"><nav>${PAGES.filter(p=>p[0]!=='import'||canImport()).map(([k,l])=>`<a href="${href(k,(k==='schedule'||k==='m')&&R.q.date?{date:R.q.date}:{})}" class="${R.page===k?'on':''}">${l}</a>`).join('')}</nav>
   <span class="who">${esc(ME?ME.name:'')}${EMBED?'':` <button type="button" class="ghost" onclick="AUTH.signOut()">로그아웃</button>`}</span></header>`;}
 function render(){const app=document.getElementById('app');if(!ME)return;
@@ -693,7 +698,8 @@ async function run(date,op,closeOnOk=true){if(BUSY)return false;BUSY=true;MSG=''
 async function runMeta(promise,closeOnOk){BUSY=true;renderEditor();const r=await promise;BUSY=false;if(!r.ok){MSG=r.message||'실패';renderEditor();toast(MSG);return false;}if(closeOnOk){EDIT=null;MSG='';}renderEditor();safeRender();return r;}
 </script>
 <!-- 2026-10-08: 고친 뒤에도 브라우저가 예전 pt4-views.js 를 써서(가져오기 오류 문구가 옛것) 열 때마다 새로 받는다 -->
-<script>document.write('<script src="pt4-views.js?v='+Date.now()+'"><\/script>');</script>
+<!-- 2026-10-12: 매번 새로 받으면(147KB) 느려서(한국 → 해외 Cloudflare, 3~7초) 주소를 고정 — 서버가 must-revalidate 라 브라우저는 열 때마다 바뀌었는지 묻고(304) 바뀐 경우에만 새로 받는다 -->
+<script src="pt4-views.js"></script>
 <!-- 2026-10-11: 배포 중인 순간에 열면 pt4-views.js 를 못 받아 'renderSchedule is not defined' 가 났다 → 못 받았으면 몇 초 뒤 다시 연다(최대 5번) -->
 <script>if(typeof renderSchedule!=='function'){(function(){let n=0;try{n=+sessionStorage.getItem('pt4Retry')||0;}catch(e){}
   if(n<5){try{sessionStorage.setItem('pt4Retry',String(n+1));}catch(e){}setTimeout(()=>location.reload(),2000+n*2000);}})();}else{try{sessionStorage.removeItem('pt4Retry');}catch(e){}
