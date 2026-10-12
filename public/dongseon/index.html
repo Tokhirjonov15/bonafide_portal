@@ -870,6 +870,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .sd-body.has-shots{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
   @media (max-width:760px){.sd-body.has-shots{grid-template-columns:1fr}}
   .sd-shots{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+  .sd-past{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}.sd-past-day{margin-bottom:14px}.sd-past-h{font-size:14px;font-weight:800;color:var(--sub);margin-bottom:6px}
+  .sd-past-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}.sd-past-grid .sd-shot img{width:100%;display:block}   /* 이전 캡처 (2026-10-12) */
   .sd-shot{position:relative;border:1px solid var(--line);border-radius:8px;background:#111;overflow:hidden}
   .sd-shot{align-self:flex-start;max-width:100%}
   .sd-shot img{display:block;width:auto;max-width:100%;height:auto;max-height:75vh;object-fit:contain;min-height:60px;cursor:zoom-in}   /* 원래 크기보다 키우지 않는다(작은 사진이 깨져 보였다) — 크게는 눌러서 */
@@ -3510,6 +3512,7 @@ function subscribeBitIntake(){
   if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
       BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));applySlipMarks();onBitNotes();
+      try{slipShotIndex(BIT_NOTES);slipShotBackfill();}catch(e){console.warn('slipShots',e);}   // 슬립 캡처를 환자별 영구 목록에 (2026-10-12)
     },err=>console.warn('bitNote',err));
     /* 인쇄됨·확인 표시는 우리 앱 문서 아래 slipMark 에 둔다 (2026-10-01) — bitNote 는 진료실 감시 스크립트 전용이라
        직원 화면의 쓰기가 규칙에 막혀 저장되지 않았다(누른 화면에서만 잠깐 보이고 사라짐) */
@@ -3835,9 +3838,38 @@ function slipShotsLoad(doc){try{if(!cloud.storage||!doc)return;
   doc.querySelectorAll('.sd-shot img[data-path]').forEach(im=>{if(im.getAttribute('src'))return;const path=im.dataset.path;
     if(SLIP_SHOT_URL[path]){im.src=SLIP_SHOT_URL[path];return;}
     cloud.storage.ref(path).getDownloadURL().then(u=>{SLIP_SHOT_URL[path]=u;im.src=u;}).catch(e=>{im.alt='불러올 수 없음';console.warn('slip shot',e);});});}catch(e){console.warn('slip shots',e);}}
+/* ═ 이전 캡처 (2026-10-12 요청) — 슬립 캡처 기록(bitNote.shots)은 7일 뒤 지워지므로, 환자별 영구 목록 slipShots/{차트번호} = {mrn, shots:[{id,path,at,pc,w,h,date}], hidden:[id]} 에 모은다.
+   슬립 화면은 오늘 것만 그대로, [이전 캡처] 를 누르면 지난 캡처를 날짜별로. 사진 파일은 원래부터 저장소에 남아 있다 ═ */
+const SLIP_PAST_OPEN=new Set(), SLIP_PAST={};   // 펼친 차트번호 / 차트번호 → {at, shots, hidden}
+const SHOT_IDX_DONE=new Set();
+function slipShotsCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('slipShots'):null;}
+function slipShotIndex(notes){const col=slipShotsCol();if(!col||!currentUser)return;const by={};
+  (notes||[]).forEach(n=>{const mrn=normMrn(n&&n.mrn);if(!mrn)return;(Array.isArray(n.shots)?n.shots:[]).forEach(x=>{if(!x||!x.path||!x.id||SHOT_IDX_DONE.has(x.id))return;
+    (by[mrn]=by[mrn]||[]).push({id:String(x.id),path:String(x.path),at:String(x.at||''),pc:String(x.pc||''),w:Number(x.w)||0,h:Number(x.h)||0,date:String(n.date||String(x.at||'').slice(0,10))});});
+    const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];if(hid.length&&!SHOT_IDX_DONE.has('h:'+n.docId+hid.join(','))){SHOT_IDX_DONE.add('h:'+n.docId+hid.join(','));col.doc(mrn).set({mrn,hidden:firebase.firestore.FieldValue.arrayUnion(...hid)},{merge:true}).catch(()=>{});}});
+  Object.entries(by).forEach(([mrn,L])=>{col.doc(mrn).set({mrn,shots:firebase.firestore.FieldValue.arrayUnion(...L)},{merge:true}).then(()=>{L.forEach(x=>SHOT_IDX_DONE.add(x.id));delete SLIP_PAST[mrn];}).catch(e=>console.warn('slipShots',e));});}
+/* 처음 한 번: 아직 남아 있는(7일 안) 캡처 기록을 모은다 — 캡처가 있는 문서만 읽는다 */
+function slipShotBackfill(){try{if(localStorage.getItem('slipShotBackfill1')||!cloud.noteCol||!currentUser)return;localStorage.setItem('slipShotBackfill1','1');
+  cloud.noteCol.where('shotAt','>=','2026-10-01').get().then(s=>slipShotIndex(s.docs.map(d=>Object.assign({docId:d.id},d.data())))).catch(e=>{console.warn('slipShot backfill',e);try{localStorage.removeItem('slipShotBackfill1');}catch(_){}});}catch(e){}}
+function slipPastLoad(mrn){const col=slipShotsCol();if(!col||!mrn)return;if(SLIP_PAST[mrn]&&Date.now()-SLIP_PAST[mrn].at<120000)return;
+  SLIP_PAST[mrn]={at:Date.now(),shots:(SLIP_PAST[mrn]||{}).shots||null,hidden:[]};
+  col.doc(mrn).get().then(d=>{const v=d.exists?d.data():{};SLIP_PAST[mrn]={at:Date.now(),shots:Array.isArray(v.shots)?v.shots:[],hidden:Array.isArray(v.hidden)?v.hidden:[]};try{renderSlipScreen();}catch(e){}}).catch(e=>console.warn('slipPast',e));}
+function slipPastList(it){const mrn=normMrn(it&&it.mrn);const P=SLIP_PAST[mrn];if(!P||!P.shots)return null;const today=localYMD(new Date());
+  const hid=new Set([...(P.hidden||[]),...((it.note&&it.note.shotHidden)||[])]);
+  return P.shots.filter(x=>x&&x.path&&!hid.has(x.id)&&String(x.date||x.at||'').slice(0,10)<today).sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
+function slipPastBtn(it){const mrn=normMrn(it&&it.mrn);if(!mrn||!slipShotsCol())return '';slipPastLoad(mrn);const L=slipPastList(it);
+  if(L&&!L.length)return '';const on=SLIP_PAST_OPEN.has(mrn);
+  return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 진료실 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 접기':'이전 캡처'}${L?' '+L.length:''}</button>`;}
+window.slipPastToggle=function(mrn){if(SLIP_PAST_OPEN.has(mrn))SLIP_PAST_OPEN.delete(mrn);else SLIP_PAST_OPEN.add(mrn);renderSlipScreen();};
+function slipPastHtml(it){const mrn=normMrn(it&&it.mrn);if(!SLIP_PAST_OPEN.has(mrn))return '';const L=slipPastList(it);
+  if(!L)return '<div class="sd-past"><div class="hint">이전 캡처를 불러오는 중…</div></div>';if(!L.length)return '';
+  const g={};L.forEach(x=>{const d=String(x.date||x.at).slice(0,10);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
+  return '<div class="sd-past">'+Object.keys(g).sort().reverse().map(d=>`<div class="sd-past-day"><div class="sd-past-h">${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</div><div class="sd-past-grid">`+
+    g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
 function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨길까요?'))return;
   const n=BIT_NOTES.find(x=>x.docId===docId);const hid=[...new Set([...((n&&n.shotHidden)||[]),id])];
   saveSlipMark(docId,{shotHidden:hid});if(n)n.shotHidden=hid;
+  try{const col=slipShotsCol(),mrn=normMrn(n&&n.mrn);if(col&&mrn)col.doc(mrn).set({mrn,hidden:firebase.firestore.FieldValue.arrayUnion(id)},{merge:true});}catch(e){}
   try{audit('진료실 캡처 숨김',docId);}catch(e){}
   renderSlipScreen();}
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
@@ -3869,7 +3901,7 @@ function renderSlipScreen(){
     ${SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:''}
     <div class="sd-body${it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,false)}</div>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
-      <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button></div>`;
+      <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button>${slipPastBtn(it)}</div>${slipPastHtml(it)}`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
   slipShotsLoad(document);
