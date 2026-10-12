@@ -514,6 +514,46 @@ async function handleRoomCmd(env, chatId, name, text) {
   await env.DB.prepare(`INSERT OR REPLACE INTO room_subs (chat_id, room, name, added) VALUES (?,?,?,?)`).bind(chatId, room, name, Date.now()).run();
   await tgSendTo(env, chatId, `✅ '${room}' 도착·퇴실 알림을 구독했습니다.\n동선관리에서 환자 카드가 이 방에 들어오거나 나갈 때 알려 드립니다.\n해지: /room off ${room}`);
 }
+/* 진료 녹음 받아쓰기 — 유료 음성인식 중계 (2026-10-12). 동선관리가 녹음 파일(webm)을 보내면 고른 서비스로 넘기고 글만 돌려준다.
+   소리·글은 여기 저장하지 않는다. 헤더 x-provider: openai | clova
+   · openai: Secrets OPENAI_API_KEY (선택 OPENAI_STT_MODEL, 기본 gpt-4o-transcribe)
+   · clova : 네이버 클라우드 CLOVA Speech — Secrets CLOVA_INVOKE_URL(도메인의 Invoke URL), CLOVA_SECRET(Secret Key) */
+const STT_PROMPT = "정형외과 진료실 대화입니다. 무릎, 어깨, 허리, 목, 발목, 손목, 통증, 주사, 물리치료, 도수치료, 체외충격파, 엑스레이, MRI, 처방, 약.";
+async function dongseonStt(request, env) {
+  const provider = (request.headers.get("x-provider") || "").toLowerCase();
+  const audio = await request.arrayBuffer();
+  if (!audio.byteLength) return json({ error: "녹음 파일이 비었습니다." }, 400);
+  if (audio.byteLength > 24 * 1024 * 1024) return json({ error: "녹음이 너무 깁니다(24MB 넘음)." }, 413);
+  const blob = new Blob([audio], { type: "audio/webm" });
+  if (provider === "openai") {
+    if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 가 설정되지 않았습니다 (Cloudflare → Workers → bonafide-portal → 설정 → 변수 및 비밀)." }, 501);
+    const fd = new FormData();
+    fd.append("file", blob, "rec.webm");
+    fd.append("model", env.OPENAI_STT_MODEL || "gpt-4o-transcribe");
+    fd.append("language", "ko");
+    fd.append("prompt", STT_PROMPT);
+    fd.append("response_format", "json");
+    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { authorization: "Bearer " + env.OPENAI_API_KEY }, body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
+    return json({ text: String(j.text || "").trim(), provider });
+  }
+  if (provider === "clova") {
+    if (!env.CLOVA_INVOKE_URL || !env.CLOVA_SECRET) return json({ error: "CLOVA_INVOKE_URL · CLOVA_SECRET 이 설정되지 않았습니다." }, 501);
+    const fd = new FormData();
+    fd.append("media", blob, "rec.webm");
+    fd.append("params", new Blob([JSON.stringify({ language: "ko-KR", completion: "sync", wordAlignment: false, fullText: true,
+      boostings: [{ words: "무릎, 어깨, 허리, 발목, 손목, 주사, 물리치료, 도수치료, 체외충격파, 엑스레이, MRI, 처방" }] })], { type: "application/json" }));
+    const r = await fetch(env.CLOVA_INVOKE_URL.replace(/\/+$/, "") + "/recognizer/upload", { method: "POST", headers: { "X-CLOVASpeech-API-Key": env.CLOVA_SECRET }, body: fd });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || (j.result && j.result !== "COMPLETED")) return json({ error: "CLOVA 오류: " + (j.message || j.result || r.status) }, 502);
+    const segs = Array.isArray(j.segments) ? j.segments : [];
+    const mmss = ms => { const t = Math.floor((ms || 0) / 1000); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); };
+    const text = segs.length ? segs.map(x => `[${mmss(x.start)}] ${String(x.text || "").trim()}`).filter(l => !/\]\s*$/.test(l)).join("\n") : String(j.text || "").trim();
+    return json({ text, provider });
+  }
+  return json({ error: "x-provider 는 openai 또는 clova" }, 400);
+}
 async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebase ID 토큰> → 이메일 (Google 이 검증)
   const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
   if (!m) return "";
@@ -1733,6 +1773,11 @@ export default {
       await env.DB.prepare(`INSERT INTO meta (key,value) VALUES ('dongseon_rooms',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
         .bind(JSON.stringify(rooms)).run();
       return json({ ok: true, n: rooms.length });
+    }
+    if (url.pathname === "/api/dongseon/stt" && request.method === "POST") {   // 진료 녹음 → 유료 음성인식 (2026-10-12) — 키는 여기(Secrets)에만
+      const email = await fbEmailFromRequest(request);
+      if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+      return dongseonStt(request, env);
     }
     if (url.pathname === "/api/dongseon/notify") {   // 동선관리 방 도착·퇴실 → 텔레그램(/room 구독자)
       return dongseonNotify(request, env);

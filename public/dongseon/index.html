@@ -11244,7 +11244,7 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
     if(!L.length){box.style.display='none';box.innerHTML='';return;}
     box.style.display='';
     box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${L.length}건 · 진료 녹음을 글로 바꾼 것 (틀린 곳이 있을 수 있음)</span></div>`+
-      L.map((r,i)=>`<div class="rt-item"><div class="rt-head"><b>${esc(String(r.startedAt||r.date||'').slice(5,10).replace('-','/'))} ${esc(hhmm(r.startedAt))}</b> · ${esc(r.room||'')}
+      L.map((r,i)=>`<div class="rt-item"><div class="rt-head"><b>${esc(String(r.startedAt||r.date||'').slice(5,10).replace('-','/'))} ${esc(hhmm(r.startedAt))}</b> · ${esc(r.room||'')} <span class="rt-src rt-${esc(r.src||'local')}">${esc(({chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'})[r.src||'local']||r.src)}</span>
         <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div></div>`).join('');
     box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}};
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
@@ -13281,6 +13281,8 @@ boot();
   .rx-tblwrap{max-height:320px;overflow:auto;margin-top:6px}
   .rec-text-box{margin-top:12px}.rec-text-box .sect-t svg{width:15px;height:15px;vertical-align:-3px}
   .rt-item{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--panel2)}.rt-head{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}.rt-head .btn{margin-left:auto}
+  .rec-stt{flex-direction:column;align-items:flex-start;gap:4px}.rec-stt label{display:flex;gap:6px;align-items:center;cursor:pointer}
+  .rt-src{font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;background:#e2e8f0;color:#334155}.rt-src.rt-chrome{background:#dbeafe;color:#1d4ed8}.rt-src.rt-openai{background:#dcfce7;color:#15803d}.rt-src.rt-clova{background:#fef3c7;color:#92400e}
   .rt-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;max-height:260px;overflow:auto;margin-top:4px;color:var(--text)}   /* 녹음기록 (2026-10-12) */
   .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
   .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
@@ -13449,7 +13451,11 @@ boot();
   <label class="rec-row">녹음할 진료실 <select id="recRoomSel"></select></label>
   <div class="rec-row">저장 폴더 <b id="recDirName">-</b> <button type="button" class="btn sm" onclick="recPickDir()">폴더 고르기 (외장하드)</button></div>
   <div class="rec-row">마이크 <select id="recMicSel"></select> <button type="button" class="btn sm" onclick="recListMics(true)">마이크 찾기</button></div>
-  <label class="rec-row">받아쓰기 <select id="recSttSel"><option value="chrome">크롬 실시간 (무료 · 소리가 구글로 전송됨)</option><option value="local">진료실 PC 변환 (설치 필요 · 병원 밖으로 안 나감)</option><option value="">안 함</option></select></label>
+  <div class="rec-row rec-stt">받아쓰기 <span class="hint">(여러 개 고르면 같은 녹음을 각각 받아써서 비교)</span>
+    <label><input type="checkbox" value="chrome"> 크롬 실시간 <span class="hint">무료 · 구글로 전송</span></label>
+    <label><input type="checkbox" value="local"> 진료실 PC 변환 <span class="hint">무료 · 설치 필요 · 병원 밖으로 안 나감</span></label>
+    <label><input type="checkbox" value="openai"> OpenAI <span class="hint">유료 · 1분 약 9원</span></label>
+    <label><input type="checkbox" value="clova"> 네이버 클로바 <span class="hint">유료 · 네이버 클라우드 키 필요</span></label></div>
   <div class="rec-row"><button type="button" class="btn sm" id="recTestBtn" onclick="recTest()">5초 시험 녹음</button> <span class="hint" id="recTestMsg"></span></div>
   <div class="rec-foot"><button type="button" class="btn" onclick="recOff()">이 PC 녹음 끄기</button><span style="flex:1"></span><button type="button" class="btn" onclick="recDlgClose()">닫기</button><button type="button" class="btn primary" onclick="recSave()">저장 · 켜기</button></div>
 </div></div>
@@ -13504,12 +13510,13 @@ boot();
     mr.ondataavailable=e=>{if(e.data&&e.data.size)append(rec,e.data);};
     mr.start(10000);REC=rec;badge();
     const meta={file:name,pid:p.id,mrn:String(p.mrn||'').trim(),pname:p.name||'',room:r,at:new Date(rec.started).toISOString()};
-    if(sttMode()==='local')pendAdd(meta);else if(sttMode()==='chrome')sttStart(rec,meta);
+    rec.meta=meta;const M=sttModes();if(M.has('local'))pendAdd(meta);if(M.has('chrome'))sttStart(rec,meta);
     try{audit('진료 녹음 시작',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+name);}catch(e){}}
   async function stop(why){const rec=REC;if(!rec)return;REC=null;
     await new Promise(res=>{rec.mr.onstop=res;try{rec.mr.stop();}catch(e){res();}});
     rec.stream.getTracks().forEach(t=>t.stop());await rec.chain;badge();
     if(rec.stt)await sttStop(rec);
+    {const M=sttModes();['openai','clova'].forEach(pv=>{if(M.has(pv)&&rec.meta)cloudStt(rec,pv);});}
     const mins=Math.round((Date.now()-rec.started)/60000);
     toast(rec.err?`녹음 저장 중 오류가 있었습니다: ${rec.name}`:`녹음 저장: ${rec.name} (${mins}분)`);
     try{audit('진료 녹음 저장',rec.name+' · '+Math.round(rec.size/1024)+'KB'+(why?' · '+why:''));}catch(e){}}
@@ -13527,12 +13534,12 @@ boot();
   /* ═ 크롬 실시간 받아쓰기 (2026-10-12 — 먼저 무료로 시험) — 녹음과 함께 크롬 음성인식(ko-KR)을 켜 두고, 끊기면(조용하면 저절로 멈춘다) 다시 켠다.
      말이 끝날 때마다 [분:초] 와 함께 쌓고 1분마다·끝날 때 recText/{파일} 에 저장 → 환자 정보 창 '녹음기록'. 마이크는 윈도우 '기본 장치' ═ */
   const LS_STT='dsRecStt';
-  function sttMode(){try{const v=localStorage.getItem(LS_STT);return v==null?'chrome':v;}catch(e){return 'chrome';}}
-  window.sttMode=sttMode;
+  function sttModes(){let v=null;try{v=localStorage.getItem(LS_STT);}catch(e){}if(v==null||v==='')v='chrome';if(v==='none')v='';return new Set(v.split(',').filter(Boolean));}   // 예전 값('chrome'·'local'·'')도 그대로 읽힌다
+  window.sttModes=sttModes;
   const recDocId=file=>file.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
   async function sttSave(rec,final){const st=rec.stt;if(!st||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref))return;
     const text=st.lines.join('\n');if(!final&&text===st.saved)return;st.saved=text;const m=st.meta;
-    try{await cloud.ref.collection('recText').doc(recDocId(m.file)).set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
+    try{await cloud.ref.collection('recText').doc(recDocId(m.file)+'__chrome').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
         text:text||(final?'(받아쓴 말이 없습니다)':''),src:'chrome',live:!final,at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
       if(window.recTextCache)delete window.recTextCache[m.mrn];
       try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}}
@@ -13548,10 +13555,24 @@ boot();
       return sr;};
     try{st.sr=mk();st.sr.start();}catch(e){console.warn('stt start',e);}
     st.timer=setInterval(()=>sttSave(rec,false),60000);}
+  /* 유료 음성인식 (2026-10-12) — 녹음이 끝나면 파일을 포털 서버(/api/dongseon/stt)로 보내고, 서버가 키로 OpenAI·클로바에 넘겨 글을 받아 온다 */
+  const STT_LABEL={chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
+  async function cloudStt(rec,pv){const m=rec.meta;try{
+      const file=await rec.fh.getFile();const u=firebase.auth().currentUser;if(!u)return;const tok=await u.getIdToken();
+      const r=await fetch('/api/dongseon/stt',{method:'POST',headers:{authorization:'Bearer '+tok,'x-provider':pv,'content-type':'audio/webm'},body:file});
+      const j=await r.json().catch(()=>({}));if(!r.ok){toast(STT_LABEL[pv]+' 받아쓰기 실패: '+(j.error||r.status),6000);return;}
+      const text=String(j.text||'').trim()||'(받아쓴 말이 없습니다)';
+      await cloud.ref.collection('recText').doc(recDocId(m.file)+'__'+pv).set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
+        text:text.slice(0,200000),src:pv,at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
+      try{const fh=await DIR.getFileHandle(m.file.replace(/\.webm$/i,'.'+pv+'.txt'),{create:true});const w=await fh.createWritable();await w.write(text);await w.close();}catch(e){}
+      if(window.recTextCache)delete window.recTextCache[m.mrn];
+      try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}
+      try{audit('진료 녹음 받아쓰기('+STT_LABEL[pv]+')',m.pname+(m.mrn?' ('+m.mrn+')':'')+' · '+text.length+'자');}catch(e){}}
+    catch(e){console.warn('cloud stt',pv,e);toast(STT_LABEL[pv]+' 받아쓰기 실패: '+(e.message||e),6000);}}
   async function sttStop(rec){const st=rec.stt;st.on=false;clearInterval(st.timer);try{st.sr&&st.sr.stop();}catch(e){}
     await new Promise(r=>setTimeout(r,1200));   // 마지막 말이 들어올 시간
     await sttSave(rec,true);
-    try{if(DIR&&(await perm(false))){const fh=await DIR.getFileHandle(st.meta.file.replace(/\.webm$/i,'.txt'),{create:true});const w=await fh.createWritable();await w.write(st.lines.join('\r\n')||'(받아쓴 말이 없습니다)');await w.close();}}catch(e){console.warn('stt txt',e);}   // 외장하드에도 녹음 옆에 같은 이름의 .txt (2026-10-12)
+    try{if(DIR&&(await perm(false))){const fh=await DIR.getFileHandle(st.meta.file.replace(/\.webm$/i,'.chrome.txt'),{create:true});const w=await fh.createWritable();await w.write(st.lines.join('\r\n')||'(받아쓴 말이 없습니다)');await w.close();}}catch(e){console.warn('stt txt',e);}   // 외장하드에도 녹음 옆에 같은 이름의 .txt (2026-10-12)
     try{audit('진료 녹음 받아쓰기(크롬)',st.meta.pname+(st.meta.mrn?' ('+st.meta.mrn+')':'')+' · '+st.lines.length+'줄');}catch(e){}}
   const LS_PEND='dsRecPending';
   const pendGet=()=>{try{return JSON.parse(localStorage.getItem(LS_PEND)||'[]')||[];}catch(e){return [];}};
@@ -13583,13 +13604,13 @@ boot();
     const sel=document.getElementById('recRoomSel');const rooms=(typeof ROOMS!=='undefined'?ROOMS:[]).filter(r=>/진료실/.test(r));
     sel.innerHTML=rooms.map(r=>`<option ${r===(room()||'진료실1')?'selected':''}>${esc(r)}</option>`).join('');
     document.getElementById('recDirName').textContent=DIR?DIR.name:'(아직 안 고름)';document.getElementById('recTestMsg').textContent='';
-    {const ss=document.getElementById('recSttSel');if(ss)ss.value=sttMode();}
+    {const M=sttModes();document.querySelectorAll('#recDlg .rec-stt input').forEach(c=>{c.checked=M.has(c.value);});}
     recListMics(false);document.getElementById('recDlg').style.display='flex';};
   window.recDlgClose=()=>{document.getElementById('recDlg').style.display='none';};
   window.recPickDir=async()=>{try{const h=await window.showDirectoryPicker({id:'dsRec',mode:'readwrite'});DIR=h;await kvSet('dir',h);document.getElementById('recDirName').textContent=h.name;
       const el=document.getElementById('recBadge');if(el)el.dataset.noperm='';}catch(e){}};
   window.recSave=()=>{const r=document.getElementById('recRoomSel').value;if(!DIR){alert('저장 폴더(외장하드)를 먼저 골라 주세요.');return;}
-    try{localStorage.setItem(LS_ROOM,r);localStorage.setItem(LS_MIC,document.getElementById('recMicSel').value||'');localStorage.setItem(LS_STT,(document.getElementById('recSttSel')||{}).value||'');}catch(e){}
+    try{localStorage.setItem(LS_ROOM,r);localStorage.setItem(LS_MIC,document.getElementById('recMicSel').value||'');localStorage.setItem(LS_STT,[...document.querySelectorAll('#recDlg .rec-stt input:checked')].map(c=>c.value).join(',')||'none');}catch(e){}
     recDlgClose();badge();recCheck();toast(`이 PC 에서 ${r} 진료를 녹음합니다`);};
   window.recOff=async()=>{if(REC)await stop('녹음 끔');try{localStorage.removeItem(LS_ROOM);}catch(e){}recDlgClose();badge();toast('이 PC 녹음을 껐습니다');};
   window.recTest=async()=>{const m=document.getElementById('recTestMsg');if(!DIR){m.textContent='먼저 폴더를 고르세요';return;}
