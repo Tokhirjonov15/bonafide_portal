@@ -649,7 +649,8 @@ function parseHash(){const h=location.hash.replace(/^#\/?/,'');const [p,qs]=h.sp
   return {page:PAGES.some(x=>x[0]===p)?p:'schedule',q};}
 const href=(page,q)=>'#/'+page+(q&&Object.keys(q).length?'?'+Object.entries(q).map(([k,v])=>`${k}=${encodeURIComponent(v)}`).join('&'):'');
 window.go=(page,q)=>{location.hash=href(page,q);};
-function route(){R=parseHash();EDIT=null;MSG='';PAINT=null;renderEditor();
+/* 2026-10-12: pt4-views.js 가 아직 안 왔을 때 renderEditor 가 없어 여기서 멈추면 그 날 스케줄 구독(watchDay)이 시작되지 않아 '불러오는 중…'에 머물렀다 */
+function route(){R=parseHash();EDIT=null;MSG='';PAINT=null;try{if(typeof renderEditor==='function')renderEditor();}catch(e){console.warn('editor',e);}
   if(R.page==='schedule'||R.page==='m'){const date=isValidDate(R.q.date||'')?R.q.date:todayYmd();R.q.date=date;watchDay(date);}
   render();}
 function watchDay(date){if(SUB_DATE===date)return;if(SUB)SUB();SUB_DATE=date;DAYDOC=undefined;NEARDOC=null;
@@ -668,7 +669,9 @@ document.addEventListener('mouseup',()=>{if(!MOUSE_DOWN)return;MOUSE_DOWN=false;
 let RENDER_TIMER=0;
 function safeRender(){if(MOUSE_DOWN&&Date.now()-DOWN_AT<4000){RENDER_WAIT=true;if(!RENDER_TIMER)RENDER_TIMER=setTimeout(()=>{RENDER_TIMER=0;if(RENDER_WAIT){RENDER_WAIT=false;safeRender();}},4100-(Date.now()-DOWN_AT));return;}MOUSE_DOWN=false;if(typing()){if(!PENDING){PENDING=true;document.activeElement.addEventListener('blur',()=>{setTimeout(()=>{PENDING=false;safeRender();},0);},{once:true});}return;}render();}
 /* 2026-10-12: 자료는 왔는데 화면이 '불러오는 중…'·오류 문구로 남아 다른 탭에 갔다 와야 열리던 것 — 2초마다 확인해 다시 그린다 */
-setInterval(()=>{try{if(!ME||!metaReady||(R.page!=='schedule'&&R.page!=='m')||DAYDOC===undefined||typeof renderSchedule!=='function')return;
+setInterval(()=>{try{if(!ME||!metaReady||(R.page!=='schedule'&&R.page!=='m')||typeof renderSchedule!=='function')return;
+  if(SUB_DATE!==R.q.date){route();return;}   // 그 날 구독이 시작되지 않았으면 다시
+  if(DAYDOC===undefined)return;
   const app=document.getElementById('app');if(app&&app.querySelector(':scope > .loading, :scope > p.err'))safeRender();}catch(e){}},2000);
 function navHtml(){return `<header class="nav"><nav>${PAGES.filter(p=>p[0]!=='import'||canImport()).map(([k,l])=>`<a href="${href(k,(k==='schedule'||k==='m')&&R.q.date?{date:R.q.date}:{})}" class="${R.page===k?'on':''}">${l}</a>`).join('')}</nav>
   <span class="who">${esc(ME?ME.name:'')}${EMBED?'':` <button type="button" class="ghost" onclick="AUTH.signOut()">로그아웃</button>`}</span></header>`;}
@@ -704,6 +707,6 @@ async function runMeta(promise,closeOnOk){BUSY=true;renderEditor();const r=await
 <script>if(typeof renderSchedule!=='function'){(function(){let n=0;try{n=+sessionStorage.getItem('pt4Retry')||0;}catch(e){}
   if(n<5){try{sessionStorage.setItem('pt4Retry',String(n+1));}catch(e){}setTimeout(()=>location.reload(),2000+n*2000);}})();}else{try{sessionStorage.removeItem('pt4Retry');}catch(e){}
   /* 2026-10-12: 파일이 늦게 오는 동안 로그인이 먼저 끝나 화면을 그리면 '화면 파일을 받지 못했습니다'가 그대로 남았다 → 파일이 온 지금 다시 그린다 */
-  try{if(ME)safeRender();}catch(e){}}</script>
+  try{if(ME)route();}catch(e){}}</script>
 </body>
 </html>
