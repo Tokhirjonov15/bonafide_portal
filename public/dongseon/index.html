@@ -6798,7 +6798,21 @@ function applyColFilters(){
     if(inp&&document.activeElement!==inp){inp.focus();try{inp.setSelectionRange(inp.value.length,inp.value.length);}catch(e){}}}
 }
 var LAST_SEARCH_Q='';
+/* 2026-10-13: 카드의 선택칸(술기·진료·간호·방사선·상담 사유 등)을 열면 곧바로 닫히던 것 — 다른 화면·비트 갱신으로 보드를 다시 그리면
+   열린 select 가 새것으로 바뀌어 목록이 닫혔다. 보드 안 select 에 포커스가 있으면 그리기를 미루고, 고르거나(change) 벗어나면(blur) 바로 그린다(최대 15초) */
+let _renderSelHold=null,_renderSelPass=false;
+function renderSelBusy(){if(_renderSelPass)return false;const a=document.activeElement;
+  if(!(a&&a.tagName==='SELECT'&&a.closest&&a.closest('#board')))return false;
+  const drop=()=>{if(_renderSelHold){clearTimeout(_renderSelHold.t);_renderSelHold.off();_renderSelHold=null;}};
+  {const ev=window.event;if(ev&&(ev.type==='change'||ev.type==='input')&&ev.target===a){drop();return false;}}   // 방금 고른 그 선택칸의 처리(changeDoctor 등) — 바로 그린다
+  if(_renderSelHold&&_renderSelHold.el!==a)drop();   // 다른 선택칸(이미 다시 그려 사라진 것 등)에 걸린 대기는 버린다
+  if(!_renderSelHold){const el=a,t0=Date.now();
+    const go=()=>{if(!_renderSelHold)return;el.removeEventListener('blur',go);el.removeEventListener('change',go);clearTimeout(_renderSelHold.t);_renderSelHold=null;
+      setTimeout(()=>{_renderSelPass=true;try{render();}finally{_renderSelPass=false;}},0);};
+    _renderSelHold={el,t:setTimeout(go,15000),t0,off:()=>{el.removeEventListener('blur',go);el.removeEventListener('change',go);}};el.addEventListener('blur',go);el.addEventListener('change',go);}
+  return true;}
 function render(){
+  if(renderSelBusy())return;
   normalizeData();
   try{if(SUPPORT_OPEN)renderSupport();}catch(e){}
   try{if(BONUS_MGR_OPEN&&!BONUS_PID&&!BV)renderBonusMgr();}catch(e){}   // 혜택 관리 목록: 환자가 4층 방에 들고 나면 바로 반영 (2026-10-06)   // 진료지원 창이 열려 있으면 함께 갱신 (2026-10-05)
@@ -11552,9 +11566,9 @@ function routeByHtml(room){
 function rbyFields(p,room){
   const F=[],off=n=>!isOffToday(n),uniq=(cur,L)=>[...new Set([cur,...L].filter(Boolean))];
   const proc=isProcRoom(room),clinic=isClinicRoom(room),rdocs=(meta(room).doctors||[]).filter(off);
-  if(!CARD_STAFF_HIDE.doc(room)){if(proc){const sd=seenDocFor(p,room);F.push({k:'seen',label:'진료',cur:sd,opts:uniq(sd,DOCTORS)});}
+  if(!CARD_STAFF_HIDE.doc(room)){if(proc){const sd=seenDocFor(p,room);F.push({k:'seen',label:'진료',cur:sd,opts:uniq(sd,realDocs())});}
     const cur=docFor(p,room);
-    const opts=clinic?uniq(cur,[...rdocs,...allClinicDoctors()]):rdocs.length?uniq(cur,rdocs):uniq(cur,DOCTORS.filter(off));
+    const opts=clinic?uniq(cur,[...rdocs,...allClinicDoctors()]):rdocs.length?uniq(cur,rdocs):uniq(cur,realDocs().filter(off));
     F.push({k:'doc',label:proc?'술기':clinic?'진료의':(rdocs.length?'담당':'진료의'),cur,opts});}
   if(!CARD_STAFF_HIDE.nurse(room)){const cur=nurseFor(p,room),L=(meta(room).nurses||[]).filter(off);if(L.length||cur)F.push({k:'nurse',label:'간호',cur,opts:uniq(cur,L)});}
   if(!CARD_STAFF_HIDE.rad(room)){const cur=radFor(p,room),L=(meta(room).rads||[]).filter(off);if(L.length||cur)F.push({k:'rad',label:'방사선',cur,opts:uniq(cur,L)});}
@@ -11655,7 +11669,7 @@ window.onMrnInput=function(){
   try{fillPmemo(r.mrn);fillCalls(r.mrn);}catch(e){}
   if(!editId)try{fillRxHist({mrn:r.mrn},'rxHistAdd');}catch(e){}
 };
-function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)el.innerHTML=DOCTORS.map(d=>`<option value="${esc(d)}">`).join("");}
+function fillDoctorOpts(){const el=document.getElementById("doctorOpts");if(el)el.innerHTML=realDocs().map(d=>`<option value="${esc(d)}">`).join("");}
 /* 방별 담당 진료의: 같은 환자라도 방마다 다른 진료의를 지정할 수 있다.
    지정이 없는 방은 기본 진료의(접수 시 입력한 p.doctor)를 따른다. */
 /* 이 방의 담당 진료의. 방에 값이 있으면 그것(빈 문자열 = 일부러 '미지정'으로 둔 것 — 접수 때 고른 p.doctor 로 되돌아가지 않는다, 2026-09-24),
@@ -11678,11 +11692,11 @@ function doctorChipHtml(p,room){
     ? [...new Set([cur,...roomDocs,...allClinicDoctors()].filter(Boolean))]   // 진료실: 모든 의사(이 방 의사가 먼저) — 다른 진료실 의사를 고르면 그 진료실로 옮김 (2026-10-06)
     : (_r&&(meta(_r).doctors||[]).length)
     ? [...new Set([cur,...roomDocs].filter(Boolean))]
-    : [...new Set([cur,...DOCTORS.filter(n=>!isOffToday(n))].filter(Boolean))];
+    : [...new Set([cur,...realDocs().filter(n=>!isOffToday(n))].filter(Boolean))];
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
   const optHtml=`<option value="">(미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   if(isProcRoom(_r)){   // 시술 방: 진료본 의사 / 술기 의사 따로 (2026-10-06)
-    const sd=seenDocFor(p,_r), sOpts=[...new Set([sd,...DOCTORS].filter(Boolean))];
+    const sd=seenDocFor(p,_r), sOpts=[...new Set([sd,...realDocs()].filter(Boolean))];
     const sHtml=`<option value="">(미지정)</option>`+sOpts.map(d=>`<option value="${esc(d)}" ${d===sd?'selected':''}>${esc(d)}</option>`).join('');
     const fromBit=!(p.seenDocs&&Object.prototype.hasOwnProperty.call(p.seenDocs,_r))&&sd;
     return `<span class="doc-two"><span class="doc-lbl">진료</span><select class="doc-sel" title="진료본 의사${fromBit?' — 비트 처방에서 불러옴':''} (이 방 ${esc(_r)})" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeSeenDoc('${p.id}','${esc(_r)}',this.value)">${sHtml}</select>
@@ -11707,7 +11721,7 @@ function changeSeenDoc(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return
 function viewerDoctor(room){
   if(!currentUser)return '';
   const me=[currentUser.name,currentUser.id].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean);if(!me.length)return '';
-  const list=(room&&(meta(room).doctors||[]).length)?meta(room).doctors:DOCTORS;
+  const list=(room&&(meta(room).doctors||[]).length)?meta(room).doctors:realDocs();
   const hit=(list||[]).find(d=>me.includes(String(d||'').trim().toLowerCase()));
   return (hit&&!isOffToday(hit))?hit:'';}
 function autoAssignViewer(p){if(p&&p._viewOnly)return;
@@ -11723,7 +11737,10 @@ function autoAssignViewer(p){if(p&&p._viewOnly)return;
 /* 진료실 카드의 의사 칸 (2026-10-06 요청): 모든 의사를 고를 수 있고, 다른 진료실 담당 의사를 고르면 카드를 그 의사의 진료실로 옮긴다
    (보드에서 그 진료실로 끌어다 놓은 것과 같음 — moveByDrag). 옮긴 진료실의 담당으로 그 의사를 넣는다 */
 const isClinicRoom=r=>/^진료실\s*\d/.test(String(r||'').trim());
-function allClinicDoctors(){const s=new Set();ROOMS.forEach(r=>{if(isClinicRoom(r))(meta(r).doctors||[]).forEach(n=>n&&s.add(n));});(DOCTORS||[]).forEach(n=>n&&s.add(n));return [...s];}
+/* 진료의 목록에서 의사가 아닌 사람을 뺀다 (2026-10-13): 진료실 관리의 방 '진료의' 칸(SASO·기본물리치료 등엔 물리치료사)에 넣은 이름이
+   전체 진료의 목록(DOCTORS)에 자동으로 쌓여 진료실 카드에 물리치료사·간호사가 줄줄이 나왔다. 직원 목록에서 의사 아닌 파트에 있는 이름은 뺀다(명단에 없으면 둔다) */
+function realDocs(){return (DOCTORS||[]).filter(n=>{const g=rosterPart(n);return !g||g==='의사';});}
+function allClinicDoctors(){const s=new Set();ROOMS.forEach(r=>{if(isClinicRoom(r))(meta(r).doctors||[]).forEach(n=>n&&s.add(n));});realDocs().forEach(n=>n&&s.add(n));return [...s];}
 function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomDocs=p.roomDocs||{};
   if(nv&&isClinicRoom(room)&&curRoom(p)===room){const to=docRoomOf(nv);
@@ -11733,7 +11750,7 @@ function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;
       try{toast(dispName(p.name)+' 님 → '+to+' ('+nv+')');}catch(e){}
       return;}}
   p.roomDocs[room]=nv;   // '' 도 그대로 둔다 = 일부러 미지정 (지우면 접수 때 담당의로 되돌아가 '미지정'을 고를 수 없었다)
-  if(nv&&!DOCTORS.includes(nv)){DOCTORS.push(nv);saveDoctorsCfg();}
+  if(nv&&!DOCTORS.includes(nv)&&(isClinicRoom(room)||isProcRoom(room))){DOCTORS.push(nv);saveDoctorsCfg();}   // 진료실·시술 방에서 고른 사람만 진료의 목록에 (2026-10-13)
   audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
 /* 방별 담당 간호사 — 방에 간호사 목록이 있을 때만 카드에 선택칸 표시 */
 function nurseFor(p,room){return (p.roomNurses&&p.roomNurses[room])||'';}
@@ -12811,7 +12828,7 @@ function setRoomWaitName(i,v){if(!isAdmin())return;meta(ROOMS[i]).waitName=v.tri
 function setRoomDoctors(i,v){if(!isAdmin())return;
   const names=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
   meta(ROOMS[i]).doctors=names;
-  let grew=false;names.forEach(n=>{if(!DOCTORS.includes(n)){DOCTORS.push(n);grew=true;}});
+  let grew=false;if(isClinicRoom(ROOMS[i])||isProcRoom(ROOMS[i]))names.forEach(n=>{if(!DOCTORS.includes(n)){DOCTORS.push(n);grew=true;}});   // 진료실·시술 방만 — 물리치료 방의 치료사를 진료의 목록에 넣지 않는다 (2026-10-13)
   if(grew)saveDoctorsCfg();
   updateSheetStaffHist();saveRooms();render();}
 function setRoomNurses(i,v){if(!isAdmin())return;
