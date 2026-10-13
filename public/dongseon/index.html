@@ -2755,6 +2755,11 @@ function rxRouteCompute(p,h,stamp){
   if(want.length===1&&want[0]==='기본물리치료'&&ROOMS.includes('SASO'))want=['SASO','기본물리치료'];
   const FLOOR4_ANY=['4층 상담','SASO','자동차도수','C-Arm','Sono','충격파','신장분사','물리치료','기본물리치료'];
   if(ROOMS.includes('4층 대기실')&&!want.includes('4층 대기실')&&want.some(r=>FLOOR4_ANY.includes(r)))want=[...want,'4층 대기실'];
+  /* 2026-10-13 4층 직원 요청: 4층 치료는 정해진 순서가 없어 4층 대기실까지만 자동으로 넣는다 — 그 뒤(상담·도수·충격파·물리치료 등)는 직원이 직접 넣거나 끌어 옮긴다.
+     아래 규칙(진료 상담 생략·수납대기 자리)은 처방에 4층 치료가 있었는지(want0)로 판단 */
+  const F4_RX_ROOMS=['4층 상담','SASO','자동차도수','충격파','신장분사','물리치료','기본물리치료'];
+  const want0=want.slice(), up0=rxUpConsultRoom(), hadUp=!!(up0&&want0.includes(up0));
+  if(ROOMS.includes('4층 대기실'))want=want.filter(r=>!F4_RX_ROOMS.includes(r));
   /* 필수 상담 (2026-09-26 지시)
      · SONO·C-Arm·근전도·처치 중 하나라도 처방되면 → '진료 상담'을 그 방들 앞에 반드시
      · CS(신장분사치료 상담) 처방이면 → '4층 상담'을 반드시 (규칙이 이미 want 에 넣는다)
@@ -2765,7 +2770,7 @@ function rxRouteCompute(p,h,stamp){
   /* 2026-10-06: 진료실 뒤 상담은 4층 치료로 가는 환자에게는 넣지 않는다 — 4층은 4층 상담이 따로 있다.
      3층 시술(C-Arm·Sono·근전도·처치)이 있으면 여전히 반드시 */
   const FLOOR4_TREAT=['4층 상담','SASO','자동차도수','충격파','신장분사','물리치료','기본물리치료'];
-  const mustCons=!rxIsGreen(p)&&!!(consR&&(want.some(r=>CONSULT_NEEDS.includes(r))||(seenDoc&&!want.some(r=>FLOOR4_TREAT.includes(r)))));   // GREEN+ 는 진료실·비용 상담 없이 바로 시술 (2026-10-06)
+  const mustCons=!rxIsGreen(p)&&!!(consR&&(want.some(r=>CONSULT_NEEDS.includes(r))||(seenDoc&&!want0.some(r=>FLOOR4_TREAT.includes(r)))));   // GREEN+ 는 진료실·비용 상담 없이 바로 시술 (2026-10-06)
   const mustUp=!!(upR&&want.includes(upR));
   if(mustCons&&!want.includes(consR))want=[consR,...want];
   const step=Math.max(0,Math.min(p.step||0,p.route.length-1));
@@ -2799,7 +2804,7 @@ function rxRouteCompute(p,h,stamp){
   const pay=rest.find(isPayRoom)||(typeof payWaitRoom==='function'?payWaitRoom():'');
   if(pay&&!isPayRoom(cur)&&!next.includes(pay)){
     const up=rxUpConsultRoom(), f4=next.indexOf('4층 대기실',prefix.length);
-    if(up&&next.includes(up))next.push(pay);
+    if((up&&next.includes(up))||hadUp)next.push(pay);   // 4층 상담 처방 = 4층 치료까지 마친 뒤 수납 (4층 상담 방은 이제 자동으로 넣지 않으므로 처방으로 판단)
     else if(f4>=0)next.splice(f4,0,pay);
     else next.push(pay);
   }
