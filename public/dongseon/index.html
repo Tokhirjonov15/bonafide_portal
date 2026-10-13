@@ -11566,10 +11566,10 @@ function routeByHtml(room){
 function rbyFields(p,room){
   const F=[],off=n=>!isOffToday(n),uniq=(cur,L)=>[...new Set([cur,...L].filter(Boolean))];
   const proc=isProcRoom(room),clinic=isClinicRoom(room),rdocs=(meta(room).doctors||[]).filter(off);
-  if(!CARD_STAFF_HIDE.doc(room)){if(proc){const sd=seenDocFor(p,room);F.push({k:'seen',label:'진료',cur:sd,opts:uniq(sd,realDocs())});}
+  if(!CARD_STAFF_HIDE.doc(room)){if(proc){const sd=seenDocFor(p,room);F.push({k:'seen',label:'진료 원장님',cur:sd,opts:uniq(sd,realDocs())});}
     const cur=docFor(p,room);
     const opts=clinic?uniq(cur,[...rdocs,...allClinicDoctors()]):rdocs.length?uniq(cur,rdocs):uniq(cur,realDocs().filter(off));
-    F.push({k:'doc',label:proc?'술기':clinic?'진료의':(rdocs.length?'담당':'진료의'),cur,opts});}
+    F.push({k:'doc',label:proc?'술기 원장님':clinic?'원장님':(rdocs.length?'치료사':'원장님'),cur,opts});}
   if(!CARD_STAFF_HIDE.nurse(room)){const cur=nurseFor(p,room),L=(meta(room).nurses||[]).filter(off);if(L.length||cur)F.push({k:'nurse',label:'간호',cur,opts:uniq(cur,L)});}
   if(!CARD_STAFF_HIDE.rad(room)){const cur=radFor(p,room),L=(meta(room).rads||[]).filter(off);if(L.length||cur)F.push({k:'rad',label:'방사선',cur,opts:uniq(cur,L)});}
   return F;}
@@ -11582,8 +11582,8 @@ window.rbyEdit=function(room){
   ov=document.createElement('div');ov.id='rbyPop';ov.className='rby-pop-back';
   ov.innerHTML=`<div class="rby-pop" onclick="event.stopPropagation()"><div class="rby-pop-h"><b>${esc(room)}</b> — 담당 바꾸기</div>
     ${F.length?F.map(f=>`<label class="rby-f"><span>${esc(f.label)}</span>${sel('rbyF_'+f.k,f.cur,f.opts,'(미지정)')}</label>`).join(''):'<div class="hint">이 방은 진료실 관리에 담당 명단이 없습니다.</div>'}
-    <label class="rby-f"><span>이름표</span>${sel('rbyTag',by,tagOpts,'(그대로)')}</label>
-    <div class="hint">통계(진료·술기·간호·방사선 담당)에도 함께 바뀝니다.</div>
+    ${F.length===1?'':`<label class="rby-f"><span>이름표</span>${sel('rbyTag',by,tagOpts,'(그대로)')}</label>`}
+    <div class="hint">${F.length===1?'동선의 이름표와 통계에 함께 반영됩니다.':'통계(진료·술기·간호·방사선 담당)에도 함께 바뀝니다. 이름표 = 동선에 보이는 이름'}</div>
     <div class="rby-pop-b"><button type="button" class="btn sm" onclick="document.getElementById('rbyPop').remove()">취소</button><button type="button" class="btn sm primary" onclick="rbySave('${esc(room)}')">저장</button></div></div>`;
   ov.addEventListener('click',()=>ov.remove());ov.addEventListener('keydown',e=>{if(e.key==='Escape')ov.remove();});document.body.appendChild(ov);
   const f0=ov.querySelector('select');if(f0)f0.focus();};
@@ -11591,7 +11591,8 @@ window.rbySave=function(room){
   const p=editId?data.find(x=>x.id===editId):null;const ov=document.getElementById('rbyPop');if(!p||!ov){if(ov)ov.remove();return;}
   const F=rbyFields(p,room),val=id=>{const e=document.getElementById(id);return e?String(e.value||'').trim():null;};
   const ch={};F.forEach(f=>{const v=val('rbyF_'+f.k);if(v!==null&&v!==(f.cur||''))ch[f.k]=v;});
-  const tag=val('rbyTag')||'';ov.remove();
+  /* 담당 칸이 하나뿐인 방(진료실 = 원장님, 처치실 = 간호 …)은 이름표 칸 없이 그 칸에서 고른 사람이 이름표 (2026-10-13 요청) */
+  const tag=F.length===1?(val('rbyF_'+F[0].k)||''):(val('rbyTag')||'');ov.remove();
   const oldTag=(p.roomBy[room]||{}).by||'';
   if(!Object.keys(ch).length&&(!tag||tag===oldTag))return;
   const me=(currentUser&&currentUser.name)||'',at=new Date().toISOString(),bad=/x-?ray/i.test(room);
@@ -13557,7 +13558,7 @@ boot();
   .rrow .rby.rby-edit{cursor:pointer}.rrow .rby.rby-edit:hover{background:var(--line);color:var(--text)}   /* 눌러서 옮긴 사람 바꾸기 (2026-10-13) */
   .rby-pop-back{position:fixed;inset:0;z-index:3000;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:16px}
   .rby-pop{background:var(--panel);color:var(--text);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:14px;width:min(320px,100%);display:flex;flex-direction:column;gap:8px}
-  .rby-f{display:flex;align-items:center;gap:8px}.rby-f>span{flex:0 0 52px;font-weight:800;font-size:13px;color:var(--sub)}.rby-f select{flex:1}   /* 방 담당 칸 (2026-10-13) */
+  .rby-f{display:flex;align-items:center;gap:8px}.rby-f>span{flex:0 0 78px;font-weight:800;font-size:13px;color:var(--sub)}.rby-f select{flex:1}   /* 방 담당 칸 (2026-10-13) */
   .rby-pop-h{font-size:14px}.rby-pop select{width:100%;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:4px}
   .rby-pop input{font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:6px 8px}.rby-pop-b{display:flex;justify-content:flex-end;gap:6px}
   .treat-count.click:hover{background:rgba(99,102,241,.2)}
