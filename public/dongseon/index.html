@@ -2813,9 +2813,12 @@ function rxRouteCompute(p,h,stamp){
    const newR=mid.filter(r=>!rest.includes(r)&&!isPayRoom(r));
    if(cur===PAY_WAIT_NAME&&sameVer&&newR.length&&rxFresh(rxItemsOf(p))){
      payIdx=next.lastIndexOf(cur);payBack=next[payIdx+1]||'';
-     if(payBack){const tail=next.slice(payIdx+1).filter(r=>!isPayRoom(r));next.splice(payIdx+1,next.length,...tail,cur);}}}
+     if(payBack){const tail=next.slice(payIdx+1).filter(r=>!isPayRoom(r));next.splice(payIdx+1,next.length,...tail,cur);p.payAgain=true;}}}   // payAgain: 수납대기에서 새 처방으로 나간 환자 — 이후에도 수납대기는 늘 맨 끝
   const pay=rest.find(isPayRoom)||(typeof payWaitRoom==='function'?payWaitRoom():'');
-  if(pay&&!isPayRoom(cur)&&!next.includes(pay)){
+  /* 2026-10-13 요청: 수납대기에서 새 처방으로 나간 환자(payAgain)는 처방을 다시 짜도 수납대기가 맨 끝에 하나.
+     (전에는 지나온 수납대기가 동선 앞쪽에 있어 '이미 있음'으로 보고 끝의 수납대기를 빼거나, 4층 대기실 앞으로 넣었다) */
+  if(p.payAgain&&pay&&!isPayRoom(cur)){const tail=next.slice(prefix.length).filter(r=>!isPayRoom(r));next.splice(prefix.length,next.length,...tail,payWaitRoom()||pay);}
+  else if(pay&&!isPayRoom(cur)&&!next.includes(pay)){
     const up=rxUpConsultRoom(), f4=next.indexOf('4층 대기실',prefix.length);
     if((up&&next.includes(up))||hadUp)next.push(pay);   // 4층 상담 처방 = 4층 치료까지 마친 뒤 수납 (4층 상담 방은 이제 자동으로 넣지 않으므로 처방으로 판단)
     else if(f4>=0)next.splice(f4,0,pay);
@@ -2824,7 +2827,7 @@ function rxRouteCompute(p,h,stamp){
   p.routeRxHash=h; p.routeAuto=auto; if(stamp)p.routeRxAt=stamp;
   const changed=JSON.stringify(next)!==JSON.stringify(p.route);
   if(changed){ p.route=next; const ns=payBack?payIdx:next.indexOf(cur); if(ns>=0)p.step=ns; }   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */
-  return {changed,oldRoute:_oldRoute,next,mid,rxEdit:_rxEdit,payBack:changed?payBack:'',step:p.step,rxFields:{routeRxHash:p.routeRxHash,routeAuto:p.routeAuto,routeRxAt:p.routeRxAt}};
+  return {changed,oldRoute:_oldRoute,next,mid,rxEdit:_rxEdit,payBack:changed?payBack:'',step:p.step,rxFields:Object.assign({routeRxHash:p.routeRxHash,routeAuto:p.routeAuto,routeRxAt:p.routeRxAt},p.payAgain?{payAgain:true}:{})};
 }
 function rxRouteAfter(p,r){
   if(!r||!r.changed)return;
