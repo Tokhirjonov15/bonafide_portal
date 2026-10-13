@@ -2684,11 +2684,17 @@ function rxRuleHit(r,cod,nam){const hay=cod+' '+nam;
   if(r.notCod&&r.notCod.test(cod))return false;   // 코드로 제외(예: 처치 낱말이 촬영 지시문에 섞인 경우)
   return !!((r.codes&&r.codes.has(cod.toLowerCase()))||(r.cod&&r.cod.test(cod))||(r.nam&&r.nam.test(nam))||(r.any&&r.any.test(hay)));}
 /* 처방에서 갈 방들(ROUTE_ORDER 순서). 처방이 아직 없으면 null, 있는데 해당 방이 없으면 [] */
+/* 비트 접수취소 뒤 다시 접수한 카드(p.rxSince = 다시 접수한 시각 HH:MM, 2026-10-13 요청): 취소 전에 낸 처방 줄은 동선·자동 이동에 쓰지 않는다.
+   취소 전 처방이 비트에 남아 있어 새 카드가 옛 동선(비용 상담 → Sono → …)을 그대로 다시 받았다. 시각(t)이 없는 줄은 판단할 수 없어 둔다 */
+function rxLiveItems(p,items){
+  const s=p&&p.rxSince;if(!s||!Array.isArray(items))return items||[];
+  return items.filter(it=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(it&&it.t||''));return !m||(m[1].padStart(2,'0')+':'+m[2])>=s;});}
 function rxRoomsFor(p){
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;
-  if(!rx||!rx.items||!rx.items.length)return null;
+  const items=rxLiveItems(p,rx&&rx.items);
+  if(!items.length)return null;
   const hit=new Set();
-  rx.items.forEach(it=>{
+  items.forEach(it=>{
     const cod=String(it.cod||'').trim(), nam=String(it.nam||'').trim();
     ROUTE_RX_RULES.forEach(r=>{if(!hit.has(r.room)&&rxRuleHit(r,cod,nam))hit.add(r.room);});
   });
@@ -2704,8 +2710,8 @@ function spaceRoomsFromRx(p){
 /* 처방의 지문(코드·명칭) — 같은 처방을 두 번 반영하지 않으려고 */
 const RX_ROUTE_VER='2026-10-01b';   /* 동선 규칙 판(版). 규칙(순서·필수 방·수납 자리)을 고치면 이 값을 바꾼다 →
    이미 동선이 짜인 환자도 한 번 다시 계산된다. 안 바꾸면 처방이 그대로인 환자는 옛 규칙의 동선을 그대로 쓴다 (2026-09-26) */
-function rxHashOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;if(!rx||!rx.items||!rx.items.length)return '';
-  return RX_ROUTE_VER+'\n'+rx.items.map(x=>String(x.cod||'')+'|'+String(x.nam||'')).join('\n');}
+function rxHashOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const items=rxLiveItems(p,rx&&rx.items);if(!items.length)return '';
+  return RX_ROUTE_VER+'\n'+items.map(x=>String(x.cod||'')+'|'+String(x.nam||'')).join('\n');}
 /* 필수로 들어가야 하는 방(진료 상담·4층 상담)을 기준 순서(ROUTE_ORDER) 자리에 끼워 넣는다.
    지금 있는 방보다 앞자리여도 그 자리에 넣는다 — 상담은 시술 앞에 와야 하므로. 수납 방보다는 항상 앞.
    이미 동선에 있는 방은 부르지 않는다(지나온 기록을 흐트러뜨리지 않으려고) */
@@ -2864,7 +2870,7 @@ function applyRxRoutesAll(){
      x-ray 를 마친 뒤 SONO·C-ARM 처방이 오면 그 방으로 바로(같은 공간 순서: 근전도 → C-Arm → Sono → 처치).
    한 처방에 한 번, 여러 화면 중 한 화면만(카드 문서 xrayAutoKey·greenAutoKey 로 선점).
    이 기능을 켠 순간 보드에 있던 환자가 옛 처방으로 끌려가지 않도록, 처방을 낸 시각(줄의 t)이 15분 안인 것만 옮긴다 */
-function rxItemsOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return (rx&&Array.isArray(rx.items))?rx.items:[];}
+function rxItemsOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return rxLiveItems(p,(rx&&Array.isArray(rx.items))?rx.items:[]);}
 /* 비트 수납완료 뒤에 낸 처방의 방에 와 있으면 카드 이름 앞에 ⚠ (2026-10-13 요청).
    계산 시각 = bitPaid.at, 표시가 지워져도(뒤이은 비트 수납대기) bitPaidOnce 로 기억. 처방 줄의 시각(t, HH:MM)이 그보다 뒤인 줄 → 그 줄의 방 */
 function rxAfterPayHere(p,room){
@@ -4599,6 +4605,10 @@ function bitCreatePatient(r,name,reg){
   const _now=new Date().toISOString();
   const p={id:id(),seq:nextSeq(),ord:nextOrd(),mrn,name,birth,sex,tel:normTel(r.tel||''),smsOptOut:false,doctor,extraFee:0,silbi:false,silbiLimit:0,ins,reserveAt,receiveAt,route:[first],step:0,status:'대기',enteredAt:_now,statusSince:_now,arrivedAt:_now,waitMs:0,prepMs:0,activeMs:0,visits:[],notes:{},chart:'',researchChart:'',rxProc:'',rxItems:'',smsHistory:[]};
   p.memoToday=r.memoToday||r.castMemo||'';
+  /* 오늘 같은 환자의 접수가 비트에서 취소된 뒤 다시 접수 = 새 내원 — 취소 전 처방으로 동선을 짜지 않게 지금 시각부터의 처방만 (rxLiveItems, 2026-10-13) */
+  {const mk=rxMrnKey(mrn);
+   if(bitRevived(r)||(mk&&BIT_INTAKE.some(d=>d&&d.docId!==r.docId&&rxMrnKey(d.mrn)===mk&&(d.status==='취소'||d.cancelled)))){
+     const n=new Date();p.rxSince=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}}
   p.bit={firstVisit:r.firstVisit||'',prevVisit:r.prevVisit||'',visits:Number(r.visits||0),prevRoom:r.prevRoom||'',nextResv:r.nextResv||'',chojae:r.chojae||'',memoToday:r.memoToday||'',ins:r.ins||'',pc:r.pc||'',seenAt:r.seenAt||'',auto:true,
          ocmNum:String(r.ocmNum||''),room:r.room||'',castIp:r.castIp||'',cast:r.registered===true,needMrn:!mrn,memoSrc:p.memoToday||''};
   if(mrn){
