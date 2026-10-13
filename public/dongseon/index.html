@@ -11356,7 +11356,7 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
     box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${L.length}건 · 진료 녹음을 글로 바꾼 것 (틀린 곳이 있을 수 있음)</span></div>`+
       days.map(d=>{const open=d===today?!REC_DAY_SHUT.has(mrn+d):REC_DAY_OPEN.has(mrn+d);const dw=/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':'';
         return `<details class="rt-day"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} <span class="hint">${g[d].length}건</span></summary>`+
-        g[d].map(([r,i])=>`<div class="rt-item"><div class="rt-head"><b>${esc(String(r.startedAt||r.date||'').slice(5,10).replace('-','/'))} ${esc(hhmm(r.startedAt))}</b> · ${esc(r.room||'')} <span class="rt-src rt-${esc(r.src||'local')}">${esc(({chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'})[r.src||'local']||r.src)}</span>
+        g[d].map(([r,i])=>`<div class="rt-item"><div class="rt-head"><b>${esc((()=>{const d=new Date(r.startedAt||'');return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');})())}</b> · ${esc(r.room||'')} <span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(({chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'})[r.src||'local']||r.src)}</span>
         <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div></div>`).join('')+'</details>';}).join('');
     box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}};
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
@@ -13749,20 +13749,26 @@ boot();
   async function sttSave(rec,final){const st=rec.stt;if(!st||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref))return;
     const text=st.lines.join('\n');if(!final&&text===st.saved)return;st.saved=text;const m=st.meta;
     try{await cloud.ref.collection('recText').doc(recDocId(m.file)+'__chrome').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
-        text:text||(final?'(받아쓴 말이 없습니다)':''),src:'chrome',live:!final,at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
+        text:text||(final?'(받아쓴 말이 없습니다)':''),src:'chrome',live:!final,sttLog:st.log.join(' / ').slice(0,4000),restarts:st.restarts,at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
       if(window.recTextCache)delete window.recTextCache[m.mrn];
       try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}}
     catch(e){console.warn('stt save',e);}}
+  /* 2026-10-13: 31초 만에 멈췄다 — 크롬이 끊은 뒤 다시 켜기가 실패했다. 다시 켜기를 지킴이(4초마다)로도 확인하고, 끊긴 까닭을 sttLog 에 남긴다 */
   function sttStart(rec,meta){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){toast('이 브라우저는 음성인식을 지원하지 않습니다 (크롬에서 쓰세요)');return;}
-    const st={meta,lines:[],saved:'',on:true,fails:0,sr:null,timer:null};rec.stt=st;
-    const mk=()=>{const sr=new SR();sr.lang='ko-KR';sr.continuous=true;sr.interimResults=false;sr.maxAlternatives=1;
-      sr.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(!r.isFinal)continue;const t=String(r[0].transcript||'').trim();if(!t)continue;
-        const sec=Math.floor((Date.now()-rec.started)/1000);st.lines.push('['+pad(Math.floor(sec/60))+':'+pad(sec%60)+'] '+t);st.fails=0;}};
-      sr.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){st.on=false;toast('마이크 받아쓰기가 막혀 있습니다 — 크롬 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요',6000);}
-        else if(e.error!=='no-speech'&&e.error!=='aborted'){st.fails++;console.warn('stt',e.error);}};
-      sr.onend=()=>{if(!st.on)return;setTimeout(()=>{if(st.on)try{st.sr=mk();st.sr.start();}catch(err){console.warn('stt restart',err);}},st.fails>3?3000:250);};   // 조용하면 크롬이 스스로 멈춘다 — 다시 켠다
-      return sr;};
-    try{st.sr=mk();st.sr.start();}catch(e){console.warn('stt start',e);}
+    const st={meta,lines:[],saved:'',on:true,fails:0,sr:null,timer:null,dog:null,active:false,lastTry:0,log:[],restarts:0};rec.stt=st;
+    const note=ev=>{const sec=Math.floor((Date.now()-rec.started)/1000);st.log.push(pad(Math.floor(sec/60))+':'+pad(sec%60)+' '+ev);if(st.log.length>80)st.log.shift();};
+    const go=why=>{if(!st.on||st.active)return;st.lastTry=Date.now();
+      try{const sr=new SR();sr.lang='ko-KR';sr.continuous=true;sr.interimResults=false;sr.maxAlternatives=1;
+        sr.onstart=()=>{st.active=true;};
+        sr.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(!r.isFinal)continue;const t=String(r[0].transcript||'').trim();if(!t)continue;
+          const sec=Math.floor((Date.now()-rec.started)/1000);st.lines.push('['+pad(Math.floor(sec/60))+':'+pad(sec%60)+'] '+t);st.fails=0;}};
+        sr.onerror=e=>{note('오류 '+e.error);if(e.error==='not-allowed'||e.error==='service-not-allowed'){st.on=false;toast('마이크 받아쓰기가 막혀 있습니다 — 크롬 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요',6000);}
+          else if(e.error!=='no-speech'&&e.error!=='aborted')st.fails++;};
+        sr.onend=()=>{st.active=false;if(!st.on)return;note('끊김');setTimeout(()=>go('끊김 뒤'),st.fails>3?2000:150);};   // 조용하거나 1분쯤 지나면 크롬이 스스로 끊는다 — 곧바로 다시
+        st.sr=sr;sr.start();st.active=true;if(why){st.restarts++;}}
+      catch(err){st.active=false;note('다시 켜기 실패 '+(err&&err.name||err));}};
+    go('');
+    st.dog=setInterval(()=>{if(st.on&&!st.active&&Date.now()-st.lastTry>3000){note('지킴이 다시 켬');go('지킴이');}},4000);   // 혹시 onend 가 안 와도
     st.timer=setInterval(()=>sttSave(rec,false),60000);}
   /* 유료 음성인식 (2026-10-12) — 녹음이 끝나면 파일을 포털 서버(/api/dongseon/stt)로 보내고, 서버가 키로 OpenAI·클로바에 넘겨 글을 받아 온다 */
   const STT_LABEL={chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
@@ -13778,7 +13784,7 @@ boot();
       try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}
       try{audit('진료 녹음 받아쓰기('+STT_LABEL[pv]+')',m.pname+(m.mrn?' ('+m.mrn+')':'')+' · '+text.length+'자');}catch(e){}}
     catch(e){console.warn('cloud stt',pv,e);toast(STT_LABEL[pv]+' 받아쓰기 실패: '+(e.message||e),6000);}}
-  async function sttStop(rec){const st=rec.stt;st.on=false;clearInterval(st.timer);try{st.sr&&st.sr.stop();}catch(e){}
+  async function sttStop(rec){const st=rec.stt;st.on=false;clearInterval(st.timer);clearInterval(st.dog);try{st.sr&&st.sr.stop();}catch(e){}
     await new Promise(r=>setTimeout(r,1200));   // 마지막 말이 들어올 시간
     await sttSave(rec,true);
     try{if(DIR&&(await perm(false))){const fh=await DIR.getFileHandle(st.meta.file.replace(/\.webm$/i,'.chrome.txt'),{create:true});const w=await fh.createWritable();await w.write(st.lines.join('\r\n')||'(받아쓴 말이 없습니다)');await w.close();}}catch(e){console.warn('stt txt',e);}   // 외장하드에도 녹음 옆에 같은 이름의 .txt (2026-10-12)
