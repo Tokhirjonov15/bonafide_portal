@@ -2783,6 +2783,14 @@ function rxRouteCompute(p,h,stamp){
      · 4층 상담이 있으면 → 4층 상담 뒤(치료까지 마친 맨 끝) — 2026-09-26 지시 'CS+MM → 4층 상담 → 기본물리치료 → 수납대기' 와 같은 뜻
      · 4층 상담이 없으면 → 4층 대기실 바로 앞
      · 4층으로 안 가면 → 맨 끝 */
+  /* 2026-10-13 요청: 수납대기에서 (비트 계산까지 마쳤어도) 새 처방으로 방이 더 생기면 → 그 방들로 보내고, 치료 뒤 다시 수납대기.
+     같은 규칙 판에서 처방이 새로 온 경우만(규칙 판이 바뀌어 다시 짜는 것·옛 처방은 아님). 실제 이동은 트랜잭션 뒤 rxRouteAfter 가 moveTo 로 */
+  let payBack='',payIdx=-1;
+  {const sameVer=!_prevRx||_prevRx.split('\n')[0]===RX_ROUTE_VER;
+   const newR=mid.filter(r=>!rest.includes(r)&&!isPayRoom(r));
+   if(cur===PAY_WAIT_NAME&&sameVer&&newR.length&&rxFresh(rxItemsOf(p))){
+     payIdx=next.lastIndexOf(cur);payBack=next[payIdx+1]||'';
+     if(payBack){const tail=next.slice(payIdx+1).filter(r=>!isPayRoom(r));next.splice(payIdx+1,next.length,...tail,cur);}}}
   const pay=rest.find(isPayRoom)||(typeof payWaitRoom==='function'?payWaitRoom():'');
   if(pay&&!isPayRoom(cur)&&!next.includes(pay)){
     const up=rxUpConsultRoom(), f4=next.indexOf('4층 대기실',prefix.length);
@@ -2792,11 +2800,18 @@ function rxRouteCompute(p,h,stamp){
   }
   p.routeRxHash=h; p.routeAuto=auto; if(stamp)p.routeRxAt=stamp;
   const changed=JSON.stringify(next)!==JSON.stringify(p.route);
-  if(changed){ p.route=next; const ns=next.indexOf(cur); if(ns>=0)p.step=ns; }   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */
-  return {changed,oldRoute:_oldRoute,next,mid,rxEdit:_rxEdit};
+  if(changed){ p.route=next; const ns=payBack?payIdx:next.indexOf(cur); if(ns>=0)p.step=ns; }   /* 앞자리에 방이 끼어들어도 지금 방을 그대로 가리킨다 */
+  return {changed,oldRoute:_oldRoute,next,mid,rxEdit:_rxEdit,payBack:changed?payBack:'',step:p.step,rxFields:{routeRxHash:p.routeRxHash,routeAuto:p.routeAuto,routeRxAt:p.routeRxAt}};
 }
 function rxRouteAfter(p,r){
   if(!r||!r.changed)return;
+  /* 수납대기 → 새 처방 방 (2026-10-13). 트랜잭션은 로컬 카드를 바꾸지 않으므로(keepLocal) 새 동선을 먼저 옮겨 담고 움직인다 */
+  if(r.payBack&&!p.discharged&&curRoom(p)===PAY_WAIT_NAME){
+    p.route=[...r.next];p.step=r.step;Object.assign(p,r.rxFields);
+    const wasPaid=!!p.bitPaid;delete p.bitPaid;   // 비트 수납완료 표시는 앞 계산 것 — 새 치료는 아직 계산 전
+    moveTo(p.id,r.payBack);
+    try{audit('수납대기 → 새 처방 방',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+r.payBack+' (치료 뒤 다시 수납대기)'+(wasPaid?' · 비트 수납완료 표시 해제':''));}catch(e){}
+    try{toast(dispName(p.name)+' 님 새 처방 → '+r.payBack+' (치료 뒤 다시 수납대기)');}catch(e){}}
   try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(r.mid.join(' → ')||'(추가 없음)'));}catch(e){}
   if(r.rxEdit)routeChangeNotifyOnce(p,r.oldRoute,r.next,'처방 변경');}
 const RX_ROUTE_BUSY={};   // 카드 id → 트랜잭션 진행 중(같은 화면이 겹쳐 보내지 않게)
