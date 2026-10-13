@@ -8450,7 +8450,7 @@ function cardEl(p,colRoom){
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
-      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
+      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}',''))return;${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
@@ -9242,9 +9242,16 @@ function rxRouteOff(p,room){
   if(room===p.route[step+1])return false;
   if(typeof isSameSpace==='function'&&isSameSpace(p.route[step],room))return false;
   return true;}
-/* 끌어다 놓기로 옮길 때만 쓴다(비트·자동 이동은 그대로 moveTo). 동선을 벗어나면 안내하고, 그래도 옮길지 확인 */
-function moveByDrag(pid,room){
+/* 진료실1·2·3 에서 카드를 끌어 옮기거나 [종결]할 때 한 번 더 묻는다 (2026-10-13 요청) — 진료 중 잘못 옮기면 녹음·처방이 끝나 버린다 */
+const CLINIC_ASK_ROOMS=['진료실1','진료실2','진료실3'];
+function clinicLeaveOk(pid,toRoom){const p=data.find(x=>x.id===pid);if(!p)return true;
+  const cur=String(curRoom(p)||'').trim();if(!CLINIC_ASK_ROOMS.includes(cur)||toRoom===cur)return true;
+  return confirm('진짜로 옮기시겠습니까? 녹음과 처방이 종결됩니다');}
+/* 끌어다 놓기로 옮길 때만 쓴다(비트·자동 이동은 그대로 moveTo). 동선을 벗어나면 안내하고, 그래도 옮길지 확인.
+   opts.noAsk — 끌기가 아닌 곳(동선 줄 [이동]·진료의 선택)은 진료실 확인창 없이 */
+function moveByDrag(pid,room,opts){
   const p=data.find(x=>x.id===pid);if(!p)return;
+  if(!(opts&&opts.noAsk)&&!clinicLeaveOk(pid,room))return;
   /* 2026-10-01 시트 요청: 처방 동선 밖으로 끌 때 뜨던 경고창은 없앤다 (빨간 카드 표시는 그대로) */
   moveTo(pid,room);
   /* 동선 밖 방으로 끌거나 사이 방을 건너뛸 때 보내던 텔레그램 알림은 없앴다 (2026-10-06 요청) */
@@ -11468,7 +11475,7 @@ window.routeGo=function(i){
   const room=routeDraft[i];if(!room)return;
   if(JSON.stringify(routeDraft)!==JSON.stringify(p.route)&&!confirm('고치던 동선은 저장되지 않고, 카드의 지금 동선 기준으로 옮깁니다. 계속할까요?\n(고친 동선을 남기려면 [취소] 후 먼저 [저장])'))return;
   const from=curRoom(p);if(room===from&&i===(p.step||0))return;
-  moveByDrag(p.id,room);
+  moveByDrag(p.id,room,{noAsk:true});
   const q=data.find(x=>x.id===p.id);if(!q)return;
   routeDraft=[...q.route];renderRouteRows();
   try{renderEditStatus();renderModalRail();}catch(e){}
@@ -11574,7 +11581,7 @@ function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;
   if(nv&&isClinicRoom(room)&&curRoom(p)===room){const to=docRoomOf(nv);
     if(to&&to!==room){p.roomDocs[to]=nv;
       audit('진료실 이동(진료의 선택)',p.name+' · '+room+' → '+to+' ('+nv+')');
-      moveByDrag(p.id,to);
+      moveByDrag(p.id,to,{noAsk:true});
       try{toast(dispName(p.name)+' 님 → '+to+' ('+nv+')');}catch(e){}
       return;}}
   p.roomDocs[room]=nv;   // '' 도 그대로 둔다 = 일부러 미지정 (지우면 접수 때 담당의로 되돌아가 '미지정'을 고를 수 없었다)
@@ -12317,6 +12324,7 @@ function editSetStatus(st){ if(!editId)return; setStatus(editId,st); renderEditS
 /* 종결/내보내기: 저장 여부 확인 → 처리 → 같은 방의 다음 환자 정보 자동 열기 */
 function editNextStep(){
   if(!editId)return; const pid=editId; const p=data.find(x=>x.id===pid); if(!p)return;
+  if(!clinicLeaveOk(pid,''))return;   // 진료실1·2·3 [종결] 확인 (2026-10-13)
   const room=curRoom(p);
   const beforeQ=roomQueue(room); const idx=Math.max(0,beforeQ.findIndex(x=>x.id===pid));
   // 저장 여부
