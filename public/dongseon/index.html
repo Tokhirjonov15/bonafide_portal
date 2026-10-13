@@ -1243,6 +1243,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cd-tbl tr.sum th{border-top:2px solid var(--line)}
   .cd-tbl tr.cd-hit td{background:#fffbeb}
   .cd-sign{margin-top:10px;background:#1d4ed8;color:#fff;border-color:#1d4ed8;font-weight:700}
+  .cd-sign:hover{background:#1e40af;border-color:#1e40af;color:#fff}   /* .btn:hover 의 옅은 배경에 흰 글자가 묻혀 안 보이던 것 (2026-10-13) */
   .cd-pre{margin:0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:14px;line-height:1.5;background:var(--bg);border-radius:8px;padding:8px 10px}
   .cd-med{margin-top:8px;border-left:3px solid #6366f1}
   .sp-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);display:flex;flex-direction:column;gap:5px}
@@ -1481,6 +1482,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* ═══ 비급여 동의서 (2026-09-26): 태블릿에서 쓰기 좋게 큼직하게 ═══ */
   .cst-screen{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:16px}
   .cst-screen.show{display:flex}
+  /* 서명 화면은 환자가 본다 — 뒤의 동의서 데스크(다른 환자 목록·차팅)가 비치지 않게 불투명 (2026-10-13 요청) */
+  #consentScreen{background:#e2e8f0}
   .cst-cmp-row td{font-size:13px;color:var(--sub)}
   .cst-cmp.ok{color:#15803d}.cst-cmp.bad{color:#dc2626}
   .cst-price.from-hint{background:#fff7ed;border-color:#fb923c;color:#9a3412}
