@@ -927,6 +927,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #waitPop .wp-room{min-width:0;overflow:hidden;text-overflow:ellipsis}   /* 좁으면 방 이름만 줄이고 이름·분은 늘 보이게 */
   #waitPop .wp-a{display:flex;gap:6px;flex:0 0 auto}#waitPop select{width:128px;padding:5px 8px;border:2px solid #d1d5db;border-radius:8px;font-size:15px;background:#fff}
   #waitPop button{padding:5px 14px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:15px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
+  body:has(.modal-bg.show,.cdesk.show,.cst-info-pop.show,.cst-screen.show,.pt4-ov.show,.resv-screen.show,#pbScreen.show,.photo-lightbox.show,#shotZoom.show) #waitPop{display:none}   /* 첫 화면(보드)에서만 (2026-10-13) */
   @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-row{flex-wrap:wrap}#waitPop .wp-t{font-size:15px;white-space:normal}}
   #modal.view-only button[onclick="savePatient()"],#modal.view-only #delBtn,#modal.view-only #editStatusRow,#modal.view-only #modalRail{display:none !important}   /* 보기 전용 — 저장·삭제·상태 단추 숨김 */
   .pt4-ov{position:fixed;inset:0;z-index:450;background:var(--bg,#f6f7f9);display:none;flex-direction:column}
@@ -11086,7 +11087,10 @@ function waitAlertInfo(p){
    사유(대기 길어짐 / 동선관리 미사용)를 골라 [확인]해야 사라진다. 확인은 카드 문서 waitAck[방|입실시각] 에 남겨 모든 화면에서 함께 사라진다(같은 입실엔 다시 안 뜸) */
 const WAIT_POP_REASONS=['대기 길어짐','동선관리 미사용','환자 체크 누락'];
 function waitPopKey(p){return curRoom(p)+'|'+(p.enteredAt||'');}
-function waitPopHidden(){if(SLIP_SOLO||slipOpen||document.body.classList.contains('pb-on')||document.body.classList.contains('bonus-mode')||(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN))return true;const st=document.getElementById('statsModal');return !!(st&&st.classList.contains('show'));}   // 혜택 관리 창(일반 화면에서 연 것 포함)에서도 안 띄운다 (2026-10-06)   // 슬립 화면(?slip 포함)·창 띄우기·통계에서는 안 띄운다 (2026-10-03)
+/* 2026-10-13 요청: 대기 알림은 동선관리 첫 화면(보드)에서만 — 보드 위에 다른 화면·창(환자 정보·4층·진료 예약·동의서·진료지원·통계 등)이 열려 있으면 숨긴다.
+   그 화면들의 아래쪽이 알림에 가려 보이지 않았다. CSS(body:has)로 즉시 숨기고, 여기서는 알림창과 아래 여백을 치운다 */
+const WAIT_POP_OVER='.modal-bg.show,.cdesk.show,.cst-info-pop.show,.cst-screen.show,.pt4-ov.show,.resv-screen.show,#pbScreen.show,.photo-lightbox.show,#shotZoom.show';
+function waitPopHidden(){if(document.querySelector(WAIT_POP_OVER))return true;if(SLIP_SOLO||slipOpen||document.body.classList.contains('pb-on')||document.body.classList.contains('bonus-mode')||(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN))return true;const st=document.getElementById('statsModal');return !!(st&&st.classList.contains('show'));}   // 혜택 관리 창(일반 화면에서 연 것 포함)에서도 안 띄운다 (2026-10-06)   // 슬립 화면(?slip 포함)·창 띄우기·통계에서는 안 띄운다 (2026-10-03)
 /* 누가 어떤 방의 대기 알림을 보나 (2026-10-03 요청)
    admin = 모든 방 · 4층 직원(아래 명단) = 4층 쪽 방 · 의사(role doctor) = 없음 · 그 밖의 직원 = 3층 쪽 방 */
 const WAIT_POP_4F_STAFF=['서효성','김지은','허빈','한상훈','조현신','이세영','황지현','김건휘','김재하','신소현','고민정','박승규','임현주'];
