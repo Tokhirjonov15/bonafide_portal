@@ -570,6 +570,7 @@
   .card.bitpaid.designated{box-shadow:inset 4px 0 0 #f5b301,inset 0 0 0 2px rgba(34,197,94,.35),var(--shadow)}
   /* 비트 수납완료인데 아직 수납 방이 아닌 곳(Sono 등)에 있는 카드 — 초록 테두리가 흐려졌다 또렷해졌다 (2026-10-13 요청) */
   .card.bitpaid.bitpaid-away{animation:bitpaidPulse 1.4s ease-in-out infinite}
+  .rxap-mark{display:inline-flex;align-items:center;color:#d97706;margin-right:3px;vertical-align:-2px;flex-shrink:0}.rxap-mark svg{width:16px;height:16px;stroke-width:2.5}   /* 수납완료 뒤 처방 ⚠ (2026-10-13) */
   @keyframes bitpaidPulse{0%,100%{border-color:rgba(34,197,94,.25);box-shadow:inset 0 0 0 2px rgba(34,197,94,.12),var(--shadow)}
     50%{border-color:rgba(22,163,74,1);box-shadow:inset 0 0 0 3px rgba(22,163,74,.85),0 0 10px rgba(34,197,94,.55)}}
   @media (prefers-reduced-motion:reduce){.card.bitpaid.bitpaid-away{animation:none;border-color:rgba(22,163,74,1);box-shadow:inset 0 0 0 3px rgba(22,163,74,.85)}}
@@ -2864,6 +2865,15 @@ function applyRxRoutesAll(){
    한 처방에 한 번, 여러 화면 중 한 화면만(카드 문서 xrayAutoKey·greenAutoKey 로 선점).
    이 기능을 켠 순간 보드에 있던 환자가 옛 처방으로 끌려가지 않도록, 처방을 낸 시각(줄의 t)이 15분 안인 것만 옮긴다 */
 function rxItemsOf(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;return (rx&&Array.isArray(rx.items))?rx.items:[];}
+/* 비트 수납완료 뒤에 낸 처방의 방에 와 있으면 카드 이름 앞에 ⚠ (2026-10-13 요청).
+   계산 시각 = bitPaid.at, 표시가 지워져도(뒤이은 비트 수납대기) bitPaidOnce 로 기억. 처방 줄의 시각(t, HH:MM)이 그보다 뒤인 줄 → 그 줄의 방 */
+function rxAfterPayHere(p,room){
+  const at=(p&&p.bitPaid&&p.bitPaid.at)||(p&&p.bitPaidOnce);if(!at||!room)return false;
+  const d=new Date(at);if(isNaN(d)||localYMD(d)!==localYMD(new Date()))return false;
+  const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  return rxItemsOf(p).some(it=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(it.t||''));if(!m||(m[1].padStart(2,'0')+':'+m[2])<=hm)return false;
+    const cod=String(it.cod||'').trim(),nam=String(it.nam||'').trim();
+    return ROUTE_RX_RULES.some(r=>r.room===room&&rxRuleHit(r,cod,nam));});}
 function rxIsXrayCode(c){return XRAY_CODES.has(String(c||'').trim().toLowerCase())||XRAY_CODES.has(String(c||'').replace(/\s+/g,'').toLowerCase());}   // 엑스레이 처방코드 표만 (2026-10-06)
 function rxIsGreen(p){return rxItemsOf(p).some(x=>/green/i.test(String(x.cod||'')));}
 function rxFresh(items){const now=new Date(),nm=now.getHours()*60+now.getMinutes();
@@ -4474,6 +4484,7 @@ function bitApplyReceiveEnd(){
         const away=!isPayRoom(curRoom(q));
         const wasPaid=!!q.bitPaid;   // 늦게 연 화면이 이미 '수납완료' 카드로 만든 경우 — 표시만 유지하고 알림은 다시 띄우지 않음
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
+        if(!wasPaid)q.bitPaidOnce=q.bitPaid.at;   // 계산한 시각 — 표시가 지워져도 남김(그 뒤 처방 ⚠ 표시용, 2026-10-13)
         save(q);render();
         if(!wasPaid)audit(away?'비트 수납완료(방 그대로)':'비트 수납완료',q.name+(q.mrn?' ('+q.mrn+')':'')+' · '+curRoom(q));
         if((q.extraFee||0)>0&&!q.paid){try{notify('wallet','비트 수납완료',esc(dispName(q.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(q.extraFee)+'원이 미수납입니다.');}catch(e){}}
@@ -4500,7 +4511,7 @@ function bitApplyRestore(){
         .then(won=>{
           if(!won)return;
           const q=data.find(x=>x.id===p.id);if(!q)return;
-          q.bitPaid=null;save(q);render();
+          q.bitPaid=null;if(r.command===10)delete q.bitPaidOnce;save(q);render();   // 수납취소 = 계산이 없던 것으로(⚠ 기준도 지움). 수납대기(7)는 새 처방 뒤일 수 있어 남긴다
           audit('비트 '+(r.commandName||'수납취소')+'(표시 해제)',q.name+(q.mrn?' ('+q.mrn+')':''));
           try{toast('비트 '+(r.commandName||'수납취소')+' → '+dispName(q.name)+' 님 수납완료 표시 해제');}catch(e){}
         })
@@ -8419,7 +8430,7 @@ function cardEl(p,colRoom){
   c.innerHTML=`
     <div class="card-top">
       ${''/* #번호는 카드에서 뺐다 (2026-10-01 요청) — 내원 목록·통계에는 그대로 */}
-      <span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${bonusTag(p)}${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
+      ${rxAfterPayHere(p,_chipRoom)?`<span class="rxap-mark" title="비트 수납완료 뒤에 낸 처방입니다 — 추가 계산이 필요할 수 있어요">${icHtml('triangle-alert')}</span>`:''}<span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${bonusTag(p)}${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       ${p.bitCancel?`<span class="bitcancel-mark" title="비트에서 접수가 취소된 환자입니다${p.bitCancel.at?' ('+hhmm(p.bitCancel.at)+')':''} — 확인 후 카드를 삭제하거나 비트에서 재접수하세요"><i data-lucide="circle-x"></i> 비트 접수취소</span>`:''}
       ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
