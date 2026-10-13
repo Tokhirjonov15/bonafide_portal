@@ -11445,8 +11445,41 @@ function routeByHtml(room){
   const p=editId?data.find(x=>x.id===editId):null;if(!p||!p.roomBy)return '';
   const rb=p.roomBy[room];if(!rb||!rb.by)return '';
   /* 아이콘은 icHtml() 로 SVG 를 바로 넣는다 — <i data-lucide> 로 넣으면 매초 다시 그릴 때 변환될 때까지 사라져 깜빡였다 (2026-09-29) */
-  return `<span class="rby" title="${esc(rb.by)} 님이 ${esc(room)}(으)로 옮김${rb.at?' · '+hhmm(rb.at):''}">${icHtml('user-round')} ${esc(rb.by)}${rb.at?' <span class="rby-t">'+clockHM(rb.at)+'</span>':''}</span>`;
+  const can=!p._viewOnly&&!p.discharged;
+  return `<span class="rby${can?' rby-edit':''}" ${can?`role="button" tabindex="0" onclick="event.stopPropagation();rbyEdit('${esc(room)}')"`:''} title="${esc(rb.by)} 님이 ${esc(room)}(으)로 옮김${rb.at?' · '+hhmm(rb.at):''}${rb.editBy?' (이름 고침: '+esc(rb.editBy)+')':''}${can?' — 눌러서 옮긴 사람 바꾸기':''}">${icHtml('user-round')} ${esc(rb.by)}${rb.at?' <span class="rby-t">'+clockHM(rb.at)+'</span>':''}</span>`;
 }
+/* 옮긴 사람 바꾸기 (2026-10-13 요청) — 동선 행의 이름표를 누르면 물리치료사·간호사 명단에서 고른다(의사·진료지원·행정은 바꾸지 않음). 시각은 그대로.
+   통계에도 반영: 간호사 → 그 방 간호 담당(roomNurses, 시술 통계·카드 간호 칸) · 물리치료사 → 그 방 담당 치료사(roomDocs, 4층 도수 표·Manual Tx — 의사 방은 제외)
+   · [진행] 기록(progLog)이 있으면 그것도(의사 방·x-ray실 제외) */
+const RBY_TEAMS=['물리치료사','간호사'];
+const rbyDocRoom=r=>/^진료실/.test(r||'')||/c\s*-?\s*arm|sono|근전도/i.test(r||'');
+window.rbyEdit=function(room){
+  const p=editId?data.find(x=>x.id===editId):null;if(!p||p._viewOnly||p.discharged||!p.roomBy||!p.roomBy[room])return;
+  const cur=p.roomBy[room].by||'';const R=staffRoster();
+  let ov=document.getElementById('rbyPop');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='rbyPop';ov.className='rby-pop-back';
+  ov.innerHTML=`<div class="rby-pop" onclick="event.stopPropagation()"><div class="rby-pop-h"><b>${esc(room)}</b> — 옮긴 사람 바꾸기</div>
+    <select id="rbySel" size="12">${RBY_TEAMS.map(g=>(R[g]||[]).length?`<optgroup label="${esc(g)}">${R[g].map(n=>`<option value="${esc(n)}" data-team="${esc(g)}"${n===cur?' selected':''}>${esc(n)}</option>`).join('')}</optgroup>`:'').join('')}</select>
+    <div class="hint">통계(간호 담당·담당 치료사)에도 함께 바뀝니다.</div>
+    <div class="rby-pop-b"><button type="button" class="btn sm" onclick="document.getElementById('rbyPop').remove()">취소</button><button type="button" class="btn sm primary" onclick="rbySave('${esc(room)}')">저장</button></div></div>`;
+  ov.addEventListener('click',()=>ov.remove());document.body.appendChild(ov);
+  const sel=document.getElementById('rbySel');sel.addEventListener('dblclick',()=>rbySave(room));
+  sel.addEventListener('keydown',e=>{if(e.key==='Enter')rbySave(room);if(e.key==='Escape')ov.remove();});sel.focus();};
+window.rbySave=function(room){
+  const p=editId?data.find(x=>x.id===editId):null;const ov=document.getElementById('rbyPop');
+  const sel=document.getElementById('rbySel'),opt=sel&&sel.selectedOptions&&sel.selectedOptions[0];
+  const nv=String((opt&&opt.value)||'').trim(),team=(opt&&opt.dataset.team)||'';
+  if(ov)ov.remove();if(!p||!p.roomBy||!p.roomBy[room]||!nv||!RBY_TEAMS.includes(team))return;
+  const old=p.roomBy[room].by||'';if(nv===old)return;
+  const me=(currentUser&&currentUser.name)||'',at=new Date().toISOString();
+  const apply=d=>{if(!d.roomBy||!d.roomBy[room])return false;d.roomBy[room]=Object.assign({},d.roomBy[room],{by:nv,editBy:me,editAt:at});
+    if(team==='간호사'){d.roomNurses=d.roomNurses||{};d.roomNurses[room]=nv;}
+    if(team==='물리치료사'&&!rbyDocRoom(room)){d.roomDocs=d.roomDocs||{};d.roomDocs[room]=nv;}
+    if(d.progLog&&d.progLog[room]&&!rbyDocRoom(room)&&!/x-?ray/i.test(room))d.progLog[room]=nv;
+    return d;};
+  apply(p);saveLocal();cloudPatientTxn(p.id,apply,{keepLocal:true});
+  try{audit('옮긴 사람 수정',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+room+' : '+(old||'-')+' → '+nv+' ('+team+')');}catch(e){}
+  try{renderRouteRows();render();}catch(e){}};
 function renderRouteRows(){
   const box=document.getElementById("routeRows");
   if(!routeDraft.length){box.innerHTML=`<div class="route-empty">아직 동선이 없습니다. 아래 방 버튼을 누르세요.</div>`;return;}
@@ -13385,6 +13418,11 @@ boot();
   .rrow .rby{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--muted);background:var(--chip);border-radius:20px;padding:1px 8px;margin-left:6px;white-space:nowrap}
   .rrow .rby i,.rrow .rby svg{width:11px;height:11px}   /* icHtml() 이 넣는 SVG 도 같은 크기로 (2026-09-29) */
   .rrow .rby .rby-t{font-weight:600;opacity:.75}
+  .rrow .rby.rby-edit{cursor:pointer}.rrow .rby.rby-edit:hover{background:var(--line);color:var(--text)}   /* 눌러서 옮긴 사람 바꾸기 (2026-10-13) */
+  .rby-pop-back{position:fixed;inset:0;z-index:3000;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:16px}
+  .rby-pop{background:var(--panel);color:var(--text);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:14px;width:min(320px,100%);display:flex;flex-direction:column;gap:8px}
+  .rby-pop-h{font-size:14px}.rby-pop select{width:100%;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:4px}
+  .rby-pop input{font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:6px 8px}.rby-pop-b{display:flex;justify-content:flex-end;gap:6px}
   .treat-count.click:hover{background:rgba(99,102,241,.2)}
   .treat-count .tc-fix{margin-left:6px;font-size:10px;font-weight:700;opacity:.75;border:1px dashed currentColor;border-radius:4px;padding:0 4px}
   .treat-count b{font-size:12.5px}
