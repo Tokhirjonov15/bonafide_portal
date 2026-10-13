@@ -322,17 +322,66 @@ const DOC_DUTY_BASE=(()=>{const o={},A=(d,...n)=>{o[d]=n;};
   A('2026-10-26','김현우','정상민');A('2026-10-27','김현우','정상민');A('2026-10-28','김현우');A('2026-10-29','김현우');A('2026-10-30','김현우','정상민');A('2026-10-31','김현우','정상민','백민철');
   A('2026-11-01','김현우','백민철');return o;})();
 const DOC_DUTY_COLOR={'김현우':'#dc2626','정상민':'#ea8a00','백민철':'#15803d','채상훈':'#7e22ce'};
+const DUTY_PAL=['#2563eb','#0891b2','#be185d','#4d7c0f','#b45309','#475569'];
+function dutyColor(n){if(DOC_DUTY_COLOR[n])return DOC_DUTY_COLOR[n];let h=0;for(const ch of String(n))h=(h*31+ch.charCodeAt(0))>>>0;return DUTY_PAL[h%DUTY_PAL.length];}
 function docDutyOf(date){const m=META.docDuty||{};if(Object.prototype.hasOwnProperty.call(m,date))return Array.isArray(m[date])?m[date]:[];return DOC_DUTY_BASE[date]||null;}
 let DUTY_EDIT=false;
 function dutyPanel(D){const L=docDutyOf(D.date);
-  const names=L&&L.length?L.map(n=>`<span class="duty-n" style="color:${DOC_DUTY_COLOR[n]||'#1f2937'}">${esc(n)} 원장님</span>`).join(''):`<span class="small">${L?'근무 원장님 없음':'근무표가 없습니다 — [수정]으로 넣어 주세요'}</span>`;
-  return `<section class="panel duty"><div class="panel-head"><h2>원장님 근무</h2><button type="button" class="ghost small" onclick="DUTY_EDIT=!DUTY_EDIT;render()">${DUTY_EDIT?'닫기':'수정'}</button></div>
+  const names=L&&L.length?L.map(n=>`<span class="duty-n" style="color:${dutyColor(n)}">${esc(n)} 원장님</span>`).join(''):`<span class="small">${L?'근무 원장님 없음':'근무표가 없습니다 — [월 근무표]로 넣어 주세요'}</span>`;
+  return `<section class="panel duty"><div class="panel-head"><h2>원장님 근무</h2><span class="row" style="gap:4px"><button type="button" class="ghost small" onclick="openDutyMonth()" title="한 달 근무표를 한 화면에서 — 요일 반복으로 한 번에 넣고 바뀐 날만 고칩니다">월 근무표</button><button type="button" class="ghost small" onclick="DUTY_EDIT=!DUTY_EDIT;render()">${DUTY_EDIT?'닫기':'수정'}</button></span></div>
     <div class="duty-list">${names}</div>
     ${DUTY_EDIT?`<div class="row" style="margin-top:6px"><input id="dutyIn" value="${A((L||[]).join(', '))}" placeholder="예: 김현우, 정상민 (쉼표로 구분)" onkeydown="if(event.key==='Enter')saveDuty()"><button type="button" onclick="saveDuty()">저장</button></div>`:''}</section>`;}
 window.saveDuty=async()=>{const el=document.getElementById('dutyIn');if(!el)return;const date=R.q.date;
   const L=[...new Set(el.value.split(/[,，、\n]/).map(s=>s.replace(/\s*원장님?\s*$/,'').trim()).filter(Boolean))].slice(0,10);
   const r=await commitMeta(m=>{m.docDuty=Object.assign({},m.docDuty||{});m.docDuty[date]=L;return {ok:true};},[{action:'update',entity:'doc_duty',entityId:date,date,after:{doctors:L}}]);
   if(!r.ok){toast(r.message||'저장하지 못했습니다');return;}DUTY_EDIT=false;toast('원장님 근무를 저장했습니다');safeRender();};
+/* ═════ 월 근무표 (2026-10-13 요청: 매달 새 근무표를 쉽게) ═════
+   한 달을 달력 한 장(월요일 시작)으로 — 원장님을 고르고 날짜를 누르면 넣고/뺀다.
+   '요일 반복'으로 고른 원장님의 그 달 근무를 한 번에 채우고, 바뀐 날만 손으로 고친다. [저장] = 그 달 전체를 설정 문서에 한 번에 */
+let DM=null;   // {ym, draft:{날짜:[이름]}, docs:[이름], act, tpl:[월..일], dirty}
+const DM_WK=['월','화','수','목','금','토','일'];
+function dmDays(){const [y,m]=DM.ym.split('-').map(Number);return Array.from({length:daysInMonth(y,m)},(_,i)=>ymd(y,m,i+1));}
+function dmDow(k){return (new Date(k+'T00:00:00').getDay()+6)%7;}   // 월=0 … 일=6
+function dmTplOf(name){const c=[0,0,0,0,0,0,0],t=[0,0,0,0,0,0,0];dmDays().forEach(k=>{const w=dmDow(k);t[w]++;if((DM.draft[k]||[]).includes(name))c[w]++;});return c.map((x,i)=>x*2>=t[i]&&x>0?1:0);}
+window.openDutyMonth=ym=>{ym=ym||String(R.q.date||todayYmd()).slice(0,7);
+  const draft={};DM={ym,draft,docs:[],act:0,tpl:[0,0,0,0,0,0,0],dirty:false};
+  dmDays().forEach(k=>{draft[k]=[...(docDutyOf(k)||[])];});
+  const s=new Set(Object.keys(DOC_DUTY_COLOR));Object.values(META.docDuty||{}).forEach(L=>(L||[]).forEach(n=>s.add(n)));Object.values(draft).forEach(L=>L.forEach(n=>s.add(n)));
+  DM.docs=[...s];DM.tpl=dmTplOf(DM.docs[0]);dmRender();};
+function dmSort(L){return [...new Set(L)].sort((a,b)=>DM.docs.indexOf(a)-DM.docs.indexOf(b));}
+window.dmPick=i=>{DM.act=i;DM.tpl=dmTplOf(DM.docs[i]);dmRender();};
+window.dmToggle=k=>{const n=DM.docs[DM.act];if(!n)return;const L=DM.draft[k]||[];DM.draft[k]=L.includes(n)?L.filter(x=>x!==n):dmSort([...L,n]);DM.dirty=true;dmRender();};
+window.dmApplyTpl=()=>{const n=DM.docs[DM.act];if(!n)return;dmDays().forEach(k=>{const L=(DM.draft[k]||[]).filter(x=>x!==n);DM.draft[k]=DM.tpl[dmDow(k)]?dmSort([...L,n]):L;});DM.dirty=true;dmRender();};
+window.dmClearDoc=()=>{const n=DM.docs[DM.act];if(!n||!confirm(n+' 원장님의 이 달 근무를 모두 뺄까요?'))return;dmDays().forEach(k=>{DM.draft[k]=(DM.draft[k]||[]).filter(x=>x!==n);});DM.tpl=[0,0,0,0,0,0,0];DM.dirty=true;dmRender();};
+window.dmAdd=()=>{const el=document.getElementById('dmNew');const n=String(el&&el.value||'').replace(/\s*원장님?\s*$/,'').trim().slice(0,20);if(!n)return;
+  if(!DM.docs.includes(n))DM.docs.push(n);DM.act=DM.docs.indexOf(n);DM.tpl=dmTplOf(n);dmRender();};
+window.dmMonth=d=>{if(DM.dirty&&!confirm('저장하지 않은 변경이 있습니다. 다른 달로 갈까요? (변경은 버려집니다)'))return;
+  const [y,m]=DM.ym.split('-').map(Number);const t=new Date(y,m-1+d,1);const act=DM.docs[DM.act];
+  openDutyMonth(t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0'));const i=DM.docs.indexOf(act);if(i>=0)dmPick(i);};
+window.dmClose=()=>{if(DM&&DM.dirty&&!confirm('저장하지 않은 변경이 있습니다. 닫을까요?'))return;DM=null;dmRender();};
+window.dmSave=async()=>{if(!DM)return;const ym=DM.ym,draft=DM.draft;
+  const r=await commitMeta(m=>{m.docDuty=Object.assign({},m.docDuty||{});Object.entries(draft).forEach(([k,L])=>{m.docDuty[k]=L;});return {ok:true};},
+    [{action:'update',entity:'doc_duty',entityId:ym,date:ym+'-01',after:{month:ym,days:Object.values(draft).filter(L=>L.length).length}}]);
+  if(!r.ok){toast(r.message||'저장하지 못했습니다');return;}
+  DM=null;dmRender();toast(ym.replace('-','년 ')+'월 원장님 근무표를 저장했습니다');safeRender();};
+function dmRender(){let ov=document.getElementById('dmOv');if(!DM){if(ov)ov.remove();return;}
+  if(!ov){ov=document.createElement('div');ov.id='dmOv';ov.className='dm-back';document.body.appendChild(ov);}
+  const [y,m]=DM.ym.split('-').map(Number),days=dmDays(),act=DM.docs[DM.act];
+  const cells=[...Array(dmDow(days[0])).fill(null),...days];while(cells.length%7)cells.push(null);
+  const cnt=n=>days.filter(k=>(DM.draft[k]||[]).includes(n)).length;
+  ov.innerHTML=`<div class="dm-box" role="dialog" aria-label="월 근무표">
+    <div class="dm-head"><button type="button" class="ghost" onclick="dmMonth(-1)">‹</button><b>${y}년 ${m}월 원장님 근무표</b><button type="button" class="ghost" onclick="dmMonth(1)">›</button>
+      <span style="flex:1"></span>${DM.dirty?'<span class="small" style="color:#b45309">저장 전</span>':''}<button type="button" class="ghost" onclick="dmClose()">닫기</button><button type="button" onclick="dmSave()">저장</button></div>
+    <div class="dm-docs">${DM.docs.map((d,i)=>`<button type="button" class="dm-doc${i===DM.act?' on':''}" style="--c:${dutyColor(d)}" onclick="dmPick(${i})">${esc(d)} <span class="dm-cnt">${cnt(d)}일</span></button>`).join('')}
+      <span class="dm-add"><input id="dmNew" placeholder="원장님 추가" maxlength="20" onkeydown="if(event.key==='Enter')dmAdd()"><button type="button" class="ghost" onclick="dmAdd()">추가</button></span></div>
+    ${act?`<div class="dm-tpl"><b style="color:${dutyColor(act)}">${esc(act)}</b> 요일 반복:
+      ${DM_WK.map((w,i)=>`<label class="dm-wk${i>=5?' we':''}"><input type="checkbox"${DM.tpl[i]?' checked':''} onchange="DM.tpl[${i}]=this.checked?1:0">${w}</label>`).join('')}
+      <button type="button" onclick="dmApplyTpl()">이 달 전체에 적용</button><button type="button" class="ghost" onclick="dmClearDoc()">이 달 비우기</button></div>`:''}
+    <div class="dm-hint">원장님을 고른 뒤 날짜를 누르면 넣고/뺍니다. 격주 근무처럼 요일로 안 맞는 날은 요일 반복을 적용한 뒤 그 날만 누르세요.</div>
+    <div class="dm-grid">${DM_WK.map((w,i)=>`<div class="dm-dow${i===5?' sat':i===6?' sun':''}">${w}</div>`).join('')}
+      ${cells.map(k=>{if(!k)return '<div class="dm-cell empty"></div>';const L=DM.draft[k]||[],w=dmDow(k);
+        return `<button type="button" class="dm-cell${act&&L.includes(act)?' has':''}" style="--c:${act?dutyColor(act):'#2563eb'}" onclick="dmToggle('${k}')"><span class="dm-d${w===6||isHoliday(k)?' sun':w===5?' sat':''}">${Number(k.slice(8))}</span>${L.map(n=>`<span class="dm-n" style="color:${dutyColor(n)}">${esc(n)}</span>`).join('')}</button>`;}).join('')}</div></div>`;}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&DM){e.stopPropagation();dmClose();}},true);
 function notePanel(D){return `<section class="panel"><div class="panel-head"><h2>특이사항</h2></div>
   <textarea id="dayNote" rows="4" placeholder="예: 추석 연휴, Zoe OT 휴무">${esc(D.note)}</textarea>
   <div class="row"><button type="button" onclick="saveDayNote()">저장</button></div>${D.note?`<p class="special">${esc(D.note)}</p>`:''}</section>`;}
