@@ -163,6 +163,7 @@ table.grid td.pt:hover .note-pop,table.grid td.pt:focus-within .note-pop,table.m
 .legend-swatch{width:28px;height:14px;border:1px solid #b8bcc4;border-radius:3px;flex:none}
 .legend-hint{grid-column:1/-1;font-size:12px;color:var(--muted);margin-top:4px}
 .sheet-layout.painting table.grid td.editable{cursor:crosshair}
+.duty .duty-list{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px}.duty .duty-n{font-weight:800;font-size:15px}   /* 원장님 근무 (2026-10-13) */
 .special{color:#2563eb;font-weight:700;font-size:15px;white-space:pre-line;text-align:center;margin:8px 0 0}
 .list{list-style:none;padding:0;margin:0}
 .list.search li{display:block;border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin-bottom:4px}
@@ -405,7 +406,7 @@ AUTH.onAuthStateChanged(async u=>{
   myIsPt(u.email).then(v=>{ME.pt=v;if(v)safeRender();});   // 물리치료 직원 → [가져오기] 열림 (2026-10-08)
   document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;
   C.meta.onSnapshot(s=>{const d=s.exists?s.data():{};
-    META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0,txMinutes:d.txMinutes||{}};
+    META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0,txMinutes:d.txMinutes||{},docDuty:(d.docDuty&&typeof d.docDuty==='object')?d.docDuty:{}};
     metaReady=true;safeRender();},e=>{console.warn('meta',e);toast('설정을 읽지 못했습니다');});
   window.addEventListener('hashchange',route);route();
 });

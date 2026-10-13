@@ -277,7 +277,7 @@ document.addEventListener('mouseover',popHost);document.addEventListener('focusi
 let SEARCH={q:'',rows:null,busy:false};
 let MAN={no:null,id:null,f:{mrn:'',patientName:'',therapistName:''},colorFor:null};
 function sidePanel(D){
-  return `<aside class="sheet-side"><div class="side-col">${searchPanel()}${calendarPanel(D.date)}${legendPanel()}${notePanel(D)}</div><div class="side-col">${manualPanel(D)}</div></aside>`;}
+  return `<aside class="sheet-side"><div class="side-col">${searchPanel()}${calendarPanel(D.date)}${legendPanel()}${dutyPanel(D)}${notePanel(D)}</div><div class="side-col">${manualPanel(D)}</div></aside>`;}
 function searchPanel(){let h=`<section class="panel"><div class="panel-head"><h2>환자 검색</h2></div><div class="row">
   <input id="srchQ" value="${A(SEARCH.q)}" placeholder="차트번호 또는 이름" oninput="SEARCH.q=this.value" onkeydown="if(event.key==='Enter')doSearch()">
   <button type="button" class="ghost" ${SEARCH.busy?'disabled':''} onclick="doSearch()">${SEARCH.busy?'…':'검색'}</button>${SEARCH.rows||SEARCH.q?`<button type="button" class="ghost" title="검색 결과 닫기" onclick="SEARCH={q:'',rows:null,busy:false};render()">✕</button>`:''}</div>`;
@@ -310,6 +310,29 @@ function calendarPanel(date){const {year,month}=splitYmd(date);const n=daysInMon
       return `<a href="${href('schedule',{date:s})}" class="cal-day ${s===date?'on':''} ${s===today?'today':''} ${has.has(s)?'has':''} ${dow===0||isHoliday(s)?'sun':dow===6?'sat':''}" ${isHoliday(s)?'title="공휴일"':''}>${d}</a>`;}).join('')}</div></section>`;}
 function legendPanel(){return `<section class="panel legend ${PAINT?'painting':''}">${LEGEND.map(l=>`<button type="button" class="legend-row ${PAINT===l.hex?'on':''}" onclick="setPaint('${l.hex}')" title="누르면 칠하기 모드"><span class="legend-swatch" style="background:${l.hex}"></span><span>${esc(l.label)}</span></button>`).join('')}
   <div class="legend-hint">${PAINT?`칠하기 모드: <strong>${esc((LEGEND.find(l=>l.hex===PAINT)||{}).label)}</strong> · 표의 칸을 누르면 바로 칠해집니다. 다시 누르거나 Esc 로 해제`:'색을 누르면 표에 칠할 수 있습니다'}</div></section>`;}
+/* ═════ 원장님 근무 (2026-10-13 요청: 특이사항 위에 그날 근무하시는 원장님) ═════
+   설정 문서 META.docDuty = {'YYYY-MM-DD':['김현우','정상민']}. 아직 저장된 날이 없으면 받은 근무표(2026년 10월)를 쓴다.
+   [수정]으로 그날 명단을 고치면 설정 문서에 저장된다(모든 PC 공유) */
+const DOC_DUTY_BASE=(()=>{const o={},A=(d,...n)=>{o[d]=n;};
+  A('2026-09-29','김현우','정상민');A('2026-09-30','채상훈');
+  A('2026-10-01','채상훈');A('2026-10-02','김현우','정상민');A('2026-10-03','김현우','정상민','백민철');A('2026-10-04','김현우','채상훈','백민철');
+  A('2026-10-05','김현우','정상민');A('2026-10-06','김현우','정상민');A('2026-10-07','김현우');A('2026-10-08','김현우');A('2026-10-09','김현우','정상민');A('2026-10-10','김현우','백민철');A('2026-10-11','김현우','정상민','백민철');
+  A('2026-10-12','김현우','정상민');A('2026-10-13','김현우','정상민');A('2026-10-14','김현우');A('2026-10-15','김현우');A('2026-10-16','김현우','정상민');A('2026-10-17','김현우','정상민','백민철');A('2026-10-18','김현우','백민철');
+  A('2026-10-19','김현우','정상민');A('2026-10-20','김현우','정상민');A('2026-10-21','김현우');A('2026-10-22','김현우');A('2026-10-23','김현우','정상민');A('2026-10-24','김현우','백민철');A('2026-10-25','김현우','정상민','백민철');
+  A('2026-10-26','김현우','정상민');A('2026-10-27','김현우','정상민');A('2026-10-28','김현우');A('2026-10-29','김현우');A('2026-10-30','김현우','정상민');A('2026-10-31','김현우','정상민','백민철');
+  A('2026-11-01','김현우','백민철');return o;})();
+const DOC_DUTY_COLOR={'김현우':'#dc2626','정상민':'#ea8a00','백민철':'#15803d','채상훈':'#7e22ce'};
+function docDutyOf(date){const m=META.docDuty||{};if(Object.prototype.hasOwnProperty.call(m,date))return Array.isArray(m[date])?m[date]:[];return DOC_DUTY_BASE[date]||null;}
+let DUTY_EDIT=false;
+function dutyPanel(D){const L=docDutyOf(D.date);
+  const names=L&&L.length?L.map(n=>`<span class="duty-n" style="color:${DOC_DUTY_COLOR[n]||'#1f2937'}">${esc(n)} 원장님</span>`).join(''):`<span class="small">${L?'근무 원장님 없음':'근무표가 없습니다 — [수정]으로 넣어 주세요'}</span>`;
+  return `<section class="panel duty"><div class="panel-head"><h2>원장님 근무</h2><button type="button" class="ghost small" onclick="DUTY_EDIT=!DUTY_EDIT;render()">${DUTY_EDIT?'닫기':'수정'}</button></div>
+    <div class="duty-list">${names}</div>
+    ${DUTY_EDIT?`<div class="row" style="margin-top:6px"><input id="dutyIn" value="${A((L||[]).join(', '))}" placeholder="예: 김현우, 정상민 (쉼표로 구분)" onkeydown="if(event.key==='Enter')saveDuty()"><button type="button" onclick="saveDuty()">저장</button></div>`:''}</section>`;}
+window.saveDuty=async()=>{const el=document.getElementById('dutyIn');if(!el)return;const date=R.q.date;
+  const L=[...new Set(el.value.split(/[,，、\n]/).map(s=>s.replace(/\s*원장님?\s*$/,'').trim()).filter(Boolean))].slice(0,10);
+  const r=await commitMeta(m=>{m.docDuty=Object.assign({},m.docDuty||{});m.docDuty[date]=L;return {ok:true};},[{action:'update',entity:'doc_duty',entityId:date,date,after:{doctors:L}}]);
+  if(!r.ok){toast(r.message||'저장하지 못했습니다');return;}DUTY_EDIT=false;toast('원장님 근무를 저장했습니다');safeRender();};
 function notePanel(D){return `<section class="panel"><div class="panel-head"><h2>특이사항</h2></div>
   <textarea id="dayNote" rows="4" placeholder="예: 추석 연휴, Zoe OT 휴무">${esc(D.note)}</textarea>
   <div class="row"><button type="button" onclick="saveDayNote()">저장</button></div>${D.note?`<p class="special">${esc(D.note)}</p>`:''}</section>`;}
@@ -853,7 +876,7 @@ function renderChartsPage(){const months=listMonths();let h=`<h1>내원률 그�
 /* ═════════ 변경 기록 ═════════ */
 let AUDIT={at:0,rows:null,loading:false};
 const ACTION_L={create:'추가',update:'수정',delete:'삭제',import:'가져오기',mirror:'시트 반영','mirror-failed':'시트 반영 실패',view:'조회'};
-const ENTITY_L={bookings:'예약',work_blocks:'비근무/차단',cancels:'취소/변경',manual_tx:'Manual Tx',day_notes:'참고사항',month_consults:'상담수',day_therapists:'치료사 명단',therapists:'치료사',sheet:'시트',month:'월',day:'날짜'};
+const ENTITY_L={bookings:'예약',work_blocks:'비근무/차단',cancels:'취소/변경',manual_tx:'Manual Tx',day_notes:'참고사항',doc_duty:'원장님 근무',month_consults:'상담수',day_therapists:'치료사 명단',therapists:'치료사',sheet:'시트',month:'월',day:'날짜'};
 function brief(v){if(v==null)return '';if(typeof v!=='object')return String(v);const keys=['patientName','mrn','code','visited','startMin','durationMin','text','count','detail','bookings','days','name','note','color','mark'];
   const parts=keys.filter(k=>k in v).map(k=>`${k}=${String(v[k]).slice(0,40)}`);return parts.join(' ')||JSON.stringify(v).slice(0,80);}
 function renderAuditPage(){
