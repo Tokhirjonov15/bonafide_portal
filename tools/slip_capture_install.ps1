@@ -5,7 +5,7 @@
 #
 #  하는 일: C:\bitplus 에 slip_capture.ps1 복사 → bitbot 비밀번호 파일 확인(감시 스크립트 설치 때 만든 것, 없으면 입력받음) →
 #           로그온 시 자동 시작 작업 'SlipCapture' 등록(5분마다 확인 — 꺼져 있으면 다시 켬) → 지금 시작
-#  화면 위 가운데에 작은 바가 뜬다: [캡처] + 비트 외래진료실의 지금 환자 이름·차트번호.
+#  화면 위 가운데에 작은 바가 뜬다: [주사 캡처]·[PT 캡처] + 비트 외래진료실의 지금 환자 이름·차트번호.
 # ─────────────────────────────────────────────────────────────
 param([Parameter(Mandatory = $true)][string]$Pc, [string]$Dest = 'C:\bitplus', [switch]$ResetPw)
 $ErrorActionPreference = 'Stop'

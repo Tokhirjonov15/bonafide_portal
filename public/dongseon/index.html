@@ -850,6 +850,22 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .card.wait-over.pt-soon{border-color:#ea580c}
   .wait-over-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(220,38,38,.1);color:#b91c1c;font-size:12.5px;font-weight:800}
   .pt-soon-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(234,88,12,.12);color:#c2410c;font-size:12.5px;font-weight:800}
+  /* PT 캡처 도착 — 4층으로 가는 카드를 청록으로 (2026-10-13) */
+  .card.pt-shot{border:2px solid #0d9488;background:color-mix(in srgb,#14b8a6 16%,var(--panel,#fff));box-shadow:0 0 0 3px rgba(13,148,136,.22)}
+  .pt-shot-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:#0d9488;color:#fff;font-size:12.5px;font-weight:800}
+  .pt4-alert{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 12px;background:#ccfbf1;border-bottom:2px solid #0d9488;color:#134e4a}
+  .pt4-alert .pa-t{font-size:14px}
+  .pt4-alert .pa-it{display:inline-flex;border:1px solid #0d9488;border-radius:8px;overflow:hidden;background:#fff}
+  .pt4-alert button{border:0;padding:5px 10px;font:inherit;font-size:13px;cursor:pointer;background:transparent;color:inherit}
+  .pt4-alert .pa-open{font-weight:700}.pt4-alert .pa-open:hover{background:#f0fdfa}
+  .pt4-alert .pa-ok{background:#0d9488;color:#fff;font-weight:700}
+  .cap-box{margin-top:12px}.cap-box .sect-t svg{width:15px;height:15px;vertical-align:-3px}
+  .cap-grp{margin-top:6px}.cap-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px}
+  .cap-k{padding:2px 8px;border-radius:6px;font-size:12px;font-weight:800;color:#fff}.cap-k.pt{background:#0d9488}.cap-k.inj{background:#3b82f6}
+  .cap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}.cap-grid .sd-shot img{width:100%;display:block;cursor:zoom-in}
+  .cap-grid .sd-shot.cap-new{outline:3px solid #0d9488;border-radius:8px}
+  .cap-nb{background:#0d9488;color:#fff;border-radius:4px;padding:0 5px}
+  .cap-ok{background:#0d9488;color:#fff;border-color:#0d9488}
   .hold-card{cursor:pointer}.hold-card .card-top{padding-top:6px}
   .hold-time{display:flex;align-items:center;gap:6px;margin:6px 12px 12px;padding:6px 10px;border-radius:9px;background:rgba(217,119,6,.12);color:#b45309;font-weight:800;font-size:13px}
   .hold-time svg{width:15px;height:15px}.hold-time b{margin-left:auto;font-variant-numeric:tabular-nums;font-size:15px}
@@ -2324,6 +2340,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
         <p class="hint">환자는 첫 번째 방에서 시작합니다.</p>
       </div>
       </div>
+      <div id="capBox" class="cap-box" style="display:none"></div><!-- 진료실 캡처(주사·PT) (2026-10-13) -->
       <div id="recTextBox" class="rec-text-box" style="display:none"></div>
       </div><!-- /pcol 좌(정보+동선) -->
       <div class="pcol">
@@ -3569,7 +3586,7 @@ function subscribeBitIntake(){
     if(cloud.ref){if(cloud.unsubSlipMark)cloud.unsubSlipMark();
       cloud.unsubSlipMark=cloud.ref.collection('slipMark').where('date','==',today).onSnapshot(s=>{
         SLIP_MARKS={};s.docs.forEach(d=>{SLIP_MARKS[d.id]=d.data()||{};});applySlipMarks();
-        try{renderSlipScreen();}catch(e){}try{renderThrottled();}catch(e){}
+        try{renderSlipScreen();}catch(e){}ptShotRefresh();   // 카드·4층 알림 띠·환자 정보 창 (PT 캡처 확인 — 2026-10-13)
       },err=>console.warn('slipMark',err));}
   }
   if(role!=='tv'&&cloud.bookingsCol){   // 예약 시트(오늘) — 직원용 예약관리 화면(환자용 TV 는 듣지 않음)
@@ -3760,7 +3777,7 @@ function slipItems(){
       let p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
       const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
-      const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const _td=localYMD(new Date());const shots=(Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&!hid.includes(x.id)&&(!x.at||localYMD(new Date(x.at))===_td));   // 진료실 캡처 (2026-10-06) — 오늘 찍은 것만(밤새 켜 둔 화면에도 어제 캡처가 남지 않게)
+      const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const _td=localYMD(new Date());const shots=(Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&x.kind!=='pt'&&!hid.includes(x.id)&&(!x.at||localYMD(new Date(x.at))===_td));   // 진료실 캡처 (2026-10-06) — 오늘 찍은 것만(밤새 켜 둔 화면에도 어제 캡처가 남지 않게). PT 캡처는 슬립이 아니라 4층으로 (2026-10-13)
       return {id:n.docId,mrn,note:n,p,pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
     .filter(it=>it.mrn&&((it.valid&&it.lines.length)||it.shots.length)&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
@@ -3870,7 +3887,7 @@ function popSlipSolo(mrn){
   slipPopRender();try{w.focus();}catch(e){}}
 setInterval(()=>{try{slipPopRender();}catch(e){}},3000);
 /* ═════ 진료실 캡처 (2026-10-06 요청) ═════
-   진료실 PC 의 [캡처] 바(tools/slip_capture.ps1)가 팍스 화면 등에서 잘라 올린 사진 — bitNote 문서의 shots: [{id, path, at, pc, w, h}].
+   진료실 PC 의 [캡처] 바(tools/slip_capture.ps1)가 팍스 화면 등에서 잘라 올린 사진 — bitNote 문서의 shots: [{id, path, at, pc, w, h, kind}] — kind: inj(주사 캡처·예전 것은 없음) / pt(PT 캡처, 2026-10-13 — 아래 PT 캡처 → 4층).
    슬립 화면·[창 띄우기]에 그 환자 처방 아래에 뜬다. 누르면 원본 크기로 새 창. 잘못 올린 것은 ✕ = 숨김(slipMark.shotHidden — 사진 파일은 남음) */
 var SLIP_SHOT_URL={};
 function slipShotsHtml(it,pop){if(!it||!it.shots||!it.shots.length)return '';
@@ -3895,7 +3912,7 @@ const SHOT_IDX_DONE=new Set();
 function slipShotsCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('slipShots'):null;}
 function slipShotIndex(notes){const col=slipShotsCol();if(!col||!currentUser)return;const by={};
   (notes||[]).forEach(n=>{const mrn=normMrn(n&&n.mrn);if(!mrn)return;(Array.isArray(n.shots)?n.shots:[]).forEach(x=>{if(!x||!x.path||!x.id||SHOT_IDX_DONE.has(x.id))return;
-    (by[mrn]=by[mrn]||[]).push({id:String(x.id),path:String(x.path),at:String(x.at||''),pc:String(x.pc||''),w:Number(x.w)||0,h:Number(x.h)||0,date:String(n.date||String(x.at||'').slice(0,10))});});
+    (by[mrn]=by[mrn]||[]).push({id:String(x.id),path:String(x.path),at:String(x.at||''),pc:String(x.pc||''),w:Number(x.w)||0,h:Number(x.h)||0,kind:String(x.kind||'inj'),date:String(n.date||String(x.at||'').slice(0,10))});});
     const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];if(hid.length&&!SHOT_IDX_DONE.has('h:'+n.docId+hid.join(','))){SHOT_IDX_DONE.add('h:'+n.docId+hid.join(','));col.doc(mrn).set({mrn,hidden:firebase.firestore.FieldValue.arrayUnion(...hid)},{merge:true}).catch(()=>{});}});
   Object.entries(by).forEach(([mrn,L])=>{col.doc(mrn).set({mrn,shots:firebase.firestore.FieldValue.arrayUnion(...L)},{merge:true}).then(()=>{L.forEach(x=>SHOT_IDX_DONE.add(x.id));delete SLIP_PAST[mrn];}).catch(e=>console.warn('slipShots',e));});}
 /* 처음 한 번: 아직 남아 있는(7일 안) 캡처 기록을 모은다 — 캡처가 있는 문서만 읽는다 */
@@ -3906,7 +3923,7 @@ function slipPastLoad(mrn){const col=slipShotsCol();if(!col||!mrn)return;if(SLIP
   col.doc(mrn).get().then(d=>{const v=d.exists?d.data():{};SLIP_PAST[mrn]={at:Date.now(),shots:Array.isArray(v.shots)?v.shots:[],hidden:Array.isArray(v.hidden)?v.hidden:[]};try{renderSlipScreen();}catch(e){}}).catch(e=>console.warn('slipPast',e));}
 function slipPastList(it){const mrn=normMrn(it&&it.mrn);const P=SLIP_PAST[mrn];if(!P||!P.shots)return null;const today=localYMD(new Date());
   const hid=new Set([...(P.hidden||[]),...((it.note&&it.note.shotHidden)||[])]);
-  return P.shots.filter(x=>x&&x.path&&!hid.has(x.id)&&String(x.date||x.at||'').slice(0,10)<today).sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
+  return P.shots.filter(x=>x&&x.path&&x.kind!=='pt'&&!hid.has(x.id)&&String(x.date||x.at||'').slice(0,10)<today).sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
 function slipPastBtn(it){const mrn=normMrn(it&&it.mrn);if(!mrn||!slipShotsCol())return '';slipPastLoad(mrn);const L=slipPastList(it);
   if(L&&!L.length)return '';const on=SLIP_PAST_OPEN.has(mrn);
   return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 진료실 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 접기':'이전 캡처'}${L?' '+L.length:''}</button>`;}
@@ -3922,6 +3939,44 @@ function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨
   try{const col=slipShotsCol(),mrn=normMrn(n&&n.mrn);if(col&&mrn)col.doc(mrn).set({mrn,hidden:firebase.firestore.FieldValue.arrayUnion(id)},{merge:true});}catch(e){}
   try{audit('진료실 캡처 숨김',docId);}catch(e){}
   renderSlipScreen();}
+/* ═════ PT 캡처 → 4층 (2026-10-13 요청) ═════
+   진료실 캡처 바의 [PT 캡처](shots 의 kind='pt')는 슬립에 넣지 않고 4층으로 — ① 4층 비급여 예약 스케줄 위 알림 띠 ② 4층으로 가는 카드 색
+   ③ 환자 정보 창 동선 아래 '진료실 캡처' 칸(주사·PT 둘 다). 4층에서 [확인]을 누르면 알림이 꺼진다(slipMark.ptSeen — 모든 화면 공유) */
+function capShotsToday(n){if(!n)return [];const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const td=localYMD(new Date());
+  return (Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&!hid.includes(x.id)&&(!x.at||localYMD(new Date(x.at))===td));}
+function ptShotsNew(n){const seen=new Set(Array.isArray(n&&n.ptSeen)?n.ptSeen:[]);return capShotsToday(n).filter(x=>x.kind==='pt'&&!seen.has(x.id));}
+function f4Ahead(p){return !!(p&&!p.discharged&&Array.isArray(p.route)&&p.route.slice(p.step||0).some(r=>meta(r).group==='4층'));}   // 지금 4층이거나 앞으로 4층에 갈 카드
+function ptShotAlert(p){if(!f4Ahead(p))return 0;return ptShotsNew(bitNoteFor(p)).length;}
+window.ptShotSeen=function(docId){const n=BIT_NOTES.find(x=>x.docId===docId);if(!n)return;
+  const ids=[...new Set([...(Array.isArray(n.ptSeen)?n.ptSeen:[]),...capShotsToday(n).filter(x=>x.kind==='pt').map(x=>x.id)])];
+  saveSlipMark(docId,{ptSeen:ids,ptSeenBy:(currentUser&&currentUser.name)||'',ptSeenAt:Date.now()});n.ptSeen=ids;
+  try{audit('PT 캡처 확인',(n.shotName||n.name||'')+(n.mrn?' ('+n.mrn+')':''));}catch(e){}
+  ptShotRefresh();};
+function ptShotRefresh(){try{renderPt4Alert();}catch(e){}try{renderThrottled();}catch(e){}
+  try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p)fillCapBox(p);}}catch(e){}}
+/* 4층 비급여 예약 스케줄 위 알림 띠 — 확인 안 한 PT 캡처가 있는 오늘 환자 */
+function renderPt4Alert(){const ov=document.getElementById('pt4Ov');if(!ov)return;let el=document.getElementById('pt4Alert');
+  if(!el){el=document.createElement('div');el.id='pt4Alert';el.className='pt4-alert';ov.insertBefore(el,document.getElementById('pt4Frame'));}
+  const L=(BIT_NOTES||[]).map(n=>{const s=ptShotsNew(n);if(!s.length)return null;const mrn=normMrn(n.mrn);
+      const p=mrn?data.find(x=>!x.discharged&&normMrn(x.mrn)===mrn):null;return {n,s,p,name:(p&&p.name)||n.shotName||n.name||'',last:s.map(x=>String(x.at||'')).sort().pop()};})
+    .filter(Boolean).sort((a,b)=>b.last.localeCompare(a.last));
+  const html=L.length?'<b class="pa-t">📷 PT 캡처 도착</b>'+L.map(r=>`<span class="pa-it"><button type="button" class="pa-open" onclick="pt4AlertOpen('${esc(r.n.docId)}')" title="환자 정보 창에서 사진 보기">${esc(dispName(r.name))}${r.n.mrn?' <span class="hint">'+esc(r.n.mrn)+'</span>':''} · ${r.s.length}장 · ${esc(hhmm(r.last))}${r.s[0].pc?' · '+esc(r.s[0].pc):''}</button><button type="button" class="pa-ok" onclick="ptShotSeen('${esc(r.n.docId)}')" title="확인했음 — 알림 끄기">✔ 확인</button></span>`).join(''):'';
+  if(el.dataset.h!==html){el.dataset.h=html;el.innerHTML=html;}el.style.display=L.length?'':'none';}
+window.pt4AlertOpen=function(docId){const n=BIT_NOTES.find(x=>x.docId===docId);if(!n)return;const mrn=normMrn(n.mrn);
+  const p=mrn?data.find(x=>!x.discharged&&normMrn(x.mrn)===mrn):null;
+  if(p){openEditFromResv(p.id,'4층 비급여 예약 스케줄');return;}
+  const s=ptShotsNew(n)[0];if(!s)return;const im=document.createElement('img');   // 보드에 카드가 없으면 사진만 크게
+  const show=u=>{im.src=u;slipShotZoom(im);};if(SLIP_SHOT_URL[s.path])show(SLIP_SHOT_URL[s.path]);else if(cloud.storage)cloud.storage.ref(s.path).getDownloadURL().then(u=>{SLIP_SHOT_URL[s.path]=u;show(u);}).catch(e=>console.warn('pt shot',e));};
+/* 환자 정보 창 — 동선 아래 '진료실 캡처' 칸 (오늘 것, PT 먼저) */
+function fillCapBox(p){const box=document.getElementById('capBox');if(!box)return;const n=bitNoteFor(p);const all=capShotsToday(n);
+  if(!all.length){box.style.display='none';box.innerHTML='';box.dataset.h='';return;}
+  const neu=new Set(ptShotsNew(n).map(x=>x.id));const pt=all.filter(x=>x.kind==='pt'),inj=all.filter(x=>x.kind!=='pt');
+  const one=x=>'<div class="sd-shot'+(neu.has(x.id)?' cap-new':'')+'"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>'+(neu.has(x.id)?'<b class="cap-nb">새로 옴</b> ':'')+'📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>';
+  const grp=(t,cls,L,extra)=>L.length?`<div class="cap-grp"><div class="cap-h"><span class="cap-k ${cls}">${t}</span> <span class="hint">${L.length}장</span>${extra||''}</div><div class="cap-grid">${L.map(one).join('')}</div></div>`:'';
+  const html=`<div class="sect-t"><i data-lucide="images"></i> 진료실 캡처 <span class="hint">오늘 · 누르면 크게</span></div>`+
+    grp('PT 캡처','pt',pt,neu.size?` <button type="button" class="btn sm cap-ok" onclick="ptShotSeen('${esc(n.docId)}')">✔ 4층 확인 (알림 끄기)</button>`:(n.ptSeenBy?` <span class="hint">✔ ${esc(n.ptSeenBy)} 확인</span>`:''))+grp('주사 캡처','inj',inj);
+  box.style.display='';if(box.dataset.h!==html){box.dataset.h=html;box.innerHTML=html;if(window.lucide)try{lucide.createIcons();}catch(e){}}
+  slipShotsLoad(box);}
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
 function renderSlipScreen(){
   if(!slipOpen)return;
@@ -4021,7 +4076,8 @@ function slipPrinted(n){if(!n||!n.printed)return {on:false,stale:false};return {
 function slipPrintedTag(n,big){const s=slipPrinted(n);if(!s.on)return '';
   const tip=`${s.by?s.by+' · ':''}${s.at?hhmm(new Date(s.at).toISOString()):''} 인쇄${s.stale?' — 그 뒤 처방이 바뀌었습니다. 다시 인쇄하세요':''}`;
   return ` <span class="slip-printed${s.stale?' stale':''}${big?' big':''}" title="${esc(tip)}">🖨 ${s.stale?'인쇄 후 변경':'인쇄됨'}</span>`;}
-function onBitNotes(){try{if(currentUser){if(bitApplyLookups())bitBackfillMrn();bitBackfillMemo();}}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}}   // 특이사항 보충 + 카드 요약(처방 N줄) 갱신
+function onBitNotes(){try{if(currentUser){if(bitApplyLookups())bitBackfillMrn();bitBackfillMemo();}}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}
+  try{renderPt4Alert();if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p)fillCapBox(p);}}catch(e){console.warn('ptShot',e);}}   // PT 캡처 → 4층 알림·환자 정보 창 (2026-10-13)   // 특이사항 보충 + 카드 요약(처방 N줄) 갱신
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
   openAdd();
@@ -5312,6 +5368,16 @@ async function runSelfTest(){
         /size:104mm auto/.test(html)&&html.includes('차트번호')&&html.includes('297')&&html.includes('수진자명')&&html.includes('슬립환자')&&html.includes('900101-1******')&&!html.includes('1990-01-01')
         &&html.includes('c-mbb rt 345 / lt 35')&&/발행일자: \d{4}-\d{2}-\d{2}/.test(html)&&html.indexOf('슬립환자')<html.indexOf('c-mbb')&&html.indexOf('c-mbb')<html.indexOf('발행일자'));
      ok('카드: 처방 목록 요약(처방 3줄) 표시, 처방 없는 카드는 없음', /처방 <b>3줄<\/b>/.test(cardEl(data[0]).innerHTML) && (()=>{const _b=BIT_NOTES;BIT_NOTES=[];const r=!cardEl(data[0]).querySelector('.slip-sum');BIT_NOTES=_b;return r;})());
+     {const _b=BIT_NOTES,at=new Date().toISOString();meta('물리치료').group='4층';   // PT 캡처 → 4층 (2026-10-13)
+      BIT_NOTES=[Object.assign({},_b[0],{shots:[{id:'i1',path:'x/i1.jpg',at,kind:'inj'},{id:'p1',path:'x/p1.jpg',at,kind:'pt'},{id:'o1',path:'x/o1.jpg',at}]})];
+      const it=slipItems().find(x=>x.mrn==='297');
+      ok('PT 캡처: 슬립에는 주사 캡처만(kind 없는 예전 것 포함), PT 는 빠짐', it&&it.shots.map(x=>x.id).join()==='i1,o1');
+      ok('PT 캡처: 4층으로 가는 카드에 청록 색·안내', cardEl(data[0]).classList.contains('pt-shot')&&/PT 캡처 1장/.test(cardEl(data[0]).innerHTML));
+      BIT_NOTES[0].ptSeen=['p1'];
+      ok('PT 캡처: [확인] 뒤에는 카드 색이 꺼짐', !cardEl(data[0]).classList.contains('pt-shot'));
+      BIT_NOTES[0].ptSeen=[];meta('물리치료').group='';
+      ok('PT 캡처: 4층에 안 가는 카드는 색 없음', !cardEl(data[0]).classList.contains('pt-shot'));
+      BIT_NOTES=_b;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -7636,6 +7702,7 @@ function openPt4(date){let ov=document.getElementById('pt4Ov');
   if(warm){try{f.contentWindow.location.hash=hash;}catch(e){warm=false;}}
   if(!warm)f.src='pt4.html?embed&t='+Date.now()+hash;
   try{sessionStorage.setItem('pt4Keep','1');}catch(e){}   // 새로고침(새 버전) 뒤 4층 화면을 다시 띄우려고 (2026-10-11)
+  try{renderPt4Alert();}catch(e){}   // PT 캡처 알림 띠 (2026-10-13)
   ov.classList.add('show');}
 function closePt4(){try{sessionStorage.removeItem('pt4Keep');}catch(e){}const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');
   clearTimeout(window.PT4_DROP_T);window.PT4_DROP_T=setTimeout(()=>{const f=document.getElementById('pt4Frame');if(f&&!document.querySelector('#pt4Ov.show'))f.src='about:blank';},10*60000);}}   // 10분 뒤 비운다(메모리) — 그 전에 다시 열면 바로
@@ -8427,7 +8494,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+(isPayRoom(curRoom(p))?"":" bitpaid-away"):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+(isPayRoom(curRoom(p))?"":" bitpaid-away"):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"")+(ptShotAlert(p)?" pt-shot":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
@@ -8516,6 +8583,7 @@ function cardEl(p,colRoom){
     ${(function(){const wi=waitInfo(p);if(!wi||wi.ahead<=0)return '';if(!meta(wi.room).smsAuto)return '';return `<div class="queue-info"><i data-lucide="hash"></i> 이 방 <b>${wi.pos}번째</b> · ⏱ 예상 <b>${etaText(wi.etaSec)}</b></div>`;})()}
     <div class="pt-soon-tag" style="${PT_SOON[p.id]?'':'display:none'}">${esc(ptSoonText(PT_SOON[p.id]))}</div>
     <div class="wait-over-tag" style="${WAIT_OVER[p.id]?'':'display:none'}">${esc(waitOverText(WAIT_OVER[p.id]))}</div>
+    ${(()=>{const k=ptShotAlert(p);return k?`<div class="pt-shot-tag" title="진료실에서 PT 캡처를 보냈습니다 — 카드를 눌러 사진을 보고 [4층 확인]">📷 PT 캡처 ${k}장 — 눌러서 확인</div>`:'';})()}
     <div class="status-row">
       ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
@@ -10822,6 +10890,7 @@ function fillEditChart(p){
   try{fillBookedBox(p);}catch(e){console.warn('bookedBox',e);} // 오늘 4층 예약으로 왔는지
   try{fillRxBox(p);}catch(e){console.warn('rxBox',e);}         // 비트 처방내역 표
   try{fillRecTextBox(p);}catch(e){console.warn('recText',e);}   // 진료 녹음 받아쓰기 (2026-10-12)
+  try{fillCapBox(p);}catch(e){console.warn('capBox',e);}        // 진료실 캡처(주사·PT) — 동선 아래 (2026-10-13)
   try{fillRxHist(p);}catch(e){console.warn('rxHist',e);}       // 과거 처방내역 (2026-10-01)
   try{fillRxHist(null,'rxHistAdd');}catch(e){}                  // 환자 정보 창에서는 추가용 칸을 숨긴다
   try{fillTreatBox(p);}catch(e){console.warn('treatBox',e);}   // 치료 회차 블록
