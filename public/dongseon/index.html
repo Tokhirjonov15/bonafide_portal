@@ -2760,12 +2760,14 @@ function rxRouteCompute(p,h,stamp){
   const _prevRx=String(p.routeRxHash||''), _rxEdit=!!_prevRx&&_prevRx.split('\n')[0]===RX_ROUTE_VER;   /* 같은 규칙 판에서 처방만 바뀜 = 원장님이 처방을 고침 */
   const _oldRoute=p.route.slice();
   let want=rxRoomsFor(p)||[];
+  if(Array.isArray(p.routeDropped)&&p.routeDropped.length)want=want.filter(r=>!p.routeDropped.includes(r));   // 비용 상담 '시행 안 함'으로 지운 방은 다시 넣지 않는다 (2026-10-13)
   /* 2026-10-01 '동선관리 로직' 시트
      · MM(기본물리치료)만 있으면 → 수납대기 → 4층 대기실 → SASO → 기본물리치료 로 고정
      · CS·SS·C-arm·sono·자동차도수 중 하나라도, 또는 4층 치료가 있으면 → 4층 대기실을 넣는다 */
   if(want.length===1&&want[0]==='기본물리치료'&&ROOMS.includes('SASO'))want=['SASO','기본물리치료'];
   const FLOOR4_ANY=['4층 상담','SASO','자동차도수','C-Arm','Sono','충격파','신장분사','물리치료','기본물리치료'];
   if(ROOMS.includes('4층 대기실')&&!want.includes('4층 대기실')&&want.some(r=>FLOOR4_ANY.includes(r)))want=[...want,'4층 대기실'];
+  if(Array.isArray(p.routeDropped)&&p.routeDropped.length)want=want.filter(r=>!p.routeDropped.includes(r));
   /* 2026-10-13 4층 직원 요청: 4층 치료는 정해진 순서가 없어 4층 대기실까지만 자동으로 넣는다 — 그 뒤(상담·도수·충격파·물리치료 등)는 직원이 직접 넣거나 끌어 옮긴다.
      아래 규칙(진료 상담 생략·수납대기 자리)은 처방에 4층 치료가 있었는지(want0)로 판단 */
   const F4_RX_ROOMS=['4층 상담','SASO','자동차도수','충격파','신장분사','물리치료','기본물리치료'];
@@ -6571,7 +6573,7 @@ function setProc(pid,room,proc){const p=data.find(x=>x.id===pid);if(!p)return;if
 function setConsultResult(pid,room,result){const p=data.find(x=>x.id===pid);if(!p)return;const c=getConsult(p,room);
   const target=(c.result===result?"":result);const f={result:target,by:currentUser?currentUser.name:"",at:new Date().toISOString()};
   if(target==='시행')f.reason="";   // 시행이면 사유 불필요 — 이전에 고른 사유는 지움
-  if(target==='기타')setTimeout(()=>{try{consultNoTg(p,room,'기타',getConsult(p,room).reason);}catch(e){}},0);   // 사유를 먼저 골랐으면 지금 보낸다
+  if(target==='기타')setTimeout(()=>{try{consultNoTg(p,room,'기타',getConsult(p,room).reason);}catch(e){}try{consultNoGoPay(pid,room);}catch(e){console.warn('consultNoGoPay',e);}},0);   // 사유를 먼저 골랐으면 지금 보낸다 · 비용 상담이면 수납대기로
   if(!c.who){const w=consultWho(p,room,c);if(w)f.who=w;}   // 미지정이면 화면에 보이던 담당자를 그대로 기록
   if(!c.doc){const d=consultDoc(p,room,c);if(d)f.doc=d;}   // 담당의(진료실) 자동 기록
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
@@ -6668,13 +6670,29 @@ function consultNoTg(p,room,result,reason){reason=String(reason||'').trim();if(r
   const k=room+'|'+reason;p._consultTg=p._consultTg||{};if(p._consultTg[room]===k)return;p._consultTg[room]=k;
   roomNotify(p,'__all__','consult',{reason,consultRoom:room,by:(currentUser&&currentUser.name)||''});
   try{audit('상담 미시행 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+room+' · '+reason);}catch(e){}}
+/* 비용 상담 '시행 안 함' + 사유 → 수납대기로, 남은 동선은 지운다 (2026-10-13 요청).
+   비용(진료) 상담 방에 지금 있는 환자만. 지운 방은 p.routeDropped 에 남겨 처방 동선이 다시 넣지 않게 한다(rxRouteCompute).
+   4층 상담은 제외 — '기본물리치료만' 같은 사유면 남은 물리치료로 가야 한다 */
+function consultNoGoPay(pid,room){
+  const p=data.find(x=>x.id===pid);if(!p||p.discharged||p._viewOnly)return;
+  if(!isClinicConsult(room)||curRoom(p)!==room)return;
+  const c=getConsult(p,room);if(c.result!=='기타'||!String(c.reason||'').trim())return;
+  const pay=payWaitRoom();if(!pay)return;
+  const st=Math.max(0,Math.min(p.step||0,p.route.length-1));
+  const dropped=p.route.slice(st+1).filter(r=>!isPayRoom(r));
+  p.route=p.route.slice(0,st+1);
+  if(dropped.length)p.routeDropped=[...new Set([...(p.routeDropped||[]),...dropped])];
+  moveTo(pid,pay);
+  try{audit('비용 상담 시행 안 함 → 수납대기',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · 사유 '+c.reason+(dropped.length?' · 지운 동선: '+dropped.join(', '):''));}catch(e){}
+  try{toast(dispName(p.name)+' 님 시행 안 함 → '+pay+(dropped.length?' (남은 동선 '+dropped.length+'개 지움)':''));}catch(e){}}
 function setConsultReason(pid,room,text){const p=data.find(x=>x.id===pid);if(!p)return;const c=getConsult(p,room);
   const f={reason:(text||"").trim(),by:currentUser?currentUser.name:"",at:new Date().toISOString()};
   if(!c.who&&!c.whoSet){const w=docFor(p,room);if(w)f.who=w;}   // whoSet = 담당자를 일부러 '(미지정)'으로 둔 것 — 되채우지 않는다
   if(!c.doc){const d=consultDoc(p,room,c);if(d)f.doc=d;}
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));
-  try{consultNoTg(p,room,getConsult(p,room).result,f.reason);}catch(e){}}
+  try{consultNoTg(p,room,getConsult(p,room).result,f.reason);}catch(e){}
+  setTimeout(()=>{try{consultNoGoPay(pid,room);}catch(e){console.warn('consultNoGoPay',e);}},0);}
 
 function esc(s){return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
 const PW_RULE_MSG='비밀번호는 8자 이상이며 영문과 숫자를 모두 포함해야 합니다.';
