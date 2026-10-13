@@ -13826,14 +13826,20 @@ boot();
   function sttStart(rec,meta){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){toast('이 브라우저는 음성인식을 지원하지 않습니다 (크롬에서 쓰세요)');return;}
     const st={meta,lines:[],saved:'',on:true,fails:0,sr:null,timer:null,dog:null,active:false,lastTry:0,log:[],restarts:0};rec.stt=st;
     const note=ev=>{const sec=Math.floor((Date.now()-rec.started)/1000);st.log.push(pad(Math.floor(sec/60))+':'+pad(sec%60)+' '+ev);if(st.log.length>80)st.log.shift();};
+    /* 2026-10-13: 같은 말을 반복해도 어떤 때는 끝부분만 남았다 — 쉬지 않고 길게 말하는 중에 크롬이 끊으면 아직 '확정' 안 된 말을 통째로 버린다.
+       확정 전 글(interim)도 받아 두었다가, 끊기거나 녹음을 멈출 때 남아 있으면 그대로 적는다. 시각은 그 말을 시작한 때 */
+    const stamp=t0=>{const sec=Math.max(0,Math.floor((t0-rec.started)/1000));return '['+pad(Math.floor(sec/60))+':'+pad(sec%60)+'] ';};
+    st.pend='';st.pendAt=0;st.flushPend=why=>{const t=st.pend.trim();if(t){st.lines.push(stamp(st.pendAt||Date.now())+t);note('확정 전 말 살림('+why+') '+t.length+'자');}st.pend='';st.pendAt=0;};
     const go=why=>{if(!st.on||st.active)return;st.lastTry=Date.now();
-      try{const sr=new SR();sr.lang='ko-KR';sr.continuous=true;sr.interimResults=false;sr.maxAlternatives=1;
+      try{const sr=new SR();sr.lang='ko-KR';sr.continuous=true;sr.interimResults=true;sr.maxAlternatives=1;
         sr.onstart=()=>{st.active=true;};
-        sr.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(!r.isFinal)continue;const t=String(r[0].transcript||'').trim();if(!t)continue;
-          const sec=Math.floor((Date.now()-rec.started)/1000);st.lines.push('['+pad(Math.floor(sec/60))+':'+pad(sec%60)+'] '+t);st.fails=0;}};
+        sr.onresult=e=>{let pend='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];const t=String(r[0].transcript||'').trim();if(!t)continue;
+            if(!r.isFinal){pend+=(pend?' ':'')+t;continue;}
+            st.lines.push(stamp(st.pendAt||Date.now())+t);st.pendAt=0;st.fails=0;}
+          st.pend=pend;if(pend&&!st.pendAt)st.pendAt=Date.now();if(!pend)st.pendAt=0;};
         sr.onerror=e=>{note('오류 '+e.error);if(e.error==='not-allowed'||e.error==='service-not-allowed'){st.on=false;toast('마이크 받아쓰기가 막혀 있습니다 — 크롬 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요',6000);}
           else if(e.error!=='no-speech'&&e.error!=='aborted')st.fails++;};
-        sr.onend=()=>{st.active=false;if(!st.on)return;note('끊김');setTimeout(()=>go('끊김 뒤'),st.fails>3?2000:150);};   // 조용하거나 1분쯤 지나면 크롬이 스스로 끊는다 — 곧바로 다시
+        sr.onend=()=>{st.active=false;st.flushPend('끊김');if(!st.on)return;note('끊김');setTimeout(()=>go('끊김 뒤'),st.fails>3?2000:150);};   // 조용하거나 1분쯤 지나면 크롬이 스스로 끊는다 — 곧바로 다시
         st.sr=sr;sr.start();st.active=true;if(why){st.restarts++;}}
       catch(err){st.active=false;note('다시 켜기 실패 '+(err&&err.name||err));}};
     go('');
@@ -13855,6 +13861,7 @@ boot();
     catch(e){console.warn('cloud stt',pv,e);toast(STT_LABEL[pv]+' 받아쓰기 실패: '+(e.message||e),6000);}}
   async function sttStop(rec){const st=rec.stt;st.on=false;clearInterval(st.timer);clearInterval(st.dog);try{st.sr&&st.sr.stop();}catch(e){}
     await new Promise(r=>setTimeout(r,1200));   // 마지막 말이 들어올 시간
+    try{st.flushPend&&st.flushPend('멈춤');}catch(e){}   // 그래도 확정 안 된 말이 남았으면 버리지 않고 적는다 (2026-10-13)
     await sttSave(rec,true);
     try{if(DIR&&(await perm(false))){const fh=await DIR.getFileHandle(st.meta.file.replace(/\.webm$/i,'.chrome.txt'),{create:true});const w=await fh.createWritable();await w.write(st.lines.join('\r\n')||'(받아쓴 말이 없습니다)');await w.close();}}catch(e){console.warn('stt txt',e);}   // 외장하드에도 녹음 옆에 같은 이름의 .txt (2026-10-12)
     try{audit('진료 녹음 받아쓰기(크롬)',st.meta.pname+(st.meta.mrn?' ('+st.meta.mrn+')':'')+' · '+st.lines.length+'줄');}catch(e){}}
