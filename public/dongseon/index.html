@@ -11334,14 +11334,16 @@ function fillRxBox(p){
   const times=rx.items.map(x=>String(x.t||'').trim()).filter(Boolean).sort();
   const last=times.length?times[times.length-1]:'';
   const first=times.length?times[0]:'';
-  const dcs=(p&&p.rxDc)||{};
+  const dcs=rxDcView(p);   // 저장 전 D/C 변경 포함 (2026-10-13)
+  const pendN=Object.keys(rxDcPendOps(p&&p.id)).length;
   /* 2026-10-01 요청: 열 = D/C · 처방명칭 · 총투여량 · 금액 · 급/비 (시각·처방코드·횟수·일수는 뺐다). 금액·급비는 에이전트 db1.2 의 pay 줄에서 찾는다 */
   const payOf=rxPayLookup(rx);
   const rows=rx.items.map(x=>{
     const qty=String(x.qty||'').trim(), tms=String(x.tms||'').trim(), day=String(x.day||'').trim(), unt=String(x.unt||'').trim();
     const t=String(x.t||'').trim(), ago=rxMinAgo(t), fresh=(ago!==null&&ago<=RX_NEW_MIN);
     const k=rxDcKey(x), dc=dcs[k];
-    const dcCell=`<td class="rx-dc" title="${dc?esc('D/C — '+(dc.by||'')+' '+hhmm(dc.at)+' (다시 누르면 취소)'):'D/C(중지) 체크 → 텔레그램 알림'}"><label onclick="event.stopPropagation()"><input type="checkbox"${dc?' checked':''} onchange="toggleRxDc('${p.id}','${encodeURIComponent(k)}',this)">${dc?`<span class="rx-dc-by">${esc(dc.by||'')}${dc.reason?' · '+esc(dc.reason):''}</span>`:''}</label></td>`;
+    const undoPend=!dc&&!!((p.rxDc||{})[k]);   // 저장 전 'D/C 취소'
+    const dcCell=`<td class="rx-dc" title="${dc?esc(dc.pending?'D/C — [저장]을 누르면 반영됩니다':('D/C — '+(dc.by||'')+' '+hhmm(dc.at)+' (다시 누르면 취소)')):(undoPend?'D/C 취소 — [저장]을 누르면 반영됩니다':'D/C(중지) 체크 → [저장] 때 텔레그램 알림')}"><label onclick="event.stopPropagation()"><input type="checkbox"${dc?' checked':''} onchange="toggleRxDc('${p.id}','${encodeURIComponent(k)}',this)">${dc?`<span class="rx-dc-by">${esc(dc.by||'')}${dc.reason?' · '+esc(dc.reason):''}</span>`:''}${(dc&&dc.pending)||undoPend?'<span class="rx-dc-pend">저장 전</span>':''}</label></td>`;
     const pay=payOf(x), ib=rxInsLabel(pay&&pay.ins);
     return `<tr class="${fresh?'rx-new':''}${dc?' rx-dcd':''}">${dcCell}<td class="rx-nam" title="${esc(String(x.cod||'').trim()+(t?' · 처방 '+t:''))}">${esc(String(x.nam||'').trim())}${fresh?'<span class="rx-tag">새로</span>':''}</td>
       <td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td class="rx-amt">${pay?esc(rxWon(pay.amt)):''}</td><td class="rx-ins">${ib?`<span class="rx-ib ${ib.cls}" title="${esc(ib.tip)}">${esc(ib.txt)}</span>`:''}</td>${rxGivenCell(p,k)}</tr>`;}).join('');
@@ -11350,7 +11352,7 @@ function fillRxBox(p){
   const agoTx=rxAgoText(last);
   box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역 ${nfsBadge(rx.nfs)}
       <span class="hint">비트 · 오늘 ${rx.items.length}건${dr?' · '+esc(dr):''}${span?' · '+esc(span):''}${agoTx?` <b style="color:var(--t-indigosoft)">마지막 ${esc(agoTx)}</b>`:''}</span></div>
-    ${rxDcGroupBar(p,rx)}<div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th title="D/C(중지)된 처방에 체크하면 그 방 텔레그램으로 알림">D/C</th><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th><th class="rx-gv-h" title="환자에게 드렸으면 체크 (모든 화면 공유)">드림?</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    ${pendN?`<div class="rx-dc-pendbar">⚠ D/C 변경 ${pendN}건이 아직 저장되지 않았습니다 — 위 [저장]을 눌러야 반영·알림됩니다</div>`:''}${rxDcGroupBar(p,rx)}<div class="rx-tblwrap"><table class="rx-tbl"><thead><tr><th title="D/C(중지)된 처방에 체크하면 그 방 텔레그램으로 알림">D/C</th><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th><th class="rx-gv-h" title="환자에게 드렸으면 체크 (모든 화면 공유)">드림?</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   box.style.display='';
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
@@ -11408,6 +11410,23 @@ function toggleRxGiven(pid,kEnc,el){
   apply(p);saveLocal();cloudPatientTxn(pid,apply);
   try{const it=(bitRxFor(p)||{items:[]}).items.find(x=>rxDcKey(x)===k);audit(on?'처방 드림':'처방 드림 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+((it&&(it.nam||it.cod))||''));}catch(e){}
   try{fillRxBox(p);}catch(e){}}
+/* ═════ D/C 는 [저장]을 눌러야 반영 (2026-10-13 요청) ═════
+   체크·사유 선택·체크 해제·묶음 D/C 는 이 창 안의 '저장 전' 변경으로만 모아 두고(RX_DC_PEND), 환자 정보 창의 [저장](savePatient)에서
+   한꺼번에 카드에 쓰고 알림을 보낸다. 저장하지 않고 창을 닫거나 다른 환자를 열면 버린다 */
+let RX_DC_PEND={pid:'',ops:{}};   // ops: 키 → {on, it, label, targets, reason, group}
+function rxDcPendOps(pid){return (pid&&RX_DC_PEND.pid===pid)?RX_DC_PEND.ops:{};}
+function rxDcPendClear(){RX_DC_PEND={pid:'',ops:{}};}
+function rxDcPendSet(p,k,op){if(RX_DC_PEND.pid!==p.id)RX_DC_PEND={pid:p.id,ops:{}};
+  if(!!((p.rxDc||{})[k])===op.on)delete RX_DC_PEND.ops[k];else RX_DC_PEND.ops[k]=op;}   // 원래 상태로 되돌리면 변경 없음
+/* 화면에 보일 D/C = 카드의 D/C + 저장 전 변경 */
+function rxDcView(p){const v=Object.assign({},(p&&p.rxDc)||{});const by=(currentUser&&currentUser.name)||'';
+  Object.entries(rxDcPendOps(p&&p.id)).forEach(([k,o])=>{if(o.on)v[k]={by,reason:o.reason||'',pending:true};else delete v[k];});return v;}
+function rxDcPendCommit(pid){
+  const ops=rxDcPendOps(pid);rxDcPendClear();const p=data.find(x=>x.id===pid);if(!p)return;
+  const groups={};
+  Object.entries(ops).forEach(([k,o])=>{if(o.group&&o.on){(groups[o.group+'|'+o.reason]||(groups[o.group+'|'+o.reason]=[])).push(o);return;}
+    rxDcCommit(p,pid,k,o.it,o.label,o.targets,o.on,o.reason||'');});
+  Object.values(groups).forEach(L=>rxDcGroupCommit(p,pid,L[0].group,L.map(o=>o.it),L[0].reason));}
 function toggleRxDc(pid,kEnc,el){
   const p=data.find(x=>x.id===pid);if(!p){if(el)el.checked=!el.checked;return;}
   const k=decodeURIComponent(kEnc);const rx=bitRxFor(p);const it=rx&&rx.items.find(x=>rxDcKey(x)===k);
@@ -11415,10 +11434,10 @@ function toggleRxDc(pid,kEnc,el){
   const on=!!(el&&el.checked);
   const label=String(it.nam||'').trim()||String(it.cod||'').trim();
   const rooms=rxItemRooms(it);const targets=rooms.length?rooms:[curRoom(p)].filter(Boolean);
-  if(on&&DC_NO_REASON.has(String(it.cod||'').trim().toUpperCase())){rxDcCommit(p,pid,k,it,label,targets,true,'');return;}   // 사유 없이 바로 D/C·알림
-  if(on){askDcReason(label,targets).then(reason=>{if(!reason){if(el)el.checked=false;return;}rxDcCommit(p,pid,k,it,label,targets,true,reason);});return;}
-  if(!confirm(`'${label}' 의 D/C 표시를 취소할까요?\n(취소 알림이 갑니다)`)){if(el)el.checked=true;return;}
-  rxDcCommit(p,pid,k,it,label,targets,false,'');
+  const pend=o=>{rxDcPendSet(p,k,Object.assign({it,label,targets},o));try{fillRxBox(p);}catch(e){}};
+  if(on&&DC_NO_REASON.has(String(it.cod||'').trim().toUpperCase())){pend({on:true,reason:''});return;}   // 사유 없이 D/C
+  if(on){askDcReason(label,targets).then(reason=>{if(!reason){if(el)el.checked=false;return;}pend({on:true,reason});});return;}
+  pend({on:false,reason:''});   // 체크 해제 — [저장] 때 'D/C 취소' 알림
 }
 /* ═════ 묶음 D/C (2026-10-09 요청) — 물리치료(MM… 처방 전부) · C-Arm · Sono 를 한꺼번에, 사유는 한 번만 ═════
    C-Arm 묶음 = C-ARM 처방 + 같이 나가는 주사 처방(Rocaine·SM196 같은 SM…·KK061 같은 KK…·LA357 같은 LA…), Sono 묶음도 같다.
@@ -11433,14 +11452,21 @@ function rxDcGroups(rx){const items=(rx&&rx.items)||[];const rule=n=>ROUTE_RX_RU
     const a=anc.find(a=>a.i===i);if(a){G[a.g].push(x);return;}
     if(RX_INJ.test(c)&&anc.length){const n=anc.slice().sort((p,q)=>Math.abs(p.i-i)-Math.abs(q.i-i))[0];G[n.g].push(x);}});
   return Object.entries(G).filter(([g,L])=>L.length>=2).map(([g,L])=>({g,items:L}));}
-function rxDcGroupBar(p,rx){const dcs=(p&&p.rxDc)||{};const L=rxDcGroups(rx).map(x=>Object.assign(x,{left:x.items.filter(it=>!dcs[rxDcKey(it)])})).filter(x=>x.left.length);
+function rxDcGroupBar(p,rx){const dcs=rxDcView(p);const L=rxDcGroups(rx).map(x=>Object.assign(x,{left:x.items.filter(it=>!dcs[rxDcKey(it)])})).filter(x=>x.left.length);
   if(!L.length)return "";
   return '<div class="rx-dcgrp"><span class="hint">묶음 D/C (사유 한 번):</span>'+L.map(x=>`<button type="button" class="btn sm" title="${esc(x.left.map(it=>String(it.nam||it.cod||"").trim()).join(", "))}" onclick="event.stopPropagation();rxDcGroup('${p.id}','${esc(x.g)}')">⛔ ${esc(x.g)} ${x.left.length}건</button>`).join("")+"</div>";}
 function rxDcGroup(pid,g){const p=data.find(x=>x.id===pid);if(!p)return;const rx=bitRxFor(p);const grp=rxDcGroups(rx).find(x=>x.g===g);if(!grp)return;
-  const dcs=p.rxDc||{};const left=grp.items.filter(it=>!dcs[rxDcKey(it)]);if(!left.length)return;
+  const dcs=rxDcView(p);const left=grp.items.filter(it=>!dcs[rxDcKey(it)]);if(!left.length)return;
   const targets=[...new Set(left.flatMap(rxItemRooms))];if(!targets.length&&curRoom(p))targets.push(curRoom(p));
   const label=g+" "+left.length+"건";
   askDcReason(label+" ("+left.map(it=>String(it.nam||it.cod||"").trim()).join(", ")+")",targets).then(reason=>{if(!reason)return;
+    /* [저장] 때 반영 (2026-10-13) — 묶음은 저장 때도 한 번에 알림 */
+    left.forEach(it=>rxDcPendSet(p,rxDcKey(it),{on:true,it,label:String(it.nam||it.cod||'').trim(),targets,reason,group:g}));
+    try{fillRxBox(p);}catch(e){}});}
+function rxDcGroupCommit(p,pid,g,left,reason){
+  const targets=[...new Set(left.flatMap(rxItemRooms))];if(!targets.length&&curRoom(p))targets.push(curRoom(p));
+  const label=g+" "+left.length+"건";
+  {
     const by=(currentUser&&currentUser.name)||"",at=new Date().toISOString();
     const recs=left.map(it=>[rxDcKey(it),{at,by,cod:String(it.cod||"").trim(),nam:String(it.nam||"").trim(),reason,group:g}]);
     const apply=d=>{d.rxDc=Object.assign({},d.rxDc||{});recs.forEach(([k,r])=>{d.rxDc[k]=r;});return d;};
@@ -11448,7 +11474,7 @@ function rxDcGroup(pid,g){const p=data.find(x=>x.id===pid);if(!p)return;const rx
     try{audit("처방 D/C",(p.name||"")+(p.mrn?" ("+p.mrn+")":"")+" "+label+": "+left.map(it=>String(it.nam||it.cod||"").trim()).join(", ")+" · 사유 "+reason);}catch(e){}
     roomNotify(p,"__all__","dc",{item:label+" ("+left.map(it=>String(it.nam||it.cod||"").trim()).join(", ")+")",by,rooms:targets.join(", "),reason});
     try{toast(`${dispName(p.name)} 님 ${label} D/C → 모두에게 알림`);}catch(e){}
-    try{fillRxBox(p);}catch(e){}render();});}
+    try{fillRxBox(p);}catch(e){}render();}}
 function rxDcCommit(p,pid,k,it,label,targets,on,reason){
   const by=(currentUser&&currentUser.name)||'';
   const rec={at:new Date().toISOString(),by,cod:String(it.cod||'').trim(),nam:String(it.nam||'').trim(),reason:reason||''};
@@ -11790,6 +11816,7 @@ function openAdd(){
   showModal();
 }
 function openEdit(pid){document.getElementById('modal').classList.remove('view-only','add-full');
+  try{if(RX_DC_PEND.pid&&RX_DC_PEND.pid!==pid)rxDcPendClear();}catch(e){}   // 다른 환자를 열면 저장 전 D/C 변경은 버린다 (2026-10-13)
   const p=data.find(x=>x.id===pid);if(!p)return;
   try{autoAssignViewer(p);}catch(e){console.warn('autoAssignViewer',e);}   // 진료의 본인이 열면 이 방 담당으로 자동 지정
   editId=pid;routeDraft=[...p.route];noteRoomSel=p.route[p.step]||p.route[0]||"";
@@ -12446,7 +12473,7 @@ function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard
 applyCompact();
 try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의 명단을 EMR 확장에 1회 전달(로그인 전 캐시)
 function showModal(){document.getElementById("modal").classList.add("show")}
-function closeModal(){data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("view-only","add-full");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
+function closeModal(){try{rxDcPendClear();}catch(e){}data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("view-only","add-full");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
 /* 4층 비급여 치료 표의 칸(빈 곳)에서 환자 정보 창 열기: 화면(z-index 300) 위에 뜨도록 하고, 머리에 '← 4층 비급여 치료' 단추 — 닫으면 표가 그대로 남아 있다 (2026-09-20) */
 window.openEditFromResv=function(pid,backLabel){const p=data.find(x=>x.id===pid);if(!p)return;
   try{openEdit(pid);}catch(e){console.warn(e);return;}
@@ -12510,6 +12537,7 @@ function savePatient(){
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     audit('환자수정',name+(mrn?' ('+mrn+')':''));
     if(JSON.stringify(_oldRoute)!==JSON.stringify(p.route))routeChangeNotify(p,_oldRoute,p.route,'직접 수정');
+    try{rxDcPendCommit(p.id);}catch(e){console.warn('rxDc commit',e);}   // 저장 전 D/C 변경을 이제 반영·알림 (2026-10-13)
     save(p);cloudSaveConfig();render();closeModal();return;
   }else{
     const c=mrnConflict(mrn,name);
@@ -13439,6 +13467,8 @@ boot();
   .rx-tbl td.rx-dc label{display:inline-flex;align-items:center;gap:4px;cursor:pointer}
   .rx-tbl td.rx-dc input{width:16px;height:16px;cursor:pointer;accent-color:#d92d20}
   .rx-tbl .rx-dc-by{font-size:10.5px;font-weight:700;color:#d92d20}
+  .rx-tbl .rx-dc-pend{display:inline-block;margin-left:4px;font-size:10px;font-weight:800;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;border-radius:5px;padding:0 4px;white-space:nowrap}   /* 저장 전 D/C (2026-10-13) */
+  .rx-dc-pendbar{margin:6px 0 2px;font-size:12px;font-weight:700;color:#92400e;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:5px 9px}
   .rx-tbl tr.rx-dcd td:not(.rx-dc){text-decoration:line-through;color:var(--muted);opacity:.75}   /* D/C 된 처방은 줄을 긋는다 */
   .rx-tbl td.rx-cod{font-weight:700;color:var(--t-indigosoft)}
   .rx-tbl td.rx-nam{white-space:normal;word-break:break-all}
