@@ -568,6 +568,11 @@
   /* 비트 수납완료 — 카드는 수납대기에 남고 초록 테두리·배지. 직원이 계산 확인 후 [수납완료] → [내보내기] */
   .card.bitpaid{background:rgba(34,197,94,.10);border-color:rgba(34,197,94,.6);box-shadow:inset 0 0 0 2px rgba(34,197,94,.35),var(--shadow)}
   .card.bitpaid.designated{box-shadow:inset 4px 0 0 #f5b301,inset 0 0 0 2px rgba(34,197,94,.35),var(--shadow)}
+  /* 비트 수납완료인데 아직 수납 방이 아닌 곳(Sono 등)에 있는 카드 — 초록 테두리가 흐려졌다 또렷해졌다 (2026-10-13 요청) */
+  .card.bitpaid.bitpaid-away{animation:bitpaidPulse 1.4s ease-in-out infinite}
+  @keyframes bitpaidPulse{0%,100%{border-color:rgba(34,197,94,.25);box-shadow:inset 0 0 0 2px rgba(34,197,94,.12),var(--shadow)}
+    50%{border-color:rgba(22,163,74,1);box-shadow:inset 0 0 0 3px rgba(22,163,74,.85),0 0 10px rgba(34,197,94,.55)}}
+  @media (prefers-reduced-motion:reduce){.card.bitpaid.bitpaid-away{animation:none;border-color:rgba(22,163,74,1);box-shadow:inset 0 0 0 3px rgba(22,163,74,.85)}}
   .bitpaid-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--t-green);background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.45);border-radius:6px;padding:1px 6px;white-space:nowrap}
   .bitpaid-mark svg{width:12px;height:12px}
   .bitcancel-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#fff;background:var(--red);border-radius:8px;padding:2px 8px}
@@ -4459,14 +4464,15 @@ function bitApplyReceiveEnd(){
       .then(won=>{
         if(!won)return;
         const q=data.find(x=>x.id===p.id);if(!q||q.discharged)return;
-        const pay=payWaitRoom();   // 비트가 수납완료라 해도 카드는 '수납대기'로 — 직원이 확인 후 수납완료로 옮긴다
-        if(pay&&!isPayRoom(curRoom(q))){completeVisit(q,'이동');const i=q.route.indexOf(pay);if(i>=0)q.step=i;else{q.route.push(pay);q.step=q.route.length-1;}enterCurrentRoom(q,'비트');try{enteredRoom(q,pay);}catch(e){}}
+        /* 2026-10-13 요청: 카드를 수납대기로 옮기지 않는다 — 방을 옮기거나 [종결]을 안 누른 채 비트 계산이 먼저 끝나면
+           남은 동선(Sono 등)을 모두 건너뛰고 수납대기로 가 버렸다. 이제는 지금 방에 그대로 두고 '비트 수납완료' 표시만(초록 테두리가 깜빡임) */
+        const away=!isPayRoom(curRoom(q));
         const wasPaid=!!q.bitPaid;   // 늦게 연 화면이 이미 '수납완료' 카드로 만든 경우 — 표시만 유지하고 알림은 다시 띄우지 않음
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
         save(q);render();
-        if(!wasPaid)audit('비트 수납완료(수납 이동)',q.name+(q.mrn?' ('+q.mrn+')':'')+' → '+curRoom(q));
+        if(!wasPaid)audit(away?'비트 수납완료(방 그대로)':'비트 수납완료',q.name+(q.mrn?' ('+q.mrn+')':'')+' · '+curRoom(q));
         if((q.extraFee||0)>0&&!q.paid){try{notify('wallet','비트 수납완료',esc(dispName(q.name))+' 님 — 비트에서 수납이 끝났지만 추가 비용 '+won(q.extraFee)+'원이 미수납입니다.');}catch(e){}}
-        if(!wasPaid){try{toast('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (계산 확인 후 [수납완료])');}catch(e){}}
+        if(!wasPaid){try{toast(away?('비트 수납완료 — '+dispName(q.name)+' 님은 아직 '+curRoom(q)+' (동선을 마친 뒤 수납대기로)'):('비트 수납완료 → '+dispName(q.name)+' 님 '+curRoom(q)+' (계산 확인 후 [수납완료])'));}catch(e){}}
       })
       .catch(e=>console.warn('bit receiveEnd',e)).finally(()=>{delete BIT_CLAIMING[r.docId];});
   });
@@ -8356,7 +8362,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid":"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+(isPayRoom(curRoom(p))?"":" bitpaid-away"):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
