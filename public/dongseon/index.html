@@ -8460,7 +8460,7 @@ function cardEl(p,colRoom){
       ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
-      ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
+      ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" ${st==='진행'?'title="잘못 눌렀으면 한 번 더 누르면 대기로 돌아갑니다"':''} onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
       <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}',''))return;${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
@@ -8663,9 +8663,17 @@ function accrue(p){const el=p.out?0:Math.max(0,sinceMs(p));
   else p.waitMs=(p.waitMs||0)+el;
   p.statusSince=new Date().toISOString();}
 /* ── 노트/상태 순수 변경 함수: 로컬 낙관적 반영 & 서버 트랜잭션이 같은 로직 적용(동시편집 보호·테스트 가능) ── */
-function applyStatus(d,st){accrue(d);d.status=st;
+function applyStatus(d,st){
+  /* 진행 취소(진행 → 대기, 2026-10-13): 잘못 누른 동안의 시간은 치료 시간이 아니라 대기 시간으로, 치료 기록(progLog)은 누르기 전으로 */
+  const undo=d.status==='진행'&&st==='대기';
+  if(undo)d.status='대기';
+  accrue(d);d.status=st;
+  if(undo){const u=d.progUndo,r=curRoom(d);
+    if(u&&u.room===r){if(u.prev){d.progLog=d.progLog||{};d.progLog[r]=u.prev;}else if(d.progLog)delete d.progLog[r];}
+    delete d.progUndo;}
   /* 진행 시작 시 이 방의 담당 진료의를 치료 기록으로 남긴다 — 이후 다른 방에서도 누가 치료했는지 보임 */
   if(st==='진행'){const r=curRoom(d);const doc=progStaffFor(d,r);
+    d.progUndo={room:r,prev:(d.progLog&&d.progLog[r])||''};   // 진행 취소 때 되돌릴 값
     if(doc){d.progLog=d.progLog||{};d.progLog[r]=doc;}}
   return d;}
 /* 방마다 '담당'으로 남길 사람 (2026-10-06 요청): 진료실 = 의사 · C-Arm·Sono·근전도 = 술기 의사 · x-ray실 = 방사선 · 비용 상담·처치실 = 간호.
@@ -8742,7 +8750,10 @@ function autoAssignRoomStaff(p){
   if(ns.length===1&&!CARD_STAFF_HIDE.nurse(r)){p.roomNurses=p.roomNurses||{};if(!has(p.roomNurses,r))p.roomNurses[r]=ns[0];}
   if(xs.length===1&&!CARD_STAFF_HIDE.rad(r)){p.roomRads=p.roomRads||{};if(!has(p.roomRads,r))p.roomRads[r]=xs[0];}
 }
-function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;if(p.status===st){return;}
+function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;
+  /* 2026-10-13 요청: [진행]을 잘못 눌렀으면 한 번 더 눌러 대기로 되돌린다 (모든 방) */
+  if(p.status===st){if(st!=='진행')return;st='대기';
+    try{audit('진행 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}}
   /* 진료의 미지정이면 진행 시작 불가 — 누가 치료하는지 반드시 지정 후 진행.
      상담 방은 카드 위 선택칸을 없앴으므로(2026-09-22) 아래 '담당자'로 판단한다 */
   {const _r=curRoom(p), _cs=isConsultRoom(_r);
