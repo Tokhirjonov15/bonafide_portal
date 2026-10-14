@@ -59,11 +59,11 @@ function renderSchedule(){
     h+=`<div class="scroll"><table class="sheet grid fluid" style="width:100%"><colgroup><col style="width:${w(54)}">`;
     D.therapists.forEach(t=>{h+=t.single?`<col style="width:${w(44)}">`:`<col style="width:${w(62)}"><col style="width:${w(46)}"><col style="width:${w(14)}">`;});
     h+=`</colgroup><thead><tr><th rowspan="2">시간</th><th colspan="${totalCols}" class="section">비급여치료</th></tr><tr>`;
-    D.therapists.forEach((t,i)=>{h+=`<th colspan="${t.single?1:3}" class="th-name" style="background:${A(headerColor(t,i))}" onclick="openEd({kind:'therapists'})" title="치료사 명단 바꾸기">${esc(t.name)}</th>`;});
+    D.therapists.forEach((t,i)=>{h+=`<th colspan="${t.single?1:3}" class="th-name" data-tid="${t.id}" style="background:${A(headerColor(t,i))}" onclick="openEd({kind:'therapists'})" title="치료사 명단 바꾸기">${esc(t.name)}</th>`;});
     h+=`</tr></thead><tbody>`;
     times.forEach((min,i)=>{
       h+=`<tr class="${i%2===0?'half':'quarter'}">`;
-      if(i%2===0)h+=`<td rowspan="2" class="time">${hm(min)}</td>`;
+      if(i%2===0)h+=`<td rowspan="2" class="time" data-tmin="${min}">${hm(min)}</td>`;
       const bi=bands.findIndex(b=>(b.startMin-DAY_START)/SLOT===i);
       if(bi>=0){const band=bands[bi];const span=(band.endMin-band.startMin)/SLOT;const bg=band.kind==='off'?'#999999':band.color||'#d9d9d9';
         h+=`<td colspan="${totalCols}" rowspan="${span}" class="block band ${ed}" style="background:${A(bg)}" title="전원 ${band.kind==='off'?'비근무':'차단'} ${hm(band.startMin)}~${hm(band.endMin)}" onclick="bandClick(${bi})">${esc(band.text)}</td>`;}
@@ -100,7 +100,7 @@ function renderSchedule(){
     h+=`<div class="scroll cancel-wrap"><table class="sheet grid cancel-grid fluid" style="width:100%"><colgroup><col style="width:${cw(54)}">${cancelTh.map(()=>`<col style="width:${cw(90)}">`).join('')}</colgroup>
       <thead><tr><th rowspan="2">시간</th><th colspan="${cancelTh.length}" class="section cancel-section">취소/변경</th></tr><tr>${cancelTh.map(t=>`<th class="th-cancel">${esc(t.name)}</th>`).join('')}</tr></thead><tbody>`;
     const cRend=new Map(cancelTh.map(t=>[t.name,new Set()]));
-    times.forEach((min,i)=>{h+=`<tr class="${i%2===0?'half':'quarter'}">`;if(i%2===0)h+=`<td rowspan="2" class="time">${hm(min)}</td>`;
+    times.forEach((min,i)=>{h+=`<tr class="${i%2===0?'half':'quarter'}">`;if(i%2===0)h+=`<td rowspan="2" class="time" data-tmin="${min}">${hm(min)}</td>`;
       cancelTh.forEach((t,ti)=>{const done=cRend.get(t.name);if(done.has(i))return;const c=cancelAt.get(`${t.name}|${min}`)||null;
         const span=i%2===0&&i+1<slots&&!cancelAt.has(`${t.name}|${min+SLOT}`)?2:1;for(let k=i;k<i+span;k++)done.add(k);
         h+=`<td rowspan="${span}" class="cancel ${c?(c.kind==='cancel'?'strike':'')+' cx-cell'+(cxMemo(c)?' has-note':''):'free'} ${ed}" style="${c&&c.color?`background:${A(c.color)}`:''}" title="${c?(c.kind==='cancel'?'취소':'변경'):''}" onclick="cxOpen(${ti},${min})"><span class="cx-text">${c?esc(c.text):''}</span>${c?cxNotePop(c):''}</td>`;});

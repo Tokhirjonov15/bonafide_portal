@@ -77,6 +77,8 @@ table.grid th.th-name{cursor:pointer;font-weight:700;color:#1f2328}
 table.grid td{border:1px solid #d5d8de;padding:0 2px;vertical-align:middle;color:#1f2328;background:#fff}
 table.grid tr.quarter td{border-top:1px dashed #e6e8ec}
 table.grid td.time{background:var(--bg);color:var(--text);text-align:center;font-weight:600;font-size:12px}
+table.grid td.time.hi{background:#fde047;color:#1f2328;box-shadow:inset 0 0 0 2px #ca8a04}   /* 누른 칸의 행 (2026-10-14) */
+table.grid th.th-name.hi{box-shadow:inset 0 0 0 3px #ca8a04;text-decoration:underline}       /* 누른 칸의 열 */
 table.grid td.free{background:#fff}
 table.grid td.free.editable:hover{background:#eef4ff}
 table.grid td.pt{white-space:pre-line;line-height:1.15;text-align:center;position:relative;overflow:visible}
@@ -710,7 +712,15 @@ function render(){const app=document.getElementById('app');if(!ME)return;
     else if(p==='import')body=renderImportPage();
   }catch(e){console.error(e);const miss=typeof renderSchedule!=='function';body=miss?`<p class="err">화면 파일을 받지 못했습니다 — 잠시 뒤 저절로 다시 엽니다. 계속되면 새로고침(F5)해 주세요.</p>`:`<p class="err">화면을 그리지 못했습니다: ${esc(e.message)}</p>`;}
   app.innerHTML=navHtml()+body;
-  if(p==='schedule'){const L=app.querySelector('.sheet-layout');if(L)L.focus({preventScroll:true});}}
+  if(p==='schedule'){const L=app.querySelector('.sheet-layout');if(L)L.focus({preventScroll:true});gridHi();}}
+/* 누른 칸의 행·열 표시 (2026-10-14 요청: 문경준님을 누르면 맨 왼쪽 16:00 칸에 불) — 왼쪽 시간 칸과 위 치료사 이름에 노란 표시. 다시 그려도 유지 */
+let GRID_HI=null;
+function gridHi(){document.querySelectorAll('table.grid .hi').forEach(el=>el.classList.remove('hi'));if(!GRID_HI)return;const {min,tid}=GRID_HI;
+  document.querySelectorAll('table.grid td.time[data-tmin]').forEach(el=>{const m=Number(el.dataset.tmin);if(min>=m&&min<m+30)el.classList.add('hi');});
+  if(tid!=null)document.querySelectorAll(`table.grid th.th-name[data-tid="${tid}"]`).forEach(el=>el.classList.add('hi'));}
+document.addEventListener('pointerdown',e=>{const td=e.target.closest&&e.target.closest('table.grid td');if(!td)return;
+  if(td.dataset.min==null){if(!td.classList.contains('time')){GRID_HI=null;gridHi();}return;}
+  GRID_HI={min:Number(td.dataset.min),tid:td.dataset.tid==null?null:Number(td.dataset.tid)};gridHi();},true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(EDIT){EDIT=null;MSG='';renderEditor();render();}else if(PAINT){PAINT=null;render();}}});
 
 /* 실행 도우미: 저장 → 결과 */
