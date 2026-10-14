@@ -3933,10 +3933,10 @@ function pastShotsOf(mrn,extraHidden){const P=SLIP_PAST[mrn];if(!P||!P.shots)ret
 function slipPastList(it){const L=pastShotsOf(normMrn(it&&it.mrn),(it.note&&it.note.shotHidden)||[]);return L&&L.filter(x=>x.kind!=='pt');}
 function slipPastBtn(it){const mrn=normMrn(it&&it.mrn);if(!mrn||!slipShotsCol())return '';slipPastLoad(mrn);const L=slipPastList(it);
   if(L&&!L.length)return '';const on=SLIP_PAST_OPEN.has(mrn);
-  return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 진료실 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 접기':'이전 캡처'}${L?' '+L.length:''}</button>`;}
+  return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 주사 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 기록 접기':'이전 캡처 기록'}${L?' '+L.length:''}</button>`;}
 window.slipPastToggle=function(mrn){if(SLIP_PAST_OPEN.has(mrn))SLIP_PAST_OPEN.delete(mrn);else SLIP_PAST_OPEN.add(mrn);renderSlipScreen();};
 function slipPastHtml(it){const mrn=normMrn(it&&it.mrn);if(!SLIP_PAST_OPEN.has(mrn))return '';const L=slipPastList(it);
-  if(!L)return '<div class="sd-past"><div class="hint">이전 캡처를 불러오는 중…</div></div>';if(!L.length)return '';
+  if(!L)return '<div class="sd-past"><div class="hint">이전 캡처 기록을 불러오는 중…</div></div>';if(!L.length)return '';
   const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
   return '<div class="sd-past">'+Object.keys(g).sort().reverse().map(d=>`<div class="sd-past-day"><div class="sd-past-h">${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</div><div class="sd-past-grid">`+
     g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
@@ -3978,10 +3978,10 @@ window.pt4AlertOpen=function(docId){const n=BIT_NOTES.find(x=>x.docId===docId);i
 /* 환자 정보 창의 '이전 캡처' (2026-10-14 요청: PT 캡처의 지난 사진도) — 환자별 영구 목록(slipShots)에서 오늘 전 것을 날짜별로, PT·주사 구분 */
 const CAP_PAST_OPEN=new Set();
 window.capPastToggle=function(mrn){if(CAP_PAST_OPEN.has(mrn))CAP_PAST_OPEN.delete(mrn);else CAP_PAST_OPEN.add(mrn);const p=editId&&data.find(q=>q.id===editId);if(p)fillCapBox(p);};
-function capPastHtml(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!slipShotsCol())return {btn:'',body:''};slipPastLoad(mrn);const L=pastShotsOf(mrn,[]);
+function capPastHtml(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!slipShotsCol())return {btn:'',body:''};slipPastLoad(mrn);const L0=pastShotsOf(mrn,[]),L=L0&&L0.filter(x=>x.kind==='pt');   // 환자 정보 창은 PT 캡처만 — 주사 캡처는 슬립 화면 (2026-10-14 요청)
   if(!L||!L.length)return {btn:'',body:''};const on=CAP_PAST_OPEN.has(mrn);   // 다 불러온 뒤 지난 캡처가 있을 때만(불러오면 slipPastLoad 가 이 칸을 다시 그린다)
-  const btn=`<button type="button" class="btn sm${on?' on':''}" onclick="capPastToggle('${esc(mrn)}')" title="지난 날의 진료실 캡처(PT·주사)를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 접기':'이전 캡처'}${L?' '+L.length:''}</button>`;
-  if(!on)return {btn,body:''};if(!L)return {btn,body:'<div class="hint">이전 캡처를 불러오는 중…</div>'};
+  const btn=`<button type="button" class="btn sm${on?' on':''}" onclick="capPastToggle('${esc(mrn)}')" title="지난 날의 PT 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 기록 접기':'이전 캡처 기록'} ${L.length}</button>`;
+  if(!on)return {btn,body:''};
   const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
   const one=x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span><b class="cap-k '+(x.kind==='pt'?'pt':'inj')+'">'+(x.kind==='pt'?'PT':'주사')+'</b> 📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>';
   const body='<div class="cap-past">'+Object.keys(g).sort().reverse().map(d=>{const D=g[d].slice().sort((a,b)=>(a.kind==='pt'?0:1)-(b.kind==='pt'?0:1));
