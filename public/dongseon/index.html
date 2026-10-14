@@ -847,8 +847,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   @keyframes ptBlink{0%,100%{box-shadow:0 0 0 0 rgba(234,88,12,0);border-color:var(--line)}50%{box-shadow:0 0 0 4px rgba(234,88,12,.55);border-color:#ea580c}}
   .card.pt-soon{animation:ptBlink 1.1s ease-in-out infinite;border:2px solid #ea580c}
   /* 대기 30분 넘음 (2026-10-01) — 깜빡이지 않고 빨간 테두리만(4층 예약 깜빡임과 구별) */
-  .card.wait-over{border:2px solid #dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.18)}
-  .card.wait-over.pt-soon{border-color:#ea580c}
+  /* 대기 30분 넘음 카드의 빨간 테두리는 뺐다 (2026-10-14 요청) — 카드 안의 '대기 30분 넘음' 띠만 남는다 */
   .wait-over-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(220,38,38,.1);color:#b91c1c;font-size:12.5px;font-weight:800}
   .pt-soon-tag{margin:6px 12px 0;padding:4px 9px;border-radius:7px;background:rgba(234,88,12,.12);color:#c2410c;font-size:12.5px;font-weight:800}
   /* PT 캡처 도착 — 4층으로 가는 카드를 청록으로 (2026-10-13) */
