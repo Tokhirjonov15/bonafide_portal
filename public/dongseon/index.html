@@ -868,6 +868,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cap-nb{background:#0d9488;color:#fff;border-radius:4px;padding:0 5px}
   .cap-ok{background:#0d9488;color:#fff;border-color:#0d9488}
   .hold-card{cursor:pointer}.hold-card .card-top{padding-top:6px}
+  /* 3,4층 이동 (2026-10-14) — 3층 카드 오른쪽 위 [4층] 체크, 4층 칸의 유령 카드 */
+  .f4mv-chk{order:99;margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:800;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:1px 7px;cursor:pointer;white-space:nowrap}
+  .f4mv-chk input{margin:0;cursor:pointer}.f4mv-chk.on{color:#fff;background:#0d9488;border-color:#0d9488}
+  .f4mv-card .f4mv-x{margin-left:auto}.f4mv-card .f4mv-time{color:#0f766e;background:rgba(13,148,136,.1)}
   .hold-time{display:flex;align-items:center;gap:6px;margin:6px 12px 12px;padding:6px 10px;border-radius:9px;background:rgba(217,119,6,.12);color:#b45309;font-weight:800;font-size:13px}
   .hold-time svg{width:15px;height:15px}.hold-time b{margin-left:auto;font-variant-numeric:tabular-nums;font-size:15px}
   .rv-rooms{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0}
@@ -2985,6 +2989,7 @@ function mirroredHere(p, room){
     const need=spaceRoomsFromRx(p);
     return (need===null)?false:need.includes(room);}   // 처방이 아직 없으면 펼치지 않는다 — 환자가 있는 방에만 한 장 (2026-09-24)
   if(p.bitHold&&p.bitHold===room&&cr!==room)return true;   // 비트 보류 — 보류 방에도 함께 (2026-10-01)
+  if(room===F4_MOVE_ROOM&&p.f4Move&&cr!==room)return true;  // 3,4층 이동 유령 카드 (2026-10-14)
   return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
 }
 const isPayRoom = r => /수납/.test(r||'');
@@ -4648,6 +4653,25 @@ function ensureHoldRooms(){let ch=false;
     const m=meta(r);if(!m.noProg){m.noProg=true;ch=true;}});
   if(ch){try{saveRooms();}catch(e){}}}
 /* 보류 방 카드 (2026-10-01 요청): 진행·종결 같은 버튼 없이 이름·환자번호·실제 위치·보류 시간만. 비트에서 보류가 풀리면 저절로 사라진다 */
+/* ═════ 3,4층 이동 (2026-10-14 요청) ═════
+   3층이 붐빌 때 C-Arm 전에 4층 물리치료를 먼저 보내는 일이 많다 — 3층 카드의 [4층] 체크를 누르면 4층의 '3,4층 이동' 칸에 그 환자의 유령 카드(접수보류처럼).
+   카드는 옮기지 않는다(실제 위치 그대로). 4층 칸의 [✕ 해제]·3층 카드 체크 해제·환자가 실제로 4층 방에 들어가면 사라진다. 카드 문서 f4Move = {at, by} */
+const F4_MOVE_ROOM='3,4층 이동';
+function f4MoveChk(p,room){if(!ROOMS.includes(F4_MOVE_ROOM)||!room||meta(room).group==='4층'||/^4층/.test(room)||room===F4_MOVE_ROOM||isPayRoom(room))return '';
+  return `<label class="f4mv-chk${p.f4Move?' on':''}" onclick="event.stopPropagation()" title="4층에 '3,4층 이동' 유령 카드 만들기 — 4층 물리치료를 먼저 보낼 때"><input type="checkbox" ${p.f4Move?'checked':''} onchange="setF4Move('${p.id}',this.checked)"> 4층</label>`;}
+window.setF4Move=function(pid,on){const p=data.find(x=>x.id===pid);if(!p)return;
+  const v=on?{at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}:null;
+  const apply=d=>{if(v)d.f4Move=v;else delete d.f4Move;return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  try{audit(on?'3,4층 이동 표시':'3,4층 이동 해제',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
+  render();};
+function f4MoveCardEl(p,room){const c=document.createElement('div');c.className='card mirror hold-card f4mv-card';c.dataset.pid=p.id;c.dataset.col=room;
+  const since=(p.f4Move&&p.f4Move.at)||'';const birth=[p.birth?esc(p.birth):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
+  c.innerHTML=`<div class="mirror-tag"><i data-lucide="footprints"></i> 실제 위치: ${esc(curRoom(p))}</div>
+    <div class="card-top"><span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span><button type="button" class="mini f4mv-x" title="유령 카드 지우기" onclick="event.stopPropagation();setF4Move('${p.id}',false)">✕ 해제</button></div>
+    ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||'')}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
+    <div class="hold-time f4mv-time"><i data-lucide="arrow-up-down"></i> 3,4층 이동${p.f4Move&&p.f4Move.by?' · '+esc(p.f4Move.by):''} <b class="hold-clock" data-since="${esc(since)}">${since?fmtClock(Date.now()-new Date(since).getTime()):'-'}</b></div>`;
+  c.addEventListener('click',()=>openEdit(p.id));
+  return c;}
 function holdCardEl(p,room){const c=document.createElement('div');c.className='card mirror hold-card';c.dataset.pid=p.id;c.dataset.col=room;
   const since=p.bitHoldAt||'';const birth=[p.birth?esc(p.birth):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
   c.innerHTML=`<div class="mirror-tag"><i data-lucide="footprints"></i> 실제 위치: ${esc(curRoom(p))}</div>
@@ -5554,6 +5578,11 @@ async function runSelfTest(){
        const b=[roomShows('테스트방','nurse'),roomHasStaff('테스트방'),roomStaffPart('테스트방'),staffOpts('',[],roomStaffPart('테스트방')).join()];
        if(_m===undefined)delete ROOM_META['테스트방'];else ROOM_META['테스트방']=_m;
        eq('진료실 관리: 예전 이름 칸이 있으면 그 칸 표시, 고르면 고른 대로(담당 파트 → 직원 목록 그 파트 전부)', [a,b], [[true,false,false],[false,true,'물리치료사','허 빈,새치료']]);}
+      {const _R=ROOMS;ROOMS=[..._R,F4_MOVE_ROOM];meta(F4_MOVE_ROOM).group='4층';   // 3,4층 이동 유령 카드 (2026-10-14)
+       const P={id:'f4m',name:'유령',route:['3층 대기실','Sono','기본물리치료'],step:1,f4Move:{at:new Date().toISOString(),by:'t'}};
+       const a=[mirroredHere(P,F4_MOVE_ROOM),!!f4MoveChk(P,'Sono'),!f4MoveChk(P,'4층 대기실')];delete P.f4Move;const b=mirroredHere(P,F4_MOVE_ROOM);
+       ROOMS=_R;
+       eq('3,4층 이동: 체크하면 4층 칸에 유령 카드, 3층 카드에만 체크칸, 풀면 사라짐', [a,b], [[true,true,true],false]);}
       STAFF_ROSTER['진료지원']=['한효주 (Lux)'];
       eq('직원 목록: 비용 상담 담당자 = 간호사·진료지원만(방 명단에 섞인 물리치료사는 빠짐)', (()=>{const _m=ROOM_META['비용 상담'];ROOM_META['비용 상담']={doctors:['우성복','허빈']};const r=consultWhoOpts('비용 상담','');if(_m===undefined)delete ROOM_META['비용 상담'];else ROOM_META['비용 상담']=_m;return r;})(), ['우성복','새간호','한효주']);
       STAFF_ROSTER=_sr;}
@@ -6042,6 +6071,11 @@ function applyCfg(d){
     Object.entries({'진료실1':'김현우','진료실2':'백민철','진료실3':'정상민','진료실4':'박초롱'}).forEach(([r,d])=>{if(ROOMS.includes(r))meta(r).doctors=[d];});
     meta('진료실1').seedDoc1014=true;
     setTimeout(()=>{try{if(!DOCTORS.includes('박초롱')){DOCTORS.push('박초롱');saveDoctorsCfg();}saveRooms();}catch(e){}},0);}
+  /* '3,4층 이동' 칸 (2026-10-14 요청) — 4층 그룹, 4층 대기실 앞에. 유령 카드만 보이는 칸이라 진행 단계 없음. 한 번만(4층 대기실 meta.seedF4Move) */
+  if(isAdmin()&&!ROOMS.includes(F4_MOVE_ROOM)&&!meta('4층 대기실').seedF4Move){
+    let i=ROOMS.indexOf('4층 대기실');if(i<0){i=ROOMS.length;ROOMS.forEach((r,k)=>{if(meta(r).group==='4층'&&i===ROOMS.length)i=k;});}
+    ROOMS.splice(i,0,F4_MOVE_ROOM);meta(F4_MOVE_ROOM).group='4층';meta(F4_MOVE_ROOM).noProg=true;meta('4층 대기실').seedF4Move=true;
+    setTimeout(()=>{try{saveRooms();}catch(e){}},0);}
   /* 진료실4 (2026-10-14 요청: 위고비·마운자로 처방 때만 쓰는 방, 박초롱 원장님) — 위 배정과 따로: 진료실1 이름이 달라도 만든다. 마지막 진료실 뒤에, 그 방 설정을 본떠서. 한 번만(첫 방 meta.seedRoom4) */
   if(isAdmin()&&ROOMS.length&&!ROOMS.includes('진료실4')&&!meta(ROOMS[0]).seedRoom4){
     let i=-1;ROOMS.forEach((r,k)=>{if(/^진료실\s*\d/.test(r))i=k;});
@@ -7220,6 +7254,7 @@ function render(){
       (_ss?[...list,...mirrors].sort(viewSort(room)):[...list,...mirrors]).forEach(p=>{
         if(!_mset.has(p)){body.appendChild(cardEl(p));return;}
         if(HOLD_ROOMS.includes(room)&&p.bitHold===room){body.appendChild(holdCardEl(p,room));return;}   // 비트 보류 방: 버튼 없는 간단한 카드
+        if(room===F4_MOVE_ROOM&&p.f4Move){body.appendChild(f4MoveCardEl(p,room));return;}   // 3,4층 이동 유령 카드 (2026-10-14)
         const el=cardEl(p,room);el.classList.add('mirror');
         const same=isSameSpace(curRoom(p),room);
         const tag=document.createElement('div');tag.className='mirror-tag'+(same?' samespace':'');
@@ -8830,7 +8865,7 @@ function cardEl(p,colRoom){
   c.innerHTML=`
     <div class="card-top">
       ${''/* #번호는 카드에서 뺐다 (2026-10-01 요청) — 내원 목록·통계에는 그대로 */}
-      ${rxAfterPayHere(p,_chipRoom)?`<span class="rxap-mark" title="비트 수납완료 뒤에 낸 처방입니다 — 추가 계산이 필요할 수 있어요">${icHtml('triangle-alert')}</span>`:''}<span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${bonusTag(p)}${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
+      ${f4MoveChk(p,_chipRoom)}${rxAfterPayHere(p,_chipRoom)?`<span class="rxap-mark" title="비트 수납완료 뒤에 낸 처방입니다 — 추가 계산이 필요할 수 있어요">${icHtml('triangle-alert')}</span>`:''}<span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${bonusTag(p)}${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       ${p.bitCancel?`<span class="bitcancel-mark" title="비트에서 접수가 취소된 환자입니다${p.bitCancel.at?' ('+hhmm(p.bitCancel.at)+')':''} — 확인 후 카드를 삭제하거나 비트에서 재접수하세요"><i data-lucide="circle-x"></i> 비트 접수취소</span>`:''}
       ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>${(()=>{const c=bitPaidAmtChange(p);return c?`<span class="bitpaid-mark amt-chg" title="계산한 뒤 비트 금액이 바뀌었습니다(D/C 등) — 차액 확인">금액 바뀜 ${esc(won(c.from))}→${esc(won(c.to))}원</span>`:'';})()}`:''}
@@ -9142,7 +9177,8 @@ function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOStri
   p.statusSince=now;p.waitMs=0;p.prepMs=0;p.activeMs=0;p.out=false;p.outAt='';p.outMs=0;p.ord=nextOrd();
   /* 이 방으로 누가 옮겼는지 — 환자 동선 행에 표시 (2026-09-23). by 를 넘기면 그 이름(예: 비트), 없으면 로그인한 사람 */
   {const _r=curRoom(p);if(_r){p.roomBy=p.roomBy||{};p.roomBy[_r]={by:(by!==undefined?by:((currentUser&&currentUser.name)||'')),at:now};
-    if(!sameSpaceMates(_r).length&&p.spaceDone)delete p.spaceDone;}}   // 같은 공간을 벗어나면 인계 기록 초기화
+    if(!sameSpaceMates(_r).length&&p.spaceDone)delete p.spaceDone;   // 같은 공간을 벗어나면 인계 기록 초기화
+    if(p.f4Move&&meta(_r).group==='4층')delete p.f4Move;}}   // 실제로 4층 방에 들어오면 '3,4층 이동' 유령 카드는 끝 (2026-10-14)
   /* 옮긴 사람을 그 방 담당으로 자동 지정하던 규칙(2026-09-24)은 2026-09-30 원장님들 요청으로 없앴다 — 카드를 옮겨도 담당은 바뀌지 않고, 직원이 직접 확인해 지정한다 */
   /* 도수(SASO·자동차도수)는 옮긴 사람 = 치료사 (2026-10-01 요청): 로그인한 사람이 그 방 치료사 목록에 있으면 그 방 치료사로 기록 → 4층 도수 표 '치료사' 칸.
      비트·자동 이동(by 를 넘김)이나 이미 지정된 경우는 건드리지 않는다 */
