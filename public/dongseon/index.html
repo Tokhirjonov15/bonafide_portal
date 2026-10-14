@@ -1267,6 +1267,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cd-sect{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px 14px;margin-bottom:12px}
   .cd-h{font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:6px}
   .cd-tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .cd-sum{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 8px;font-size:14px;color:var(--sub)}.cd-sum b{color:var(--text);font-size:15px}   /* 총금액·비급여 (2026-10-14) */
   .cd-tbl th,.cd-tbl td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left}
   .cd-tbl .r{text-align:right}
   .cd-tbl tr.sum th{border-top:2px solid var(--line)}
@@ -13584,7 +13585,11 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     /* 2026-10-14 요청: 처방명칭·금액·횟수·급/비만 (코드·총투여량·일수·시각은 뺐다) */
     rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수</th><th>급/비</th></tr></thead><tbody>${rx.items.map(x=>{const pay=payOf(x),ib=rxInsLabel(pay&&pay.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
       return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td class="r">${esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
-  const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${rxh}</div>`;
+  /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
+  let sumh='';{const L=(rx&&Array.isArray(rx.pay))?rx.pay:[];if(L.length){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
+    const tot=L.reduce((s,x)=>s+n(x),0),non=L.filter(x=>String(x.ins==null?'':x.ins).trim()==='2').reduce((s,x)=>s+n(x),0);
+    sumh=`<div class="cd-sum"><span>총금액 <b>${esc(rxWon(tot))}원</b></span><span>비급여 <b>${esc(rxWon(non))}원</b></span></div>`;}}
+  const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${sumh}${rxh}</div>`;
   return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}
 
 /* ───── 진료지원 창 (2026-10-05 요청) ─────
