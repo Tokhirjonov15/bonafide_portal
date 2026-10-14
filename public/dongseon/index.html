@@ -5421,7 +5421,7 @@ async function runSelfTest(){
       eq('직원 목록: 술기 = 이 방 의사 먼저 + 직원 목록 의사, 빠진 의사(퇴사)는 없음', staffOpts('',['박초롱','퇴사의사'],'의사'), ['박초롱','김현우']);
       eq('직원 목록: 간호 = 이 방 간호사 + 새로 넣은 간호사', staffOpts('',['우성복'],'간호사'), ['우성복','새간호']);
       eq('직원 목록: 지금 골라 둔 값은 빠진 사람이어도 남김', staffOpts('퇴사간호',['우성복'],'간호사'), ['퇴사간호','우성복','새간호']);
-      eq('직원 목록: 물리치료 방 담당 = 그 방 명단의 파트(물리치료사), 띄어쓰기 달라도 한 번만', (()=>{const _m=ROOM_META['기본물리치료'];ROOM_META['기본물리치료']={doctors:['허빈']};const r=staffOpts('',meta('기본물리치료').doctors,roomStaffPart('기본물리치료'));ROOM_META['기본물리치료']=_m;return r;})(), ['허빈','새치료']);
+      eq('직원 목록: 물리치료 방 담당 = 그 방 명단의 파트(물리치료사), 띄어쓰기 달라도 한 번만', (()=>{const _m=ROOM_META['기본물리치료'];ROOM_META['기본물리치료']={doctors:['허빈']};const r=staffOpts('',meta('기본물리치료').doctors,roomStaffPart('기본물리치료'));if(_m===undefined)delete ROOM_META['기본물리치료'];else ROOM_META['기본물리치료']=_m;return r;})(), ['허빈','새치료']);
       eq('직원 목록: 진료 원장 = 직원 목록 의사', realDocs(), ['김현우','박초롱']);
       STAFF_ROSTER=_sr;}
      {const _m1=ROOM_META['진료실1'],_m2=ROOM_META['진료실2'];ROOM_META['진료실1']={doctors:['김현우']};ROOM_META['진료실2']={doctors:['백민철']};const _R=ROOMS;ROOMS=[..._R,'진료실1','진료실2'];   // x-ray 진료실 (2026-10-14)
@@ -5429,7 +5429,21 @@ async function runSelfTest(){
       eq('x-ray 진료실: 동선에서 다음 진료실(진료실2)이 먼저, 원장님은 그 진료실 원장님', xrayClinicOf(xp), {room:'진료실2',doc:'백민철'});
       eq('x-ray 진료실: 다음 진료실이 없으면 지나온 진료실', xrayClinicOf({doctor:'김현우',route:['진료실1','x-ray실','수납대기'],step:1}), {room:'진료실1',doc:'김현우'});
       eq('x-ray 진료실: 동선에 진료실이 없으면 접수 원장님 진료실', xrayClinicOf({doctor:'백민철',route:['3층 대기실','x-ray실'],step:1}), {room:'진료실2',doc:'백민철'});
-      ROOM_META['진료실1']=_m1;ROOM_META['진료실2']=_m2;ROOMS=_R;}
+      const _put=(k,v)=>{if(v===undefined)delete ROOM_META[k];else ROOM_META[k]=v;};_put('진료실1',_m1);_put('진료실2',_m2);ROOMS=_R;}
+     {const _d=data,_R=ROOMS,_sr=spaceRoomsFromRx,_st=STATS.slice();   // 같은 공간 4칸 순서 없이 (2026-10-14)
+      ROOMS=['3층 대기실','C-Arm','Sono','처치실','근전도검사','수납대기'];spaceRoomsFromRx=()=>['C-Arm','Sono','처치실'];
+      const mk=(id,route,step)=>({id,name:id,mrn:'',route,step,status:'대기',ord:1,enteredAt:new Date().toISOString(),statusSince:new Date().toISOString(),notes:{},visits:[]});
+      const A=mk('ssA',['3층 대기실','C-Arm','Sono','처치실','수납대기'],1);data=[A];
+      cardFinish('ssA','처치실');
+      ok('같은 공간: 처치실 칸 먼저 [종결] → 처치실만 끝, C-Arm·Sono 는 남음', A.visits.map(v=>v.room).join()==='처치실'&&curRoom(A)==='C-Arm'&&mirroredHere(A,'Sono')&&!mirroredHere(A,'처치실'));
+      cardFinish('ssA','Sono');
+      ok('같은 공간: 이어서 Sono 칸 [종결] → Sono 만 끝, C-Arm 남음', A.visits.map(v=>v.room).join()==='처치실,Sono'&&curRoom(A)==='C-Arm'&&!mirroredHere(A,'Sono'));
+      nextStep('ssA');
+      ok('같은 공간: 네 칸(처방된 칸)을 다 끝내면 다음 동선(수납대기)으로', A.visits.map(v=>v.room).join()==='처치실,Sono,C-Arm'&&curRoom(A)==='수납대기');
+      const B=mk('ssB',['3층 대기실','Sono','처치실','수납대기'],1),C=mk('ssC',['3층 대기실','처치실','수납대기'],1);B.ord=1;C.ord=2;data=[B,C];
+      dropIntoCol('ssC','처치실','처치실','처치실','ssB',true);
+      ok('같은 공간: 처치실 칸에서 순서 바꾸기 — Sono 로 옮겨지지 않고 순서만', curRoom(C)==='처치실'&&curRoom(B)==='Sono'&&C.ord<B.ord);
+      data=_d;ROOMS=_R;spaceRoomsFromRx=_sr;STATS=_st;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -7006,8 +7020,11 @@ function render(){
 
     if(shown===0){body.innerHTML=`<div class="col-empty">대기 환자가 없어요.</div>`;}
     else{
-      list.forEach(p=>body.appendChild(cardEl(p)));
-      mirrors.forEach(p=>{if(HOLD_ROOMS.includes(room)&&p.bitHold===room){body.appendChild(holdCardEl(p,room));return;}   // 비트 보류 방: 버튼 없는 간단한 카드
+      /* 같은 공간 4칸은 실제 위치 카드와 거울 카드를 한 줄로 섞어 같은 순서(ord)로 — 그래야 끌어서 순서를 바꿀 수 있다 (2026-10-14) */
+      const _ss=sameSpaceMates(room).length>0,_mset=new Set(mirrors);
+      (_ss?[...list,...mirrors].sort(viewSort(room)):[...list,...mirrors]).forEach(p=>{
+        if(!_mset.has(p)){body.appendChild(cardEl(p));return;}
+        if(HOLD_ROOMS.includes(room)&&p.bitHold===room){body.appendChild(holdCardEl(p,room));return;}   // 비트 보류 방: 버튼 없는 간단한 카드
         const el=cardEl(p,room);el.classList.add('mirror');
         const same=isSameSpace(curRoom(p),room);
         const tag=document.createElement('div');tag.className='mirror-tag'+(same?' samespace':'');
@@ -7016,7 +7033,7 @@ function render(){
         if(same||(isPayRoom(room)&&isPayRoom(curRoom(p)))){   // 같은 공간 안에서 옮기거나, 다른 층 수납에 있는 환자를 우리 창구로 확정
           const b=document.createElement('button');b.className='claim-btn';b.textContent='여기 도착';
           b.title=same?('환자가 이 장비로 옮겨졌어요 — '+room+'로 이동'):'환자가 이 수납 창구에 왔어요 — 이 방으로 이동';
-          b.onclick=e=>{e.stopPropagation();moveTo(p.id,room);};
+          b.onclick=e=>{e.stopPropagation();if(same){if(spaceSwitch(p,room)){save(p);render();}return;}moveTo(p.id,room);};   // 같은 공간: 위치만 바꾸고 앞 칸은 남김 (2026-10-14)
           tag.appendChild(b);
         }
         el.prepend(tag);body.appendChild(el);});
@@ -7026,15 +7043,15 @@ function render(){
     body.addEventListener("dragleave",()=>body.classList.remove("drag-over"));
     body.addEventListener("drop",e=>{if(draggedColRoom)return;e.preventDefault();body.classList.remove("drag-over");
       const pid=draggedPid||e.dataTransfer.getData("text/plain");if(!pid)return;
-      if(draggedRoom===room)moveToEnd(pid); else moveByDrag(pid,room);
-      draggedPid=null;draggedRoom=null;});
+      dropIntoCol(pid,draggedRoom,draggedCol,room,null,false,'end');
+      draggedPid=null;draggedRoom=null;draggedCol='';});
     /* 방 이름(칸 머리) 위에 놓기: 같은 방이면 맨 위로, 다른 방이면 그 방으로 (2026-10-01) */
     if(!folded){const head=col.querySelector('.col-head');
       if(head){head.addEventListener("dragover",e=>{if(draggedColRoom||!draggedPid)return;e.preventDefault();head.classList.add("drop-top");});
         head.addEventListener("dragleave",()=>head.classList.remove("drop-top"));
         head.addEventListener("drop",e=>{if(draggedColRoom||!draggedPid)return;e.preventDefault();e.stopPropagation();head.classList.remove("drop-top");
-          const pid=draggedPid;if(draggedRoom===room)moveToTop(pid);else moveByDrag(pid,room);
-          draggedPid=null;draggedRoom=null;});}}
+          const pid=draggedPid;dropIntoCol(pid,draggedRoom,draggedCol,room,null,false,'top');
+          draggedPid=null;draggedRoom=null;draggedCol='';});}}
     if(folded){   // 접힌 방: 본문이 숨겨져 있으므로 컬럼 자체가 놓기 대상. 클릭하면 펼침
       col.addEventListener("dragover",e=>{if(draggedColRoom)return;e.preventDefault();col.classList.add("drag-over")});
       col.addEventListener("dragleave",()=>col.classList.remove("drag-over"));
@@ -8568,7 +8585,8 @@ function cardEl(p,colRoom){
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
-  const last=(p.step>=p.route.length-1&&!spaceNext(p))||curRoom(p)===PAY_DONE_NAME;   // 수납완료는 무조건 마지막 — [내보내기] (2026-10-06). 같은 공간에 남은 처방 방이 있으면 [종결] (2026-10-07)
+  const _mir=spaceMirCol(p,_chipRoom);   // 같은 공간 거울 칸(실제 위치가 아닌 C-Arm·Sono·처치실·근전도) — 버튼은 이 칸 기준 (2026-10-14)
+  const last=!_mir&&((p.step>=p.route.length-1&&!spaceNext(p))||curRoom(p)===PAY_DONE_NAME);   // 수납완료는 무조건 마지막 — [내보내기] (2026-10-06). 같은 공간에 남은 처방 방이 있으면 [종결] (2026-10-07)
   // 동선 전체
   const steps=p.route.map((r,i)=>{
     const cls=i<p.step?"done":(i===p.step?"cur":"");
@@ -8577,8 +8595,8 @@ function cardEl(p,colRoom){
   }).join("");
   const nextName=last?"":p.route[p.step+1];
   const dwell=`<span class="dwell" data-pid="${p.id}" title="대기/진행 시간">${dwellLabel(p)}</span>`;
-  const st=p.status||'대기';
-  const _rm=meta(curRoom(p));  // 현재 방 설정(단계 수 등)
+  const st=_mir?'대기':(p.status||'대기');   // 거울 칸은 아직 시작 안 한 칸 — 진행 표시는 실제 위치 칸에만
+  const _rm=meta(_mir?_chipRoom:curRoom(p));  // 현재 방 설정(단계 수 등)
   // 예약배치 방에서 예약자 정시/대기/지각 표시
   let resTagHtml="";
   if(meta(curRoom(p)).resOrder&&p.reserveAt){const rc=resClass(p);if(rc.tag){const cls=rc.tag==='정시'?'rt-on':rc.tag==='지각'?'rt-late':'rt-wait';resTagHtml=`<span class="res-tag ${cls}">${rc.tag}</span>`;}}
@@ -8657,9 +8675,9 @@ function cardEl(p,colRoom){
     <div class="status-row">
       ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
-      ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();setStatus('${p.id}','준비')">준비</button>`:''}
-      ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" ${st==='진행'?'title="잘못 눌렀으면 한 번 더 누르면 대기로 돌아갑니다"':''} onclick="event.stopPropagation();setStatus('${p.id}','진행')">진행</button>`:''}
-      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}',''))return;${last?`finishPatient('${p.id}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
+      ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();${_mir?`cardStatus('${p.id}','${esc(_chipRoom)}','준비')`:`setStatus('${p.id}','준비')`}">준비</button>`:''}
+      ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" ${st==='진행'?'title="잘못 눌렀으면 한 번 더 누르면 대기로 돌아갑니다"':''} onclick="event.stopPropagation();${_mir?`cardStatus('${p.id}','${esc(_chipRoom)}','진행')`:`setStatus('${p.id}','진행')`}">진행</button>`:''}
+      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):_mir?esc(_chipRoom)+'만 종결 — 나머지 칸은 그대로':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}',''))return;${last?`finishPatient('${p.id}')`:_mir?`cardFinish('${p.id}','${esc(_chipRoom)}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
@@ -8684,7 +8702,7 @@ function cardEl(p,colRoom){
     const rect=c.getBoundingClientRect();const before=e.clientY<rect.top+rect.height/2;
     c.classList.remove("drop-before","drop-after");
     if(draggedPid===p.id)spaceHandOff(draggedPid,draggedCol,c.dataset.col||'');           // 같은 환자 카드 위 = 같은 공간 인계
-    else if(draggedRoom===curRoom(p))reorderInData(draggedPid,p.id,before); else moveByDrag(draggedPid,curRoom(p));
+    else dropIntoCol(draggedPid,draggedRoom,draggedCol,c.dataset.col||curRoom(p),p.id,before);
     draggedPid=null;draggedRoom=null;draggedCol='';});
   c.addEventListener("click",e=>{if(e.target.closest("button")||e.target.closest("select")||e.target.closest("input"))return;openEdit(p.id)});  // 카드 클릭=환자 정보(3열: 정보·동선·차팅)
   attachTouchDrag(c,p);   // 터치 기기: 길게 눌러 끌기
@@ -8742,9 +8760,9 @@ function tdragMove(x,y){
 function tdragCommit(t){
   const pid=TD.pid,from=TD.room;if(!pid||!t)return false;
   if(t.kind==='card'){if(t.id===pid)return (TD.col&&t.col&&isSameSpace(TD.col,t.col))?spaceHandOff(pid,TD.col,t.col):false;
-    if(from===t.room)reorderInData(pid,t.id,!!t.before);else moveByDrag(pid,t.room);return true;}
-  if(t.kind==='top'){if(from===t.room)moveToTop(pid);else moveByDrag(pid,t.room);return true;}
-  if(t.kind==='body'||t.kind==='room'){if(from===t.room){if(t.kind==='body')moveToEnd(pid);}else moveByDrag(pid,t.room);return true;}
+    dropIntoCol(pid,from,TD.col,t.col||t.room,t.id,!!t.before);return true;}
+  if(t.kind==='top'){dropIntoCol(pid,from,TD.col,t.room,null,false,'top');return true;}
+  if(t.kind==='body'||t.kind==='room'){dropIntoCol(pid,from,TD.col,t.room,null,false,t.kind==='body'?'end':'');return true;}
   return false;
 }
 function tdragEnd(commit){
@@ -8964,11 +8982,23 @@ function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;
 function moveToEnd(pid){const p=data.find(x=>x.id===pid);if(!p)return;p.ord=nextOrd();save(p);render();}
 /* 같은 방 안 순서 바꾸기: 화면에 보이는 순서(roomSort) 그대로 놓은 자리에 끼우고, 순서가 바뀐 카드만 ord 를 다시 매긴다 (2026-10-01).
    예전엔 ord 의 중간값만 썼는데, 같은 ord 가 겹치면(여러 화면이 동시에 만든 카드) 한 칸밖에 안 올라갔다 */
-function reorderInData(draggedId,targetId,before){
+/* 끌어다 놓기 공통 (2026-10-14) — '어느 칸에서 어느 칸으로'로 판단한다. 같은 칸이면 순서만, 다른 칸이면 이동.
+   (전에는 환자의 실제 위치로 비교해서, 처치실 칸에서 순서를 바꾸려고 실제 위치가 Sono 인 거울 카드 위에 놓으면 Sono 로 옮겨졌다)
+   같은 공간(C-Arm·Sono·처치실·근전도) 안 다른 칸으로 끌면 위치만 바꾸고 앞 칸은 남긴다 */
+function dropIntoCol(pid,fromRoom,fromCol,toCol,targetId,before,where){const p=data.find(x=>x.id===pid);if(!p||!toCol)return;
+  const src=fromCol||fromRoom||curRoom(p);
+  if(src!==toCol){
+    if(isSameSpace(curRoom(p),toCol)){if(spaceSwitch(p,toCol)){save(p);render();}}
+    else{moveByDrag(pid,toCol);return;}}
+  if(targetId&&targetId!==pid)reorderInData(pid,targetId,before,toCol);
+  else if(src===toCol&&where==='end')moveToEnd(pid);
+  else if(src===toCol&&where==='top')moveToTop(pid,toCol);}
+function colCards(room,exceptId){return data.filter(p=>!p.discharged&&p.route.length&&(curRoom(p)===room||mirroredHere(p,room))&&p.id!==exceptId);}   // 그 칸에 보이는 카드(거울 포함)
+function reorderInData(draggedId,targetId,before,col){
   const dragged=data.find(x=>x.id===draggedId),target=data.find(x=>x.id===targetId);
   if(!dragged||!target||dragged===target)return;
-  const room=curRoom(target);
-  const list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room&&p.id!==draggedId).sort((a,b)=>roomSort(a,b,room));
+  const room=col||curRoom(target);
+  const list=colCards(room,draggedId).sort((a,b)=>roomSort(a,b,room));
   const ti=list.indexOf(target);if(ti<0)return;
   list.splice(before?ti:ti+1,0,dragged);
   const base=Math.min(...list.map(p=>p.ord||0));
@@ -8976,9 +9006,9 @@ function reorderInData(draggedId,targetId,before){
   render();
 }
 /* 맨 위로: 방 이름(칸 머리) 위에 놓으면 그 방 맨 위로 */
-function moveToTop(pid){const p=data.find(x=>x.id===pid);if(!p)return;const room=curRoom(p);
-  const first=data.filter(x=>!x.discharged&&x.route.length&&curRoom(x)===room&&x.id!==pid).sort((a,b)=>roomSort(a,b,room))[0];
-  if(first)reorderInData(pid,first.id,true);}
+function moveToTop(pid,col){const p=data.find(x=>x.id===pid);if(!p)return;const room=col||curRoom(p);
+  const first=colCards(room,pid).sort((a,b)=>roomSort(a,b,room))[0];
+  if(first)reorderInData(pid,first.id,true,room);}
 /* ── 대기실 카드 위/아래 한 칸 이동(▲▼) ──
    비트 캐스트 순서와 실제 도착 순서가 어긋날 때 직원이 바로잡기 위한 것. 지금은 '대기실'로 끝나는 방에서만,
    예약배치(resOrder)가 꺼진 방에서만 보인다(예약배치 방은 순서가 자동이라 ord 교환이 화면에 반영되지 않음).
@@ -9501,6 +9531,20 @@ function spaceNext(p){
 function markSpaceDone(p,from,to){
   if(!from||!to||!isSameSpace(from,to))return;
   const done=(p.spaceDone||[]).filter(r=>r!==to);if(!done.includes(from))done.push(from);p.spaceDone=done;}
+/* ═════ 같은 공간 4칸은 순서 없이 각자 (2026-10-14 요청) ═════
+   C-Arm·Sono·처치실·근전도검사가 함께 나오면 네 칸에 펼쳐지고, 어느 칸이든 먼저 [진행]·[종결]해도 그 칸만 끝난다(예: 처치 먼저 종결 → 처치만 꺼짐).
+   네 칸을 다 끝내면 다음 동선으로 — 흩어졌다가 하나로 합쳐진다. (전에는 거울 칸의 [종결]이 실제 위치 칸(C-Arm)을 끝냈다)
+   방법: 거울 칸에서 버튼을 누르면 먼저 환자의 실제 위치를 그 칸으로 바꾸고(앞 칸은 끝내지 않고 동선 바로 뒤에 남김), 그다음 평소의 [진행]·[종결] */
+function spaceMirCol(p,col){const cr=curRoom(p);return !!(p&&col&&cr&&col!==cr&&isSameSpace(cr,col));}
+function spaceSwitch(p,col){if(!spaceMirCol(p,col))return false;const cr=curRoom(p),st=Math.max(0,Math.min(p.step||0,p.route.length-1));
+  accrue(p);   // 지금까지의 대기·진행 시간은 그대로 이어진다
+  const i=p.route.indexOf(col,st+1);if(i>=0)p.route[i]=cr;else p.route.splice(st+1,0,cr);
+  p.route[st]=col;p.status='대기';p.statusSince=new Date().toISOString();
+  p.spaceDone=(p.spaceDone||[]).filter(r=>r!==col);
+  try{audit('같은 공간 칸 바꿈',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+cr+' → '+col+' ('+cr+' 은 남음)');}catch(e){}
+  return true;}
+window.cardStatus=function(pid,col,st){const p=data.find(x=>x.id===pid);if(!p)return;if(spaceSwitch(p,col)){save(p);}setStatus(pid,st);};
+window.cardFinish=function(pid,col){const p=data.find(x=>x.id===pid);if(!p)return;if(spaceSwitch(p,col))save(p);nextStep(pid);};
 function togglePaid(pid){const p=data.find(x=>x.id===pid);if(!p)return;const target=!p.paid;applyPaid(p,target);saveLocal();render();cloudPatientTxn(pid,d=>applyPaid(d,target));}
 /* ── 주차권 안내: 접수 후 PARKING_MIN분 경과 시 카드에 강조 표시, 지급 처리 시 해제 ── */
 function recvMs(p){   // 접수 시각(오늘 HH:MM 우선, 없으면 등록 시각)
