@@ -3920,17 +3920,24 @@ function slipShotBackfill(){try{if(localStorage.getItem('slipShotBackfill1')||!c
   cloud.noteCol.where('shotAt','>=','2026-10-01').get().then(s=>slipShotIndex(s.docs.map(d=>Object.assign({docId:d.id},d.data())))).catch(e=>{console.warn('slipShot backfill',e);try{localStorage.removeItem('slipShotBackfill1');}catch(_){}});}catch(e){}}
 function slipPastLoad(mrn){const col=slipShotsCol();if(!col||!mrn)return;if(SLIP_PAST[mrn]&&Date.now()-SLIP_PAST[mrn].at<120000)return;
   SLIP_PAST[mrn]={at:Date.now(),shots:(SLIP_PAST[mrn]||{}).shots||null,hidden:[]};
-  col.doc(mrn).get().then(d=>{const v=d.exists?d.data():{};SLIP_PAST[mrn]={at:Date.now(),shots:Array.isArray(v.shots)?v.shots:[],hidden:Array.isArray(v.hidden)?v.hidden:[]};try{renderSlipScreen();}catch(e){}}).catch(e=>console.warn('slipPast',e));}
-function slipPastList(it){const mrn=normMrn(it&&it.mrn);const P=SLIP_PAST[mrn];if(!P||!P.shots)return null;const today=localYMD(new Date());
-  const hid=new Set([...(P.hidden||[]),...((it.note&&it.note.shotHidden)||[])]);
-  return P.shots.filter(x=>x&&x.path&&x.kind!=='pt'&&!hid.has(x.id)&&String(x.date||x.at||'').slice(0,10)<today).sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
+  col.doc(mrn).get().then(d=>{const v=d.exists?d.data():{};SLIP_PAST[mrn]={at:Date.now(),shots:Array.isArray(v.shots)?v.shots:[],hidden:Array.isArray(v.hidden)?v.hidden:[]};try{renderSlipScreen();}catch(e){}
+    try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&normMrn(p.mrn)===mrn)fillCapBox(p);}}catch(e){}}).catch(e=>console.warn('slipPast',e));}
+/* 같은 캡처가 두 번 들어 있다(2026-10-14 확인: 예전 판은 kind 없이, 지금 판은 kind 를 넣어 모아서 arrayUnion 이 다른 항목으로 봄) — id 하나로 합치고 kind 는 있는 쪽(pt 우선).
+   kind 없는 PT 캡처가 슬립 '이전 캡처'에 주사처럼 섞이던 것도 이것으로 막는다 */
+function shotsDedupe(L){const m=new Map();(L||[]).forEach(x=>{if(!x||!x.path)return;const k=String(x.id||x.path),o=m.get(k);
+  if(!o){m.set(k,Object.assign({},x));return;}if(x.kind==='pt'||(!o.kind&&x.kind))o.kind=x.kind;if(!o.date&&x.date)o.date=x.date;});return [...m.values()];}
+function shotDay(x){return String((x&&x.at?localYMD(new Date(x.at)):'')||(x&&x.date)||'').slice(0,10);}   // 찍은 날(at) 기준 — 문서 날짜(date)와 다를 수 있다
+function pastShotsOf(mrn,extraHidden){const P=SLIP_PAST[mrn];if(!P||!P.shots)return null;const today=localYMD(new Date());
+  const hid=new Set([...(P.hidden||[]),...(extraHidden||[])]);
+  return shotsDedupe(P.shots).filter(x=>!hid.has(x.id)&&shotDay(x)&&shotDay(x)<today).sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
+function slipPastList(it){const L=pastShotsOf(normMrn(it&&it.mrn),(it.note&&it.note.shotHidden)||[]);return L&&L.filter(x=>x.kind!=='pt');}
 function slipPastBtn(it){const mrn=normMrn(it&&it.mrn);if(!mrn||!slipShotsCol())return '';slipPastLoad(mrn);const L=slipPastList(it);
   if(L&&!L.length)return '';const on=SLIP_PAST_OPEN.has(mrn);
   return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 진료실 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 접기':'이전 캡처'}${L?' '+L.length:''}</button>`;}
 window.slipPastToggle=function(mrn){if(SLIP_PAST_OPEN.has(mrn))SLIP_PAST_OPEN.delete(mrn);else SLIP_PAST_OPEN.add(mrn);renderSlipScreen();};
 function slipPastHtml(it){const mrn=normMrn(it&&it.mrn);if(!SLIP_PAST_OPEN.has(mrn))return '';const L=slipPastList(it);
   if(!L)return '<div class="sd-past"><div class="hint">이전 캡처를 불러오는 중…</div></div>';if(!L.length)return '';
-  const g={};L.forEach(x=>{const d=String(x.date||x.at).slice(0,10);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
+  const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
   return '<div class="sd-past">'+Object.keys(g).sort().reverse().map(d=>`<div class="sd-past-day"><div class="sd-past-h">${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</div><div class="sd-past-grid">`+
     g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
 function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨길까요?'))return;
@@ -3968,13 +3975,25 @@ window.pt4AlertOpen=function(docId){const n=BIT_NOTES.find(x=>x.docId===docId);i
   const s=ptShotsNew(n)[0];if(!s)return;const im=document.createElement('img');   // 보드에 카드가 없으면 사진만 크게
   const show=u=>{im.src=u;slipShotZoom(im);};if(SLIP_SHOT_URL[s.path])show(SLIP_SHOT_URL[s.path]);else if(cloud.storage)cloud.storage.ref(s.path).getDownloadURL().then(u=>{SLIP_SHOT_URL[s.path]=u;show(u);}).catch(e=>console.warn('pt shot',e));};
 /* 환자 정보 창 — 동선 아래 '진료실 캡처' 칸 (오늘 것, PT 먼저) */
-function fillCapBox(p){const box=document.getElementById('capBox');if(!box)return;const n=bitNoteFor(p);const all=capShotsToday(n);
-  if(!all.length){box.style.display='none';box.innerHTML='';box.dataset.h='';return;}
+/* 환자 정보 창의 '이전 캡처' (2026-10-14 요청: PT 캡처의 지난 사진도) — 환자별 영구 목록(slipShots)에서 오늘 전 것을 날짜별로, PT·주사 구분 */
+const CAP_PAST_OPEN=new Set();
+window.capPastToggle=function(mrn){if(CAP_PAST_OPEN.has(mrn))CAP_PAST_OPEN.delete(mrn);else CAP_PAST_OPEN.add(mrn);const p=editId&&data.find(q=>q.id===editId);if(p)fillCapBox(p);};
+function capPastHtml(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!slipShotsCol())return {btn:'',body:''};slipPastLoad(mrn);const L=pastShotsOf(mrn,[]);
+  if(!L||!L.length)return {btn:'',body:''};const on=CAP_PAST_OPEN.has(mrn);   // 다 불러온 뒤 지난 캡처가 있을 때만(불러오면 slipPastLoad 가 이 칸을 다시 그린다)
+  const btn=`<button type="button" class="btn sm${on?' on':''}" onclick="capPastToggle('${esc(mrn)}')" title="지난 날의 진료실 캡처(PT·주사)를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 접기':'이전 캡처'}${L?' '+L.length:''}</button>`;
+  if(!on)return {btn,body:''};if(!L)return {btn,body:'<div class="hint">이전 캡처를 불러오는 중…</div>'};
+  const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
+  const one=x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span><b class="cap-k '+(x.kind==='pt'?'pt':'inj')+'">'+(x.kind==='pt'?'PT':'주사')+'</b> 📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>';
+  const body='<div class="cap-past">'+Object.keys(g).sort().reverse().map(d=>{const D=g[d].slice().sort((a,b)=>(a.kind==='pt'?0:1)-(b.kind==='pt'?0:1));
+    return `<div class="cap-grp"><div class="cap-h"><b>${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]})</b> <span class="hint">${D.length}장</span></div><div class="cap-grid">${D.map(one).join('')}</div></div>`;}).join('')+'</div>';
+  return {btn,body};}
+function fillCapBox(p){const box=document.getElementById('capBox');if(!box)return;const n=bitNoteFor(p);const all=capShotsToday(n);const past=capPastHtml(p);
+  if(!all.length&&!past.btn){box.style.display='none';box.innerHTML='';box.dataset.h='';return;}
   const neu=new Set(ptShotsNew(n).map(x=>x.id));const pt=all.filter(x=>x.kind==='pt'),inj=all.filter(x=>x.kind!=='pt');
   const one=x=>'<div class="sd-shot'+(neu.has(x.id)?' cap-new':'')+'"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>'+(neu.has(x.id)?'<b class="cap-nb">새로 옴</b> ':'')+'📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>';
   const grp=(t,cls,L,extra)=>L.length?`<div class="cap-grp"><div class="cap-h"><span class="cap-k ${cls}">${t}</span> <span class="hint">${L.length}장</span>${extra||''}</div><div class="cap-grid">${L.map(one).join('')}</div></div>`:'';
-  const html=`<div class="sect-t"><i data-lucide="images"></i> 진료실 캡처 <span class="hint">오늘 · 누르면 크게</span></div>`+
-    grp('PT 캡처','pt',pt,neu.size?` <button type="button" class="btn sm cap-ok" onclick="ptShotSeen('${esc(n.docId)}')">✔ 4층 확인 (알림 끄기)</button>`:(n.ptSeenBy?` <span class="hint">✔ ${esc(n.ptSeenBy)} 확인</span>`:''))+grp('주사 캡처','inj',inj);
+  const html=`<div class="sect-t" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i data-lucide="images"></i> 진료실 캡처 <span class="hint">${all.length?'오늘 · 누르면 크게':'오늘 캡처 없음'}</span><span style="flex:1"></span>${past.btn}</div>`+past.body+
+    grp('PT 캡처','pt',pt,neu.size?` <button type="button" class="btn sm cap-ok" onclick="ptShotSeen('${esc(n.docId)}')">✔ 4층 확인 (알림 끄기)</button>`:(n&&n.ptSeenBy?` <span class="hint">✔ ${esc(n.ptSeenBy)} 확인</span>`:''))+grp('주사 캡처','inj',inj);
   box.style.display='';if(box.dataset.h!==html){box.dataset.h=html;box.innerHTML=html;if(window.lucide)try{lucide.createIcons();}catch(e){}}
   slipShotsLoad(box);}
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
