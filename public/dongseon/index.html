@@ -5821,6 +5821,14 @@ function applyCfg(d){
     let i=ROOMS.indexOf('아쿠아');if(i<0)i=ROOMS.indexOf('자동차도수');if(i<0){ROOMS.forEach((r,k)=>{if(meta(r).group==='4층')i=k;});}
     ROOMS.splice(i>=0?i+1:ROOMS.length,0,'롤러');meta('롤러').group='4층';meta('4층 대기실').seedRoller=true;
     setTimeout(()=>{try{saveRooms();}catch(e){}},0);}
+  /* 진료실 고정 배정 (2026-10-14 요청: 원장님마다 진료실이 바뀌어서 고정) — 1진 김현우 · 2진 백민철 · 3진 정상민 · 4진 박초롱(위고비·마운자로 상담).
+     진료실4 가 없으면 진료실3 설정(층·단계·간호사 등)을 본떠 그 뒤에 만든다. 한 번만(진료실1 meta.seedDoc1014) — 뒤에 관리자가 바꾸면 그대로 둔다 */
+  if(isAdmin()&&ROOMS.includes('진료실1')&&!meta('진료실1').seedDoc1014){   /* 설정 저장은 관리자 화면에서만 */
+    if(!ROOMS.includes('진료실4')){const i=ROOMS.indexOf('진료실3');const base=JSON.parse(JSON.stringify(ROOM_META['진료실3']||{}));delete base.waitName;delete base.doctors;
+      ROOMS.splice(i>=0?i+1:ROOMS.length,0,'진료실4');ROOM_META['진료실4']=base;}
+    Object.entries({'진료실1':'김현우','진료실2':'백민철','진료실3':'정상민','진료실4':'박초롱'}).forEach(([r,d])=>{if(ROOMS.includes(r))meta(r).doctors=[d];});
+    meta('진료실1').seedDoc1014=true;
+    setTimeout(()=>{try{if(!DOCTORS.includes('박초롱')){DOCTORS.push('박초롱');saveDoctorsCfg();}saveRooms();}catch(e){}},0);}
   /* 이름에 '상담'이 들어간 방은 상담 결과 기록칸을 기본으로 켬 (관리자가 명시적으로 껐으면 유지) */
   ROOMS.forEach(r=>{if(/상담/.test(r)&&!('consult' in (ROOM_META[r]||{})))meta(r).consult=true;});
   RAW_CFG_STAFF=Array.isArray(d.staff)?d.staff:[];
