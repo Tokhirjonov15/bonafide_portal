@@ -2694,13 +2694,13 @@ const ROUTE_RX_RULES=[
   {room:'Sono',       codes:new Set(['sono','c010','c8140010','aatri','ssyno','hran','prolo']), any:/sono/i},
   {room:'처치실',      codes:RX_TREAT_CODES, any:/처치|봉합술|부목|splint|메디폼|cbc/i, notCod:/^g\d/i},   // 촬영 지시문의 'splint풀고'는 처치가 아님
   {room:'근전도검사',   cod:/^emg$/i, any:/근전도|(^|[^a-z])emg($|[^a-z])/i},
-  {room:'충격파',      cod:/^es\d+$/i, nam:/체외충격파(?!\s*상담)/},
-  {room:'신장분사',     cod:/^cryo\d+$/i, nam:/신장분사치료\s*\d/},
+  {room:'충격파',      cod:/es\d/i, nam:/체외충격파(?!\s*상담)/},   // 2026-10-14 시트: 처방코드에 ES 가 들어가면(ES10·EES10 등) 충격파 — 뒤에 숫자(처치 코드 dressing 은 아님)
+  {room:'신장분사',     cod:/cryo/i, nam:/신장분사치료\s*\d/},      // 2026-10-14 시트: CRYO 가 들어가면
   {room:'SASO',       cod:/^ss\d*$/i, nam:/saso/i},
-  {room:'자동차도수',   cod:/^(자도|kr006)$/i, nam:/자동차\s*도수/},
+  {room:'자동차도수',   cod:/^(자도|kr006)$/i, nam:/자동차\s*도수/, any:/자동차\s*도수/},   // 코드 칸에 '자동차도수'라고 적힌 처방도
   {room:'물리치료',     any:/물리치료/, not:/기본물리치료/},
   {room:'4층 상담',    cod:/^cs\d*$/i},
-  {room:'기본물리치료', cod:/^mm\d*$/i, any:/기본물리치료/}
+  {room:'기본물리치료', cod:/mm/i, any:/기본물리치료/}   // 2026-10-14 시트: 처방코드에 MM 이 들어가면
 ];
 function rxRuleHit(r,cod,nam){const hay=cod+' '+nam;
   if(r.not&&r.not.test(hay))return false;
@@ -2908,6 +2908,12 @@ function rxAfterPayHere(p,room){
   return rxItemsOf(p).some(it=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(it.t||''));if(!m||(m[1].padStart(2,'0')+':'+m[2])<=hm)return false;
     const cod=String(it.cod||'').trim(),nam=String(it.nam||'').trim();
     return ROUTE_RX_RULES.some(r=>r.room===room&&rxRuleHit(r,cod,nam));});}
+/* 초록 깜빡임 = 추가 수납이 있을 때만 (2026-10-14 요청: 4층처럼 먼저 계산하고 치료받는 환자도 깜빡였다 — 33173 김정훈).
+   비트 수납완료 뒤에 새 처방(동선에 들어가는 처방)이 나왔거나, 수납대기에서 새 처방으로 다시 나간 환자(payAgain)만. 그 밖에는 초록 테두리만 */
+function bitPaidMore(p){if(!p||!p.bitPaid)return false;if(p.payAgain)return true;
+  const d=new Date(p.bitPaid.at);if(isNaN(d))return false;const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  return rxItemsOf(p).some(it=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(it.t||''));if(!m||(m[1].padStart(2,'0')+':'+m[2])<=hm)return false;
+    const cod=String(it.cod||'').trim(),nam=String(it.nam||'').trim();return ROUTE_RX_RULES.some(r=>rxRuleHit(r,cod,nam));});}
 function rxIsXrayCode(c){return XRAY_CODES.has(String(c||'').trim().toLowerCase())||XRAY_CODES.has(String(c||'').replace(/\s+/g,'').toLowerCase());}   // 엑스레이 처방코드 표만 (2026-10-06)
 function rxIsGreen(p){return rxItemsOf(p).some(x=>/green/i.test(String(x.cod||'')));}
 function rxFresh(items){const now=new Date(),nm=now.getHours()*60+now.getMinutes();
@@ -5464,6 +5470,16 @@ async function runSelfTest(){
       rxDcGroupUndo('dcu','물리치료');rxDcPendCommit('dcu');
       ok('묶음 D/C 취소: [저장] 하면 묶음 2건만 취소, 따로 D/C 한 1건은 남음', Object.keys(P.rxDc||{}).length===1&&!!P.rxDc[rxDcKey(items[2])]);
       data=_d;bitRxFor=_b;window.confirm=_cf;window.toast=_toast;}
+     {const rm=(cod,nam)=>ROUTE_RX_RULES.filter(r=>rxRuleHit(r,cod,nam||'')).map(r=>r.room).join();   // 4층 처방 시트 (2026-10-14)
+      eq('4층 처방: ES·CRYO·MM 포함, ss·cs, 자동차도수 코드 / dressing 은 충격파 아님',
+        [rm('ES10'),rm('EES15'),rm('CRYO10'),rm('MM6'),rm('ss'),rm('cs'),rm('자동차도수'),rm('dressing','드레싱')],
+        ['충격파','충격파','신장분사','기본물리치료','SASO','4층 상담','자동차도수','처치실']);
+      const _b=bitRxFor,_R=ROOMS;ROOMS=[...new Set([..._R,'충격파','신장분사'])];const P={id:'bp',route:['신장분사'],step:0,bitPaid:{at:new Date(2026,9,14,17,30).toISOString()},rxSince:''};
+      bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'}]});
+      ok('초록 깜빡임: 먼저 계산하고 치료받는 환자(계산 뒤 새 처방 없음)는 깜빡이지 않음', !bitPaidMore(P));
+      bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'},{cod:'ES10',nam:'체외충격파 10',t:'17:45'}]});
+      ok('초록 깜빡임: 계산 뒤 새 처방(충격파)이 나오면 깜빡임 = 추가 수납', bitPaidMore(P));
+      bitRxFor=_b;ROOMS=_R;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -8601,7 +8617,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+(isPayRoom(curRoom(p))?"":" bitpaid-away"):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"")+(ptShotAlert(p)?" pt-shot":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+((!isPayRoom(curRoom(p))&&bitPaidMore(p))?" bitpaid-away":""):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"")+(ptShotAlert(p)?" pt-shot":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
