@@ -6086,10 +6086,11 @@ function applyCfg(d){
     meta('진료실1').seedDoc1014=true;
     setTimeout(()=>{try{if(!DOCTORS.includes('박초롱')){DOCTORS.push('박초롱');saveDoctorsCfg();}saveRooms();}catch(e){}},0);}
   /* '3,4층 이동' 칸 (2026-10-14 요청) — 4층 그룹, 4층 대기실 앞에. 유령 카드만 보이는 칸이라 진행 단계 없음. 한 번만(4층 대기실 meta.seedF4Move) */
-  if(isAdmin()&&!ROOMS.includes(F4_MOVE_ROOM)&&!meta('4층 대기실').seedF4Move){
+  /* 2026-10-14: 관리자가 열기 전엔 아무 화면에도 안 생겨 체크칸·유령 카드가 안 보였다 — 누구 화면이든 바로 넣고(이 화면에서만), 저장은 관리자 화면에서 한 번 */
+  if(!ROOMS.includes(F4_MOVE_ROOM)&&!meta('4층 대기실').seedF4Move){
     let i=ROOMS.indexOf('4층 대기실');if(i<0){i=ROOMS.length;ROOMS.forEach((r,k)=>{if(meta(r).group==='4층'&&i===ROOMS.length)i=k;});}
-    ROOMS.splice(i,0,F4_MOVE_ROOM);meta(F4_MOVE_ROOM).group='4층';meta(F4_MOVE_ROOM).noProg=true;meta('4층 대기실').seedF4Move=true;
-    setTimeout(()=>{try{saveRooms();}catch(e){}},0);}
+    ROOMS.splice(i,0,F4_MOVE_ROOM);meta(F4_MOVE_ROOM).group='4층';meta(F4_MOVE_ROOM).noProg=true;
+    if(isAdmin()){meta('4층 대기실').seedF4Move=true;setTimeout(()=>{try{saveRooms();}catch(e){}},0);}}
   /* 진료실4 (2026-10-14 요청: 위고비·마운자로 처방 때만 쓰는 방, 박초롱 원장님) — 위 배정과 따로: 진료실1 이름이 달라도 만든다. 마지막 진료실 뒤에, 그 방 설정을 본떠서. 한 번만(첫 방 meta.seedRoom4) */
   if(isAdmin()&&ROOMS.length&&!ROOMS.includes('진료실4')&&!meta(ROOMS[0]).seedRoom4){
     let i=-1;ROOMS.forEach((r,k)=>{if(/^진료실\s*\d/.test(r))i=k;});
