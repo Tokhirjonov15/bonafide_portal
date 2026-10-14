@@ -5665,6 +5665,12 @@ async function runSelfTest(){
       const a=plan([{cod:'C-ARM',nam:'C-ARM',t:'10:00'},{cod:'Rocaine',nam:'로카인',t:'10:00'}]),b=plan([{cod:'C-ARM',nam:'C-ARM',t:'10:00'},{cod:'SS',nam:'SS',t:'10:00'}]);
       bitRxFor=_b;ROOMS=_R;
       ok('4층 가는 규칙: 주사(C-Arm)만이면 4층 대기실 없이 수납대기, 주사+SS 면 4층 대기실', !a.includes('4층 대기실')&&a.includes('수납대기')&&b.includes('4층 대기실'), JSON.stringify([a,b]));}
+     {const _d=data,_R=ROOMS,_t=window.toast;window.toast=()=>{};ROOMS=['3층 대기실','비용 상담','C-Arm','Sono','처치실','근전도검사','4층 대기실','수납대기','수납완료'];   // 비용 상담 시행 안 함 (2026-10-14)
+      const mk=(id,route)=>({id,name:id,mrn:'',route,step:1,status:'대기',enteredAt:new Date().toISOString(),statusSince:new Date().toISOString(),notes:{},visits:[],consults:{'비용 상담':{result:'기타',reason:'비용 부담',by:'',at:''}}});
+      const A=mk('cn1',['3층 대기실','비용 상담','C-Arm','Sono','4층 대기실','수납대기']),B=mk('cn2',['3층 대기실','비용 상담','C-Arm','처치실','수납대기']);data=[A,B];
+      consultNoGoPay('cn1','비용 상담');consultNoGoPay('cn2','비용 상담');
+      window.toast=_t;data=_d;ROOMS=_R;
+      eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
      {const rm=(cod,nam)=>ROUTE_RX_RULES.filter(r=>rxRuleHit(r,cod,nam||'')).map(r=>r.room).join();   // 4층 처방 시트 (2026-10-14)
       eq('4층 처방: ES·CRYO·MM 포함, ss·cs, 자동차도수 코드 / dressing 은 충격파 아님',
         [rm('ES10'),rm('EES15'),rm('CRYO10'),rm('MM6'),rm('ss'),rm('cs'),rm('자동차도수'),rm('dressing','드레싱')],
@@ -7092,7 +7098,7 @@ function consultNoTg(p,room,result,reason){reason=String(reason||'').trim();if(r
   const k=room+'|'+reason;p._consultTg=p._consultTg||{};if(p._consultTg[room]===k)return;p._consultTg[room]=k;
   roomNotify(p,'__all__','consult',{reason,consultRoom:room,by:(currentUser&&currentUser.name)||''});
   try{audit('상담 미시행 알림',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+room+' · '+reason);}catch(e){}}
-/* 비용 상담 '시행 안 함' + 사유 → 수납대기로, 남은 동선은 지운다 (2026-10-13 요청).
+/* 비용 상담 '시행 안 함' + 사유 → 시술 방(C-Arm·Sono·처치실·근전도)만 지우고 다음 방(없으면 수납대기)으로 (2026-10-13 요청, 10-14 고침).
    비용(진료) 상담 방에 지금 있는 환자만. 지운 방은 p.routeDropped 에 남겨 처방 동선이 다시 넣지 않게 한다(rxRouteCompute).
    4층 상담은 제외 — '기본물리치료만' 같은 사유면 남은 물리치료로 가야 한다 */
 function consultNoGoPay(pid,room){
@@ -7100,13 +7106,17 @@ function consultNoGoPay(pid,room){
   if(!isClinicConsult(room)||curRoom(p)!==room)return;
   const c=getConsult(p,room);if(c.result!=='기타'||!String(c.reason||'').trim())return;
   const pay=payWaitRoom();if(!pay)return;
+  /* 2026-10-14 요청: 남은 동선을 다 지우지 않고 시술 방(C-Arm·Sono·처치실·근전도검사)만 지운다 — 4층 치료 등이 남아 있으면 그 방으로, 없으면 수납대기 */
+  const PROC=SAME_SPACE_GROUPS[0]||[];
   const st=Math.max(0,Math.min(p.step||0,p.route.length-1));
-  const dropped=p.route.slice(st+1).filter(r=>!isPayRoom(r));
-  p.route=p.route.slice(0,st+1);
+  const rest=p.route.slice(st+1),dropped=rest.filter(r=>PROC.includes(r)),keep=rest.filter(r=>!PROC.includes(r));
+  p.route=[...p.route.slice(0,st+1),...keep];
   if(dropped.length)p.routeDropped=[...new Set([...(p.routeDropped||[]),...dropped])];
-  moveTo(pid,pay);
-  try{audit('비용 상담 시행 안 함 → 수납대기',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · 사유 '+c.reason+(dropped.length?' · 지운 동선: '+dropped.join(', '):''));}catch(e){}
-  try{toast(dispName(p.name)+' 님 시행 안 함 → '+pay+(dropped.length?' (남은 동선 '+dropped.length+'개 지움)':''));}catch(e){}}
+  delete p.spaceDone;
+  const next=keep.find(r=>!isPayRoom(r))||pay;
+  moveTo(pid,next);
+  try{audit('비용 상담 시행 안 함 → '+next,(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · 사유 '+c.reason+(dropped.length?' · 지운 동선: '+dropped.join(', '):''));}catch(e){}
+  try{toast(dispName(p.name)+' 님 시행 안 함 → '+next+(dropped.length?' ('+dropped.join('·')+' 지움)':''));}catch(e){}}
 function setConsultReason(pid,room,text){const p=data.find(x=>x.id===pid);if(!p)return;const c=getConsult(p,room);
   const f={reason:(text||"").trim(),by:currentUser?currentUser.name:"",at:new Date().toISOString()};
   if(!c.who&&!c.whoSet){const w=docFor(p,room);if(w)f.who=w;}   // whoSet = 담당자를 일부러 '(미지정)'으로 둔 것 — 되채우지 않는다
