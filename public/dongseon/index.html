@@ -4168,7 +4168,7 @@ function f4cOn(){try{return localStorage.getItem(F4C_KEY)==='1';}catch(e){return
 let F4C_DONE=(()=>{try{const o=JSON.parse(localStorage.getItem('ds4fChartDone')||'{}');return o.d===localYMD(new Date())?new Set(o.k||[]):new Set();}catch(e){return new Set();}})(),F4C_SEEDED=false;
 function f4cSave(){try{localStorage.setItem('ds4fChartDone',JSON.stringify({d:localYMD(new Date()),k:[...F4C_DONE].slice(-500)}));}catch(e){}}
 function chart4HTML(p){const n=bitNoteFor(p);const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const now=new Date();
-  const items=(rx&&Array.isArray(rx.items))?rx.items.map(x=>String(x.nam||x.cod||'').trim()).filter(Boolean):[];
+  const items=(rx&&Array.isArray(rx.items))?rx.items.map(x=>({n:String(x.nam||x.cod||'').trim(),t:String(x.tms||'').trim()})).filter(x=>x.n):[];   // 처방명칭 · 횟수만 (2026-10-14 요청)
   const chart=String((n&&n.chart)||'').trim(),med=String((n&&n.rx)||'').trim();
   const y=Number(String(p.birth||'').slice(0,4)),sd=p.sex==='남'?(y>=2000?3:1):p.sex==='여'?(y>=2000?4:2):'';   // 주민번호 뒷자리 첫 숫자(슬립과 같은 표기)
   const bm=slipBirthMasked(p.birth||'',String(sd));
@@ -4183,7 +4183,8 @@ function chart4HTML(p){const n=bitNoteFor(p);const rx=(typeof bitRxFor==='functi
     h3{font-size:10.5pt;font-weight:800;margin:2mm 0 1mm}
     pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;font-size:10.5pt;line-height:1.4}
     pre.med{font-size:12pt;font-weight:700;border-left:0.8mm solid #000;padding-left:2mm}
-    ol{list-style:none}li{font-size:11pt;font-weight:700;line-height:1.4;padding:0.5mm 0;border-bottom:0.2mm dashed #999}
+    ol{list-style:none}li{font-size:11pt;font-weight:700;line-height:1.4;padding:0.5mm 0;border-bottom:0.2mm dashed #999;display:flex;gap:2mm}
+    li .nm{flex:1;min-width:0}li .tm{flex:none;min-width:8mm;text-align:right}
     .ft{font-size:10pt;font-weight:700;margin-top:3mm;text-align:right}
   </style></head><body>
     <table class="hd">
@@ -4195,7 +4196,7 @@ function chart4HTML(p){const n=bitNoteFor(p);const rx=(typeof bitRxFor==='functi
     <h3>원장님 차팅</h3>${chart?`<pre>${esc(chart)}</pre>`:'<pre>(차팅 없음)</pre>'}
     ${med?`<h3>처방 (med)</h3><pre class="med">${esc(med)}</pre>`:''}
     <div class="rule"></div>
-    <h3>처방내역 ${items.length}건</h3><ol>${items.map(t=>`<li>${esc(t)}</li>`).join('')||'<li>(비트 처방 없음)</li>'}</ol>
+    <h3>처방내역 ${items.length}건 <span style="float:right">횟수</span></h3><ol>${items.map(x=>`<li><span class="nm">${esc(x.n)}</span><span class="tm">${esc(x.t)}</span></li>`).join('')||'<li>(비트 처방 없음)</li>'}</ol>
     <div class="ft">4층 · ${localYMD(now)} ${hhmm(now.toISOString())}</div>
     <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
   </body></html>`;}
@@ -5580,9 +5581,10 @@ async function runSelfTest(){
      {const now=Date.now();   // 슬립 자동 인쇄 — 언제 '진료 끝'으로 보나 (2026-10-14)
       ok('슬립 자동 인쇄: 처방이 막 저장됐으면(30초 안) 기다림 — 나눠 저장하는 경우', !slipApReady({t:now-10000}));
       ok('슬립 자동 인쇄: 마지막 저장 뒤 30초 그대로면 바로 인쇄(진료실에 있어도)', slipApReady({t:now-35000,p:{route:['진료실1'],step:0}}));}
-     {const _b=bitRxFor,_n=BIT_NOTES;BIT_NOTES=[{docId:'c4',mrn:'777',chart:'Nuchal pain sh Lt.',rx:'med\nGreen\nc-mbb rt 3,5'}];bitRxFor=()=>({items:[{cod:'C-ARM',nam:'C-ARM'},{cod:'CRYO10',nam:'신장분사치료10'}]});   // 4층 차팅 인쇄 (2026-10-14)
+     {const _b=bitRxFor,_n=BIT_NOTES;BIT_NOTES=[{docId:'c4',mrn:'777',chart:'Nuchal pain sh Lt.',rx:'med\nGreen\nc-mbb rt 3,5'}];bitRxFor=()=>({items:[{cod:'C-ARM',nam:'C-ARM',tms:'1',qty:'9'},{cod:'CRYO10',nam:'신장분사치료10',tms:'3',qty:'7'}]});   // 4층 차팅 인쇄 (2026-10-14)
       const h=chart4HTML({id:'c4p',mrn:'777',name:'사층환자',birth:'1990-01-01',sex:'남',route:['4층 대기실'],step:0});
       ok('4층 차팅 인쇄: 104mm 용지 · 차팅(med 위) → med → 처방내역 순, 생년월일 가림', /size:104mm auto/.test(h)&&h.indexOf('Nuchal pain')<h.indexOf('c-mbb')&&h.indexOf('c-mbb')<h.indexOf('신장분사치료10')&&h.includes('처방내역 2건')&&h.includes('900101-1******')&&!h.includes('1990-01-01'));
+      ok('4층 차팅 인쇄: 처방내역은 명칭 · 횟수만(코드·총투여량 없음)', h.includes('<span class="nm">신장분사치료10</span><span class="tm">3</span>')&&!h.includes('CRYO10')&&!/<span class="tm">7</.test(h),h.slice(h.indexOf('처방내역'),h.indexOf('처방내역')+260));
       BIT_NOTES=_n;bitRxFor=_b;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
