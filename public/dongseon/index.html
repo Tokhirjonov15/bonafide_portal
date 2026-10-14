@@ -5547,6 +5547,13 @@ async function runSelfTest(){
       eq('직원 목록: 지금 골라 둔 값은 빠진 사람이어도 남김', staffOpts('퇴사간호',['우성복'],'간호사'), ['퇴사간호','우성복','새간호']);
       eq('직원 목록: 물리치료 방 담당 = 그 방 명단의 파트(물리치료사), 띄어쓰기 달라도 한 번만', (()=>{const _m=ROOM_META['기본물리치료'];ROOM_META['기본물리치료']={doctors:['허빈']};const r=staffOpts('',meta('기본물리치료').doctors,roomStaffPart('기본물리치료'));if(_m===undefined)delete ROOM_META['기본물리치료'];else ROOM_META['기본물리치료']=_m;return r;})(), ['허빈','새치료']);
       eq('직원 목록: 진료 원장 = 직원 목록 의사', realDocs(), ['김현우','박초롱']);
+      {const _m=ROOM_META['테스트방'];   // 진료실 관리 = 고르기 (2026-10-14)
+       ROOM_META['테스트방']={nurses:['우성복']};
+       const a=[roomShows('테스트방','nurse'),roomShows('테스트방','rad'),roomHasStaff('테스트방')];
+       ROOM_META['테스트방']={nurses:['우성복'],showNurse:false,staffPart:'물리치료사'};
+       const b=[roomShows('테스트방','nurse'),roomHasStaff('테스트방'),roomStaffPart('테스트방'),staffOpts('',[],roomStaffPart('테스트방')).join()];
+       if(_m===undefined)delete ROOM_META['테스트방'];else ROOM_META['테스트방']=_m;
+       eq('진료실 관리: 예전 이름 칸이 있으면 그 칸 표시, 고르면 고른 대로(담당 파트 → 직원 목록 그 파트 전부)', [a,b], [[true,false,false],[false,true,'물리치료사','허 빈,새치료']]);}
       STAFF_ROSTER['진료지원']=['한효주 (Lux)'];
       eq('직원 목록: 비용 상담 담당자 = 간호사·진료지원만(방 명단에 섞인 물리치료사는 빠짐)', (()=>{const _m=ROOM_META['비용 상담'];ROOM_META['비용 상담']={doctors:['우성복','허빈']};const r=consultWhoOpts('비용 상담','');if(_m===undefined)delete ROOM_META['비용 상담'];else ROOM_META['비용 상담']=_m;return r;})(), ['우성복','새간호','한효주']);
       STAFF_ROSTER=_sr;}
@@ -9140,7 +9147,7 @@ function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOStri
   /* 도수(SASO·자동차도수)는 옮긴 사람 = 치료사 (2026-10-01 요청): 로그인한 사람이 그 방 치료사 목록에 있으면 그 방 치료사로 기록 → 4층 도수 표 '치료사' 칸.
      비트·자동 이동(by 를 넘김)이나 이미 지정된 경우는 건드리지 않는다 */
   {const _r=curRoom(p),me=currentUser&&currentUser.name;
-   if(by===undefined&&me&&MX_TH_ROOMS.includes(_r)&&(meta(_r).doctors||[]).includes(me)){p.roomDocs=p.roomDocs||{};if(!p.roomDocs[_r])p.roomDocs[_r]=me;}}
+   if(by===undefined&&me&&MX_TH_ROOMS.includes(_r)&&((meta(_r).doctors||[]).includes(me)||rosterNames(roomStaffPart(_r)).some(n=>staffKey(n)===staffKey(me)))){/* 직원 목록의 그 방 파트여도 (2026-10-14) */p.roomDocs=p.roomDocs||{};if(!p.roomDocs[_r])p.roomDocs[_r]=me;}}
   autoAssignRoomStaff(p);}  // 새로 도착하면 맨 아래로(외출 해제) — 자동문자 smsLast는 방 기준이라 자동 리셋
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
 function autoAssignRoomStaff(p){
@@ -11991,15 +11998,16 @@ function rbyFields(p,room){
   const F=[],off=n=>!isOffToday(n),uniq=(cur,L)=>[...new Set([cur,...L].filter(Boolean))];
   const proc=isProcRoom(room),clinic=isClinicRoom(room),rdocs=(meta(room).doctors||[]).filter(off);
   if(!CARD_STAFF_HIDE.doc(room)){if(proc){const sd=seenDocFor(p,room);F.push({k:'seen',label:'진료 원장님',cur:sd,opts:staffOpts(sd,[],'의사')});}
-    if(clinic||proc||!rdocs.length){const cur=docFor(p,room);
+    if(clinic||proc||!roomHasStaff(room)){const cur=docFor(p,room);
       F.push({k:'doc',label:proc?'술기 원장님':'원장님',cur,opts:clinic?uniqStaff([cur,...rdocs,...allClinicDoctors()]):staffOpts(cur,proc?rdocs:[],'의사')});}
     else{/* 담당 명단이 따로 있는 방(물리치료 = 치료사, 수납대기 = 원무 등) — 이 방에서 고른 사람만(접수 원장님으로 채우지 않음), 의사는 목록에서 뺀다 (2026-10-13) */
       const cur=(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))?(p.roomDocs[room]||''):'';
       const L=rdocs.filter(n=>rosterPart(n)!=='의사'),parts=L.map(rosterPart).filter(Boolean);
-      const lab=parts.length&&parts.every(g=>g==='물리치료사')?'치료사':parts.length&&parts.every(g=>g==='간호사')?'간호':'담당';
+      const sp=roomStaffPart(room);   // 진료실 관리에서 고른 담당 파트가 있으면 그것 (2026-10-14)
+      const lab=sp==='물리치료사'?'치료사':sp==='간호사'?'간호':sp?'담당':parts.length&&parts.every(g=>g==='물리치료사')?'치료사':parts.length&&parts.every(g=>g==='간호사')?'간호':'담당';
       F.push({k:'doc',label:lab,cur,opts:staffOpts(cur,L,roomStaffPart(room))});}}
-  if(!CARD_STAFF_HIDE.nurse(room)){const cur=nurseFor(p,room),L=(meta(room).nurses||[]).filter(off);if(L.length||cur)F.push({k:'nurse',label:'간호',cur,opts:staffOpts(cur,L,'간호사')});}
-  if(!CARD_STAFF_HIDE.rad(room)){const cur=radFor(p,room),L=(meta(room).rads||[]).filter(off);if(L.length||cur)F.push({k:'rad',label:'방사선',cur,opts:staffOpts(cur,L,'방사선사')});}
+  if(!CARD_STAFF_HIDE.nurse(room)){const cur=nurseFor(p,room),L=(meta(room).nurses||[]).filter(off);if(roomShows(room,'nurse')||cur)F.push({k:'nurse',label:'간호',cur,opts:staffOpts(cur,L,'간호사')});}
+  if(!CARD_STAFF_HIDE.rad(room)){const cur=radFor(p,room),L=(meta(room).rads||[]).filter(off);if(roomShows(room,'rad')||cur)F.push({k:'rad',label:'방사선',cur,opts:staffOpts(cur,L,'방사선사')});}
   return F;}
 window.rbyEdit=function(room){
   const p=editId?data.find(x=>x.id===editId):null;if(!p||p._viewOnly||p.discharged||!p.roomBy||!p.roomBy[room])return;
@@ -12112,14 +12120,14 @@ function doctorChipHtml(p,room){
   let cur=docFor(p,_r);
   const roomDocs=(_r?(meta(_r).doctors||[]):[]).filter(n=>!isOffToday(n));   // 오늘 휴무는 제외
   /* 담당 명단이 따로 있는 방(기본물리치료 = 물리치료사 등)은 이 방에서 고른 사람만 — 접수 원장님(p.doctor)으로 채우지 않는다 (2026-10-07: 물리치료사 목록 맨 위에 김현우 원장님이 선택돼 있었음) */
-  if(!isClinicRoom(_r)&&!isProcRoom(_r)&&roomDocs.length&&!(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,_r)))cur='';
+  if(!isClinicRoom(_r)&&!isProcRoom(_r)&&roomHasStaff(_r)&&!(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,_r)))cur='';
   /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
      지정이 없는 방만 전체 진료의 목록으로 폴백. 이미 선택된 값은 항상 보존. */
   const opts=isClinicRoom(_r)
     ? uniqStaff([cur,...roomDocs,...allClinicDoctors()])   // 진료실: 모든 의사(이 방 의사가 먼저) — 다른 진료실 의사를 고르면 그 진료실로 옮김 (2026-10-06)
     : isProcRoom(_r)
     ? staffOpts(cur,roomDocs,'의사')   // 시술 방 술기: 이 방 의사 먼저, 그 뒤 직원 목록 의사 전부 (2026-10-14)
-    : (_r&&(meta(_r).doctors||[]).length)
+    : (_r&&roomHasStaff(_r))
     ? staffOpts(cur,roomDocs,roomStaffPart(_r))   // 물리치료 방 = 물리치료사 등 그 방 명단의 파트 (2026-10-14)
     : staffOpts(cur,[],'의사');
   if(!opts.length&&!cur) return `<span class="doc-set" onclick="event.stopPropagation();openEdit('${p.id}')"><i data-lucide="stethoscope"></i> 진료의 지정</span>`;
@@ -12177,7 +12185,12 @@ const staffKey=n=>String(n||'').replace(/\s+/g,'').toLowerCase();
 function uniqStaff(L){const seen=new Set();return L.filter(n=>{if(!n)return false;const k=staffKey(n);if(seen.has(k))return false;seen.add(k);return true;});}
 function staffOpts(cur,list,part){const R=part?rosterNames(part):[];const keep=(list||[]).filter(n=>!R.length||rosterPart(n));
   return uniqStaff([cur,...[...keep,...R].filter(n=>!isOffToday(n))]);}
-function roomStaffPart(room){const c={};(meta(room).doctors||[]).forEach(n=>{const g=rosterPart(n);if(g&&g!=='의사')c[g]=(c[g]||0)+1;});const k=Object.keys(c).sort((a,b)=>c[b]-c[a]);return k[0]||'';}
+/* 진료실 관리에서 이름을 적지 않고 고르기만 (2026-10-14 요청: '직원 목록에서 알아서 따오면 안 되나') — 방마다
+   staffPart(담당 파트) · showNurse/showRad(간호·방사선 칸 표시). 아직 안 고른 방은 예전 이름 칸 내용으로 정한다(있으면 그 파트·칸 표시) */
+const STAFF_PART_OPTS=['의사','물리치료사','간호사','진료지원','방사선사','행정'];
+function roomShows(room,kind){const m=meta(room),k=kind==='nurse'?'showNurse':'showRad';if(typeof m[k]==='boolean')return m[k];return ((kind==='nurse'?m.nurses:m.rads)||[]).length>0;}
+function roomHasStaff(room){const m=meta(room);if(typeof m.staffPart==='string')return !!m.staffPart;return (m.doctors||[]).length>0;}
+function roomStaffPart(room){if(typeof meta(room).staffPart==='string')return meta(room).staffPart;const c={};(meta(room).doctors||[]).forEach(n=>{const g=rosterPart(n);if(g&&g!=='의사')c[g]=(c[g]||0)+1;});const k=Object.keys(c).sort((a,b)=>c[b]-c[a]);return k[0]||'';}
 function realDocs(){const R=rosterNames('의사');if(R.length)return R;   // 직원 목록 의사 — 비어 있을 때만 예전 진료의 목록
   return (DOCTORS||[]).filter(n=>{const g=rosterPart(n);return !g||g==='의사';});}
 function allClinicDoctors(){const L=[];ROOMS.forEach(r=>{if(isClinicRoom(r))L.push(...(meta(r).doctors||[]));});return staffOpts('',L,'의사');}
@@ -12198,7 +12211,7 @@ function nurseChipHtml(p,room){
   const _r=room||curRoom(p)||''; if(!_r)return '';
   if(CARD_STAFF_HIDE.nurse(_r))return '';   // 진료실은 간호 칸 없음 (2026-10-01)
   const listAll=meta(_r).nurses||[]; const cur=nurseFor(p,_r);
-  if(!listAll.length&&!cur)return '';
+  if(!roomShows(_r,'nurse')&&!cur)return '';   // 진료실 관리의 '간호 칸' 체크 (2026-10-14)
   const opts=staffOpts(cur,listAll,'간호사');   // 이 방 간호사 먼저, 그 뒤 직원 목록 간호사 (오늘 휴무 제외) — 2026-10-14
   const optHtml=`<option value="">(간호 미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="user"></i> <select class="doc-sel" title="이 방(${esc(_r)})의 담당 간호사 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeNurse('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
@@ -12214,7 +12227,7 @@ function radChipHtml(p,room){
   if(/x-?ray/i.test(_r))return xrayClinicHtml(p);   // x-ray실 카드에는 방사선 칸 대신 진료실 (2026-10-14 요청 — 방사선은 필요하면 환자 정보 창 동선의 이름표에서)
   if(CARD_STAFF_HIDE.rad(_r))return '';
   const listAll=meta(_r).rads||[]; const cur=radFor(p,_r);
-  if(!listAll.length&&!cur)return '';
+  if(!roomShows(_r,'rad')&&!cur)return '';   // 진료실 관리의 '방사선 칸' 체크 (2026-10-14)
   const opts=staffOpts(cur,listAll,'방사선사');   // 이 방 방사선 먼저, 그 뒤 직원 목록 방사선사 — 2026-10-14
   const optHtml=`<option value="">(방사선 미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="radiation"></i> <select class="doc-sel" title="이 방(${esc(_r)})의 방사선 담당 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeRad('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
@@ -13202,9 +13215,7 @@ function renderRoomsList(){
       <span class="rmname">${esc(r)}</span>
       <input class="rgroup" list="groupOpts" placeholder="그룹(선택)" value="${esc(meta(r).group||'')}" onchange="setRoomGroup(${i},this.value)" title="같은 그룹끼리 탭으로 묶여요">
       <input class="rgroup" placeholder="대기화면 표시명(선택)" value="${esc(meta(r).waitName||'')}" onchange="setRoomWaitName(${i},this.value)" title="대기화면에서 환자에게 보일 친절한 방 이름 (비우면 원래 이름)" style="flex:0 0 150px">
-      <input class="rgroup" placeholder="진료의(쉼표로 여러 명)" value="${esc((meta(r).doctors||[]).join(', '))}" onchange="setRoomDoctors(${i},this.value)" title="이 방 전담 진료의 — 1명이면 도착 시 자동 지정" style="flex:0 0 140px">
-      <input class="rgroup" placeholder="간호사(쉼표)" value="${esc((meta(r).nurses||[]).join(', '))}" onchange="setRoomNurses(${i},this.value)" title="이 방 담당 간호사 — 카드에서 선택, 1명이면 도착 시 자동 지정" style="flex:0 0 120px">
-      <input class="rgroup" placeholder="방사선(쉼표)" value="${esc((meta(r).rads||[]).join(', '))}" onchange="setRoomRads(${i},this.value)" title="이 방 방사선 담당 (예: C-Arm) — 카드에서 선택, 1명이면 도착 시 자동 지정" style="flex:0 0 110px">
+      ${roomStaffCtl(r,i)}
       <label class="rmconsult" title="이 방의 진행 단계 수"><span>단계</span><select onchange="setStages(${i},this.value)" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:3px 5px;font-size:12px"><option value="2" ${stagesOf(r)===2?'selected':''}>2 (대기·종결)</option><option value="3" ${stagesOf(r)===3?'selected':''}>3 (+진행)</option><option value="4" ${stagesOf(r)===4?'selected':''}>4 (+준비)</option></select></label>
       <label class="rmconsult" title="예약자를 예약시간순으로 우선 배치"><input type="checkbox" ${meta(r).resOrder?'checked':''} onchange="setResOrder(${i},this.checked)"> <i data-lucide="calendar"></i> 예약배치</label>
       <label class="rmconsult" title="이 방에 상담 결과 기록칸 표시"><input type="checkbox" ${meta(r).consult?'checked':''} onchange="setConsult(${i},this.checked)"> <i data-lucide="message-circle"></i> 상담</label>
@@ -13283,6 +13294,21 @@ function setRoomDoctors(i,v){if(!isAdmin())return;
   let grew=false;if(isClinicRoom(ROOMS[i])||isProcRoom(ROOMS[i]))names.forEach(n=>{if(!DOCTORS.includes(n)){DOCTORS.push(n);grew=true;}});   // 진료실·시술 방만 — 물리치료 방의 치료사를 진료의 목록에 넣지 않는다 (2026-10-13)
   if(grew)saveDoctorsCfg();
   updateSheetStaffHist();saveRooms();render();}
+/* 진료실 관리 — 이름을 적지 않고 고르기 (2026-10-14 요청). 목록은 직원 목록에서:
+   진료실 = 원장님 한 명 고르기(환자를 어느 진료실로 보낼지) · 시술 방 = 술기 의사 전체 · 3층 상담 = 간호사·진료지원 · 그 밖의 방 = 담당 파트 고르기.
+   간호·방사선 칸은 카드에 보일지만 체크 */
+function roomStaffCtl(r,i){const st='background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:3px 5px;font-size:12px';let h='';
+  if(isClinicRoom(r)){const cur=(meta(r).doctors||[])[0]||'';const L=uniqStaff([cur,...realDocs()]);
+    h=`<label class="rmconsult" title="이 진료실 원장님 — 비트 접수 원장님이 이 분이면 이 진료실로 (직원 목록 의사)"><span>원장님</span><select onchange="setRoomDoc(${i},this.value)" style="${st}"><option value="">(없음)</option>${L.map(n=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('')}</select></label>`;}
+  else if(isProcRoom(r))h=`<span class="hint" title="술기 원장님 칸에 직원 목록 의사가 모두 나옵니다">술기: 의사 전체</span>`;
+  else if(isConsultRoom(r)&&!(meta(r).group==='4층'||/^4층/.test(r)))h=`<span class="hint" title="상담 담당자 칸에 직원 목록 간호사·진료지원이 나옵니다">담당: 간호사·진료지원</span>`;
+  else{const cur=roomStaffPart(r);h=`<label class="rmconsult" title="카드의 담당 칸에 이 파트 직원이 모두 나옵니다 (직원 목록)"><span>담당</span><select onchange="setRoomPart(${i},this.value)" style="${st}"><option value="">(없음)</option>${STAFF_PART_OPTS.map(g=>`<option ${g===cur?'selected':''}>${g}</option>`).join('')}</select></label>`;}
+  const ck=(k,lab)=>`<label class="rmconsult" title="카드에 ${lab} 칸을 보입니다 — 목록은 직원 목록 ${k==='nurse'?'간호사':'방사선사'}"><input type="checkbox" ${roomShows(r,k)?'checked':''} onchange="setRoomShow(${i},'${k}',this.checked)"> ${lab}</label>`;
+  return h+ck('nurse','간호 칸')+ck('rad','방사선 칸');}
+function setRoomDoc(i,v){if(!isAdmin())return;const r=ROOMS[i];v=String(v||'').trim();meta(r).doctors=v?[v]:[];
+  if(v&&!DOCTORS.includes(v)){DOCTORS.push(v);saveDoctorsCfg();}updateSheetStaffHist();saveRooms();render();}
+function setRoomPart(i,v){if(!isAdmin())return;const m=meta(ROOMS[i]);m.staffPart=String(v||'');saveRooms();render();try{renderRoomsList();}catch(e){}}
+function setRoomShow(i,k,on){if(!isAdmin())return;const m=meta(ROOMS[i]);if(k==='nurse')m.showNurse=!!on;else m.showRad=!!on;saveRooms();render();}
 function setRoomNurses(i,v){if(!isAdmin())return;
   meta(ROOMS[i]).nurses=(v||'').split(',').map(s=>s.trim()).filter(Boolean);
   updateSheetStaffHist();saveRooms();render();}
