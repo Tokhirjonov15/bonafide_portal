@@ -5456,6 +5456,14 @@ async function runSelfTest(){
       pruneUndoneVisits(Q);
       ok('잘못 거친 방: 추가 수납(수납대기 → 충격파 → 수납대기)의 앞 수납대기 기록은 남김', Q.visits.length===2);
       STATS=_st;if(_ls!==null)localStorage.setItem(STATS_STORE,_ls);window.toast=_toast;}
+     {const _d=data,_b=bitRxFor,_cf=window.confirm,_toast=window.toast;window.confirm=()=>true;window.toast=()=>{};   // 묶음 D/C 취소 (2026-10-14)
+      const items=[{cod:'MM1',nam:'물리1'},{cod:'MM2',nam:'물리2'},{cod:'MM3',nam:'물리3'}];bitRxFor=()=>({items});
+      const D={};items.slice(0,2).forEach(it=>{D[rxDcKey(it)]={at:'',by:'t',cod:it.cod,nam:it.nam,reason:'r',group:'물리치료'};});D[rxDcKey(items[2])]={at:'',by:'t',cod:'MM3',nam:'물리3',reason:'r'};
+      const P={id:'dcu',name:'묶음취소',mrn:'',route:['물리치료'],step:0,rxDc:D,notes:{}};data=[P];
+      ok('묶음 D/C 취소: 묶음으로 D/C 한 2건에 [↩ 취소] 버튼', /↩ 물리치료 2건 취소/.test(rxDcGroupBar(P,bitRxFor(P))));
+      rxDcGroupUndo('dcu','물리치료');rxDcPendCommit('dcu');
+      ok('묶음 D/C 취소: [저장] 하면 묶음 2건만 취소, 따로 D/C 한 1건은 남음', Object.keys(P.rxDc||{}).length===1&&!!P.rxDc[rxDcKey(items[2])]);
+      data=_d;bitRxFor=_b;window.confirm=_cf;window.toast=_toast;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -11685,13 +11693,15 @@ function rxDcPendSet(p,k,op){if(RX_DC_PEND.pid!==p.id)RX_DC_PEND={pid:p.id,ops:{
   if(!!((p.rxDc||{})[k])===op.on)delete RX_DC_PEND.ops[k];else RX_DC_PEND.ops[k]=op;}   // 원래 상태로 되돌리면 변경 없음
 /* 화면에 보일 D/C = 카드의 D/C + 저장 전 변경 */
 function rxDcView(p){const v=Object.assign({},(p&&p.rxDc)||{});const by=(currentUser&&currentUser.name)||'';
-  Object.entries(rxDcPendOps(p&&p.id)).forEach(([k,o])=>{if(o.on)v[k]={by,reason:o.reason||'',pending:true};else delete v[k];});return v;}
+  Object.entries(rxDcPendOps(p&&p.id)).forEach(([k,o])=>{if(o.on)v[k]={by,reason:o.reason||'',pending:true,group:o.group||''};else delete v[k];});return v;}
 function rxDcPendCommit(pid){
   const ops=rxDcPendOps(pid);rxDcPendClear();const p=data.find(x=>x.id===pid);if(!p)return;
-  const groups={};
+  const groups={},undo={};
   Object.entries(ops).forEach(([k,o])=>{if(o.group&&o.on){(groups[o.group+'|'+o.reason]||(groups[o.group+'|'+o.reason]=[])).push(o);return;}
+    if(o.group&&!o.on){(undo[o.group]||(undo[o.group]=[])).push(Object.assign({k},o));return;}   // 묶음 D/C 취소 — 묶음마다 한 번 (2026-10-14)
     rxDcCommit(p,pid,k,o.it,o.label,o.targets,o.on,o.reason||'');});
-  Object.values(groups).forEach(L=>rxDcGroupCommit(p,pid,L[0].group,L.map(o=>o.it),L[0].reason));}
+  Object.values(groups).forEach(L=>rxDcGroupCommit(p,pid,L[0].group,L.map(o=>o.it),L[0].reason));
+  Object.entries(undo).forEach(([g,L])=>rxDcGroupUndoCommit(p,pid,g,L));}
 function toggleRxDc(pid,kEnc,el){
   const p=data.find(x=>x.id===pid);if(!p){if(el)el.checked=!el.checked;return;}
   const k=decodeURIComponent(kEnc);const rx=bitRxFor(p);const it=rx&&rx.items.find(x=>rxDcKey(x)===k);
@@ -11717,9 +11727,31 @@ function rxDcGroups(rx){const items=(rx&&rx.items)||[];const rule=n=>ROUTE_RX_RU
     const a=anc.find(a=>a.i===i);if(a){G[a.g].push(x);return;}
     if(RX_INJ.test(c)&&anc.length){const n=anc.slice().sort((p,q)=>Math.abs(p.i-i)-Math.abs(q.i-i))[0];G[n.g].push(x);}});
   return Object.entries(G).filter(([g,L])=>L.length>=2).map(([g,L])=>({g,items:L}));}
-function rxDcGroupBar(p,rx){const dcs=rxDcView(p);const L=rxDcGroups(rx).map(x=>Object.assign(x,{left:x.items.filter(it=>!dcs[rxDcKey(it)])})).filter(x=>x.left.length);
-  if(!L.length)return "";
-  return '<div class="rx-dcgrp"><span class="hint">묶음 D/C (사유 한 번):</span>'+L.map(x=>`<button type="button" class="btn sm" title="${esc(x.left.map(it=>String(it.nam||it.cod||"").trim()).join(", "))}" onclick="event.stopPropagation();rxDcGroup('${p.id}','${esc(x.g)}')">⛔ ${esc(x.g)} ${x.left.length}건</button>`).join("")+"</div>";}
+function rxDcGroupBar(p,rx){const dcs=rxDcView(p);const G=rxDcGroups(rx);
+  const L=G.map(x=>Object.assign({},x,{left:x.items.filter(it=>!dcs[rxDcKey(it)])})).filter(x=>x.left.length);
+  /* 묶음으로 D/C 한 것은 묶음으로 취소 (2026-10-14 요청) — 그 묶음 이름으로 D/C 된 처방만 한꺼번에 되돌린다 */
+  const U=G.map(x=>Object.assign({},x,{done:x.items.filter(it=>{const d=dcs[rxDcKey(it)];return d&&d.group===x.g;})})).filter(x=>x.done.length);
+  if(!L.length&&!U.length)return "";
+  return '<div class="rx-dcgrp">'+(L.length?'<span class="hint">묶음 D/C (사유 한 번):</span>'+L.map(x=>`<button type="button" class="btn sm" title="${esc(x.left.map(it=>String(it.nam||it.cod||"").trim()).join(", "))}" onclick="event.stopPropagation();rxDcGroup('${p.id}','${esc(x.g)}')">⛔ ${esc(x.g)} ${x.left.length}건</button>`).join(""):'')
+    +(U.length?'<span class="hint">묶음 D/C 취소:</span>'+U.map(x=>`<button type="button" class="btn sm rx-dcundo" title="묶음으로 D/C 한 ${esc(x.done.map(it=>String(it.nam||it.cod||"").trim()).join(", "))} 을 한꺼번에 되돌립니다" onclick="event.stopPropagation();rxDcGroupUndo('${p.id}','${esc(x.g)}')">↩ ${esc(x.g)} ${x.done.length}건 취소</button>`).join(""):'')+"</div>";}
+function rxDcGroupUndo(pid,g){const p=data.find(x=>x.id===pid);if(!p)return;const rx=bitRxFor(p);const grp=rxDcGroups(rx).find(x=>x.g===g);if(!grp)return;
+  const dcs=rxDcView(p);const done=grp.items.filter(it=>{const d=dcs[rxDcKey(it)];return d&&d.group===g;});if(!done.length)return;
+  if(!confirm(g+' 묶음 D/C '+done.length+'건을 취소할까요?\n('+done.map(it=>String(it.nam||it.cod||'').trim()).join(', ')+')\n\n[저장]을 눌러야 반영됩니다.'))return;
+  const targets=[...new Set(done.flatMap(rxItemRooms))];if(!targets.length&&curRoom(p))targets.push(curRoom(p));
+  done.forEach(it=>{const k=rxDcKey(it);const pend=rxDcPendOps(p.id)[k];
+    if(pend&&pend.on){delete RX_DC_PEND.ops[k];return;}   // 아직 저장 전의 묶음 D/C 는 그냥 없던 것으로
+    rxDcPendSet(p,k,{on:false,it,label:String(it.nam||it.cod||'').trim(),targets,reason:'',group:g});});
+  try{fillRxBox(p);}catch(e){}}
+function rxDcGroupUndoCommit(p,pid,g,L){
+  const keys=L.map(o=>o.k),label=g+' '+L.length+'건',names=L.map(o=>String((o.it&&(o.it.nam||o.it.cod))||'').trim()).join(', ');
+  const targets=[...new Set(L.flatMap(o=>o.targets||[]))];
+  const apply=d=>{d.rxDc=Object.assign({},d.rxDc||{});keys.forEach(k=>{delete d.rxDc[k];});if(!Object.keys(d.rxDc).length)delete d.rxDc;return d;};
+  apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  const by=(currentUser&&currentUser.name)||'';
+  try{audit('처방 D/C 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+label+' (묶음): '+names);}catch(e){}
+  roomNotify(p,'__all__','dcundo',{item:label+' ('+names+')',by,rooms:targets.join(', ')});   // 묶음마다 알림 한 번
+  try{toast(`${dispName(p.name)} 님 ${label} D/C 취소 → 모두에게 알림`);}catch(e){}
+  try{fillRxBox(p);}catch(e){}render();}
 function rxDcGroup(pid,g){const p=data.find(x=>x.id===pid);if(!p)return;const rx=bitRxFor(p);const grp=rxDcGroups(rx).find(x=>x.g===g);if(!grp)return;
   const dcs=rxDcView(p);const left=grp.items.filter(it=>!dcs[rxDcKey(it)]);if(!left.length)return;
   const targets=[...new Set(left.flatMap(rxItemRooms))];if(!targets.length&&curRoom(p))targets.push(curRoom(p));
@@ -13735,6 +13767,7 @@ boot();
   .rt-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;max-height:260px;overflow:auto;margin-top:4px;color:var(--text)}   /* 녹음기록 (2026-10-12) */
   .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
   .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
+  .rx-dcgrp .btn.rx-dcundo{color:#1d4ed8;border-color:#93c5fd}   /* 묶음 D/C 취소 (2026-10-14) */
   .dcr-back{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center;padding:16px}
   .dcr-box{background:var(--panel);color:var(--text);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:16px;width:min(380px,100%)}
   .dcr-t{font-size:15px;margin-bottom:10px;overflow-wrap:anywhere}
