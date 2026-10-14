@@ -9751,7 +9751,9 @@ function roomNotify(p,room,kind,extra){
       u.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});}catch(e){}};
     /* "x-ray 나왔습니다" 는 방을 나가고 30초 뒤에 (2026-10-06 요청). 그 사이 카드가 x-ray실로 되돌아오면(잘못 옮겼다 되돌림) 보내지 않는다 */
     if(kind==='out'&&/x-?ray/i.test(room)){const pid=p.id;
-      setTimeout(()=>{const q=data.find(x=>x.id===pid);if(q&&!q.discharged&&curRoom(q)===room)return;send();},30000);return;}
+      setTimeout(()=>{const q=data.find(x=>x.id===pid);if(q&&!q.discharged&&curRoom(q)===room)return;
+        try{body.clinic=xrayClinicOf(q||p).room||'';}catch(e){}   // "… x-ray 나왔습니다 - 1진료실" (2026-10-14 요청) — 카드에 보이는 진료실과 같은 기준
+        send();},30000);return;}
     send();
   }catch(e){}
 }

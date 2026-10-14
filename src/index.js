@@ -785,7 +785,8 @@ async function dongseonNotify(request, env) {
       : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
       /* x-ray실 (2026-10-03 요청): "1234 홍길동님 x-ray촬영 있습니다" / 종결·이동으로 나가면 "1234 홍길동님 x-ray 나왔습니다" */
       : (/x-?ray/i.test(room) && kind === "in") ? `📷 ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 x-ray촬영 있습니다 · ${hm}`
-      : (/x-?ray/i.test(room) && kind === "out") ? `✅ ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 x-ray 나왔습니다 · ${hm}`
+      /* 2026-10-14 요청: 진료실도 — "22942 박경희님 x-ray 나왔습니다 - 1진료실" (진료실1 → 1진료실) */
+      : (/x-?ray/i.test(room) && kind === "out") ? `✅ ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 x-ray 나왔습니다${s(b.clinic) ? " - " + s(b.clinic).replace(/^진료실\s*(\d+)$/, "$1진료실") : ""} · ${hm}`
       : (normRoom(room) === normRoom("진료 상담") && kind === "out") ? `✅ ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 상담 완료 · ${hm}${s(b.next) ? " → " + s(b.next) : ""}`
       : kind === "in"
       ? `🟢 ${room} 도착 · ${who} · ${hm}`
