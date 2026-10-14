@@ -5547,6 +5547,8 @@ async function runSelfTest(){
       eq('직원 목록: 지금 골라 둔 값은 빠진 사람이어도 남김', staffOpts('퇴사간호',['우성복'],'간호사'), ['퇴사간호','우성복','새간호']);
       eq('직원 목록: 물리치료 방 담당 = 그 방 명단의 파트(물리치료사), 띄어쓰기 달라도 한 번만', (()=>{const _m=ROOM_META['기본물리치료'];ROOM_META['기본물리치료']={doctors:['허빈']};const r=staffOpts('',meta('기본물리치료').doctors,roomStaffPart('기본물리치료'));if(_m===undefined)delete ROOM_META['기본물리치료'];else ROOM_META['기본물리치료']=_m;return r;})(), ['허빈','새치료']);
       eq('직원 목록: 진료 원장 = 직원 목록 의사', realDocs(), ['김현우','박초롱']);
+      STAFF_ROSTER['진료지원']=['한효주 (Lux)'];
+      eq('직원 목록: 비용 상담 담당자 = 간호사·진료지원만(방 명단에 섞인 물리치료사는 빠짐)', (()=>{const _m=ROOM_META['비용 상담'];ROOM_META['비용 상담']={doctors:['우성복','허빈']};const r=consultWhoOpts('비용 상담','');if(_m===undefined)delete ROOM_META['비용 상담'];else ROOM_META['비용 상담']=_m;return r;})(), ['우성복','새간호','한효주']);
       STAFF_ROSTER=_sr;}
      {const _m1=ROOM_META['진료실1'],_m2=ROOM_META['진료실2'];ROOM_META['진료실1']={doctors:['김현우']};ROOM_META['진료실2']={doctors:['백민철']};const _R=ROOMS;ROOMS=[..._R,'진료실1','진료실2'];   // x-ray 진료실 (2026-10-14)
       const xp={mrn:'',doctor:'김현우',route:['3층 대기실','진료실1','x-ray실','진료실2'],step:2};
@@ -6928,13 +6930,15 @@ function consultAutoRoute(pid,fromRoom){
   return true;}
 /* 담당자: 그 상담 방에 배정된 사람 중에서 선택. 기본값은 ① 이미 고른 사람 ② 카드에서 이 방에 지정한 사람 ③ 방 목록(칸 맨 위에 보이는 순서)의 첫 사람.
    비트에서 온 원장님(p.doctor)은 쓰지 않는다 — 원장님은 위쪽 '원장님' 칸이 따로 담당 (2026-09-22) */
-function consultDefaultWho(room){const l=(meta(room).doctors||[]).filter(n=>!isOffToday(n));return l[0]||"";}
+function consultDefaultWho(room){const l=(meta(room).doctors||[]).filter(n=>!isOffToday(n));
+  const ok=(meta(room).group==='4층'||/^4층/.test(room||''))?l:l.filter(n=>CONSULT_PARTS.includes(rosterPart(n)));   // 3층 상담은 간호사·진료지원만 (2026-10-14)
+  return ok[0]||"";}
 function consultWho(p,room,c){
   if(c&&(c.who||c.whoSet))return c.who||"";                 // 담당자 칸에서 고른 값 — whoSet 이면 '(미지정)'을 일부러 고른 것도 그대로 (2026-09-24)
   if(p&&p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return p.roomDocs[room]||"";   // 방 담당 기록('' = 일부러 미지정)
   return consultDefaultWho(room);}                           // 아무 기록도 없으면 방 목록의 맨 위 사람
 /* 담당의(진료실 1~4 진료의) — 상담에는 상담자 외에 담당 진료의도 함께 기록 */
-function consultDocPool(){const out=[];ROOMS.forEach(r=>{if(/^진료실\s*\d/.test(r))(meta(r).doctors||[]).forEach(n=>{if(n&&!isOffToday(n)&&!out.includes(n))out.push(n);});});return out;}
+function consultDocPool(){return allClinicDoctors();}   // 진료실 원장님 먼저 + 직원 목록 의사 (오늘 휴무 제외, 2026-10-14)
 function consultDoc(p,room,c){
   if(c&&c.doc)return c.doc;
   const rd=p.roomDocs||{};
@@ -6945,10 +6949,17 @@ function setConsultDoc(pid,room,doc){const p=data.find(x=>x.id===pid);if(!p)retu
   const f={doc:(doc||"").trim()};
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));}
+/* 상담 담당자 목록 = 직원 목록 (2026-10-14 요청: 비용 상담 담당자에 물리치료사가 섞여 나왔다 — 방 명단에 들어가 있었음).
+   3층 상담(비용 상담·진료 상담) = 간호사 + 진료지원, 방 명단에 있는 사람 중 그 파트만 먼저. 4층 상담 = 그 방 명단의 파트(예: 물리치료사).
+   지금 골라 둔 값은 늘 남긴다 */
+const CONSULT_PARTS=['간호사','진료지원'];
+function consultWhoOpts(room,cur){const L=meta(room).doctors||[];
+  if(meta(room).group==='4층'||/^4층/.test(room||''))return staffOpts(cur,L,roomStaffPart(room));
+  const keep=L.filter(n=>CONSULT_PARTS.includes(rosterPart(n)));
+  return uniqStaff([cur,...[...keep,...CONSULT_PARTS.flatMap(rosterNames)].filter(n=>!isOffToday(n))]);}
 function consultWhoHtml(p,room,c,stop){
   const cur=consultWho(p,room,c);
-  const list=(meta(room).doctors||[]).filter(n=>!isOffToday(n));
-  const opts=[...new Set([cur,...list].filter(Boolean))];
+  const opts=consultWhoOpts(room,cur);
   const ev=stop?' onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"':'';
   const dcur=consultDoc(p,room,c);
   const dopts=[...new Set([dcur,...consultDocPool()].filter(Boolean))];
