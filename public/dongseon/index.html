@@ -3892,7 +3892,7 @@ setInterval(()=>{try{slipPopRender();}catch(e){}},3000);
 var SLIP_SHOT_URL={};
 function slipShotsHtml(it,pop){if(!it||!it.shots||!it.shots.length)return '';
   return '<div class="sd-shots">'+it.shots.map(x=>{const u=SLIP_SHOT_URL[x.path]||'';const t=x.at?hhmm(x.at):'';
-    return '<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(u?' src="'+esc(u)+'"':'')+' alt="캡처" onclick="'+(pop?'if(this.src)window.open(this.src)':'slipShotZoom(this)')+'" title="누르면 크게 보기">'
+    return '<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="'+(pop?'if(this.src)window.open(this.src)':'slipShotZoom(this)')+'" title="누르면 크게 보기">'
       +'<span>📷 '+esc(t)+(x.pc?' · '+esc(x.pc):'')+(x.w&&x.h?' · '+esc(x.w)+'×'+esc(x.h):'')+'</span>'
       +(pop?'':'<button type="button" class="sd-shot-x" data-doc="'+esc(it.id)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 숨기기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button>')+'</div>';}).join('')+'</div>';}
 /* 크게 보기 — 새 탭이 아니라 이 화면 위에 꽉 차게(태블릿에서 손가락으로 누르면 바로, 다시 누르면 닫힘). 작은 사진도 화면에 맞춰 키운다 */
@@ -3932,14 +3932,14 @@ function pastShotsOf(mrn,extraHidden){const P=SLIP_PAST[mrn];if(!P||!P.shots)ret
   return shotsDedupe(P.shots).filter(x=>!hid.has(x.id)&&shotDay(x)&&shotDay(x)<today).sort((a,b)=>String(b.at).localeCompare(String(a.at)));}
 function slipPastList(it){const L=pastShotsOf(normMrn(it&&it.mrn),(it.note&&it.note.shotHidden)||[]);return L&&L.filter(x=>x.kind!=='pt');}
 function slipPastBtn(it){const mrn=normMrn(it&&it.mrn);if(!mrn||!slipShotsCol())return '';slipPastLoad(mrn);const L=slipPastList(it);
-  if(L&&!L.length)return '';const on=SLIP_PAST_OPEN.has(mrn);
-  return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 주사 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 기록 접기':'이전 캡처 기록'}${L?' '+L.length:''}</button>`;}
+  if(!L||!L.length)return '';const on=SLIP_PAST_OPEN.has(mrn);
+  return `<button class="btn ${on?'on':''}" onclick="slipPastToggle('${esc(mrn)}')" title="지난 날의 주사 캡처를 날짜별로">${icHtml('images')} ${on?'이전 캡처 기록 접기':'이전 캡처 기록'}${L?' '+L.length:''}</button>`;}
 window.slipPastToggle=function(mrn){if(SLIP_PAST_OPEN.has(mrn))SLIP_PAST_OPEN.delete(mrn);else SLIP_PAST_OPEN.add(mrn);renderSlipScreen();};
 function slipPastHtml(it){const mrn=normMrn(it&&it.mrn);if(!SLIP_PAST_OPEN.has(mrn))return '';const L=slipPastList(it);
   if(!L)return '<div class="sd-past"><div class="hint">이전 캡처 기록을 불러오는 중…</div></div>';if(!L.length)return '';
   const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
   return '<div class="sd-past">'+Object.keys(g).sort().reverse().map(d=>`<div class="sd-past-day"><div class="sd-past-h">${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</div><div class="sd-past-grid">`+
-    g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
+    g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
 function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨길까요?'))return;
   const n=BIT_NOTES.find(x=>x.docId===docId);const hid=[...new Set([...((n&&n.shotHidden)||[]),id])];
   saveSlipMark(docId,{shotHidden:hid});if(n)n.shotHidden=hid;
@@ -4025,9 +4025,12 @@ function renderSlipScreen(){
     ${SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:''}
     <div class="sd-body${it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,false)}</div>
     <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
-      <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button>${slipPastBtn(it)}</div>${slipPastHtml(it)}`;
+      <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button><span class="slip-past-slot"></span></div><div class="slip-past-body"></div>`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
+  /* 이전 캡처 기록 버튼·목록은 따로 채운다 — 불러오기가 끝날 때 상세 전체(슬립 인쇄·전체보기 버튼 포함)를 다시 그려 깜빡이던 것 (2026-10-14) */
+  {const bs=det.querySelector('.slip-past-slot'),bb=det.querySelector('.slip-past-body'),bh=slipPastBtn(it),ph=slipPastHtml(it);
+   if(bs&&bs.dataset.h!==bh){bs.dataset.h=bh;bs.innerHTML=bh;}if(bb&&bb.dataset.h!==ph){bb.dataset.h=ph;bb.innerHTML=ph;}}
   slipShotsLoad(document);
   try{slipPopRender();}catch(e){}
 }
