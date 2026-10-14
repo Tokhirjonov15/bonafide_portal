@@ -5424,6 +5424,12 @@ async function runSelfTest(){
       eq('직원 목록: 물리치료 방 담당 = 그 방 명단의 파트(물리치료사), 띄어쓰기 달라도 한 번만', (()=>{const _m=ROOM_META['기본물리치료'];ROOM_META['기본물리치료']={doctors:['허빈']};const r=staffOpts('',meta('기본물리치료').doctors,roomStaffPart('기본물리치료'));ROOM_META['기본물리치료']=_m;return r;})(), ['허빈','새치료']);
       eq('직원 목록: 진료 원장 = 직원 목록 의사', realDocs(), ['김현우','박초롱']);
       STAFF_ROSTER=_sr;}
+     {const _m1=ROOM_META['진료실1'],_m2=ROOM_META['진료실2'];ROOM_META['진료실1']={doctors:['김현우']};ROOM_META['진료실2']={doctors:['백민철']};const _R=ROOMS;ROOMS=[..._R,'진료실1','진료실2'];   // x-ray 진료실 (2026-10-14)
+      const xp={mrn:'',doctor:'김현우',route:['3층 대기실','진료실1','x-ray실','진료실2'],step:2};
+      eq('x-ray 진료실: 동선에서 다음 진료실(진료실2)이 먼저, 원장님은 그 진료실 원장님', xrayClinicOf(xp), {room:'진료실2',doc:'백민철'});
+      eq('x-ray 진료실: 다음 진료실이 없으면 지나온 진료실', xrayClinicOf({doctor:'김현우',route:['진료실1','x-ray실','수납대기'],step:1}), {room:'진료실1',doc:'김현우'});
+      eq('x-ray 진료실: 동선에 진료실이 없으면 접수 원장님 진료실', xrayClinicOf({doctor:'백민철',route:['3층 대기실','x-ray실'],step:1}), {room:'진료실2',doc:'백민철'});
+      ROOM_META['진료실1']=_m1;ROOM_META['진료실2']=_m2;ROOMS=_R;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -11930,10 +11936,16 @@ function radChipHtml(p,room){
   const optHtml=`<option value="">(방사선 미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="radiation"></i> <select class="doc-sel" title="이 방(${esc(_r)})의 방사선 담당 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeRad('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
 }
-/* x-ray실 카드의 진료실 (2026-10-14 요청) — 오늘 비트 접수 원장님 → 그 원장님 진료실(진료실 관리의 진료의 지정). 없으면 동선의 진료실 */
-function xrayClinicOf(p){const doc=String(bitDocToday(p&&p.mrn)||(p&&p.doctor)||'').trim();let room=docRoomOf(doc);
-  if(!room)room=[...((p&&p.route)||[])].reverse().find(x=>/^진료실\s*\d/.test(x))||'';
-  return {room,doc:room?(doc||docFor(p,room)||''):''};}
+/* x-ray실 카드·봇의 진료실 (2026-10-14 요청) — 동선관리 동선이 먼저: x-ray 다음에 갈 진료실, 없으면 지나온 진료실(마지막).
+   동선에 진료실이 없을 때만 오늘 비트 접수 원장님의 진료실. 동선에서 진료실을 바꾸거나(진료실1 → 진료실2) 비트 원장님이 바뀌어 동선이 바뀌면 따라간다.
+   원장님 = 그 진료실에서 이 환자 담당(docFor) */
+function xrayClinicOf(p){const R=Array.isArray(p&&p.route)?p.route:[],st=Math.max(0,Math.min((p&&p.step)||0,R.length-1)),isC=x=>/^진료실\s*\d/.test(x||'');
+  let room=R.slice(st+1).find(isC)||[...R.slice(0,st)].reverse().find(isC)||'';
+  if(!room)room=docRoomOf(String(bitDocToday(p&&p.mrn)||(p&&p.doctor)||'').trim());
+  if(!room)return {room:'',doc:''};
+  const set=p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room)?String(p.roomDocs[room]||'').trim():'';   // 그 진료실에서 고른 원장님
+  const bd=String(p.doctor||'').trim(),rd=(meta(room).doctors||[]).filter(Boolean);
+  return {room,doc:set||(bd&&docRoomOf(bd)===room?bd:'')||(rd.length===1?rd[0]:'')};}   // 없으면 접수 원장님(그 진료실 원장님일 때만) → 그 진료실 지정 원장님
 function xrayClinicHtml(p){const c=xrayClinicOf(p);if(!c.room)return '';
   return `<span class="xr-clinic" title="진료 본 진료실 — 비트 접수 원장님 기준"><i data-lucide="stethoscope"></i> <b>${esc(c.room)}</b>${c.doc?' · '+esc(c.doc):''}</span>`;}
 function changeRad(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
