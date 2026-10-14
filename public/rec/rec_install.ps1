@@ -9,21 +9,35 @@ New-Item -ItemType Directory -Force $App | Out-Null
 function Say($m) { Write-Host ''; Write-Host "▶ $m" -ForegroundColor Cyan }
 
 Say '1/5 파이썬 확인'
-$py = $null
-foreach ($c in @('py -3.12', 'py -3', 'python')) {
-  try { $v = & cmd /c "$c --version 2>&1"; if ($v -match 'Python 3\.(9|1[0-3])') { $py = $c; break } } catch {}
+# 2026-10-14: 파이썬을 막 설치한 창에서는 PATH 가 아직 옛것이라 'py' 를 못 찾았다(어시 PC) — 이름이 아니라 python.exe 의 실제 위치를 찾아 쓴다
+function FindPy() {
+  foreach ($root in @("$env:LOCALAPPDATA\Programs\Python", $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+    if (-not $root -or -not (Test-Path $root)) { continue }
+    $hit = Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^Python3(9|1[0-3])$' } |
+      Sort-Object { [int]($_.Name -replace '^Python3', '') } -Descending | ForEach-Object { Join-Path $_.FullName 'python.exe' } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($hit) { return $hit } }
+  foreach ($c in @('py', 'python')) {
+    $g = Get-Command $c -CommandType Application -ErrorAction SilentlyContinue | Where-Object { $_.Source -notmatch 'WindowsApps' } | Select-Object -First 1
+    if (-not $g) { continue }
+    try { $exe = if ($c -eq 'py') { & $g.Source -3 -c 'import sys;print(sys.executable)' 2>$null } else { & $g.Source -c 'import sys;print(sys.executable)' 2>$null }
+      $exe = "$($exe | Select-Object -First 1)".Trim()
+      if ($exe -and (Test-Path $exe) -and ("$(& $exe --version 2>&1)" -match 'Python 3\.(9|1[0-3])')) { return $exe } } catch {} }
+  return $null
 }
+$py = FindPy
 if (-not $py) {
   Say '파이썬이 없어 설치합니다 (몇 분 걸립니다)'
   $inst = Join-Path $env:TEMP 'python-3.12.7-amd64.exe'
   Invoke-WebRequest 'https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe' -OutFile $inst -UseBasicParsing
   Start-Process $inst -ArgumentList '/quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0' -Wait
-  $py = 'py -3.12'
+  $py = FindPy
+  if (-not $py) { Write-Host '파이썬 설치가 끝나지 않았습니다. PowerShell 창을 닫고 새로 열어 다시 실행해 주세요.' -ForegroundColor Red; exit 1 }
 }
 Write-Host "  파이썬: $py"
 
 Say '2/5 받아쓰기 프로그램 설치 (faster-whisper)'
-if (-not (Test-Path (Join-Path $Venv 'Scripts\python.exe'))) { & cmd /c "$py -m venv `"$Venv`"" }
+if (-not (Test-Path (Join-Path $Venv 'Scripts\python.exe'))) { & $py -m venv $Venv }
+if (-not (Test-Path (Join-Path $Venv 'Scripts\python.exe'))) { Write-Host "받아쓰기 전용 폴더를 만들지 못했습니다: $Venv" -ForegroundColor Red; exit 1 }
 $VPy  = Join-Path $Venv 'Scripts\python.exe'
 $VPyw = Join-Path $Venv 'Scripts\pythonw.exe'
 & $VPy -m pip install --upgrade pip --quiet

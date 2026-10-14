@@ -13810,14 +13810,17 @@ boot();
     if(!DIR){el.className='rec-badge warn';el.innerHTML='<span class="dot"></span>녹음: 저장 폴더를 골라 주세요';el.title='눌러서 설정';return;}
     if(el.dataset.noperm==='1'){el.className='rec-badge warn';el.innerHTML='<span class="dot"></span>녹음: 폴더 권한 필요 — 누르기';el.title='눌러서 외장하드 폴더 쓰기를 허용';return;}
     el.className='rec-badge';el.innerHTML=`<span class="dot"></span>녹음 대기 · ${esc(r)}`;el.title=`${r} 카드에서 [진행]을 누르면 녹음 시작 — 눌러서 설정`;}
-  window.recBadgeClick=async()=>{const el=document.getElementById('recBadge');if(el&&el.dataset.noperm==='1'){if(await perm(true)){el.dataset.noperm='';badge();recCheck();}return;}openRecDlg();};
+  window.recBadgeClick=async()=>{const el=document.getElementById('recBadge');if(el&&el.dataset.noperm==='1'){if(await perm(true)){el.dataset.noperm='';start.warned=false;badge();recCheck();}return;}openRecDlg();};
   /* 이어 쓰기: 조각마다 파일을 열어 끝에 쓰고 닫는다 → 그때까지 저장이 확정된다 */
   function append(rec,blob){rec.chain=rec.chain.then(async()=>{const w=await rec.fh.createWritable({keepExistingData:true});await w.seek(rec.size);await w.write(blob);await w.close();rec.size+=blob.size;})
     .catch(e=>{console.warn('rec write',e);rec.err=true;});return rec.chain;}
   async function micStream(){const id=(()=>{try{return localStorage.getItem(LS_MIC)||'';}catch(e){return '';}})();
     return navigator.mediaDevices.getUserMedia({audio:id?{deviceId:{exact:id}}:true}).catch(()=>navigator.mediaDevices.getUserMedia({audio:true}));}
   async function start(p,r){
-    if(!(await perm(false))){const el=document.getElementById('recBadge');if(el)el.dataset.noperm='1';badge();toast('녹음 폴더 권한이 없어 녹음하지 못했습니다 — 왼쪽 아래 [녹음]을 눌러 허용해 주세요');return;}
+    /* 2026-10-14: 크롬을 다시 켜면 폴더 권한을 잊는다 — [진행]을 누른 그 순간(클릭 직후라 물어볼 수 있음)에 바로 묻는다. 그래도 안 되면 알림은 한 번만 */
+    if(!(await perm(false))&&!(await perm(true))){const el=document.getElementById('recBadge');if(el)el.dataset.noperm='1';badge();
+      if(!start.warned){start.warned=true;toast('녹음 폴더 권한이 없어 녹음하지 못했습니다 — 왼쪽 아래 [녹음]을 눌러 허용해 주세요 (물으면 "방문할 때마다 허용")',8000);}return;}
+    start.warned=false;
     const d=new Date(),name=fileName(p,r,d);
     const stream=await micStream();
     const fh=await DIR.getFileHandle(name,{create:true});
