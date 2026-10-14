@@ -5444,6 +5444,18 @@ async function runSelfTest(){
       dropIntoCol('ssC','처치실','처치실','처치실','ssB',true);
       ok('같은 공간: 처치실 칸에서 순서 바꾸기 — Sono 로 옮겨지지 않고 순서만', curRoom(C)==='처치실'&&curRoom(B)==='Sono'&&C.ord<B.ord);
       data=_d;ROOMS=_R;spaceRoomsFromRx=_sr;STATS=_st;}
+     {const _st=STATS.slice(),_ls=localStorage.getItem(STATS_STORE),_toast=window.toast;window.toast=()=>{};   // 잘못 거친 방 기록 지우기 (2026-10-14)
+      const v=(room,h,m)=>({id:'pv'+room+h+m,room,enteredAt:new Date(2026,9,14,h,m).toISOString(),leftAt:new Date(2026,9,14,h,m+1).toISOString()});
+      const P={id:'pv',name:'테스트',mrn:'',route:['3층 대기실','x-ray실','진료실1','비용 상담','근전도검사','C-Arm','Sono','처치실','수납대기'],step:3,
+        visits:[v('3층 대기실',17,17),v('x-ray실',17,24),v('진료실1',17,30),v('비용 상담',17,34),v('근전도검사',17,34),v('C-Arm',17,35),v('Sono',17,35),v('처치실',17,37),v('Sono',17,37)],
+        roomBy:{'근전도검사':{by:'admin'},'비용 상담':{by:'admin'},'x-ray실':{by:'조선형'}},spaceDone:['C-Arm']};
+      pruneUndoneVisits(P);
+      ok('잘못 거친 방: 동선을 고쳐 저장하면 비용 상담 뒤로 간 방(근전도·C-Arm·Sono·처치실)과 잘못 끝낸 비용 상담 기록이 지워지고, 앞의 방은 그대로',
+        P.visits.map(x=>x.room).join()==='3층 대기실,x-ray실,진료실1'&&!P.roomBy['근전도검사']&&P.roomBy['x-ray실']&&!P.spaceDone);
+      const Q={id:'pq',name:'추가수납',route:['진료실1','수납대기','충격파','수납대기'],step:2,visits:[v('진료실1',10,0),v('수납대기',10,10)]};
+      pruneUndoneVisits(Q);
+      ok('잘못 거친 방: 추가 수납(수납대기 → 충격파 → 수납대기)의 앞 수납대기 기록은 남김', Q.visits.length===2);
+      STATS=_st;if(_ls!==null)localStorage.setItem(STATS_STORE,_ls);window.toast=_toast;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -9531,6 +9543,32 @@ function spaceNext(p){
 function markSpaceDone(p,from,to){
   if(!from||!to||!isSameSpace(from,to))return;
   const done=(p.spaceDone||[]).filter(r=>r!==to);if(!done.includes(from))done.push(from);p.spaceDone=done;}
+/* ═════ 잘못 거친 방 기록 지우기 (2026-10-14 요청) ═════
+   예) 비용 상담에서 [종결]을 잘못 눌러 근전도·C-Arm·Sono·처치실을 거쳤다가, 카드를 비용 상담으로 되돌리고 동선에서 비용 상담을 그 방들 위로 고쳐 저장.
+   고친 동선에서 지금 방과 그 뒤의 방(= 아직 안 한 방)인데 방문 기록이 있으면, 그 방이 지금 방보다 앞자리에 나오는 횟수만큼만 남기고 나머지(나중 것)를 지운다.
+   지우지 않으면 카드의 방별 기록에 남고, 비용 상담 [종결] 때 그 방들을 '이미 다녀온 방'으로 건너뛰어 수납대기로 가 버린다.
+   앞자리에 있는 방(끝난 방)은 건드리지 않으므로 추가 수납(수납대기 → 충격파 → 수납대기)·진료실 → x-ray → 진료실 같은 반복은 그대로.
+   함께: 그 방의 통계 기록(stats)·이름표(옮긴 사람)·[진행] 기록·같은 공간 인계 표시. 환자 정보 창에서 동선을 고쳐 저장할 때만 */
+function pruneUndoneVisits(p){if(!p||!Array.isArray(p.visits)||!p.visits.length||!Array.isArray(p.route))return [];
+  const st=Math.max(0,Math.min(p.step||0,p.route.length-1)),before=p.route.slice(0,st),ahead=new Set(p.route.slice(st));
+  const drop=new Set();
+  ahead.forEach(room=>{const allow=before.filter(r=>r===room).length;
+    const L=p.visits.map((v,i)=>({v,i})).filter(x=>x.v&&x.v.room===room).sort((a,b)=>String(a.v.enteredAt||'').localeCompare(String(b.v.enteredAt||''))||a.i-b.i);
+    L.slice(allow).forEach(x=>drop.add(x.v));});
+  if(!drop.size)return [];
+  const gone=p.visits.filter(v=>drop.has(v));p.visits=p.visits.filter(v=>!drop.has(v));
+  const ids=new Set(gone.map(v=>v.id).filter(Boolean));
+  if(ids.size){STATS=STATS.filter(s=>!ids.has(s.id));try{lsSet(STATS_STORE,JSON.stringify(STATS));}catch(e){}
+    if(cloud.active&&cloud.statsCol)ids.forEach(id=>cloud.statsCol.doc(id).delete().catch(e=>console.warn('stat del',e)));}
+  const cur=p.route[st];
+  [...new Set(gone.map(v=>v.room))].forEach(room=>{if(p.visits.some(v=>v.room===room))return;
+    if(room!==cur&&p.roomBy&&p.roomBy[room]){p.roomBy=Object.assign({},p.roomBy);delete p.roomBy[room];}
+    if(p.progLog&&p.progLog[room]){p.progLog=Object.assign({},p.progLog);delete p.progLog[room];}});
+  if(Array.isArray(p.spaceDone)){p.spaceDone=p.spaceDone.filter(r=>!gone.some(v=>v.room===r));if(!p.spaceDone.length)delete p.spaceDone;}
+  const names=gone.map(v=>v.room+' '+hhmm(v.enteredAt));
+  try{audit('잘못 거친 방 기록 지움',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+names.join(', '));}catch(e){}
+  try{toast('잘못 거친 기록 '+gone.length+'개를 지웠습니다 — '+[...new Set(gone.map(v=>v.room))].join(', '));}catch(e){}
+  return gone;}
 /* ═════ 같은 공간 4칸은 순서 없이 각자 (2026-10-14 요청) ═════
    C-Arm·Sono·처치실·근전도검사가 함께 나오면 네 칸에 펼쳐지고, 어느 칸이든 먼저 [진행]·[종결]해도 그 칸만 끝난다(예: 처치 먼저 종결 → 처치만 꺼짐).
    네 칸을 다 끝내면 다음 동선으로 — 흩어졌다가 하나로 합쳐진다. (전에는 거울 칸의 [종결]이 실제 위치 칸(C-Arm)을 끝냈다)
@@ -12808,6 +12846,7 @@ function savePatient(){
     p.reserveAt=get("f_reserve")||"";p.receiveAt=get("f_receive")||"";
     p.memoToday=get("f_memoToday");
     const ni=p.route.indexOf(sameStart);p.step=ni>=0?ni:Math.min(p.step,p.route.length-1);
+    if(JSON.stringify(_oldRoute)!==JSON.stringify(p.route)){try{pruneUndoneVisits(p);}catch(e){console.warn('prune visits',e);}}   // 잘못 거친 방 기록 지우기 (2026-10-14)
     regUpsert(p.mrn,p.name,p.birth,p.sex);
     setRegMemo(p.mrn,p.name,document.getElementById('f_pmemo').value);
     audit('환자수정',name+(mrn?' ('+mrn+')':''));
