@@ -11920,13 +11920,20 @@ function changeNurse(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;c
 function radFor(p,room){return (p.roomRads&&p.roomRads[room])||'';}
 function radChipHtml(p,room){
   const _r=room||curRoom(p)||''; if(!_r)return '';
-  if(CARD_STAFF_HIDE.rad(_r)||/x-?ray/i.test(_r))return '';   // x-ray실 카드에는 방사선 칸 없음 (2026-10-14 요청 — 필요하면 환자 정보 창 동선의 이름표에서)
+  if(/x-?ray/i.test(_r))return xrayClinicHtml(p);   // x-ray실 카드에는 방사선 칸 대신 진료실 (2026-10-14 요청 — 방사선은 필요하면 환자 정보 창 동선의 이름표에서)
+  if(CARD_STAFF_HIDE.rad(_r))return '';
   const listAll=meta(_r).rads||[]; const cur=radFor(p,_r);
   if(!listAll.length&&!cur)return '';
   const opts=staffOpts(cur,listAll,'방사선사');   // 이 방 방사선 먼저, 그 뒤 직원 목록 방사선사 — 2026-10-14
   const optHtml=`<option value="">(방사선 미지정)</option>`+opts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('');
   return `<i data-lucide="radiation"></i> <select class="doc-sel" title="이 방(${esc(_r)})의 방사선 담당 — 방마다 따로 저장됩니다" onclick="event.stopPropagation()" onchange="event.stopPropagation();changeRad('${p.id}','${esc(_r)}',this.value)">${optHtml}</select>`;
 }
+/* x-ray실 카드의 진료실 (2026-10-14 요청) — 오늘 비트 접수 원장님 → 그 원장님 진료실(진료실 관리의 진료의 지정). 없으면 동선의 진료실 */
+function xrayClinicOf(p){const doc=String(bitDocToday(p&&p.mrn)||(p&&p.doctor)||'').trim();let room=docRoomOf(doc);
+  if(!room)room=[...((p&&p.route)||[])].reverse().find(x=>/^진료실\s*\d/.test(x))||'';
+  return {room,doc:room?(doc||docFor(p,room)||''):''};}
+function xrayClinicHtml(p){const c=xrayClinicOf(p);if(!c.room)return '';
+  return `<span class="xr-clinic" title="진료 본 진료실 — 비트 접수 원장님 기준"><i data-lucide="stethoscope"></i> <b>${esc(c.room)}</b>${c.doc?' · '+esc(c.doc):''}</span>`;}
 function changeRad(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomRads=p.roomRads||{};
   p.roomRads[room]=nv;     // '' 도 그대로 = 일부러 미지정 (2026-09-24)
@@ -13755,6 +13762,7 @@ boot();
   .xray-rx{display:flex;align-items:flex-start;gap:5px;font-size:12.5px;color:#1e3a8a;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:4px 8px;margin:6px 12px 0;line-height:1.4;word-break:keep-all}.xray-rx svg{width:14px;height:14px;flex:none;margin-top:2px}.xray-rx b{font-weight:800}.xray-rx .xr-list{flex:1;min-width:0;display:flex;flex-direction:column}
   /* 2026-10-14 요청: 파랑 → 분홍 배경·검정 글씨, 처방 한 줄에 하나씩, 줄마다 칸을 나누는 선 */
   .xray-rx{color:#111;background:#fce7f3;border-color:#f9a8d4}.xray-rx svg{color:#be185d}
+  .xr-clinic{display:inline-flex;align-items:center;gap:3px;color:var(--text);font-size:12.5px}.xr-clinic b{font-weight:800}.xr-clinic svg{width:13px;height:13px}
   .xray-rx .xr-it{display:block;padding:3px 0;border-top:1px solid #f9a8d4}.xray-rx .xr-it:first-child{border-top:0;padding-top:0}.xray-rx .xr-it:last-child{padding-bottom:0}   /* 처방이 많으면 여러 줄로 다 보이게 (2026-10-09: 한 줄로 늘어서 잘렸다) */   /* x-ray실 처방 내역 (2026-10-07) */
   .memo-today svg.lucide{width:12px;height:12px;flex-shrink:0;margin-top:1px}
   .bit-pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;white-space:nowrap;color:var(--sub);flex-wrap:wrap;max-width:100%;min-width:0}   /* PC 20대: 넘치면 줄바꿈(페이지 폭을 넓히지 않음) */
