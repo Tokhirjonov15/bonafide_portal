@@ -4682,6 +4682,7 @@ window.setF4Back=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
 /* 방 머리(제목 아래 직원 줄)에 그 방에서 4층에 보낸 환자 이름 (2026-10-14 요청) — '4층감: 환자…' / '4층갔다옴: 환자…'. 보드에 있는 오늘 카드만 */
 function f4ColHtml(room){const go=[],back=[];
   (data||[]).forEach(p=>{if(!p||p.discharged||p._viewOnly)return;const L=p.f4Log;if(!L||!L.go)return;if((L.go.room||curRoom(p))!==room)return;
+    if(curRoom(p)!==room)return;   // 카드가 그 방을 떠나면(다음 방으로 옮김) 이름도 사라진다 (2026-10-14 요청)
     const nm=esc(dispName(p.name||''));(L.back?back:go).push(nm);});
   if(!go.length&&!back.length)return '';
   return `<div class="f4col">${go.length?`<span>4층감: <b>${go.join(', ')}</b></span>`:''}${back.length?`<span>4층갔다옴: <b>${back.join(', ')}</b></span>`:''}</div>`;}
@@ -5610,9 +5611,9 @@ async function runSelfTest(){
        ROOMS=_R;
        eq('3,4층 이동: 체크하면 4층 칸에 유령 카드, 3층 카드에만 체크칸, 풀면 사라짐', [a,b], [[true,true,true],false]);
        const Q={id:'f4q',name:'유령2',route:['Sono'],step:0,f4Log:{go:{by:'김간호',at:new Date().toISOString()},back:{by:'박치료',at:new Date().toISOString()}}};
-       const _d=data;const R1={id:'r1',name:'간환자',route:['비용 상담'],step:0,f4Log:{go:{by:'a',at:'',room:'비용 상담'}}},R2={id:'r2',name:'온환자',route:['Sono'],step:0,f4Log:{go:{by:'a',at:'',room:'비용 상담'},back:{by:'b',at:''}}},R3={id:'r3',name:'딴방',route:['Sono'],step:0,f4Log:{go:{by:'a',at:'',room:'Sono'}}};
-       data=[R1,R2,R3];const h=f4ColHtml('비용 상담');data=_d;
-       ok('3,4층 이동: 보낸 방(비용 상담) 머리에 4층감·4층갔다옴 환자 이름, 다른 방 환자는 없음', /4층감: <b>간환자<\/b>/.test(h)&&/4층갔다옴: <b>온환자<\/b>/.test(h)&&!h.includes('딴방'));}
+       const _d=data;const R1={id:'r1',name:'간환자',route:['비용 상담'],step:0,f4Log:{go:{by:'a',at:'',room:'비용 상담'}}},R2={id:'r2',name:'온환자',route:['비용 상담'],step:0,f4Log:{go:{by:'a',at:'',room:'비용 상담'},back:{by:'b',at:''}}},R3={id:'r3',name:'딴방',route:['Sono'],step:0,f4Log:{go:{by:'a',at:'',room:'Sono'}}},R4={id:'r4',name:'떠난환자',route:['비용 상담','Sono'],step:1,f4Log:{go:{by:'a',at:'',room:'비용 상담'},back:{by:'b',at:''}}};
+       data=[R1,R2,R3,R4];const h=f4ColHtml('비용 상담');data=_d;
+       ok('3,4층 이동: 보낸 방(비용 상담) 머리에 4층감·4층갔다옴 환자 이름, 다른 방·그 방을 떠난 환자는 없음', /4층감: <b>간환자<\/b>/.test(h)&&/4층갔다옴: <b>온환자<\/b>/.test(h)&&!h.includes('딴방')&&!h.includes('떠난환자'));}
       STAFF_ROSTER['진료지원']=['한효주 (Lux)'];
       eq('직원 목록: 비용 상담 담당자 = 간호사·진료지원만(방 명단에 섞인 물리치료사는 빠짐)', (()=>{const _m=ROOM_META['비용 상담'];ROOM_META['비용 상담']={doctors:['우성복','허빈']};const r=consultWhoOpts('비용 상담','');if(_m===undefined)delete ROOM_META['비용 상담'];else ROOM_META['비용 상담']=_m;return r;})(), ['우성복','새간호','한효주']);
       STAFF_ROSTER=_sr;}
