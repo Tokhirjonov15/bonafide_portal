@@ -11920,7 +11920,7 @@ function changeNurse(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;c
 function radFor(p,room){return (p.roomRads&&p.roomRads[room])||'';}
 function radChipHtml(p,room){
   const _r=room||curRoom(p)||''; if(!_r)return '';
-  if(CARD_STAFF_HIDE.rad(_r))return '';   // x-ray실은 방사선 칸 없음 (2026-10-01)
+  if(CARD_STAFF_HIDE.rad(_r)||/x-?ray/i.test(_r))return '';   // x-ray실 카드에는 방사선 칸 없음 (2026-10-14 요청 — 필요하면 환자 정보 창 동선의 이름표에서)
   const listAll=meta(_r).rads||[]; const cur=radFor(p,_r);
   if(!listAll.length&&!cur)return '';
   const opts=staffOpts(cur,listAll,'방사선사');   // 이 방 방사선 먼저, 그 뒤 직원 목록 방사선사 — 2026-10-14
