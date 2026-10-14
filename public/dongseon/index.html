@@ -827,7 +827,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-screen.show{display:flex}
   .slip-top{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel);font-size:15px}
   .slip-top .hint{font-size:12px;color:var(--muted)}
-  .slip-top .btn.slip-ap.on{background:#16a34a;color:#fff;border-color:#16a34a}   /* 슬립 자동 인쇄 켜짐 (2026-10-14) */
+  .slip-top .btn.slip-ap.on,.pt4-bar .btn.f4c-btn.on{background:#16a34a;color:#fff;border-color:#16a34a}   /* 슬립·4층 차팅 자동 인쇄 켜짐 (2026-10-14) */
   .slip-body{flex:1;display:flex;min-height:0}
   .slip-upd{margin-left:10px;display:inline-flex;align-items:center;gap:6px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:999px;padding:2px 4px 2px 10px;font-size:12.5px;font-weight:800}
   body.wp-on .slip-detail,body.wp-on .slip-list{padding-bottom:var(--wpPad,16px)}
@@ -3701,7 +3701,7 @@ function renderBitPill(){
       st.lastErr?`마지막 오류: ${st.lastErr}`:'',st.cycMaxMs>3000?`최장 주기 ${Math.round(st.cycMaxMs/1000)}초`:'',st.logTail?'--- 로그 ---\n'+st.logTail:''].filter(Boolean).join('\n');
     return `<span class="bp ${cls}" title="${esc(tip)}"><i class="dot"></i>${esc(pc)} ${hm}</span>`;}).join('');
 }
-setInterval(()=>{try{slipAutoCheck();}catch(e){console.warn('slip auto',e);}},5000);   // 슬립 자동 인쇄 (2026-10-14) — 켠 컴퓨터(처치실)만
+setInterval(()=>{try{slipAutoCheck();}catch(e){console.warn('slip auto',e);}try{f4cCheck();}catch(e){console.warn('4f chart',e);}},5000);   // 슬립 자동 인쇄(처치실)·4층 차팅 자동 인쇄(4층) (2026-10-14) — 켠 컴퓨터만
 setInterval(()=>{try{pt4AutoAdd();}catch(e){}try{renderBitBar();renderBitPill();renderSlipScreen();if(bitResvOpen)renderBitResvScreen();autoCloseDay();if(cloud.intakeCol&&currentUser){subscribeBitIntake();bitAutoProcess();bitApplyCancels();bitApplyReceiveEnd();bitApplyRestore();bitApplyHold();}}catch(e){}},30000);   // 만료·날짜 변경 반영
 /* ───── 슬립 화면 — 진료실 PC 감시 스크립트가 올린 처방 목록(bitNote)을 태블릿·별도 창에서 보고, 104mm 슬립으로 인쇄 ─────
    문서 하나 = 오늘 그 환자(차트번호). 카드와는 차트번호로 연결(카드가 없어도 목록은 보임). ?slip 주소로 열면 로그인 뒤 이 화면만 뜬다(태블릿용), &room=물리치료 로 그 방 동선의 환자만. */
@@ -4149,16 +4149,69 @@ window.slipAutoToggle=function(){const on=!slipAutoOn();try{localStorage.setItem
 function slipApBtn(){const b=document.getElementById('slipApBtn');if(!b)return;const on=slipAutoOn();b.classList.toggle('on',on);
   b.innerHTML='<i data-lucide="printer"></i><span class="st-lbl"> 자동 인쇄 '+(on?'켜짐':'꺼짐')+'</span>';b.title=on?'이 컴퓨터: 처방이 오면 슬립을 자동 인쇄 — 누르면 끔':'누르면 이 컴퓨터에서 처방이 올 때마다 슬립 자동 인쇄 (처치실 슬립 프린터 PC 에서만 켜세요)';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
-window.downloadSlipLauncher=function(){
-  const url=((location.origin&&location.origin.indexOf('http')===0)?(location.origin+location.pathname):'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/')+'?slip';
-  const content='@echo off\r\nrem Dongseon slip auto-print (Chrome kiosk-printing: no print dialog)\r\n'
-    +'set URL='+url+'\r\nset PROFILE=%LOCALAPPDATA%\\DongseonSlipStation\r\n'
+window.downloadSlipLauncher=function(kind){const f4=kind==='4f';   // '4f' = 4층 차팅 PC (보드 화면 → 4층 스케줄에서 켬), 없으면 처치실 슬립 화면
+  const url=((location.origin&&location.origin.indexOf('http')===0)?(location.origin+location.pathname):'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/')+(f4?'':'?slip');
+  const content='@echo off\r\nrem Dongseon '+(f4?'4F chart':'slip')+' auto-print (Chrome kiosk-printing: no print dialog)\r\n'
+    +'set URL='+url+'\r\nset PROFILE=%LOCALAPPDATA%\\'+(f4?'Dongseon4FChartStation':'DongseonSlipStation')+'\r\n'
     +'set CHROME="%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"\r\n'
     +'if not exist %CHROME% set CHROME="%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe"\r\n'
     +'if not exist %CHROME% set CHROME="%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe"\r\n'
     +'start "" %CHROME% --kiosk-printing --user-data-dir="%PROFILE%" --app=%URL%\r\n';
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'application/octet-stream'}));a.download='슬립_자동인쇄_실행.bat';a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'application/octet-stream'}));a.download=f4?'4층차팅_자동인쇄_실행.bat':'슬립_자동인쇄_실행.bat';a.click();
+  if(f4){alert('받은 파일을 4층 프린터 PC 바탕화면에 두고 더블클릭하세요.\n\n① 열린 창에서 로그인 → 4층 비급여 예약 스케줄을 열고 위의 [4층 차팅 자동 인쇄]를 켬\n② 4층 프린터를 윈도우 "기본 프린터"로\n③ 창을 켜 둔 채로 두면 4층 대기실에 환자가 올 때마다 인쇄창 없이 차팅이 나옵니다');return;}
   alert('받은 파일을 처치실 PC 바탕화면에 두고 더블클릭하세요.\n\n① 열린 창에서 로그인 → 위의 [자동 인쇄]를 켬\n② 슬립 프린터를 윈도우 "기본 프린터"로\n③ 창을 켜 둔 채로 두면 처방이 올 때마다 인쇄창 없이 슬립이 나옵니다');};
+/* ═════ 4층 차팅 자동 인쇄 (2026-10-14 요청) ═════
+   4층 대기실에 환자가 도착하면 그 환자의 원장님 차팅(med 위) + med 부분 + 처방내역(처방명칭)을 슬립 용지(104mm)로 — 켠 컴퓨터(4층 PC)에서만.
+   켜는 곳: 4층 비급여 예약 스케줄 위 [4층 차팅 자동 인쇄]. 처음 켰을 때·새로고침했을 때 이미 와 있던 환자는 찍지 않는다. 인쇄창 없이는 [인쇄창 없이] 실행 파일로 연 창에서 */
+const F4C_KEY='ds4fChartAuto',F4C_ROOM='4층 대기실';
+function f4cOn(){try{return localStorage.getItem(F4C_KEY)==='1';}catch(e){return false;}}
+let F4C_DONE=(()=>{try{const o=JSON.parse(localStorage.getItem('ds4fChartDone')||'{}');return o.d===localYMD(new Date())?new Set(o.k||[]):new Set();}catch(e){return new Set();}})(),F4C_SEEDED=false;
+function f4cSave(){try{localStorage.setItem('ds4fChartDone',JSON.stringify({d:localYMD(new Date()),k:[...F4C_DONE].slice(-500)}));}catch(e){}}
+function chart4HTML(p){const n=bitNoteFor(p);const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const now=new Date();
+  const items=(rx&&Array.isArray(rx.items))?rx.items.map(x=>String(x.nam||x.cod||'').trim()).filter(Boolean):[];
+  const chart=String((n&&n.chart)||'').trim(),med=String((n&&n.rx)||'').trim();
+  const y=Number(String(p.birth||'').slice(0,4)),sd=p.sex==='남'?(y>=2000?3:1):p.sex==='여'?(y>=2000?4:2):'';   // 주민번호 뒷자리 첫 숫자(슬립과 같은 표기)
+  const bm=slipBirthMasked(p.birth||'',String(sd));
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page{size:104mm auto;margin:3mm 4mm}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#000;background:#fff;width:96mm;padding-bottom:6mm}
+    table.hd{border-collapse:collapse;width:100%}
+    table.hd th{font-size:10.5pt;font-weight:700;text-align:left;white-space:nowrap;width:22mm;padding:0.7mm 0;color:#222}
+    table.hd td{font-size:13pt;font-weight:800;padding:0.7mm 0}
+    .rule{border-top:0.4mm solid #000;margin:2mm 0 1.5mm}
+    h3{font-size:10.5pt;font-weight:800;margin:2mm 0 1mm}
+    pre{font-family:inherit;white-space:pre-wrap;word-break:break-word;font-size:10.5pt;line-height:1.4}
+    pre.med{font-size:12pt;font-weight:700;border-left:0.8mm solid #000;padding-left:2mm}
+    ol{list-style:none}li{font-size:11pt;font-weight:700;line-height:1.4;padding:0.5mm 0;border-bottom:0.2mm dashed #999}
+    .ft{font-size:10pt;font-weight:700;margin-top:3mm;text-align:right}
+  </style></head><body>
+    <table class="hd">
+      <tr><th>차트번호</th><td>${esc(p.mrn||'')}</td></tr>
+      <tr><th>수진자명</th><td>${esc(p.name||'')}</td></tr>
+      <tr><th>생년월일</th><td>${esc(bm||'-')}</td></tr>
+    </table>
+    <div class="rule"></div>
+    <h3>원장님 차팅</h3>${chart?`<pre>${esc(chart)}</pre>`:'<pre>(차팅 없음)</pre>'}
+    ${med?`<h3>처방 (med)</h3><pre class="med">${esc(med)}</pre>`:''}
+    <div class="rule"></div>
+    <h3>처방내역 ${items.length}건</h3><ol>${items.map(t=>`<li>${esc(t)}</li>`).join('')||'<li>(비트 처방 없음)</li>'}</ol>
+    <div class="ft">4층 · ${localYMD(now)} ${hhmm(now.toISOString())}</div>
+    <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
+  </body></html>`;}
+function printChart4(p){try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    document.body.appendChild(ifr);const cw=ifr.contentWindow;cw.onafterprint=function(){setTimeout(()=>{if(ifr.parentNode)ifr.remove();},300);};
+    const d=cw.document;d.open();d.write(chart4HTML(p));d.close();setTimeout(()=>{if(ifr.parentNode)ifr.remove();},20000);}catch(e){console.error('chart4',e);}}
+function f4cCheck(){if(!f4cOn()||!currentUser){F4C_SEEDED=false;return;}let ch=false;
+  (data||[]).forEach(p=>{if(p.discharged||p._viewOnly||curRoom(p)!==F4C_ROOM)return;const key=p.id+'|'+(p.enteredAt||'');if(F4C_DONE.has(key))return;
+    F4C_DONE.add(key);ch=true;if(!F4C_SEEDED)return;
+    printChart4(p);try{audit('4층 차팅 자동 인쇄',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}
+    try{toast('🖨 4층 차팅 인쇄 — '+dispName(p.name||''));}catch(e){}});
+  F4C_SEEDED=true;if(ch)f4cSave();}
+window.f4cToggle=function(){const on=!f4cOn();try{localStorage.setItem(F4C_KEY,on?'1':'0');}catch(e){}F4C_SEEDED=false;f4cBtn();
+  toast(on?'이 컴퓨터에서 4층 차팅 자동 인쇄를 켰습니다 — 지금부터 4층 대기실에 오는 환자만':'4층 차팅 자동 인쇄를 껐습니다');};
+function f4cBtn(){document.querySelectorAll('.f4c-btn').forEach(b=>{const on=f4cOn();b.classList.toggle('on',on);b.textContent='🖨 4층 차팅 자동 인쇄 '+(on?'켜짐':'꺼짐');
+  b.title=on?'이 컴퓨터: 4층 대기실에 환자가 오면 차팅을 자동 인쇄 — 누르면 끔':'누르면 이 컴퓨터에서 4층 대기실 도착 때마다 차팅 자동 인쇄 (4층 프린터 PC 에서만 켜세요)';});}
 function slipPrinted(n){if(!n||!n.printed)return {on:false,stale:false};return {on:true,stale:(n.rev|0)>(n.printedRev|0),at:n.printedAt,by:n.printedBy||''};}
 function slipPrintedTag(n,big){const s=slipPrinted(n);if(!s.on)return '';
   const tip=`${s.by?s.by+' · ':''}${s.at?hhmm(new Date(s.at).toISOString()):''} 인쇄${s.stale?' — 그 뒤 처방이 바뀌었습니다. 다시 인쇄하세요':''}`;
@@ -5527,6 +5580,10 @@ async function runSelfTest(){
      {const now=Date.now();   // 슬립 자동 인쇄 — 언제 '진료 끝'으로 보나 (2026-10-14)
       ok('슬립 자동 인쇄: 처방이 막 저장됐으면(30초 안) 기다림 — 나눠 저장하는 경우', !slipApReady({t:now-10000}));
       ok('슬립 자동 인쇄: 마지막 저장 뒤 30초 그대로면 바로 인쇄(진료실에 있어도)', slipApReady({t:now-35000,p:{route:['진료실1'],step:0}}));}
+     {const _b=bitRxFor,_n=BIT_NOTES;BIT_NOTES=[{docId:'c4',mrn:'777',chart:'Nuchal pain sh Lt.',rx:'med\nGreen\nc-mbb rt 3,5'}];bitRxFor=()=>({items:[{cod:'C-ARM',nam:'C-ARM'},{cod:'CRYO10',nam:'신장분사치료10'}]});   // 4층 차팅 인쇄 (2026-10-14)
+      const h=chart4HTML({id:'c4p',mrn:'777',name:'사층환자',birth:'1990-01-01',sex:'남',route:['4층 대기실'],step:0});
+      ok('4층 차팅 인쇄: 104mm 용지 · 차팅(med 위) → med → 처방내역 순, 생년월일 가림', /size:104mm auto/.test(h)&&h.indexOf('Nuchal pain')<h.indexOf('c-mbb')&&h.indexOf('c-mbb')<h.indexOf('신장분사치료10')&&h.includes('처방내역 2건')&&h.includes('900101-1******')&&!h.includes('1990-01-01'));
+      BIT_NOTES=_n;bitRxFor=_b;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
@@ -7864,7 +7921,7 @@ function bkPick(D){if(D===localYMD(new Date()))setTimeout(()=>{try{pt4AutoAdd();
 /* [예약 스케줄] — 포털 스케줄(입력·내원률 통계·치료 통계·그래프·변경 기록)을 이 화면 위에 띄운다 */
 function openPt4(date){let ov=document.getElementById('pt4Ov');
   if(!ov){ov=document.createElement('div');ov.id='pt4Ov';ov.className='pt4-ov';
-    ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
+    ov.innerHTML='<div class="pt4-bar"><b>4층 비급여 예약 스케줄</b><span class="hint">입력·내원률 통계·치료 통계·그래프·변경 기록</span><span class="spacer"></span><button type="button" class="btn sm f4c-btn" onclick="f4cToggle()">🖨 4층 차팅 자동 인쇄</button><button type="button" class="btn sm" onclick="downloadSlipLauncher(\'4f\')" title="4층 프린터 PC 용 — 인쇄창 없이 바로 나오는 창(크롬 키오스크 인쇄)을 여는 실행 파일">인쇄창 없이</button><a class="btn sm" href="pt4.html" target="_blank" rel="noopener">새 창</a><button type="button" class="btn sm" onclick="closePt4()">닫기</button></div><iframe id="pt4Frame" title="4층 비급여 예약 스케줄"></iframe>';
     document.body.appendChild(ov);}
   /* 2026-10-12: 닫은 뒤 10분 안에 다시 열면 이미 불러 둔 화면을 그대로 쓰고 날짜만 바꾼다 (새로 불러오면 한국 → 해외 Cloudflare 라 몇 초씩 걸림) */
   clearTimeout(window.PT4_DROP_T);const f=document.getElementById('pt4Frame'),hash='#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
@@ -7873,6 +7930,7 @@ function openPt4(date){let ov=document.getElementById('pt4Ov');
   if(!warm)f.src='pt4.html?embed&t='+Date.now()+hash;
   try{sessionStorage.setItem('pt4Keep','1');}catch(e){}   // 새로고침(새 버전) 뒤 4층 화면을 다시 띄우려고 (2026-10-11)
   try{renderPt4Alert();}catch(e){}   // PT 캡처 알림 띠 (2026-10-13)
+  try{f4cBtn();}catch(e){}   // 4층 차팅 자동 인쇄 버튼 (2026-10-14)
   ov.classList.add('show');}
 function closePt4(){try{sessionStorage.removeItem('pt4Keep');}catch(e){}const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');
   clearTimeout(window.PT4_DROP_T);window.PT4_DROP_T=setTimeout(()=>{const f=document.getElementById('pt4Frame');if(f&&!document.querySelector('#pt4Ov.show'))f.src='about:blank';},10*60000);}}   // 10분 뒤 비운다(메모리) — 그 전에 다시 열면 바로
