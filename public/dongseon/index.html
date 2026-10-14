@@ -5829,6 +5829,10 @@ function applyCfg(d){
     Object.entries({'진료실1':'김현우','진료실2':'백민철','진료실3':'정상민','진료실4':'박초롱'}).forEach(([r,d])=>{if(ROOMS.includes(r))meta(r).doctors=[d];});
     meta('진료실1').seedDoc1014=true;
     setTimeout(()=>{try{if(!DOCTORS.includes('박초롱')){DOCTORS.push('박초롱');saveDoctorsCfg();}saveRooms();}catch(e){}},0);}
+  /* 박초롱 원장님(블로커) → 시술 방(C-Arm·Sono·처치실·근전도검사) 술기 목록에도 (2026-10-14 요청: 술기 고르는 칸에 없음). 의사 목록이 있는 방만 — 비어 있으면 원래 전체 의사가 나온다. 한 번만 */
+  if(isAdmin()&&!meta('진료실1').seedProcCR1014){
+    (SAME_SPACE_GROUPS[0]||[]).forEach(r=>{if(!ROOMS.includes(r))return;const L=meta(r).doctors||[];if(L.length&&!L.includes('박초롱'))meta(r).doctors=[...L,'박초롱'];});
+    meta('진료실1').seedProcCR1014=true;setTimeout(()=>{try{saveRooms();}catch(e){}},0);}
   /* 이름에 '상담'이 들어간 방은 상담 결과 기록칸을 기본으로 켬 (관리자가 명시적으로 껐으면 유지) */
   ROOMS.forEach(r=>{if(/상담/.test(r)&&!('consult' in (ROOM_META[r]||{})))meta(r).consult=true;});
   RAW_CFG_STAFF=Array.isArray(d.staff)?d.staff:[];
