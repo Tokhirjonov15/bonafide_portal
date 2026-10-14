@@ -11850,7 +11850,10 @@ function autoAssignViewer(p){if(p&&p._viewOnly)return;
 const isClinicRoom=r=>/^진료실\s*\d/.test(String(r||'').trim());
 /* 진료의 목록에서 의사가 아닌 사람을 뺀다 (2026-10-13): 진료실 관리의 방 '진료의' 칸(SASO·기본물리치료 등엔 물리치료사)에 넣은 이름이
    전체 진료의 목록(DOCTORS)에 자동으로 쌓여 진료실 카드에 물리치료사·간호사가 줄줄이 나왔다. 직원 목록에서 의사 아닌 파트에 있는 이름은 뺀다(명단에 없으면 둔다) */
-function realDocs(){return (DOCTORS||[]).filter(n=>{const g=rosterPart(n);return !g||g==='의사';});}
+function realDocs(){const L=(DOCTORS||[]).filter(n=>{const g=rosterPart(n);return !g||g==='의사';});
+  /* 2026-10-14: 직원 목록 '의사'에 새로 넣은 원장님(박초롱)이 진료 원장 선택칸에 안 나왔다 — 진료실 방에 지정해야만 목록에 들어갔다. 직원 목록 의사도 함께 ('김현우 (Ethan)' → 김현우) */
+  try{(staffRoster()['의사']||[]).forEach(e=>{const m=/^(.*?)\s*\(.*\)\s*$/.exec(String(e));const n=(m?m[1]:String(e)).trim();if(n&&!L.some(x=>rosterKeys(x).includes(n.replace(/\s+/g,'').toLowerCase())))L.push(n);});}catch(e){}
+  return L;}
 function allClinicDoctors(){const s=new Set();ROOMS.forEach(r=>{if(isClinicRoom(r))(meta(r).doctors||[]).forEach(n=>n&&s.add(n));});realDocs().forEach(n=>n&&s.add(n));return [...s];}
 function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomDocs=p.roomDocs||{};
