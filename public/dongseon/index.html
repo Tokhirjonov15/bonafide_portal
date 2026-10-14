@@ -13871,6 +13871,13 @@ boot();
     /* 2026-10-13: 같은 말을 반복해도 어떤 때는 끝부분만 남았다 — 쉬지 않고 길게 말하는 중에 크롬이 끊으면 아직 '확정' 안 된 말을 통째로 버린다.
        확정 전 글(interim)도 받아 두었다가, 끊기거나 녹음을 멈출 때 남아 있으면 그대로 적는다. 시각은 그 말을 시작한 때 */
     const stamp=t0=>{const sec=Math.max(0,Math.floor((t0-rec.started)/1000));return '['+pad(Math.floor(sec/60))+':'+pad(sec%60)+'] ';};
+    /* 2026-10-14: 녹음은 [녹음] 설정에서 고른 마이크로 하는데, 크롬 받아쓰기는 윈도우 기본 마이크로 들었다(다르면 멀리서 작게 → 한두 줄만).
+       새 크롬(start(오디오 트랙))은 녹음과 같은 마이크 소리를 넘긴다. 안 되면 예전처럼 기본 마이크 */
+    const startSr=sr=>{const tr=rec.stream&&rec.stream.getAudioTracks?rec.stream.getAudioTracks()[0]:null;
+      if(tr&&tr.readyState==='live'&&st.trackOk!==false){try{if(st.tk)try{st.tk.stop();}catch(e){}st.tk=tr.clone();sr.start(st.tk);
+          if(st.trackOk===undefined){st.trackOk=true;note('녹음 마이크로 받아쓰기');}return;}
+        catch(e){st.trackOk=false;note('마이크 지정 안 됨('+(e&&e.name||e)+') — 기본 마이크');try{st.tk&&st.tk.stop();}catch(_){}st.tk=null;}}
+      sr.start();};
     st.pend='';st.pendAt=0;st.flushPend=why=>{const t=st.pend.trim();if(t){st.lines.push(stamp(st.pendAt||Date.now())+t);note('확정 전 말 살림('+why+') '+t.length+'자');}st.pend='';st.pendAt=0;};
     const go=why=>{if(!st.on||st.active)return;st.lastTry=Date.now();
       try{const sr=new SR();sr.lang='ko-KR';sr.continuous=true;sr.interimResults=true;sr.maxAlternatives=1;
@@ -13880,9 +13887,10 @@ boot();
             st.lines.push(stamp(st.pendAt||Date.now())+t);st.pendAt=0;st.fails=0;}
           st.pend=pend;if(pend&&!st.pendAt)st.pendAt=Date.now();if(!pend)st.pendAt=0;};
         sr.onerror=e=>{note('오류 '+e.error);if(e.error==='not-allowed'||e.error==='service-not-allowed'){st.on=false;toast('마이크 받아쓰기가 막혀 있습니다 — 크롬 주소창 왼쪽 자물쇠에서 마이크를 허용해 주세요',6000);}
-          else if(e.error!=='no-speech'&&e.error!=='aborted')st.fails++;};
+          else if(e.error!=='no-speech'&&e.error!=='aborted')st.fails++;
+          if(e.error==='audio-capture'&&st.trackOk){st.trackOk=false;note('녹음 마이크 소리를 못 받음 — 기본 마이크로');}};   // 다음 다시 켜기부터 예전 방식
         sr.onend=()=>{st.active=false;st.flushPend('끊김');if(!st.on)return;note('끊김');setTimeout(()=>go('끊김 뒤'),st.fails>3?2000:150);};   // 조용하거나 1분쯤 지나면 크롬이 스스로 끊는다 — 곧바로 다시
-        st.sr=sr;sr.start();st.active=true;if(why){st.restarts++;}}
+        st.sr=sr;startSr(sr);st.active=true;if(why){st.restarts++;}}
       catch(err){st.active=false;note('다시 켜기 실패 '+(err&&err.name||err));}};
     go('');
     st.dog=setInterval(()=>{if(st.on&&!st.active&&Date.now()-st.lastTry>3000){note('지킴이 다시 켬');go('지킴이');}},4000);   // 혹시 onend 가 안 와도
@@ -13902,6 +13910,7 @@ boot();
       try{audit('진료 녹음 받아쓰기('+STT_LABEL[pv]+')',m.pname+(m.mrn?' ('+m.mrn+')':'')+' · '+text.length+'자');}catch(e){}}
     catch(e){console.warn('cloud stt',pv,e);toast(STT_LABEL[pv]+' 받아쓰기 실패: '+(e.message||e),6000);}}
   async function sttStop(rec){const st=rec.stt;st.on=false;clearInterval(st.timer);clearInterval(st.dog);try{st.sr&&st.sr.stop();}catch(e){}
+    setTimeout(()=>{try{st.tk&&st.tk.stop();}catch(e){}},1500);   // 받아쓰기에 넘긴 마이크 복제본 — 마지막 말이 들어온 뒤 끈다
     await new Promise(r=>setTimeout(r,1200));   // 마지막 말이 들어올 시간
     try{st.flushPend&&st.flushPend('멈춤');}catch(e){}   // 그래도 확정 안 된 말이 남았으면 버리지 않고 적는다 (2026-10-13)
     await sttSave(rec,true);
