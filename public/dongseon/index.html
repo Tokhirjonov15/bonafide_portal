@@ -874,6 +874,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .f4mv-card{padding:7px 10px}.f4mv-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .f4mv-nm{font-size:13px;font-weight:800}.f4mv-bd{font-size:11px;color:var(--sub)}
   .f4mv-sub{font-size:11px;color:#0f766e;margin-top:3px}.f4mv-sub .hold-clock{font-weight:800}
+  .f4col{display:flex;flex-wrap:wrap;gap:3px 10px;margin:0 2px 8px;padding:3px 9px;border-radius:8px;background:rgba(13,148,136,.1);color:#0f766e;font-size:11.5px;font-weight:700}
+  .f4col b{font-weight:800;color:#115e59}
   .f4mv-log{display:flex;flex-wrap:wrap;gap:4px 8px;margin:2px 12px 0;padding:2px 8px;border-radius:999px;background:rgba(13,148,136,.1);color:#0f766e;font-size:11px;font-weight:700;width:fit-content}
   .hold-time{display:flex;align-items:center;gap:6px;margin:6px 12px 12px;padding:6px 10px;border-radius:9px;background:rgba(217,119,6,.12);color:#b45309;font-weight:800;font-size:13px}
   .hold-time svg{width:15px;height:15px}.hold-time b{margin-left:auto;font-variant-numeric:tabular-nums;font-size:15px}
@@ -4666,7 +4668,8 @@ function f4MoveChk(p,room){if(!ROOMS.includes(F4_MOVE_ROOM)||!room||meta(room).g
    3층 카드에서 [4층] 체크를 풀면 잘못 누른 것으로 보고 기록도 지운다 */
 window.setF4Move=function(pid,on){const p=data.find(x=>x.id===pid);if(!p)return;
   const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();
-  const apply=d=>{if(on){d.f4Move={at,by};d.f4Log={go:{by,at}};}else{delete d.f4Move;delete d.f4Log;}return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  const room=curRoom(p);   // 4층에 보낸 방(비용 상담 등) — 그 방 머리에 환자 이름 (2026-10-14)
+  const apply=d=>{if(on){d.f4Move={at,by};d.f4Log={go:{by,at,room}};}else{delete d.f4Move;delete d.f4Log;}return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
   try{audit(on?'3,4층 이동 표시':'3,4층 이동 해제',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
   render();};
 /* 4층 유령 카드의 [3층] — 4층을 다녀와 3층으로 돌아감: 유령 카드는 사라지고 3층 카드에 '4층갔다옴' */
@@ -4675,6 +4678,12 @@ window.setF4Back=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   const apply=d=>{delete d.f4Move;d.f4Log=Object.assign({},d.f4Log||{},{back:{by,at}});return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
   try{audit('3,4층 이동 — 3층으로 돌아감',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
   render();};
+/* 방 머리(제목 아래 직원 줄)에 그 방에서 4층에 보낸 환자 이름 (2026-10-14 요청) — '4층감: 환자…' / '4층갔다옴: 환자…'. 보드에 있는 오늘 카드만 */
+function f4ColHtml(room){const go=[],back=[];
+  (data||[]).forEach(p=>{if(!p||p.discharged||p._viewOnly)return;const L=p.f4Log;if(!L||!L.go)return;if((L.go.room||curRoom(p))!==room)return;
+    const nm=esc(dispName(p.name||''));(L.back?back:go).push(nm);});
+  if(!go.length&&!back.length)return '';
+  return `<div class="f4col">${go.length?`<span>4층감: <b>${go.join(', ')}</b></span>`:''}${back.length?`<span>4층갔다옴: <b>${back.join(', ')}</b></span>`:''}</div>`;}
 function f4LogHtml(p){const L=p&&p.f4Log;if(!L||!L.go)return '';const t=x=>x&&x.at?' '+esc(hhmm(x.at)):'';
   return `<div class="f4mv-log" title="3,4층 이동 기록"><span>4층감: <b>${esc(L.go.by||'-')}</b>${t(L.go)}</span>${L.back?`<span>4층갔다옴: <b>${esc(L.back.by||'-')}</b>${t(L.back)}</span>`:''}</div>`;}
 function f4MoveCardEl(p,room){const c=document.createElement('div');c.className='card mirror hold-card f4mv-card';c.dataset.pid=p.id;c.dataset.col=room;
@@ -5596,7 +5605,9 @@ async function runSelfTest(){
        ROOMS=_R;
        eq('3,4층 이동: 체크하면 4층 칸에 유령 카드, 3층 카드에만 체크칸, 풀면 사라짐', [a,b], [[true,true,true],false]);
        const Q={id:'f4q',name:'유령2',route:['Sono'],step:0,f4Log:{go:{by:'김간호',at:new Date().toISOString()},back:{by:'박치료',at:new Date().toISOString()}}};
-       ok('3,4층 이동: 3층 카드에 4층감(체크한 사람)·4층갔다옴(4층에서 3층 누른 사람)', /4층감: <b>김간호<\/b>/.test(f4LogHtml(Q))&&/4층갔다옴: <b>박치료<\/b>/.test(f4LogHtml(Q)));}
+       const _d=data;const R1={id:'r1',name:'간환자',route:['비용 상담'],step:0,f4Log:{go:{by:'a',at:'',room:'비용 상담'}}},R2={id:'r2',name:'온환자',route:['Sono'],step:0,f4Log:{go:{by:'a',at:'',room:'비용 상담'},back:{by:'b',at:''}}},R3={id:'r3',name:'딴방',route:['Sono'],step:0,f4Log:{go:{by:'a',at:'',room:'Sono'}}};
+       data=[R1,R2,R3];const h=f4ColHtml('비용 상담');data=_d;
+       ok('3,4층 이동: 보낸 방(비용 상담) 머리에 4층감·4층갔다옴 환자 이름, 다른 방 환자는 없음', /4층감: <b>간환자<\/b>/.test(h)&&/4층갔다옴: <b>온환자<\/b>/.test(h)&&!h.includes('딴방'));}
       STAFF_ROSTER['진료지원']=['한효주 (Lux)'];
       eq('직원 목록: 비용 상담 담당자 = 간호사·진료지원만(방 명단에 섞인 물리치료사는 빠짐)', (()=>{const _m=ROOM_META['비용 상담'];ROOM_META['비용 상담']={doctors:['우성복','허빈']};const r=consultWhoOpts('비용 상담','');if(_m===undefined)delete ROOM_META['비용 상담'];else ROOM_META['비용 상담']=_m;return r;})(), ['우성복','새간호','한효주']);
       STAFF_ROSTER=_sr;}
@@ -7258,7 +7269,8 @@ function render(){
       </div>
       ${folded?'':colOrderTabs(room)}
       ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
-      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}`;
+      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}
+      ${folded?'':f4ColHtml(room)}`;   /* 이 방에서 4층에 보낸 환자 (2026-10-14) */
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
 
@@ -8890,7 +8902,6 @@ function cardEl(p,colRoom){
         return nu?`<span class="card-doc card-doc-top">${nu}</span>`:ra?`<span class="card-doc card-doc-top">${ra}</span>`:'';})()}
       ${(function(){const t=lobbyWaitLabel(p);return `<span class="lobby-wait${t.lv>1?' lv2':''}" style="${t.text?'':'display:none'}">${esc(t.text)}</span>`;})()}
     </div>
-    ${f4LogHtml(p)}${''/* 4층감·4층갔다옴 (2026-10-14) */}
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.out?`<div class="out-banner"><i data-lucide="footprints"></i> 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
     ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" title="주차권 발행 사이트를 새 창으로 엽니다" onclick="event.stopPropagation();openParkingSite('${p.id}')">지급</button></div>`:''}
