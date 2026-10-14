@@ -574,6 +574,7 @@
   @keyframes bitpaidPulse{0%,100%{border-color:rgba(34,197,94,.25);box-shadow:inset 0 0 0 2px rgba(34,197,94,.12),var(--shadow)}
     50%{border-color:rgba(22,163,74,1);box-shadow:inset 0 0 0 3px rgba(22,163,74,.85),0 0 10px rgba(34,197,94,.55)}}
   @media (prefers-reduced-motion:reduce){.card.bitpaid.bitpaid-away{animation:none;border-color:rgba(22,163,74,1);box-shadow:inset 0 0 0 3px rgba(22,163,74,.85)}}
+  .bitpaid-mark.amt-chg{color:#fff;background:#16a34a;border-color:#16a34a;margin-left:4px}   /* 계산 뒤 비트 금액 바뀜 (2026-10-14) */
   .bitpaid-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:var(--t-green);background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.45);border-radius:6px;padding:1px 6px;white-space:nowrap}
   .bitpaid-mark svg{width:12px;height:12px}
   .bitcancel-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#fff;background:var(--red);border-radius:8px;padding:2px 8px}
@@ -2912,7 +2913,16 @@ function rxAfterPayHere(p,room){
     return ROUTE_RX_RULES.some(r=>r.room===room&&rxRuleHit(r,cod,nam));});}
 /* 초록 깜빡임 = 추가 수납이 있을 때만 (2026-10-14 요청: 4층처럼 먼저 계산하고 치료받는 환자도 깜빡였다 — 33173 김정훈).
    비트 수납완료 뒤에 새 처방(동선에 들어가는 처방)이 나왔을 때만 (2026-10-14 다시 요청 — 수납대기에서 다시 나간 것(payAgain)만으로는 깜빡이지 않음). 그 밖에는 초록 테두리만 */
+/* 비트 금액(처방 줄 금액의 합). 금액 자료가 없으면 null */
+function bitPayTotal(p){const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const L=(rx&&Array.isArray(rx.pay))?rx.pay:[];if(!L.length)return null;
+  return L.reduce((s,x)=>s+(Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0),0);}
+/* 계산 뒤 비트 금액이 바뀌었는가 (2026-10-14 요청: D/C 등으로 처음 금액과 달라지면 초록 깜빡임) — {from,to} 또는 null */
+function bitPaidAmtChange(p){if(!p||!p.bitPaid||p.bitPaid.amt==null)return null;const t=bitPayTotal(p);if(t==null||t===Number(p.bitPaid.amt))return null;return {from:Number(p.bitPaid.amt),to:t};}
+/* 계산 때 금액 자료가 아직 없었던 카드(또는 이 기능 전에 계산한 카드)는 처음 보이는 금액을 기준으로 */
+function bitPaidAmtFill(){(data||[]).forEach(p=>{if(!p||p.discharged||p._viewOnly||!p.bitPaid||p.bitPaid.amt!=null)return;const t=bitPayTotal(p);if(t==null)return;
+  p.bitPaid=Object.assign({},p.bitPaid,{amt:t});save(p);});}
 function bitPaidMore(p){if(!p||!p.bitPaid)return false;
+  if(bitPaidAmtChange(p))return true;   // 계산 뒤 비트 금액이 바뀜(D/C 등)
   const d=new Date(p.bitPaid.at);if(isNaN(d))return false;const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   return rxItemsOf(p).some(it=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(it.t||''));if(!m||(m[1].padStart(2,'0')+':'+m[2])<=hm)return false;
     const cod=String(it.cod||'').trim(),nam=String(it.nam||'').trim();return ROUTE_RX_RULES.some(r=>rxRuleHit(r,cod,nam));});}
@@ -3582,6 +3592,7 @@ function subscribeBitIntake(){
             items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs};}}});
       try{applyRxRoutesAll();}catch(e){console.warn('rxRoutes',e);}   // 처방 → 동선 자동 채우기 (바뀐 카드가 있으면 안에서 다시 그림)
       try{bonusScanRx();}catch(e){console.warn('bonusScan',e);}   // 주사 맞은 날 → 보너스 (2026-10-04)
+      try{bitPaidAmtFill();}catch(e){console.warn('paid amt',e);}   // 계산한 카드의 기준 금액 (2026-10-14)
       try{render();}catch(e){}
       if(editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}
     },err=>console.warn('bitRx',err));
@@ -4695,6 +4706,7 @@ function bitApplyReceiveEnd(){
         const away=!isPayRoom(curRoom(q));
         const wasPaid=!!q.bitPaid;   // 늦게 연 화면이 이미 '수납완료' 카드로 만든 경우 — 표시만 유지하고 알림은 다시 띄우지 않음
         q.bitPaid={at:new Date().toISOString(),ocm,pc:r.pc||''};   // 카드 색·배지. 내보내기 전까지 유지, 수납취소가 오면 해제
+        {const t=bitPayTotal(q);if(t!=null)q.bitPaid.amt=t;}   // 계산한 때의 비트 금액 — 뒤에 바뀌면(D/C 등) 초록 깜빡임 (2026-10-14)
         if(!wasPaid)q.bitPaidOnce=q.bitPaid.at;   // 계산한 시각 — 표시가 지워져도 남김(그 뒤 처방 ⚠ 표시용, 2026-10-13)
         save(q);render();
         if(!wasPaid)audit(away?'비트 수납완료(방 그대로)':'비트 수납완료',q.name+(q.mrn?' ('+q.mrn+')':'')+' · '+curRoom(q));
@@ -5576,6 +5588,12 @@ async function runSelfTest(){
       ok('초록 깜빡임: 계산 뒤 새 처방(충격파)이 나오면 깜빡임 = 추가 수납', bitPaidMore(P));
       bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'}]});P.payAgain=true;
       ok('초록 깜빡임: 수납대기에서 다시 나갔어도(payAgain) 계산 뒤 새 처방이 없으면 깜빡이지 않음', !bitPaidMore(P));
+      bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'}],pay:[{cod:'CRYO10',amt:'50,000'},{cod:'C-ARM',amt:30000}]});
+      ok('금액 바뀜: 비트 금액 합계', bitPayTotal(P)===80000);
+      P.bitPaid=Object.assign({},P.bitPaid,{amt:80000});
+      ok('금액 바뀜: 계산 때와 같으면 표시·깜빡임 없음', !bitPaidAmtChange(P)&&!bitPaidMore(P));
+      bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'}],pay:[{cod:'CRYO10',amt:'50,000'}]});
+      eq('금액 바뀜: D/C 로 금액이 줄면 깜빡임 + 이전→지금 금액', [bitPaidMore(P),bitPaidAmtChange(P)], [true,{from:80000,to:50000}]);
       bitRxFor=_b;ROOMS=_R;}
      {const now=Date.now();   // 슬립 자동 인쇄 — 언제 '진료 끝'으로 보나 (2026-10-14)
       ok('슬립 자동 인쇄: 처방이 막 저장됐으면(30초 안) 기다림 — 나눠 저장하는 경우', !slipApReady({t:now-10000}));
@@ -8723,7 +8741,7 @@ function treatCount(p,room){
 function cardEl(p,colRoom){
   const _chipRoom=colRoom||curRoom(p);
   const c=document.createElement("div");
-  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+((!isPayRoom(curRoom(p))&&bitPaidMore(p))?" bitpaid-away":""):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"")+(ptShotAlert(p)?" pt-shot":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
+  c.className="card"+(p.designated?" designated":"")+(p.out?" out":"")+(p.bitPaid?" bitpaid"+((bitPaidAmtChange(p)||(!isPayRoom(curRoom(p))&&bitPaidMore(p)))?" bitpaid-away":""):"")+(PT_SOON[p.id]?" pt-soon":"")+(WAIT_OVER[p.id]?" wait-over":"")+(ptShotAlert(p)?" pt-shot":"");c.draggable=true;   /* 동선 순서 어긋남 빨간 카드(off-route)는 없앴다 (2026-10-06 요청) */
   c.dataset.pid=p.id;   // 방별 검색 필터용
   c.dataset.col=_chipRoom||"";   // 이 카드가 놓인 칸(거울 카드 구분)
   const birth=[p.birth?esc(p.birth):"",p.birth&&age(p.birth)?age(p.birth):"",p.sex?esc(p.sex):""].filter(Boolean).join(" · ");
@@ -8779,7 +8797,7 @@ function cardEl(p,colRoom){
       ${rxAfterPayHere(p,_chipRoom)?`<span class="rxap-mark" title="비트 수납완료 뒤에 낸 처방입니다 — 추가 계산이 필요할 수 있어요">${icHtml('triangle-alert')}</span>`:''}<span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span>${bonusTag(p)}${(mrnTwins(p)&&bitInsOf(p))?` <span class="ins-twin" title="같은 환자가 오늘 보험을 달리해 접수가 둘입니다">${esc(bitInsOf(p))}</span>`:''}${cardSlipBadge(p)}
       ${p.designated?`<span class="desig-mark" title="지정 진료"><i data-lucide="star"></i> 지정</span>`:''}
       ${p.bitCancel?`<span class="bitcancel-mark" title="비트에서 접수가 취소된 환자입니다${p.bitCancel.at?' ('+hhmm(p.bitCancel.at)+')':''} — 확인 후 카드를 삭제하거나 비트에서 재접수하세요"><i data-lucide="circle-x"></i> 비트 접수취소</span>`:''}
-      ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>`:''}
+      ${p.bitPaid?`<span class="bitpaid-mark" title="비트에서 수납완료 처리됨${p.bitPaid.at?' ('+hhmm(p.bitPaid.at)+')':''} — 계산 확인 후 [수납완료]"><i data-lucide="wallet"></i> 비트 수납완료</span>${(()=>{const c=bitPaidAmtChange(p);return c?`<span class="bitpaid-mark amt-chg" title="계산한 뒤 비트 금액이 바뀌었습니다(D/C 등) — 차액 확인">금액 바뀜 ${esc(won(c.from))}→${esc(won(c.to))}원</span>`:'';})()}`:''}
       ${isConsultRoom(_chipRoom)?'':`<span class="card-doc card-doc-top">${doctorChipHtml(p,_chipRoom)}</span>`}
       ${(function(){const nu=nurseChipHtml(p,_chipRoom),ra=radChipHtml(p,_chipRoom);   // 간호·방사선은 한 줄에 나란히 (2026-10-07 요청: 진료·술기 / 간호·방사 두 줄)
         if(nu&&ra)return `<span class="card-doc card-doc-top card-staff2"><span class="cs2">${nu}</span><span class="cs2">${ra}</span></span>`;
