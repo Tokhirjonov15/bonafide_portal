@@ -5665,6 +5665,27 @@ async function runSelfTest(){
       const a=plan([{cod:'C-ARM',nam:'C-ARM',t:'10:00'},{cod:'Rocaine',nam:'로카인',t:'10:00'}]),b=plan([{cod:'C-ARM',nam:'C-ARM',t:'10:00'},{cod:'SS',nam:'SS',t:'10:00'}]);
       bitRxFor=_b;ROOMS=_R;
       ok('4층 가는 규칙: 주사(C-Arm)만이면 4층 대기실 없이 수납대기, 주사+SS 면 4층 대기실', !a.includes('4층 대기실')&&a.includes('수납대기')&&b.includes('4층 대기실'), JSON.stringify([a,b]));}
+     {const _b=bitRxFor,_R=ROOMS;ROOMS=['3층 대기실','진료실1','진료 상담','비용 상담','C-Arm','Sono','처치실','근전도검사','4층 대기실','SASO','수납대기','수납완료'];   // 처방 추가 → 수납대기는 뒤로 (2026-10-14)
+      const now=new Date(),hm=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+      const P={id:'pa',name:'추가',mrn:'',route:['3층 대기실','진료실1','비용 상담','C-Arm','수납대기'],step:3,status:'진행',notes:{},visits:[{room:'3층 대기실'},{room:'진료실1'},{room:'비용 상담'}],consults:{'비용 상담':{result:'시행'}}};
+      bitRxFor=()=>({items:[{cod:'C-ARM',nam:'C-ARM',t:hm}]});try{const r0=rxRouteCompute(P,'h1',Date.now());if(r0&&r0.next)P.route=r0.next;}catch(e){}
+      bitRxFor=()=>({items:[{cod:'C-ARM',nam:'C-ARM',t:hm},{cod:'sono3',nam:'근골격계초음파',t:hm}]});
+      let out;try{const r=rxRouteCompute(P,'h2',Date.now());out=(r&&r.next)||P.route;}catch(e){out=['ERR '+e.message];}
+      bitRxFor=_b;ROOMS=_R;
+      ok('처방 추가: C-Arm 에 있다가 Sono 가 추가되면 C-Arm → Sono → 수납대기 (수납대기는 맨 뒤)', out.slice(out.indexOf('C-Arm')).join('>')==='C-Arm>Sono>수납대기', JSON.stringify(out));
+      const run=(route,step,items1,items2)=>{ROOMS=['3층 대기실','진료실1','진료 상담','비용 상담','C-Arm','Sono','처치실','근전도검사','x-ray실','4층 대기실','SASO','수납대기','수납완료'];
+        const Q={id:'pq',name:'추가2',mrn:'',route:route.slice(),step,status:'진행',notes:{},visits:route.slice(0,step).map(room=>({room})),consults:{'비용 상담':{result:'시행'}}};
+        if(items1){bitRxFor=()=>({items:items1});try{const r0=rxRouteCompute(Q,'h1',Date.now());if(r0&&r0.next)Q.route=r0.next;}catch(e){}}
+        bitRxFor=()=>({items:items2});let o;try{const r=rxRouteCompute(Q,'h2',Date.now());o=(r&&r.next)||Q.route;}catch(e){o=['ERR '+e.message];}
+        bitRxFor=_b;ROOMS=_R;return o.slice(Q.step).join('>');};
+      const CA={cod:'C-ARM',nam:'C-ARM',t:hm},SO={cod:'sono3',nam:'근골격계초음파',t:hm},SS={cod:'SS',nam:'SS',t:hm},XR={cod:'G7403',nam:'족관절3매',t:hm};
+      eq('처방 추가: 손으로 짠 동선(처방 동선 기록 없음)이어도 추가 방은 수납대기 앞에', run(['3층 대기실','진료실1','C-Arm','수납대기'],2,null,[CA,SO]), 'C-Arm>Sono>수납대기');
+      eq('처방 추가: 4층 가는 환자 — C-Arm → Sono → 수납대기 → 4층 대기실', run(['3층 대기실','진료실1','비용 상담','C-Arm','수납대기','4층 대기실'],3,[CA,SS],[CA,SS,SO]), 'C-Arm>Sono>수납대기>4층 대기실');
+      {const _rd=routeDraft,_e=editId,_rc=window.routeChanged,_dd=data;const P2={id:'ad',route:['3층 대기실','C-Arm','수납대기'],step:1};data=[P2];editId='ad';
+       routeChanged=()=>{};routeDraft=P2.route.slice();addRouteStep('Sono');const a=routeDraft.join('>');
+       P2.step=2;routeDraft=P2.route.slice();addRouteStep('Sono');const b=routeDraft.join('>');
+       routeDraft=_rd;editId=_e;routeChanged=_rc;data=_dd;
+       eq('방 버튼으로 추가: 수납대기 앞에 넣음, 이미 수납대기에 있으면 뒤에 수납대기 한 번 더', [a,b], ['3층 대기실>C-Arm>Sono>수납대기','3층 대기실>C-Arm>수납대기>Sono>수납대기']);}}
      {const _d=data,_R=ROOMS,_t=window.toast;window.toast=()=>{};ROOMS=['3층 대기실','비용 상담','C-Arm','Sono','처치실','근전도검사','4층 대기실','수납대기','수납완료'];   // 비용 상담 시행 안 함 (2026-10-14)
       const mk=(id,route)=>({id,name:id,mrn:'',route,step:1,status:'대기',enteredAt:new Date().toISOString(),statusSince:new Date().toISOString(),notes:{},visits:[],consults:{'비용 상담':{result:'기타',reason:'비용 부담',by:'',at:''}}});
       const A=mk('cn1',['3층 대기실','비용 상담','C-Arm','Sono','4층 대기실','수납대기']),B=mk('cn2',['3층 대기실','비용 상담','C-Arm','처치실','수납대기']);data=[A,B];
@@ -12167,7 +12188,17 @@ window.routeGo=function(i){
   try{toast(dispName(q.name)+' 님 → '+room);}catch(e){}
   if(window.lucide)try{lucide.createIcons();}catch(e){}};
 function routeChanged(){renderRouteRows();if(editId&&document.getElementById("notesSection").style.display!=="none"){renderNotesEditor();renderConsultEditor();}}
-function addRouteStep(room){if(!room)return;routeDraft.push(room);routeChanged();}
+/* 방 버튼으로 추가 (2026-10-14 요청: 처방이 추가돼 방을 넣으면 수납대기가 뒤로) — 끝에 수납대기·수납완료가 있으면 그 앞에 넣는다.
+   예) C-Arm → 수납대기 에 Sono → C-Arm → Sono → 수납대기. 환자가 이미 수납대기에 있으면 Sono 뒤에 수납대기를 한 번 더(추가 수납) */
+function addRouteStep(room){if(!room)return;
+  if(isPayRoom(room)){routeDraft.push(room);routeChanged();return;}
+  const p=(typeof editId!=='undefined'&&editId)?data.find(x=>x.id===editId):null;
+  const cur=p&&!p.discharged&&!p._viewOnly&&JSON.stringify(routeDraft.slice(0,(p.step||0)+1))===JSON.stringify(p.route.slice(0,(p.step||0)+1))?(p.step||0):-1;
+  let j=routeDraft.length;while(j>0&&isPayRoom(routeDraft[j-1]))j--;   // 끝에 붙은 수납 방들의 시작
+  if(j<routeDraft.length&&j>cur)routeDraft.splice(j,0,room);
+  else if(j<routeDraft.length){routeDraft.push(room);routeDraft.push(payWaitRoom()||routeDraft[j]);}   // 지금 수납 방에 있음 → 치료 뒤 다시 수납
+  else routeDraft.push(room);
+  routeChanged();}
 function removeRouteStep(i){routeDraft.splice(i,1);routeChanged();}
 function moveRouteStep(i,d){const j=i+d;if(j<0||j>=routeDraft.length)return;[routeDraft[i],routeDraft[j]]=[routeDraft[j],routeDraft[i]];routeChanged();}
 function reorderRoute(from,to){if(from==null||from===to||from<0||to<0||to>=routeDraft.length)return;const it=routeDraft.splice(from,1)[0];routeDraft.splice(to,0,it);routeChanged();}
