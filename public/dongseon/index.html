@@ -873,6 +873,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .f4mv-chk input{margin:0;cursor:pointer}.f4mv-chk.on{color:#fff;background:#0d9488;border-color:#0d9488}
   .f4mv-card{padding:7px 10px}.f4mv-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .f4mv-nm{font-size:13px;font-weight:800}.f4mv-bd{font-size:11px;color:var(--sub)}
+  .f4mv-print{margin-left:auto;font-size:11px;padding:1px 7px}.f4mv-row .f4mv-chk{margin-left:0}
   .f4mv-sub{font-size:11px;color:#0f766e;margin-top:3px}.f4mv-sub .hold-clock{font-weight:800}
   .f4col{display:flex;flex-wrap:wrap;gap:3px 10px;margin:0 2px 8px;padding:3px 9px;border-radius:8px;background:rgba(13,148,136,.1);color:#0f766e;font-size:11.5px;font-weight:700}
   .f4col b{font-weight:800;color:#115e59}
@@ -4684,11 +4685,15 @@ function f4ColHtml(room){const go=[],back=[];
     const nm=esc(dispName(p.name||''));(L.back?back:go).push(nm);});
   if(!go.length&&!back.length)return '';
   return `<div class="f4col">${go.length?`<span>4층감: <b>${go.join(', ')}</b></span>`:''}${back.length?`<span>4층갔다옴: <b>${back.join(', ')}</b></span>`:''}</div>`;}
+/* 유령 카드 [🖨 인쇄] — 4층 차팅 슬립을 이 컴퓨터로 바로 (2026-10-14 요청) */
+window.f4PrintNow=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;printChart4(p);
+  try{audit('4층 차팅 인쇄(3,4층 이동)',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}try{toast('🖨 4층 차팅 인쇄 — '+dispName(p.name||''));}catch(e){}};
 function f4LogHtml(p){const L=p&&p.f4Log;if(!L||!L.go)return '';const t=x=>x&&x.at?' '+esc(hhmm(x.at)):'';
   return `<div class="f4mv-log" title="3,4층 이동 기록"><span>4층감: <b>${esc(L.go.by||'-')}</b>${t(L.go)}</span>${L.back?`<span>4층갔다옴: <b>${esc(L.back.by||'-')}</b>${t(L.back)}</span>`:''}</div>`;}
 function f4MoveCardEl(p,room){const c=document.createElement('div');c.className='card mirror hold-card f4mv-card';c.dataset.pid=p.id;c.dataset.col=room;
   const since=(p.f4Move&&p.f4Move.at)||'';const birth=[p.birth?esc(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
   c.innerHTML=`<div class="f4mv-row"><span class="f4mv-nm">${esc(dispName(p.name))}</span>${birth?`<span class="f4mv-bd">${birth}</span>`:''}
+      <button type="button" class="mini f4mv-print" title="4층 차팅 슬립 인쇄 (원장님 차팅 · med · 처방내역)" onclick="event.stopPropagation();f4PrintNow('${p.id}')">🖨 인쇄</button>
       <label class="f4mv-chk" onclick="event.stopPropagation()" title="4층을 다녀와 3층으로 돌아감 — 유령 카드가 사라지고 3층 카드에 '4층갔다옴'"><input type="checkbox" onchange="if(this.checked)setF4Back('${p.id}')"> 3층</label></div>
     <div class="f4mv-sub">${esc(curRoom(p))} · 4층감 ${esc((p.f4Move&&p.f4Move.by)||'')} <b class="hold-clock" data-since="${esc(since)}">${since?fmtClock(Date.now()-new Date(since).getTime()):'-'}</b></div>`;
   c.addEventListener('click',()=>openEdit(p.id));
