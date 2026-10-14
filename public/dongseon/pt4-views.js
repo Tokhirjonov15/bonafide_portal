@@ -809,11 +809,12 @@ function renderMobile(){
       return `<div class="mob-row free" onclick="mobNew(${r.startMin})"><div class="mob-time">${hm(r.startMin)}</div><div class="mob-body muted">+ 예약</div></div>`;}).join('')}</div>`;
   if(MOB.ed&&t){const f=MOB.f,ed=MOB.ed;
     h+=`<div class="editor" style="position:fixed;left:0;right:0;bottom:0;border-radius:16px 16px 0 0;z-index:30;max-height:85vh;overflow:auto">
-      <div class="editor-head"><strong>${ed.b?'예약 수정':'새 예약'} · ${esc(t.name)} · ${hm(ed.startMin)}</strong><button type="button" class="ghost" onclick="MOB.ed=null;render()">닫기</button></div>
+      <div class="editor-head"><strong>${ed.b?'예약 수정':'새 예약'} · ${esc(t.name)} · ${hm(f.startMin)}</strong><button type="button" class="ghost" onclick="MOB.ed=null;render()">닫기</button></div>
       <div class="mob-form"><label>차트번호<input inputmode="numeric" value="${A(f.mrn)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,7);MOB.f.mrn=this.value"></label>
         <label>진료실<input inputmode="numeric" value="${A(f.room)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);MOB.f.room=this.value"></label>
         <label>이름<input value="${A(f.patientName)}" oninput="MOB.f.patientName=this.value"></label>
         <label>방문수<input inputmode="numeric" value="${A(f.visitNo)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);MOB.f.visitNo=this.value"></label>
+        <label>시작 시간<select onchange="mobTime(Number(this.value))">${TIMES.filter(m=>m<D.endMin).map(m=>opt(m,f.startMin,hm(m))).join('')}</select></label>
         <label>치료코드${codeSelect(f.code,"MOB.f.code=v")}</label>
         <label>길이<select onchange="MOB.f.durationMin=Number(this.value)">${[15,30,45,60,90].filter(x=>ed.b||x<=ed.maxMin).map(x=>opt(x,f.durationMin,x+'분')).join('')}</select></label>
         <label class="wide">메모<textarea rows="2" oninput="MOB.f.note=this.value">${esc(f.note)}</textarea></label></div>
@@ -823,13 +824,15 @@ function renderMobile(){
   h+=`<p class="note">칸을 누르면 예약을 넣고, 예약을 누르면 고칩니다. 오른쪽 ○ 를 누르면 방문 체크. 일별 스케줄과 같은 데이터라 어느 쪽에서 고쳐도 바로 반영됩니다.</p></div>`;
   return h;}
 function mobFreeAfter(startMin){let m=0;for(const r of D_().mobRows){if(r.kind==='free'&&r.startMin>=startMin&&r.startMin===startMin+m)m+=r.endMin-r.startMin;else if(r.startMin>startMin&&r.kind!=='free')break;}return m||30;}
-window.mobNew=s=>{const mx=mobFreeAfter(s);MOB.f={mrn:'',room:'',patientName:'',visitNo:'',code:'',durationMin:Math.min(30,mx),note:''};MOB.ed={startMin:s,maxMin:mx};MSG='';render();};
-window.mobEdit=id=>{const b=D_().bookings.find(x=>x.id===id);if(!b)return;MOB.f={mrn:b.mrn,room:b.room,patientName:b.patientName,visitNo:b.visitNo==null?'':String(b.visitNo),code:b.code,durationMin:b.durationMin,note:b.note||''};MOB.ed={startMin:b.startMin,maxMin:b.durationMin,b};MSG='';render();};
+window.mobNew=s=>{const mx=mobFreeAfter(s);MOB.f={startMin:s,mrn:'',room:'',patientName:'',visitNo:'',code:'',durationMin:Math.min(30,mx),note:''};MOB.ed={startMin:s,maxMin:mx};MSG='';render();};
+window.mobEdit=id=>{const b=D_().bookings.find(x=>x.id===id);if(!b)return;MOB.f={startMin:b.startMin,mrn:b.mrn,room:b.room,patientName:b.patientName,visitNo:b.visitNo==null?'':String(b.visitNo),code:b.code,durationMin:b.durationMin,note:b.note||''};MOB.ed={startMin:b.startMin,maxMin:b.durationMin,b};MSG='';render();};
 window.mobSave=async()=>{const ed=MOB.ed,f=MOB.f;const b=ed.b;
-  const r=await run(R.q.date,opBookingSave({id:b?b.id:undefined,therapistId:MOB.tid,startMin:ed.startMin,durationMin:f.durationMin,mrn:f.mrn,room:f.room,patientName:f.patientName,
+  const r=await run(R.q.date,opBookingSave({id:b?b.id:undefined,therapistId:MOB.tid,startMin:f.startMin,durationMin:f.durationMin,mrn:f.mrn,room:f.room,patientName:f.patientName,
     visitNo:f.visitNo===''?null:Number(f.visitNo),code:f.code,codeColor:b?b.codeColor:'',color:b?b.color:'',visited:b?b.visited:false,note:f.note}),false);
   if(r){MOB.ed=null;render();}else render();};
-window.mobOff=async()=>{const s=MOB.ed.startMin;if(await run(R.q.date,opBlockSet({therapistId:MOB.tid,startMin:s,endMin:Math.min(s+30,D_().endMin),kind:'off',text:'',color:''}),false)){MOB.ed=null;render();}else render();};
+/* 시작 시간 바꾸기 (2026-10-14 요청: 치료사가 핸드폰에서 바로) — 겹치거나 마감을 넘으면 [저장] 때 막고 이유를 보여 준다. 새 예약은 그 시각부터 빈 길이로 길이 목록을 다시 */
+window.mobTime=m=>{MOB.f.startMin=m;if(!MOB.ed.b){MOB.ed.maxMin=mobFreeAfter(m);if(MOB.f.durationMin>MOB.ed.maxMin)MOB.f.durationMin=Math.min(30,MOB.ed.maxMin);}MSG='';render();};
+window.mobOff=async()=>{const s=MOB.f.startMin;if(await run(R.q.date,opBlockSet({therapistId:MOB.tid,startMin:s,endMin:Math.min(s+30,D_().endMin),kind:'off',text:'',color:''}),false)){MOB.ed=null;render();}else render();};
 window.mobVisit=async()=>{if(await run(R.q.date,opBookingVisit(MOB.ed.b.id),false)){MOB.ed=null;render();}};
 window.mobDel=async()=>{if(!confirm('삭제할까요?'))return;if(await run(R.q.date,opBookingDelete(MOB.ed.b.id),false)){MOB.ed=null;render();}};
 window.mobClear=i=>{const r=D_().mobRows[i];if(!r)return;if(confirm(`${hm(r.startMin)}~${hm(r.endMin)} ${r.k.kind==='off'?'비근무':'차단'}을 해제할까요?`))run(R.q.date,opBlockClear(MOB.tid,r.startMin,r.endMin),false);};
