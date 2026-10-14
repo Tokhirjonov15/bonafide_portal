@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.5'   # 1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.6'   # 1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -463,7 +463,7 @@ function PollRx() {
     $dtm = ([string]$r.dtm).Trim()
     $it = [ordered]@{ cod = ([string]$r.cod).Trim(); nam = ([string]$r.nam).Trim()
                       qty = (NumTxt $r.qty); tms = (NumTxt $r.tms); day = (NumTxt $r.dys)
-                      unt = ([string]$r.unt).Trim(); dr = ([string]$r.dr).Trim()
+                      unt = ([string]$r.unt).Trim(); dr = ([string]$r.dr).Trim(); ins = ([string]$r.ins).Trim()   # 급여구분 — 금액이 아직 0원(계산 전)이어도 급/비가 보이게 (db1.6, 2026-10-14)
                       t = $(if ($dtm.Length -ge 12) { $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2) } else { '' }) }
     [void]$byOcm[$key].items.Add($it)
     # 금액(2026-10-01, db1.2): 단가·금액·급여구분(OdrInsYon: 2=비급여, 0=급여). 금액이 있는 줄만 — 비급여 동의서 금액 자동 채우기용.
@@ -484,7 +484,7 @@ function PollRx() {
       if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:PayHash[$key] = $ph }
       else { try { FsPatch "bitRx/${day}_ocm$key" @{ pay = $pay; nfs = $v.nfs; payAt = (NowIso); payPc = $Pc }; $script:PayHash[$key] = $ph } catch { Log "처방 금액 전송 오류 ${key}: $($_.Exception.Message)" } }
     }
-    $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)" }) -join "`n")
+    $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)|$($_.ins)" }) -join "`n")
     if ($script:RxHash[$key] -eq $h) { continue }
     if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }
     if (-not $script:IsLeader -and -not $RxAlways) { $script:RxHash[$key] = $h; continue }   # 대기 중엔 해시만 따라감

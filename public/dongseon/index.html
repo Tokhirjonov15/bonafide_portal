@@ -11817,7 +11817,7 @@ function rxHistRender(box,mrn,docs){
   const wd=['일','월','화','수','목','금','토'];
   const body=days.map(D=>{const g=byDay[D];const look=rxPayLookup({pay:g.pay});
     const dr=(g.items.find(x=>String(x.dr||'').trim())||{}).dr||'';
-    const tr=g.items.slice().sort((a,b)=>String(a.t||'').localeCompare(String(b.t||''))).map(x=>{const pay=look(x),ib=rxInsLabel(pay&&pay.ins);
+    const tr=g.items.slice().sort((a,b)=>String(a.t||'').localeCompare(String(b.t||''))).map(x=>{const pay=look(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);
       const qty=String(x.qty||'').trim(),unt=String(x.unt||'').trim();
       return `<tr><td class="rx-nam" title="${esc(String(x.cod||'').trim()+(x.t?' · '+x.t:''))}">${esc(String(x.nam||'').trim())}</td><td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td class="rx-amt">${pay?esc(rxWon(pay.amt)):''}</td><td class="rx-ins">${ib?`<span class="rx-ib ${ib.cls}" title="${esc(ib.tip)}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('');
     const open=!!(RX_HIST_OPEN[mrn]&&RX_HIST_OPEN[mrn][D]);
@@ -11870,7 +11870,7 @@ function fillRxBox(p){
     const k=rxDcKey(x), dc=dcs[k];
     const undoPend=!dc&&!!((p.rxDc||{})[k]);   // 저장 전 'D/C 취소'
     const dcCell=`<td class="rx-dc" title="${dc?esc(dc.pending?'D/C — [저장]을 누르면 반영됩니다':('D/C — '+(dc.by||'')+' '+hhmm(dc.at)+' (다시 누르면 취소)')):(undoPend?'D/C 취소 — [저장]을 누르면 반영됩니다':'D/C(중지) 체크 → [저장] 때 텔레그램 알림')}"><label onclick="event.stopPropagation()"><input type="checkbox"${dc?' checked':''} onchange="toggleRxDc('${p.id}','${encodeURIComponent(k)}',this)">${dc?`<span class="rx-dc-by">${esc(dc.by||'')}${dc.reason?' · '+esc(dc.reason):''}</span>`:''}${(dc&&dc.pending)||undoPend?'<span class="rx-dc-pend">저장 전</span>':''}</label></td>`;
-    const pay=payOf(x), ib=rxInsLabel(pay&&pay.ins);
+    const pay=payOf(x), ib=rxInsLabel((pay&&pay.ins)||x.ins);
     return `<tr class="${fresh?'rx-new':''}${dc?' rx-dcd':''}">${dcCell}<td class="rx-nam" title="${esc(String(x.cod||'').trim()+(t?' · 처방 '+t:''))}">${esc(String(x.nam||'').trim())}${fresh?'<span class="rx-tag">새로</span>':''}</td>
       <td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td class="rx-amt">${pay?esc(rxWon(pay.amt)):''}</td><td class="rx-ins">${ib?`<span class="rx-ib ${ib.cls}" title="${esc(ib.tip)}">${esc(ib.txt)}</span>`:''}</td>${rxGivenCell(p,k)}</tr>`;}).join('');
   const dr=(rx.items.find(x=>String(x.dr||'').trim())||{}).dr||'';
@@ -13583,7 +13583,7 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;let rxh='<div class="hint">비트 처방이 아직 없습니다.</div>';
   if(rx&&Array.isArray(rx.items)&&rx.items.length){const payOf=rxPayLookup(rx);
     /* 2026-10-14 요청: 처방명칭·금액·횟수·급/비만 (코드·총투여량·일수·시각은 뺐다) */
-    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수</th><th>급/비</th></tr></thead><tbody>${rx.items.map(x=>{const pay=payOf(x),ib=rxInsLabel(pay&&pay.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
+    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수</th><th>급/비</th></tr></thead><tbody>${rx.items.map(x=>{const pay=payOf(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
       return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td class="r">${esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
   let sumh='';{const L=(rx&&Array.isArray(rx.pay))?rx.pay:[];if(L.length){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
