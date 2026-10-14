@@ -4123,32 +4123,31 @@ function markSlipPrinted(it){
   try{audit('슬립 인쇄',(it.name||'')+(it.mrn?' ('+it.mrn+')':''));}catch(e){}
   try{renderSlipScreen();}catch(e){}try{render();}catch(e){}}
 /* ═════ 슬립 자동 인쇄 (2026-10-14 요청: 어느 진료실에서 진료를 보든 슬립이 처치실 슬립 프린터로) ═════
-   켠 컴퓨터에서만(이 기기 설정 — 처치실 PC 의 슬립 화면 [자동 인쇄]). 진료가 끝나면 한 번:
-   · 카드가 진료실을 나갔고 처방이 마지막으로 바뀐 지 1분 지남(나가자마자 처방을 한 번 더 고치는 경우를 기다림)
-   · 보드에 카드가 없는 환자는 처방이 5분 동안 그대로면
-   이미 누가 [슬립 인쇄]를 눌렀으면 다시 찍지 않는다. 처음 켰을 때·새로고침했을 때 이미 끝난 진료는 찍지 않는다(무더기 인쇄 방지).
+   켠 컴퓨터에서만(이 기기 설정 — 처치실 PC 의 슬립 화면 [자동 인쇄]). 처방이 오면(마지막 저장 뒤 30초) 바로, 처방이 바뀌면 한 번 더 — 아래 slipApReady.
+   이미 누가 이 처방으로 [슬립 인쇄]를 눌렀으면 다시 찍지 않는다. 처음 켰을 때·새로고침했을 때 이미 와 있던 처방은 찍지 않는다(무더기 인쇄 방지).
    인쇄창 없이 바로 나오게 하려면 [인쇄창 없이] 실행 파일(크롬 키오스크 인쇄)로 연 창에서 쓰고, 슬립 프린터를 기본 프린터로 */
 const SLIP_AP_KEY='dsSlipAutoPrint';
 function slipAutoOn(){try{return localStorage.getItem(SLIP_AP_KEY)==='1';}catch(e){return false;}}
 let SLIP_AP_DONE=(()=>{try{const o=JSON.parse(localStorage.getItem('dsSlipApDone')||'{}');return o.d===localYMD(new Date())?new Set(o.k||[]):new Set();}catch(e){return new Set();}})(),SLIP_AP_SEEDED=false;
 function slipApSave(){try{localStorage.setItem('dsSlipApDone',JSON.stringify({d:localYMD(new Date()),k:[...SLIP_AP_DONE].slice(-500)}));}catch(e){}}
-function slipApReady(it){const age=Date.now()-(it.t||0),p=it.p;
-  if(p&&!p.discharged){if(isClinicRoom(curRoom(p)))return false;return age>60000;}
-  return age>300000;}
+/* 2026-10-14 다시 요청: 진료실을 나갈 때가 아니라 처방이 나오면 바로 — 원장님이 나눠 저장하는 경우가 있어 마지막 저장 뒤 30초 그대로면.
+   인쇄한 뒤 처방이 바뀌면(rev 증가) 바뀐 슬립을 한 번 더(옛 슬립으로 처치하지 않게) */
+function slipApReady(it){return Date.now()-(it.t||0)>30000;}
 function slipAutoCheck(){if(!slipAutoOn()||!currentUser){SLIP_AP_SEEDED=false;return;}
   let ch=false;
-  slipItems().forEach(it=>{if(!it.valid||!it.lines.length||SLIP_AP_DONE.has(it.id))return;if(!slipApReady(it))return;
-    SLIP_AP_DONE.add(it.id);ch=true;
-    if(!SLIP_AP_SEEDED||slipPrinted(it.note).on)return;
+  slipItems().forEach(it=>{if(!it.valid||!it.lines.length)return;const key=it.id+'#'+((it.note&&it.note.rev)|0);
+    if(SLIP_AP_DONE.has(key)||!slipApReady(it))return;
+    SLIP_AP_DONE.add(key);ch=true;
+    const pr=slipPrinted(it.note);if(!SLIP_AP_SEEDED||(pr.on&&!pr.stale))return;   // 이미 이 처방으로 인쇄됨
     printSlip(it.mrn);
-    try{audit('슬립 자동 인쇄',(it.name||'')+' ('+it.mrn+')');}catch(e){}
-    try{toast('🖨 슬립 자동 인쇄 — '+dispName(it.name||it.mrn));}catch(e){}});
+    try{audit('슬립 자동 인쇄'+(pr.stale?'(처방 바뀜)':''),(it.name||'')+' ('+it.mrn+')');}catch(e){}
+    try{toast('🖨 슬립 자동 인쇄'+(pr.stale?' (처방이 바뀌어 다시)':'')+' — '+dispName(it.name||it.mrn));}catch(e){}});
   SLIP_AP_SEEDED=true;if(ch)slipApSave();}
 window.slipAutoToggle=function(){const on=!slipAutoOn();try{localStorage.setItem(SLIP_AP_KEY,on?'1':'0');}catch(e){}
   SLIP_AP_SEEDED=false;slipApBtn();
-  toast(on?'이 컴퓨터에서 슬립 자동 인쇄를 켰습니다 — 지금부터 끝나는 진료만 인쇄합니다':'슬립 자동 인쇄를 껐습니다');};
+  toast(on?'이 컴퓨터에서 슬립 자동 인쇄를 켰습니다 — 지금부터 오는 처방만 인쇄합니다':'슬립 자동 인쇄를 껐습니다');};
 function slipApBtn(){const b=document.getElementById('slipApBtn');if(!b)return;const on=slipAutoOn();b.classList.toggle('on',on);
-  b.innerHTML='<i data-lucide="printer"></i><span class="st-lbl"> 자동 인쇄 '+(on?'켜짐':'꺼짐')+'</span>';b.title=on?'이 컴퓨터: 진료가 끝나면 슬립을 자동 인쇄 — 누르면 끔':'누르면 이 컴퓨터에서 진료가 끝날 때마다 슬립 자동 인쇄 (처치실 슬립 프린터 PC 에서만 켜세요)';
+  b.innerHTML='<i data-lucide="printer"></i><span class="st-lbl"> 자동 인쇄 '+(on?'켜짐':'꺼짐')+'</span>';b.title=on?'이 컴퓨터: 처방이 오면 슬립을 자동 인쇄 — 누르면 끔':'누르면 이 컴퓨터에서 처방이 올 때마다 슬립 자동 인쇄 (처치실 슬립 프린터 PC 에서만 켜세요)';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 window.downloadSlipLauncher=function(){
   const url=((location.origin&&location.origin.indexOf('http')===0)?(location.origin+location.pathname):'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/')+'?slip';
@@ -4159,7 +4158,7 @@ window.downloadSlipLauncher=function(){
     +'if not exist %CHROME% set CHROME="%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe"\r\n'
     +'start "" %CHROME% --kiosk-printing --user-data-dir="%PROFILE%" --app=%URL%\r\n';
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'application/octet-stream'}));a.download='슬립_자동인쇄_실행.bat';a.click();
-  alert('받은 파일을 처치실 PC 바탕화면에 두고 더블클릭하세요.\n\n① 열린 창에서 로그인 → 위의 [자동 인쇄]를 켬\n② 슬립 프린터를 윈도우 "기본 프린터"로\n③ 창을 켜 둔 채로 두면 진료가 끝날 때마다 인쇄창 없이 슬립이 나옵니다');};
+  alert('받은 파일을 처치실 PC 바탕화면에 두고 더블클릭하세요.\n\n① 열린 창에서 로그인 → 위의 [자동 인쇄]를 켬\n② 슬립 프린터를 윈도우 "기본 프린터"로\n③ 창을 켜 둔 채로 두면 처방이 올 때마다 인쇄창 없이 슬립이 나옵니다');};
 function slipPrinted(n){if(!n||!n.printed)return {on:false,stale:false};return {on:true,stale:(n.rev|0)>(n.printedRev|0),at:n.printedAt,by:n.printedBy||''};}
 function slipPrintedTag(n,big){const s=slipPrinted(n);if(!s.on)return '';
   const tip=`${s.by?s.by+' · ':''}${s.at?hhmm(new Date(s.at).toISOString()):''} 인쇄${s.stale?' — 그 뒤 처방이 바뀌었습니다. 다시 인쇄하세요':''}`;
@@ -5526,10 +5525,8 @@ async function runSelfTest(){
       ok('초록 깜빡임: 수납대기에서 다시 나갔어도(payAgain) 계산 뒤 새 처방이 없으면 깜빡이지 않음', !bitPaidMore(P));
       bitRxFor=_b;ROOMS=_R;}
      {const now=Date.now();   // 슬립 자동 인쇄 — 언제 '진료 끝'으로 보나 (2026-10-14)
-      ok('슬립 자동 인쇄: 아직 진료실에 있으면 인쇄 안 함', !slipApReady({t:now-600000,p:{route:['진료실1'],step:0}}));
-      ok('슬립 자동 인쇄: 진료실을 나갔어도 처방이 막 바뀌었으면(1분 안) 기다림', !slipApReady({t:now-10000,p:{route:['진료실1','처치실'],step:1}}));
-      ok('슬립 자동 인쇄: 진료실을 나가고 1분이 지나면 인쇄', slipApReady({t:now-70000,p:{route:['진료실1','처치실'],step:1}}));
-      ok('슬립 자동 인쇄: 카드가 없으면 처방이 5분 그대로일 때', !slipApReady({t:now-120000,p:null})&&slipApReady({t:now-310000,p:null}));}
+      ok('슬립 자동 인쇄: 처방이 막 저장됐으면(30초 안) 기다림 — 나눠 저장하는 경우', !slipApReady({t:now-10000}));
+      ok('슬립 자동 인쇄: 마지막 저장 뒤 30초 그대로면 바로 인쇄(진료실에 있어도)', slipApReady({t:now-35000,p:{route:['진료실1'],step:0}}));}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
     {const _d5=data,_n5=BIT_NOTES,_pm=PMEMO,_ps=window.pmemoSave,_au=window.audit;window.pmemoSave=()=>{};window.audit=()=>{};
