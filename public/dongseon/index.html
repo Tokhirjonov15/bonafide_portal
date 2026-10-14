@@ -2909,8 +2909,8 @@ function rxAfterPayHere(p,room){
     const cod=String(it.cod||'').trim(),nam=String(it.nam||'').trim();
     return ROUTE_RX_RULES.some(r=>r.room===room&&rxRuleHit(r,cod,nam));});}
 /* 초록 깜빡임 = 추가 수납이 있을 때만 (2026-10-14 요청: 4층처럼 먼저 계산하고 치료받는 환자도 깜빡였다 — 33173 김정훈).
-   비트 수납완료 뒤에 새 처방(동선에 들어가는 처방)이 나왔거나, 수납대기에서 새 처방으로 다시 나간 환자(payAgain)만. 그 밖에는 초록 테두리만 */
-function bitPaidMore(p){if(!p||!p.bitPaid)return false;if(p.payAgain)return true;
+   비트 수납완료 뒤에 새 처방(동선에 들어가는 처방)이 나왔을 때만 (2026-10-14 다시 요청 — 수납대기에서 다시 나간 것(payAgain)만으로는 깜빡이지 않음). 그 밖에는 초록 테두리만 */
+function bitPaidMore(p){if(!p||!p.bitPaid)return false;
   const d=new Date(p.bitPaid.at);if(isNaN(d))return false;const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   return rxItemsOf(p).some(it=>{const m=/^(\d{1,2}):(\d{2})/.exec(String(it.t||''));if(!m||(m[1].padStart(2,'0')+':'+m[2])<=hm)return false;
     const cod=String(it.cod||'').trim(),nam=String(it.nam||'').trim();return ROUTE_RX_RULES.some(r=>rxRuleHit(r,cod,nam));});}
@@ -5479,6 +5479,8 @@ async function runSelfTest(){
       ok('초록 깜빡임: 먼저 계산하고 치료받는 환자(계산 뒤 새 처방 없음)는 깜빡이지 않음', !bitPaidMore(P));
       bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'},{cod:'ES10',nam:'체외충격파 10',t:'17:45'}]});
       ok('초록 깜빡임: 계산 뒤 새 처방(충격파)이 나오면 깜빡임 = 추가 수납', bitPaidMore(P));
+      bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'}]});P.payAgain=true;
+      ok('초록 깜빡임: 수납대기에서 다시 나갔어도(payAgain) 계산 뒤 새 처방이 없으면 깜빡이지 않음', !bitPaidMore(P));
       bitRxFor=_b;ROOMS=_R;}
      data=_d4;BIT_NOTES=_n4;SLIP_ROOM=_r4;BIT_LOOKUP=_l4;}
     // ── 외래진료실 특이사항 → 명단 특이사항(영구) 보충 ──
