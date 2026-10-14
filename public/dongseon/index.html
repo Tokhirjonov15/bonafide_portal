@@ -3315,6 +3315,24 @@ let BIT_LOOKUP=[];                                       // 오늘 접수 창 �
 /* ── 비트 진료 예약(bitResv) — DB 에이전트가 RsvInf 를 8초마다 읽어 바뀐 날짜만 다시 쓴다(접수 PC 가 비트에서 시각을 옮기면 몇 초 안에 반영) ──
    BIT_RESV[날짜] = {date, updatedAt, count, items:[{k,t,room,dr,mrn,name,birth,sex,div,sts,ostt,acp,memo,by,naver}]}, BIT_RESV_SUM = {days:{날짜:{n,canc,arrived,naver}}} */
 let BIT_RX={}, BIT_RX_MRN={};   // 비트 처방내역(오늘) — 접수번호별 / 병록번호별 (2026-09-23)
+let BIT_RX_DOCS=null,BIT_RX_CXSIG='';   // 처방 문서 원본(오늘) · 접수취소된 접수번호 모음(바뀌면 다시 묶음)
+/* 처방 문서 → 접수번호별·병록번호별로 묶기. 2026-10-14 요청 '비트대로만': 비트에서 접수취소된 접수(bitIntake cancelled)의 처방은 뺀다
+   (접수 PC 에이전트 db1.5 부터는 취소·전부 삭제된 접수의 처방을 비워 보내지만, 옛 에이전트·이미 올라온 문서도 화면에서 바로 빠지게) */
+function bitRxCancelled(){const s=new Set();(BIT_INTAKE||[]).forEach(x=>{if(x&&x.cancelled===true){const o=String(x.ocmNum||'').replace(/\D/g,'')||String(x.docId||'').replace(/^.*_ocm/,'').replace(/\D/g,'');if(o)s.add(o);}});return s;}
+function bitRxRebuild(){if(!BIT_RX_DOCS)return;const cx=bitRxCancelled();BIT_RX_CXSIG=[...cx].sort().join(',');
+  BIT_RX={};BIT_RX_MRN={};
+  BIT_RX_DOCS.forEach(v=>{const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
+    if(ocm&&cx.has(ocm.replace(/\D/g,'')))return;   // 접수취소된 접수의 처방
+    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim()};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
+    if(ocm)BIT_RX[ocm]=rec;
+    /* 같은 환자가 오늘 비트에 접수가 둘 이상이면(과·담당의 바꿔 재접수 등) 처방을 모두 합친다 (2026-10-01: 한 접수분만 보였다) */
+    if(mrn){const o=BIT_RX_MRN[mrn];
+      if(!o)BIT_RX_MRN[mrn]=rec;
+      else{const tk=x=>String(x.t||'');BIT_RX_MRN[mrn]={ocm:o.ocm,ocms:[...(o.ocms||[o.ocm]),ocm],mrn,
+        items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs};}}});}
+/* 접수 목록이 바뀌어 취소된 접수가 달라지면 처방을 다시 묶는다 */
+function bitRxCancelSync(){if(!BIT_RX_DOCS)return;const sig=[...bitRxCancelled()].sort().join(',');if(sig===BIT_RX_CXSIG)return;
+  bitRxRebuild();try{render();}catch(e){}if(typeof editId!=='undefined'&&editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}}
 /* 이 카드의 처방: 병록번호 우선, 없으면 비트 접수번호로 찾는다 */
 /* 2026-10-11: 처방이 있는데 일부 환자만 처방내역(D/C)이 안 보였다 → 더 너그럽게 찾는다:
    ① 차트번호 그대로 ② 숫자만·앞 0 뗀 차트번호(카드 '0624' ↔ 비트 '624', 공백·전각) ③ 카드의 접수번호
@@ -3559,11 +3577,12 @@ function subscribeBitIntake(){
   if(BIT_SUB_DATE===today&&BIT_SUB_ROLE===role&&(cloud.unsubIntake||cloud.unsubNote||cloud.unsubBk))return;
   bitUnsubAll();BIT_SUB_DATE=today;BIT_SUB_ROLE=role;
   if(role==='slip'||role==='resv'){   // 슬립·4층 전용 창: 진료실(진료과) 표시용으로 오늘 접수만 읽는다 — 카드 생성 등 처리는 하지 않음 (2026-10-03)
-    cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));try{renderSlipScreen();}catch(e){}try{if(resvOpen)renderResvScreen();}catch(e){}},err=>console.warn('bitIntake(slip)',err));
+    cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));try{bitRxCancelSync();}catch(e){}try{renderSlipScreen();}catch(e){}try{if(resvOpen)renderResvScreen();}catch(e){}},err=>console.warn('bitIntake(slip)',err));
   }
   if(role==='staff'){   // 접수 대기 처리(카드 자동 생성·취소·수납)는 직원 보드만
     cloud.unsubIntake=cloud.intakeCol.where('date','==',today).onSnapshot(s=>{
       BIT_INTAKE=s.docs.map(d=>Object.assign({docId:d.id},d.data()));bitApplyLookups();renderBitBar();
+      try{bitRxCancelSync();}catch(e){console.warn('rx cancel',e);}   // 접수취소된 접수의 처방 빼기 (2026-10-14)
       try{bitBackfillMrn();}catch(e){console.warn(e);}try{bitBackfillMemo();}catch(e){console.warn(e);}   // 차트번호를 먼저 채운 뒤 메모 보충
       try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}try{bitApplyHold();}catch(e){console.warn(e);}
     },err=>console.warn('bitIntake',err));
@@ -3581,15 +3600,7 @@ function subscribeBitIntake(){
   }
   if((role==='staff'||role==='slip')&&cloud.rxCol){   // 비트 처방내역(오늘) — 카드 요약·환자 정보 창 표 (2026-09-23)
     cloud.unsubRx=cloud.rxCol.where('date','==',today).onSnapshot(s=>{
-      BIT_RX={};BIT_RX_MRN={};
-      s.docs.forEach(d=>{const v=d.data()||{};const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
-        const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim()};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
-        if(ocm)BIT_RX[ocm]=rec;
-        /* 같은 환자가 오늘 비트에 접수가 둘 이상이면(과·담당의 바꿔 재접수 등) 처방을 모두 합친다 (2026-10-01: 한 접수분만 보였다) */
-        if(mrn){const o=BIT_RX_MRN[mrn];
-          if(!o)BIT_RX_MRN[mrn]=rec;
-          else{const tk=x=>String(x.t||'');BIT_RX_MRN[mrn]={ocm:o.ocm,ocms:[...(o.ocms||[o.ocm]),ocm],mrn,
-            items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs};}}});
+      BIT_RX_DOCS=s.docs.map(d=>d.data()||{});bitRxRebuild();
       try{applyRxRoutesAll();}catch(e){console.warn('rxRoutes',e);}   // 처방 → 동선 자동 채우기 (바뀐 카드가 있으면 안에서 다시 그림)
       try{bonusScanRx();}catch(e){console.warn('bonusScan',e);}   // 주사 맞은 날 → 보너스 (2026-10-04)
       try{bitPaidAmtFill();}catch(e){console.warn('paid amt',e);}   // 계산한 카드의 기준 금액 (2026-10-14)
@@ -5594,6 +5605,13 @@ async function runSelfTest(){
       ok('금액 바뀜: 계산 때와 같으면 표시·깜빡임 없음', !bitPaidAmtChange(P)&&!bitPaidMore(P));
       bitRxFor=()=>({items:[{cod:'CRYO10',nam:'신장분사치료 10',t:'17:20'}],pay:[{cod:'CRYO10',amt:'50,000'}]});
       eq('금액 바뀜: D/C 로 금액이 줄면 깜빡임 + 이전→지금 금액', [bitPaidMore(P),bitPaidAmtChange(P)], [true,{from:80000,to:50000}]);
+      {const _docs=BIT_RX_DOCS,_in=BIT_INTAKE,_rx=BIT_RX,_rm=BIT_RX_MRN;   // 비트대로만 — 접수취소된 접수의 처방 빼기 (2026-10-14)
+       BIT_RX_DOCS=[{ocm:'101',mrn:'555',items:[{cod:'MM1',nam:'옛 처방',t:'09:00'}]},{ocm:'102',mrn:'555',items:[{cod:'ES10',nam:'새 처방',t:'10:00'}]}];
+       BIT_INTAKE=[{docId:'2026-10-14_ocm101',ocmNum:'101',mrn:'555',cancelled:true,command:3}];bitRxRebuild();
+       ok('비트대로만: 접수취소된 접수의 처방은 빠지고 남은 접수 처방만', BIT_RX_MRN['555'].items.map(x=>x.nam).join()==='새 처방'&&!BIT_RX['101']);
+       BIT_INTAKE=[];bitRxCancelSync();
+       ok('비트대로만: 취소가 풀리면(재접수) 다시 합쳐짐', BIT_RX_MRN['555'].items.length===2);
+       BIT_RX_DOCS=_docs;BIT_INTAKE=_in;BIT_RX=_rx;BIT_RX_MRN=_rm;}
       bitRxFor=_b;ROOMS=_R;}
      {const now=Date.now();   // 슬립 자동 인쇄 — 언제 '진료 끝'으로 보나 (2026-10-14)
       ok('슬립 자동 인쇄: 처방이 막 저장됐으면(30초 안) 기다림 — 나눠 저장하는 경우', !slipApReady({t:now-10000}));

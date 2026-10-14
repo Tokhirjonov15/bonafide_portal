@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.4'   # 1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.5'   # 1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -435,8 +435,16 @@ SELECT RTRIM(o.OdrOcmNum) AS k, RTRIM(o.OdrChtNum) AS mrn, o.OdrSeq AS seq,
 FROM OdrInf o WITH (NOLOCK)
 JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OdrDtrCod
-WHERE LEFT(m.OcmAcpDtm, 8) = '{0}' AND o.OdrDelFlg <> 'C'
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}' AND o.OdrDelFlg <> 'C' AND m.OcmComStt NOT IN ('CN')
 ORDER BY o.OdrOcmNum, o.OdrSeq
+"@
+# 오늘 처방이 한 번이라도 있었던 접수(지운 줄·접수 취소 포함) — 위 목록에서 빠진 접수는 처방을 비워 보낸다 (db1.5, 2026-10-14:
+#  처방을 모두 지우거나 접수를 취소해도 동선관리에 옛 처방이 남았다 — 남은 줄이 있는 접수만 다시 썼기 때문)
+$RX_EVER_QUERY = @"
+SELECT DISTINCT RTRIM(o.OdrOcmNum) AS k
+FROM OdrInf o WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}'
 "@
 $script:RxHash = @{}
 $script:PayHash = @{}
@@ -481,11 +489,25 @@ function PollRx() {
     if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }
     if (-not $script:IsLeader -and -not $RxAlways) { $script:RxHash[$key] = $h; continue }   # 대기 중엔 해시만 따라감
     try {
-      FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; mrn = $v.mrn; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$v.items.Count; items = @($v.items); nfs = $v.nfs }
+      FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; mrn = $v.mrn; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$v.items.Count; items = @($v.items); nfs = $v.nfs; cleared = $false }
       $script:RxHash[$key] = $h; $sent++
     } catch { Log "처방 문서 전송 오류 ${key}: $($_.Exception.Message)" }
   }
-  if ($sent) { Log "처방 문서: $sent 건 갱신 (오늘 접수 $($byOcm.Count)건 / 줄 $($rows.Rows.Count)개)" }
+  # 처방이 다 지워졌거나 접수가 취소된 접수 → 처방·금액을 빈 목록으로 (한 번만. 프로그램을 다시 켜면 한 번 더 — 같은 내용이라 무해)
+  $cleared = 0
+  try {
+    $ever = SqlRows ($RX_EVER_QUERY -f $ymd)
+    foreach ($r in $ever.Rows) {
+      $key = ([string]$r.k -replace '\D', ''); if (-not $key -or $byOcm.ContainsKey($key)) { continue }
+      if ($script:RxHash.ContainsKey($key) -and $script:RxHash[$key] -eq '' -and $script:PayHash[$key] -eq '') { continue }
+      if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways)) { $script:RxHash[$key] = ''; $script:PayHash[$key] = ''; continue }
+      try {
+        FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = 0; items = @(); pay = @(); payAt = (NowIso); cleared = $true }
+        $script:RxHash[$key] = ''; $script:PayHash[$key] = ''; $cleared++
+      } catch { Log "처방 비우기 오류 ${key}: $($_.Exception.Message)" }
+    }
+  } catch { Log "처방 비우기 조회 오류: $($_.Exception.Message)" }
+  if ($sent -or $cleared) { Log "처방 문서: $sent 건 갱신, $cleared 건 비움(처방 삭제·접수 취소) (오늘 접수 $($byOcm.Count)건 / 줄 $($rows.Rows.Count)개)" }
 }
 
 # ── 한 달 처방 합계 → bitRx/_month_YYYY-MM (db1.4, 2026-10-04) ──
