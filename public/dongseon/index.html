@@ -1698,6 +1698,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .c4-title{font-size:clamp(24px,3.4vh,40px);font-weight:800;color:#57534e;letter-spacing:2px}
   #bonusMgr .c4-chk{display:flex;align-items:center;gap:2.4vh;text-align:left;background:#fff;border:4px solid #d6d3d1;border-radius:26px;padding:3vh 3.4vh;font:inherit;cursor:pointer;touch-action:manipulation;box-shadow:0 8px 26px rgba(60,50,40,.12)}
   #bonusMgr .c4-chk.on{border-color:#2563eb;background:#eff6ff}
+  #bonusMgr .c4-items{text-align:left;margin:0 0 3vh;padding:2.4vh 3.4vh 2.4vh 6vh;background:#fff;border-radius:20px;font-size:clamp(17px,2.4vh,26px);line-height:1.6;max-height:42vh;overflow:auto}   /* 치료 동의 항목 (2026-10-14) */
+  #bonusMgr .c4-items li{margin:.4em 0}
+  #bonusMgr .cip-head .bm-ask{font-size:clamp(20px,3.2vh,34px);font-weight:800}   /* '물리치료 접수 하시겠습니까?' */
   #bonusMgr .c4-box{flex:none;width:clamp(56px,8vh,90px);height:clamp(56px,8vh,90px);border:5px solid #78716c;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:clamp(40px,6vh,70px);font-weight:900;color:#fff;line-height:1}
   #bonusMgr .c4-chk.on .c4-box{background:#2563eb;border-color:#2563eb}
   #bonusMgr .c4-text{font-size:clamp(26px,3.9vh,46px);font-weight:800;line-height:1.45;word-break:keep-all;color:#1f2937}
@@ -5692,6 +5695,10 @@ async function runSelfTest(){
       consultNoGoPay('cn1','비용 상담');consultNoGoPay('cn2','비용 상담');
       window.toast=_t;data=_d;ROOMS=_R;
       eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
+     {const _d=data;data=[{id:'e1',mrn:'1',name:'앞으로4층',route:['진료실1','C-Arm','4층 대기실'],step:1},{id:'e2',mrn:'2',name:'4층없음',route:['진료실1','C-Arm','수납대기'],step:1},
+        {id:'e3',mrn:'3',name:'4층다끝남',route:['4층 대기실','SASO','수납대기'],step:2},{id:'e4',mrn:'4',name:'지금4층',route:['진료실1','SASO','수납대기'],step:1}];   // 물리치료 접수 목록 (2026-10-14)
+      const L=bonusMgrList().map(p=>p.name).join();data=_d;
+      eq('물리치료 접수 목록: 지금부터 4층 동선이 있는 환자 모두 (주사 조건 없음)', L, '앞으로4층,지금4층');}
      {const rm=(cod,nam)=>ROUTE_RX_RULES.filter(r=>rxRuleHit(r,cod,nam||'')).map(r=>r.room).join();   // 4층 처방 시트 (2026-10-14)
       eq('4층 처방: ES·CRYO·MM 포함, ss·cs, 자동차도수 코드 / dressing 은 충격파 아님',
         [rm('ES10'),rm('EES15'),rm('CRYO10'),rm('MM6'),rm('ss'),rm('cs'),rm('자동차도수'),rm('dressing','드레싱')],
@@ -9404,13 +9411,13 @@ function renderBonusSection(){
           <button type="button" class="bk-btn" onclick="pbOpen('review')"><i data-lucide="camera"></i> 리뷰 확인</button>`}
       ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}
       ${(!b.review||i.left)?`<button type="button" class="bk-skip" onclick="bonusSkip()">혜택 안 받기</button>`
-        :c4Need(p)?`<button type="button" class="bk-btn bk-btn2 bk-next" onclick="c4Open(data.find(x=>x.id===BONUS_PID))">다음: 치료 동의 →</button>`:''}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
+        :`<button type="button" class="bk-btn bk-btn2 bk-next" onclick="c4Open(data.find(x=>x.id===BONUS_PID))">다음: 치료 동의 →</button>`}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 let BK_STAFF_OPEN=false;
 /* [혜택 안 받기] (2026-10-06 요청) — 리뷰를 쓰기 싫은 환자: 보너스 없이 치료 동의로(동의가 필요 없으면 목록으로) */
 window.bonusSkip=function(){const p=data.find(x=>x.id===BONUS_PID);if(!p){bonusMgrBack();return;}
   try{audit('4층 혜택 안 받기',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}
-  if(c4Need(p))c4Open(p);else bonusMgrBack();};
+  c4Open(p);};   // 2026-10-14: 늘 치료 동의로
 window.bonusReview=async function(on){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
   if(!on&&!isAdmin())return;
   if(on&&!confirm(`'${BONUS_PID?bonusMaskName(p.name):p.name}'님의 네이버 리뷰를 확인하셨나요?
@@ -9440,14 +9447,15 @@ function bonusMaskName(n){n=String(n||'').trim();if(!n)return '';
 /* 4층 방 (2026-10-06 요청으로 직접 정함) — 이 방에 있는 환자만 4층 관리 목록에 */
 const FLOOR4_ROOMS=['4층 대기실','4층 상담','SASO','기본물리치료','자동차도수','아쿠아','롤러','신장분사','충격파'];
 function isFloor4Room(r){const k=x=>String(x||'').replace(/\s+/g,'').toLowerCase();const rr=k(r);return !!rr&&FLOOR4_ROOMS.some(x=>k(x)===rr);}
-function bonusMgrList(){const today=localYMD(new Date());
+/* 2026-10-14 요청: 목록 = 4층 동선이 있는 환자 모두(지금 방부터 앞으로 4층 방이 하나라도) — 주사 3일·동의 필요 조건은 없앴다 */
+function bonusMgrList(){
   return data.filter(p=>{if(!p||p._viewOnly||p.discharged)return false;const mrn=normMrn(p.mrn);if(!mrn)return false;
-    const r=curRoom(p);if(!isFloor4Room(r))return false;
-    const b=BONUS[mrn]||{};return injRecent(b,today)||c4Need(p);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
+    const R=Array.isArray(p.route)?p.route:[],st=Math.max(0,Math.min(p.step||0,R.length-1));
+    return R.slice(st).some(isFloor4Room);}).slice().sort((a,b)=>(a.seq||9999)-(b.seq||9999)||String(a.arrivedAt||'').localeCompare(String(b.arrivedAt||'')));}
 window.openBonusMgr=function(){if(!currentUser)return;BONUS_MGR_OPEN=true;
   let ov=document.getElementById('bonusMgr');
   if(!ov){ov=document.createElement('div');ov.id='bonusMgr';ov.className='cst-info-pop';
-    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><i data-lucide="gift"></i> <b>4층 관리</b> <span class="hint">치료 동의 · 리뷰·주사 보너스 (SASO·아쿠아·롤러)</span><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
+    ov.innerHTML=`<div class="cip-box bm-box"><div class="cip-head"><b class="bm-ask">물리치료 접수 하시겠습니까? 성함을 클릭해주세요</b><span class="cst-spacer"></span><button type="button" class="btn sm" onclick="closeBonusMgr()">닫기</button></div>
       <div id="bonusMgrList" class="bm-list"></div>
       <div id="bonusMgrVerify" class="bm-verify" style="display:none"></div>
       <div id="bonusMgrOne" class="bm-one" style="display:none"><div class="bm-one-head"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button> <b id="bonusMgrName"></b></div><div class="bm-intro">최근 3일 안에 주사 치료를 받으셨나요?<br>네이버 리뷰를 남겨 주시는 분들께<br><b>물리치료 혜택을</b> 드리고 있습니다.</div><div id="bonusBox2" class="bnbox"></div></div></div>`;
@@ -9471,7 +9479,10 @@ let BV=null;   // {pid, d:'입력한 숫자', miss:틀린 횟수}
    · 그 밖에 기본물리치료(MM… 코드)가 있으면(CRYO3+MM 포함): 오는 날마다 하루 한 번
    · CRYO3 만 있고 MM 이 없으면: 동의 없음(목록에도 안 나옴)
    기록: 보너스 문서(bonus/{차트번호})의 c4At(처음 받은 때)·c4Days(받은 날)·c4Log. 환자 정보 창 '4층 혜택' 칸에 '4층 동의서 받음' 표시 */
-const C4_TEXT='환자분의 빠른 일상 복귀를 돕기 위해, 담당 치료사가 진행하는 전문적인 치료 행위에 동의합니다.';
+/* 2026-10-14 요청: 동의 항목(위, 나중에 받아서 C4_ITEMS 에 넣는다) + 맨 아래 '상기내용에 동의하며 치료진행에 동의합니다' 체크 */
+const C4_ITEMS=['환자분의 빠른 일상 복귀를 돕기 위해, 담당 치료사가 진행하는 전문적인 치료 행위에 동의합니다.'];
+const C4_AGREE='상기내용에 동의하며 치료진행에 동의합니다';
+const C4_TEXT=C4_ITEMS.join(' / ')+' — '+C4_AGREE;   // 기록(c4Log.text)에 남는 글
 let C4=null, C4_TIMER=null;   // {pid, ok:체크함, saving}
 function c4Kind(p){let mm=false,nc=false;
   (typeof rxItemsOf==='function'?rxItemsOf(p):[]).forEach(it=>{const c=String(it.cod||'').replace(/\s+/g,'').toLowerCase();
@@ -9497,7 +9508,8 @@ function renderC4(){const box=document.getElementById('bonusMgrVerify');if(!box|
     <div class="bv-card c4-card">
       <div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
       <div class="c4-title">치료 동의</div>
-      <button type="button" class="c4-chk${C4.ok?' on':''}" onclick="c4Toggle()" aria-pressed="${C4.ok}"><span class="c4-box">${C4.ok?'✔':''}</span><span class="c4-text">환자분의 빠른 일상 복귀를 돕기 위해, 담당 치료사가 진행하는 전문적인 치료 행위에 동의합니다.</span></button>
+      <ol class="c4-items">${C4_ITEMS.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
+      <button type="button" class="c4-chk${C4.ok?' on':''}" onclick="c4Toggle()" aria-pressed="${C4.ok}"><span class="c4-box">${C4.ok?'✔':''}</span><span class="c4-text">${esc(C4_AGREE)}</span></button>
       <button type="button" class="bk-btn c4-ok" ${C4.ok&&!C4.saving?'':'disabled'} onclick="c4Submit()">${C4.saving?'저장 중…':'동의합니다'}</button>
       <div class="c4-hint">${C4.ok?'':'위 네모 칸을 눌러 체크해 주세요'}</div>
     </div>`;}
@@ -9518,7 +9530,7 @@ function c4Thanks(p){C4={pid:p.id,ok:true,saving:true,done:true};BV=null;BONUS_P
   document.getElementById('bonusMgrList').style.display='none';document.getElementById('bonusMgrOne').style.display='none';
   const box=document.getElementById('bonusMgrVerify');box.style.display='';bmListing(false);bmCloseLabel();
   box.innerHTML=`<div class="bv-card c4-card"><div class="c4-done">✔</div><div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
-    <div class="bv-msg">동의해 주셔서 감사합니다.<br>치료사가 곧 안내해 드릴게요.</div></div>`;
+    <div class="bv-msg">대기실에 앉아계시면<br>치료사가 곧 안내해 드리겠습니다.</div></div>`;
   clearTimeout(C4_TIMER);C4_TIMER=setTimeout(()=>{if(C4&&C4.done&&C4.pid===p.id)bonusMgrBack();},4000);}
 window.bonusMgrPick=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   BV={pid,d:'',miss:0};
@@ -9553,7 +9565,7 @@ document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMg
   if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
 function bonusMgrOpenOne(p){
   /* 주사 맞은 지 3일 안인 환자(2026-10-10): 보너스(리뷰·치료 고르기) 먼저 → 끝나면 치료 동의 (2026-10-06 요청). 주사 없는 환자는 바로 동의 */
-  if(!bmInjToday(p)){if(c4Need(p))c4Open(p);else c4Thanks(p);return;}
+  if(!bmInjToday(p)){c4Open(p);return;}   // 2026-10-14: 물리치료 접수 = 늘 치료 동의 화면(오늘 이미 동의했어도)
   C4=null;BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name)+' 님';   // 성함 뒤 '님' (2026-10-06 요청)
@@ -9565,7 +9577,7 @@ function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!
   const L=bonusMgrList();
   box.innerHTML=L.length?L.map(p=>{const i=bonusInfo(p.mrn);
       return `<button type="button" class="bm-item${i.left?' has':''}" onclick="bonusMgrPick('${esc(p.id)}')"><span class="bm-name">${esc(bonusMaskName(p.name))}</span>${i.left?`<span class="bm-left"><i data-lucide="gift"></i> ${i.left}</span>`:''}</button>`;}).join('')
-    :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 4층에 확인할 환자가 없습니다.</div>';
+    :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 물리치료 접수할 환자가 없습니다.</div>';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 /* 보너스 방을 동선에 — 이미 앞으로 갈 방이면 그대로, 아니면 수납 방 바로 앞(없으면 맨 끝) */
 /* 동선 줄에 '🎁 혜택 추가' 작은 표시 — 오늘 이 환자가 4층 관리에서 고른 무료 치료 방 (2026-10-06 요청) */
@@ -9649,7 +9661,7 @@ window.pbOpen=function(mode){const p=data.find(x=>x.id===bonusCurPid());const mr
 window.pbClose=function(){const _pbPid=PB.pid;clearTimeout(PB_TIMER);pbCamStop();const d=document.getElementById('pbScreen');if(d)d.classList.remove('show');document.body.classList.remove('pb-on');
   PB={pid:'',mrn:'',name:'',mode:'',phase:'',pick:''};try{renderBonusSection();render();}catch(e){}
   /* 혜택 관리에서 띄운 화면이면 닫을 때 혜택 관리 첫 화면(이름 목록)으로 — 환자 전용 화면이라 다른 환자 정보·보드가 보이면 안 된다 (2026-10-06) */
-  if(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN)try{const q=data.find(x=>x.id===_pbPid);if(q&&c4Need(q))c4Open(q);else bonusMgrBack();}catch(e){}};
+  if(typeof BONUS_MGR_OPEN!=='undefined'&&BONUS_MGR_OPEN)try{const q=data.find(x=>x.id===_pbPid);if(q)c4Open(q);else bonusMgrBack();}catch(e){}};
 function pbCamStop(){pbAutoStop();if(PB_STREAM){try{PB_STREAM.getTracks().forEach(t=>t.stop());}catch(e){}PB_STREAM=null;}}
 /* 자동 촬영 (2026-10-06 요청) — 카메라가 실제로 켜진 뒤, 점선 칸 안에 '밝은 바탕 + 검은 글자'(휴대폰 리뷰 화면)가
    1초쯤 흔들림 없이 보이면 저절로 찰칵 → pbCheck. 전부 이 기기 브라우저 안에서 계산(서버·비용 없음). [리뷰 확인하기] 버튼은 그대로 */
