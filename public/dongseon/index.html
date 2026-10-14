@@ -7269,7 +7269,7 @@ function render(){
       </div>
       ${folded?'':colOrderTabs(room)}
       ${(shown&&COL_SEARCH_OPEN[room])?`<div class="col-search"><input data-room="${esc(room)}" placeholder="이름·병록번호 검색" value="${esc(COL_Q[room]||'')}" oninput="colSearchInput('${esc(room)}',this.value)" onclick="event.stopPropagation()"></div>`:''}
-      ${((m.doctors&&m.doctors.length)||SHOW_OWNERS)?`<div class="owners-row">${(m.doctors&&m.doctors.length)?`<span class="col-doc" title="이 방 진료의: ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}"><i data-lucide="stethoscope"></i> ${esc(m.doctors.map(n=>offLabel(n)?n+'('+offLabel(n)+')':n).join(', '))}</span>`:''}${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}
+      ${''/* 방 제목 아래 직원 이름 줄(🩺 김현우, 채상훈 …)은 뺐다 (2026-10-14 요청) — 선택칸은 직원 목록에서 */}${SHOW_OWNERS?`<div class="owners-row">${SHOW_OWNERS?ownersHtml+`<button class="owner-add" title="담당자 지정/해제·주부 변경" onclick="event.stopPropagation();openOwners('${esc(room)}')" style="font-size:11px;padding:1px 9px;border-radius:20px;border:1px dashed var(--line);background:transparent;color:var(--sub);cursor:pointer">＋ 담당</button>`:''}</div>`:''}
       ${folded?'':f4ColHtml(room)}`;   /* 이 방에서 4층에 보낸 환자 (2026-10-14) */
     const body=document.createElement("div");
     body.className="col-body";body.dataset.room=room;
