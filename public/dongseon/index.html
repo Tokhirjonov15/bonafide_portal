@@ -2795,9 +2795,10 @@ function rxRouteCompute(p,h,stamp){
   if(Array.isArray(p.routeDropped)&&p.routeDropped.length)want=want.filter(r=>!p.routeDropped.includes(r));   // 비용 상담 '시행 안 함'으로 지운 방은 다시 넣지 않는다 (2026-10-13)
   /* 2026-10-01 '동선관리 로직' 시트
      · MM(기본물리치료)만 있으면 → 수납대기 → 4층 대기실 → SASO → 기본물리치료 로 고정
-     · CS·SS·C-arm·sono·자동차도수 중 하나라도, 또는 4층 치료가 있으면 → 4층 대기실을 넣는다 */
+     · CS·SS·자동차도수 중 하나라도, 또는 4층 치료가 있으면 → 4층 대기실을 넣는다 (C-arm·sono 주사만으로는 아님 — 2026-10-14) */
   if(want.length===1&&want[0]==='기본물리치료'&&ROOMS.includes('SASO'))want=['SASO','기본물리치료'];
-  const FLOOR4_ANY=['4층 상담','SASO','자동차도수','C-Arm','Sono','충격파','신장분사','물리치료','기본물리치료'];
+  /* 2026-10-14 요청: 주사(C-Arm·Sono·처치·근전도)만으로는 4층에 안 간다 — SS(SASO)나 4층 치료(신장분사·충격파·물리치료·자동차도수·4층 상담)가 함께 있어야 4층 대기실. 없으면 수납대기로 */
+  const FLOOR4_ANY=['4층 상담','SASO','자동차도수','충격파','신장분사','물리치료','기본물리치료'];
   if(ROOMS.includes('4층 대기실')&&!want.includes('4층 대기실')&&want.some(r=>FLOOR4_ANY.includes(r)))want=[...want,'4층 대기실'];
   if(Array.isArray(p.routeDropped)&&p.routeDropped.length)want=want.filter(r=>!p.routeDropped.includes(r));
   /* 2026-10-13 4층 직원 요청: 4층 치료는 정해진 순서가 없어 4층 대기실까지만 자동으로 넣는다 — 그 뒤(상담·도수·충격파·물리치료 등)는 직원이 직접 넣거나 끌어 옮긴다.
@@ -5657,6 +5658,12 @@ async function runSelfTest(){
       rxDcGroupUndo('dcu','물리치료');rxDcPendCommit('dcu');
       ok('묶음 D/C 취소: [저장] 하면 묶음 2건만 취소, 따로 D/C 한 1건은 남음', Object.keys(P.rxDc||{}).length===1&&!!P.rxDc[rxDcKey(items[2])]);
       data=_d;bitRxFor=_b;window.confirm=_cf;window.toast=_toast;}
+     {const _b=bitRxFor,_R=ROOMS;ROOMS=['3층 대기실','진료실1','진료 상담','비용 상담','C-Arm','Sono','처치실','근전도검사','4층 대기실','SASO','신장분사','수납대기','수납완료'];   // 주사만이면 4층 안 감 (2026-10-14)
+      const plan=items=>{bitRxFor=()=>({items});const P={id:'rp',name:'동선',mrn:'',route:['3층 대기실','진료실1'],step:1,status:'대기',notes:{},visits:[]};
+        try{return rxRouteCompute(P,'h',Date.now()).next||P.route;}catch(e){return ['ERR '+e.message];}};
+      const a=plan([{cod:'C-ARM',nam:'C-ARM',t:'10:00'},{cod:'Rocaine',nam:'로카인',t:'10:00'}]),b=plan([{cod:'C-ARM',nam:'C-ARM',t:'10:00'},{cod:'SS',nam:'SS',t:'10:00'}]);
+      bitRxFor=_b;ROOMS=_R;
+      ok('4층 가는 규칙: 주사(C-Arm)만이면 4층 대기실 없이 수납대기, 주사+SS 면 4층 대기실', !a.includes('4층 대기실')&&a.includes('수납대기')&&b.includes('4층 대기실'), JSON.stringify([a,b]));}
      {const rm=(cod,nam)=>ROUTE_RX_RULES.filter(r=>rxRuleHit(r,cod,nam||'')).map(r=>r.room).join();   // 4층 처방 시트 (2026-10-14)
       eq('4층 처방: ES·CRYO·MM 포함, ss·cs, 자동차도수 코드 / dressing 은 충격파 아님',
         [rm('ES10'),rm('EES15'),rm('CRYO10'),rm('MM6'),rm('ss'),rm('cs'),rm('자동차도수'),rm('dressing','드레싱')],
