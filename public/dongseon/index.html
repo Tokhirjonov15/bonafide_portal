@@ -871,7 +871,10 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   /* 3,4층 이동 (2026-10-14) — 3층 카드 오른쪽 위 [4층] 체크, 4층 칸의 유령 카드 */
   .f4mv-chk{order:99;margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:800;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:1px 7px;cursor:pointer;white-space:nowrap}
   .f4mv-chk input{margin:0;cursor:pointer}.f4mv-chk.on{color:#fff;background:#0d9488;border-color:#0d9488}
-  .f4mv-card .f4mv-x{margin-left:auto}.f4mv-card .f4mv-time{color:#0f766e;background:rgba(13,148,136,.1)}
+  .f4mv-card{padding:7px 10px}.f4mv-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .f4mv-nm{font-size:13px;font-weight:800}.f4mv-bd{font-size:11px;color:var(--sub)}
+  .f4mv-sub{font-size:11px;color:#0f766e;margin-top:3px}.f4mv-sub .hold-clock{font-weight:800}
+  .f4mv-log{display:flex;flex-wrap:wrap;gap:4px 8px;margin:2px 12px 0;padding:2px 8px;border-radius:999px;background:rgba(13,148,136,.1);color:#0f766e;font-size:11px;font-weight:700;width:fit-content}
   .hold-time{display:flex;align-items:center;gap:6px;margin:6px 12px 12px;padding:6px 10px;border-radius:9px;background:rgba(217,119,6,.12);color:#b45309;font-weight:800;font-size:13px}
   .hold-time svg{width:15px;height:15px}.hold-time b{margin-left:auto;font-variant-numeric:tabular-nums;font-size:15px}
   .rv-rooms{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0}
@@ -4659,17 +4662,26 @@ function ensureHoldRooms(){let ch=false;
 const F4_MOVE_ROOM='3,4층 이동';
 function f4MoveChk(p,room){if(!ROOMS.includes(F4_MOVE_ROOM)||!room||meta(room).group==='4층'||/^4층/.test(room)||room===F4_MOVE_ROOM||isPayRoom(room))return '';
   return `<label class="f4mv-chk${p.f4Move?' on':''}" onclick="event.stopPropagation()" title="4층에 '3,4층 이동' 유령 카드 만들기 — 4층 물리치료를 먼저 보낼 때"><input type="checkbox" ${p.f4Move?'checked':''} onchange="setF4Move('${p.id}',this.checked)"> 4층</label>`;}
+/* 기록 f4Log = {go:{by,at}, back:{by,at}} — 3층 카드에 '4층감: 체크한 사람 · 4층갔다옴: 4층에서 [3층] 누른 사람' (2026-10-14 요청).
+   3층 카드에서 [4층] 체크를 풀면 잘못 누른 것으로 보고 기록도 지운다 */
 window.setF4Move=function(pid,on){const p=data.find(x=>x.id===pid);if(!p)return;
-  const v=on?{at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}:null;
-  const apply=d=>{if(v)d.f4Move=v;else delete d.f4Move;return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();
+  const apply=d=>{if(on){d.f4Move={at,by};d.f4Log={go:{by,at}};}else{delete d.f4Move;delete d.f4Log;}return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
   try{audit(on?'3,4층 이동 표시':'3,4층 이동 해제',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
   render();};
+/* 4층 유령 카드의 [3층] — 4층을 다녀와 3층으로 돌아감: 유령 카드는 사라지고 3층 카드에 '4층갔다옴' */
+window.setF4Back=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
+  const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();
+  const apply=d=>{delete d.f4Move;d.f4Log=Object.assign({},d.f4Log||{},{back:{by,at}});return d;};apply(p);saveLocal();cloudPatientTxn(pid,apply);
+  try{audit('3,4층 이동 — 3층으로 돌아감',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
+  render();};
+function f4LogHtml(p){const L=p&&p.f4Log;if(!L||!L.go)return '';const t=x=>x&&x.at?' '+esc(hhmm(x.at)):'';
+  return `<div class="f4mv-log" title="3,4층 이동 기록"><span>4층감: <b>${esc(L.go.by||'-')}</b>${t(L.go)}</span>${L.back?`<span>4층갔다옴: <b>${esc(L.back.by||'-')}</b>${t(L.back)}</span>`:''}</div>`;}
 function f4MoveCardEl(p,room){const c=document.createElement('div');c.className='card mirror hold-card f4mv-card';c.dataset.pid=p.id;c.dataset.col=room;
-  const since=(p.f4Move&&p.f4Move.at)||'';const birth=[p.birth?esc(p.birth):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
-  c.innerHTML=`<div class="mirror-tag"><i data-lucide="footprints"></i> 실제 위치: ${esc(curRoom(p))}</div>
-    <div class="card-top"><span class="pname" title="${esc(p.name)}">${esc(dispName(p.name))}</span><button type="button" class="mini f4mv-x" title="유령 카드 지우기" onclick="event.stopPropagation();setF4Move('${p.id}',false)">✕ 해제</button></div>
-    ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||'')}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
-    <div class="hold-time f4mv-time"><i data-lucide="arrow-up-down"></i> 3,4층 이동${p.f4Move&&p.f4Move.by?' · '+esc(p.f4Move.by):''} <b class="hold-clock" data-since="${esc(since)}">${since?fmtClock(Date.now()-new Date(since).getTime()):'-'}</b></div>`;
+  const since=(p.f4Move&&p.f4Move.at)||'';const birth=[p.birth?esc(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');
+  c.innerHTML=`<div class="f4mv-row"><span class="f4mv-nm">${esc(dispName(p.name))}</span>${birth?`<span class="f4mv-bd">${birth}</span>`:''}
+      <label class="f4mv-chk" onclick="event.stopPropagation()" title="4층을 다녀와 3층으로 돌아감 — 유령 카드가 사라지고 3층 카드에 '4층갔다옴'"><input type="checkbox" onchange="if(this.checked)setF4Back('${p.id}')"> 3층</label></div>
+    <div class="f4mv-sub">${esc(curRoom(p))} · 4층감 ${esc((p.f4Move&&p.f4Move.by)||'')} <b class="hold-clock" data-since="${esc(since)}">${since?fmtClock(Date.now()-new Date(since).getTime()):'-'}</b></div>`;
   c.addEventListener('click',()=>openEdit(p.id));
   return c;}
 function holdCardEl(p,room){const c=document.createElement('div');c.className='card mirror hold-card';c.dataset.pid=p.id;c.dataset.col=room;
@@ -5582,7 +5594,9 @@ async function runSelfTest(){
        const P={id:'f4m',name:'유령',route:['3층 대기실','Sono','기본물리치료'],step:1,f4Move:{at:new Date().toISOString(),by:'t'}};
        const a=[mirroredHere(P,F4_MOVE_ROOM),!!f4MoveChk(P,'Sono'),!f4MoveChk(P,'4층 대기실')];delete P.f4Move;const b=mirroredHere(P,F4_MOVE_ROOM);
        ROOMS=_R;
-       eq('3,4층 이동: 체크하면 4층 칸에 유령 카드, 3층 카드에만 체크칸, 풀면 사라짐', [a,b], [[true,true,true],false]);}
+       eq('3,4층 이동: 체크하면 4층 칸에 유령 카드, 3층 카드에만 체크칸, 풀면 사라짐', [a,b], [[true,true,true],false]);
+       const Q={id:'f4q',name:'유령2',route:['Sono'],step:0,f4Log:{go:{by:'김간호',at:new Date().toISOString()},back:{by:'박치료',at:new Date().toISOString()}}};
+       ok('3,4층 이동: 3층 카드에 4층감(체크한 사람)·4층갔다옴(4층에서 3층 누른 사람)', /4층감: <b>김간호<\/b>/.test(f4LogHtml(Q))&&/4층갔다옴: <b>박치료<\/b>/.test(f4LogHtml(Q)));}
       STAFF_ROSTER['진료지원']=['한효주 (Lux)'];
       eq('직원 목록: 비용 상담 담당자 = 간호사·진료지원만(방 명단에 섞인 물리치료사는 빠짐)', (()=>{const _m=ROOM_META['비용 상담'];ROOM_META['비용 상담']={doctors:['우성복','허빈']};const r=consultWhoOpts('비용 상담','');if(_m===undefined)delete ROOM_META['비용 상담'];else ROOM_META['비용 상담']=_m;return r;})(), ['우성복','새간호','한효주']);
       STAFF_ROSTER=_sr;}
@@ -8875,6 +8889,7 @@ function cardEl(p,colRoom){
         return nu?`<span class="card-doc card-doc-top">${nu}</span>`:ra?`<span class="card-doc card-doc-top">${ra}</span>`:'';})()}
       ${(function(){const t=lobbyWaitLabel(p);return `<span class="lobby-wait${t.lv>1?' lv2':''}" style="${t.text?'':'display:none'}">${esc(t.text)}</span>`;})()}
     </div>
+    ${f4LogHtml(p)}${''/* 4층감·4층갔다옴 (2026-10-14) */}
     ${(p.mrn||birth)?`<div class="card-sub">${esc(p.mrn||"")}${p.mrn&&birth?' · ':''}${birth}</div>`:''}
     ${p.out?`<div class="out-banner"><i data-lucide="footprints"></i> 외출 중 — 복귀 시 대기 재개 (시간 정지)</div>`:''}
     ${(!p.parking&&parkingDue(p))?`<div class="park-banner"><span class="park-ic"><i data-lucide="square-parking"></i></span><span class="park-tx"><span class="park-t">주차권 안내</span><span class="park-s">접수 후 ${parkingThresholdText()} 경과</span></span><button class="park-btn" title="주차권 발행 사이트를 새 창으로 엽니다" onclick="event.stopPropagation();openParkingSite('${p.id}')">지급</button></div>`:''}
