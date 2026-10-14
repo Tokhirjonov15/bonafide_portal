@@ -389,14 +389,14 @@ window.saveDayNote=()=>{const v=document.getElementById('dayNote').value;if(v===
 function manualPanel(D){
   const byNo=new Map();for(const m of D.manual)byNo.set(m.no,[...(byNo.get(m.no)||[]),m]);
   const maxNo=Math.max(0,...D.manual.map(m=>m.no));const rowCount=maxNo<20?20:20+5*(Math.floor((maxNo-20)/5)+1);
-  const names=[...new Set([...D.manualTherapists,...D.manual.map(m=>String(m.therapistName||'').trim()).filter(Boolean)])];
+  const names=[...new Set([...D.manualTherapists,...D.manual.map(m=>String(m.therapistName||'').trim()).filter(Boolean)])];MAN_AC.names=names;
   const countOf=n=>D.manual.filter(m=>String(m.therapistName||'').trim().toUpperCase()===n.toUpperCase()).length;
   const singleIds=new Set(D.therapists.filter(t=>t.single).map(t=>t.id));const cancelled=D.cancels.length;
   const total=D.bookings.filter(b=>b.visited&&!singleIds.has(b.therapistId)).length;
   const edRow=no=>`<tr class="editing-row"><td>${no}</td>
     <td><input id="mnMrn" value="${A(MAN.f.mrn)}" inputmode="numeric" placeholder="환자번호" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,7);MAN.f.mrn=this.value" onkeydown="manKey(event)"></td>
     <td><input value="${A(MAN.f.patientName)}" placeholder="성함" oninput="MAN.f.patientName=this.value" onkeydown="manKey(event)"></td>
-    <td><input value="${A(MAN.f.therapistName)}" placeholder="치료사" list="manNames" oninput="MAN.f.therapistName=this.value" onkeydown="manKey(event)"></td>
+    <td><input value="${A(MAN.f.therapistName)}" placeholder="치료사" autocomplete="off" oninput="MAN.f.therapistName=this.value;manAc(this)" onfocus="manAc(this)" onblur="manAcHide()" onkeydown="manThKey(event)"></td>
     <td class="nowrap"><button type="button" class="icon" onclick="manSave()">저장</button> <button type="button" class="ghost icon" onclick="manCancel()">취소</button></td></tr>`;
   let rows='';
   for(let no=1;no<=rowCount;no++){const list=byNo.get(no)||[];
@@ -593,6 +593,30 @@ window.manNew=no=>{if(PAINT)return;MAN={no,id:null,f:{mrn:'',patientName:'',ther
 window.manEdit=(id,ev)=>{if(PAINT)return;ev.stopPropagation();const m=D_().manual.find(x=>x.id===id);if(!m)return;MAN={no:m.no,id,f:{mrn:m.mrn,patientName:m.patientName,therapistName:m.therapistName},colorFor:null};render();focusMan();};
 window.manCancel=()=>{MAN.no=null;MAN.id=null;render();};
 window.manKey=e=>{e.stopPropagation();if(e.key==='Enter'){e.preventDefault();manSave();}if(e.key==='Escape')manCancel();};
+/* 치료사 자동완성 (2026-10-14 요청: 한 글자만 쳐도 찾아지게) — 앞글자 > 가운데 글자 > 초성(ㅅㅅ → 신소현) 순.
+   ↑↓ 로 고르고 Enter(바로 저장)·Tab·클릭으로 넣는다. 칸이 스크롤 영역 안이라 목록은 화면 기준(fixed)으로 띄운다 */
+const MAN_AC={names:[],list:[],sel:0};
+const CHO='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const choOf=s=>[...String(s)].map(ch=>{const c=ch.charCodeAt(0)-0xAC00;return c>=0&&c<11172?CHO[Math.floor(c/588)]:ch;}).join('');
+function manAcMatch(q){q=String(q||'').trim();if(!q)return [];const Q=q.toUpperCase(),jamo=/^[ㄱ-ㅎ]+$/.test(q);
+  return MAN_AC.names.filter(n=>n&&n.toUpperCase()!=='NULL').map(n=>{const N=n.toUpperCase();
+      const s=N.startsWith(Q)?0:N.includes(Q)?1:jamo&&choOf(n).startsWith(q)?2:jamo&&choOf(n).includes(q)?3:9;return {n,s};})
+    .filter(x=>x.s<9&&x.n.toUpperCase()!==Q).sort((a,b)=>a.s-b.s||a.n.localeCompare(b.n,'ko')).map(x=>x.n).slice(0,8);}
+window.manAc=inp=>{MAN_AC.list=manAcMatch(inp.value);MAN_AC.sel=0;MAN_AC.inp=inp;let box=document.getElementById('manAc');
+  if(!MAN_AC.list.length){if(box)box.style.display='none';return;}
+  if(!box){box=document.createElement('div');box.id='manAc';box.className='man-ac';document.body.appendChild(box);}
+  const r=inp.getBoundingClientRect();box.style.left=Math.round(r.left)+'px';box.style.top=Math.round(r.bottom+2)+'px';box.style.minWidth=Math.round(Math.max(r.width,90))+'px';
+  box.innerHTML=MAN_AC.list.map((n,i)=>`<div class="mac-it${i===MAN_AC.sel?' on':''}" onmousedown="event.preventDefault();manAcPick(${i})">${esc(n)}</div>`).join('');box.style.display='';};
+window.manAcHide=()=>{setTimeout(()=>{const b=document.getElementById('manAc');if(b)b.style.display='none';MAN_AC.list=[];},120);};
+window.manAcPick=i=>{const n=MAN_AC.list[i],inp=MAN_AC.inp;if(!n||!inp)return false;inp.value=n;MAN.f.therapistName=n;MAN_AC.list=[];
+  const b=document.getElementById('manAc');if(b)b.style.display='none';return true;};
+window.manThKey=e=>{const open=MAN_AC.list.length>0;
+  if(open&&(e.key==='ArrowDown'||e.key==='ArrowUp')){e.preventDefault();e.stopPropagation();const k=MAN_AC.list.length;MAN_AC.sel=(MAN_AC.sel+(e.key==='ArrowDown'?1:k-1))%k;
+    document.querySelectorAll('#manAc .mac-it').forEach((el,i)=>el.classList.toggle('on',i===MAN_AC.sel));return;}
+  if(open&&e.key==='Tab'){e.stopPropagation();manAcPick(MAN_AC.sel);return;}
+  if(open&&e.key==='Escape'){e.preventDefault();e.stopPropagation();MAN_AC.list=[];const b=document.getElementById('manAc');if(b)b.style.display='none';return;}
+  if(open&&e.key==='Enter')manAcPick(MAN_AC.sel);   // 고른 이름을 넣고 그대로 저장
+  manKey(e);};
 window.manSave=async()=>{if(MAN.no==null)return;const old=MAN.id?D_().manual.find(x=>x.id===MAN.id):null;
   const body=Object.assign({id:MAN.id||undefined,no:MAN.no,color:old?old.color||'':''},MAN.f);
   document.activeElement&&document.activeElement.blur&&document.activeElement.blur();
