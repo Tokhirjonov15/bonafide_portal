@@ -908,6 +908,8 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #posGuide .pg-box{background:#fff;border-radius:14px;max-width:1200px;width:100%;padding:12px}
   #posGuide .pg-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:20px;color:#111}
   #posGuide img{display:block;width:100%;height:auto;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px}
+  #posGuide .pg-note{font-size:16px;color:#374151;margin:4px 0 8px}
+  .sd-pos-e{background:#7c3aed;color:#fff;border-radius:6px;padding:0 6px;margin-left:2px;font-size:13px}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
   /* 진료실 캡처 (2026-10-06) — MED 목록 오른쪽에 나란히. 인쇄(slipHTML)에는 넣지 않는다 */
   .sd-body.has-shots{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
@@ -4086,7 +4088,11 @@ const POS_GUIDES=[
   {k:'sono',label:'Sono 기본 자세',re:/\bsono\b|초음파/i,pages:[1]},
   {k:'shoulder',label:'Shoulder',re:/shoulder|어깨|견관절|견봉|subacromial|\bsasd\b|glenohumeral/i,pages:[2]},
   {k:'wrist',label:'손목(wrist)',re:/wrist|손목|carpal|수근관|\bcts\b/i,pages:[2,3]},
-  {k:'wristside',label:'손목 옆',re:/손목\s*옆|드퀘르벵|de\s*quervain|1st\s*(dorsal\s*)?compartment|radial\s*styloid/i,pages:[3]},
+  /* 손목 E1~E6 (2026-10-15 요청 — 진료실 벽 도식 'Lt. Wrist, E1~E6 위치'): E1(엄지 쪽)·E6(새끼 쪽) = 손목 옆, E2~E5 = 손등, 수근관 등 = 손바닥.
+     처방의 'E1'·'E 1'·'1st compartment'·'compartment 1' 을 읽는다. 누르면 도식(wrist_comp.jpg) + 그 자세 사진 */
+  {k:'wristside',label:'손목 옆',test:t=>wristE(t).some(n=>n===1||n===6)||/손목\s*옆|드퀘르벵|de\s*quervain|radial\s*styloid|\becu\b/i.test(t),pages:[3],comp:true},
+  {k:'wristdorsal',label:'손등',test:t=>wristE(t).some(n=>n>=2&&n<=5)||/손등|dorsal\s*wrist|\bdorsum\b/i.test(t),pages:[2],comp:true},
+  {k:'wristvolar',label:'손바닥',re:/손바닥|palmar|volar|carpal\s*tunnel|수근관|\bcts\b|\bfcr\b/i,pages:[],comp:true},
   {k:'hand',label:'손·손가락 쿠션',re:/\bhand\b|finger|손가락|방아쇠|trigger\s*finger/i,pages:[3,4]},
   {k:'nail',label:'손톱 밑',re:/손톱|\bnail\b|subungual/i,pages:[4]},
   {k:'fjoint',label:'손가락 관절',re:/손가락\s*관절|\bpip\b|\bdip\b|\bmcp\b/i,pages:[4]},
@@ -4098,13 +4104,25 @@ const POS_GUIDES=[
   {k:'knee',label:'무릎(knee)',re:/knee|무릎|슬관절/i,pages:[11]},
   {k:'heel',label:'발뒤꿈치(heel)',re:/heel|뒤꿈치|족저|plantar/i,pages:[12]},
   {k:'toe',label:'발가락(toe)',re:/\btoes?\b|발가락|hallux|무지/i,pages:[13]}];
-function posGuidesFor(lines){const t=(lines||[]).join('\n');return POS_GUIDES.filter(g=>g.re.test(t));}
-function posChipsHtml(it){const L=posGuidesFor(it&&it.lines);if(!L.length)return '';
-  return `<div class="sd-pos"><span class="sd-pos-h">준비 자세</span>${L.map(g=>`<button type="button" class="sd-pos-chip" onclick="posShow('${g.k}')">🧍 ${esc(g.label)}</button>`).join('')}</div>`;}
+/* 처방 글에서 손목 E 번호(1~6) — 'E1' 'E 1' '1st compartment' 'compartment 1' 'E1,2' */
+function wristE(t){const s=new Set();t=String(t||'');
+  for(const m of t.matchAll(/\bE\s*([1-6](?:\s*[,/·+]\s*[1-6])*)\b/gi))m[1].split(/[^1-6]+/).forEach(x=>x&&s.add(+x));
+  for(const m of t.matchAll(/\b([1-6])(?:st|nd|rd|th)\s*(?:dorsal\s*)?(?:extensor\s*)?compartment/gi))s.add(+m[1]);
+  for(const m of t.matchAll(/compartment\s*([1-6])\b/gi))s.add(+m[1]);
+  return [...s].sort();}
+let POS_LAST_E=[];
+function posGuidesFor(lines){const t=(lines||[]).join('\n');const L=POS_GUIDES.filter(g=>g.test?g.test(t):g.re.test(t));
+  return L.some(g=>/^wrist(side|dorsal|volar)$/.test(g.k))?L.filter(g=>g.k!=='wrist'):L;}   // 옆·손등·손바닥이 정해지면 일반 '손목' 칩은 뺀다
+function posChipsHtml(it){const L=posGuidesFor(it&&it.lines);if(!L.length)return '';const E=wristE((it.lines||[]).join('\n'));POS_LAST_E=E;
+  const eOf=g=>g.k==='wristside'?E.filter(n=>n===1||n===6):g.k==='wristdorsal'?E.filter(n=>n>=2&&n<=5):[];
+  return `<div class="sd-pos"><span class="sd-pos-h">준비 자세</span>${L.map(g=>{const e=eOf(g);return `<button type="button" class="sd-pos-chip" onclick="posShow('${g.k}')">🧍 ${esc(g.label)}${e.length?' <span class="sd-pos-e">'+e.map(n=>'E'+n).join('·')+'</span>':''}</button>`;}).join('')}</div>`;}
 window.posShow=function(k){const g=POS_GUIDES.find(x=>x.k===k);if(!g)return;let ov=document.getElementById('posGuide');
   if(!ov){ov=document.createElement('div');ov.id='posGuide';ov.onclick=e=>{if(e.target===ov)ov.classList.remove('show');};document.body.appendChild(ov);}
-  ov.innerHTML=`<div class="pg-box"><div class="pg-head"><b>🧍 ${esc(g.label)} 준비 자세</b><button type="button" class="btn" onclick="document.getElementById('posGuide').classList.remove('show')">닫기</button></div>
-    ${g.pages.map(n=>`<img src="img/pos/p${String(n).padStart(2,'0')}.jpg" alt="${esc(g.label)} 준비 자세">`).join('')}</div>`;
+  const E=g.comp?POS_LAST_E:[];
+  ov.innerHTML=`<div class="pg-box"><div class="pg-head"><b>🧍 ${esc(g.label)} 준비 자세${E.length?' · 처방 '+E.map(n=>'E'+n).join('·'):''}</b><button type="button" class="btn" onclick="document.getElementById('posGuide').classList.remove('show')">닫기</button></div>
+    ${g.comp?`<div class="pg-note">손목 단면 — <b>E1·E6 = 옆</b> · <b>E2~E5 = 손등</b> · 아래 = 손바닥</div><img src="img/pos/wrist_comp.jpg" alt="손목 E1~E6 위치">`:''}
+    ${g.pages.map(n=>`<img src="img/pos/p${String(n).padStart(2,'0')}.jpg" alt="${esc(g.label)} 준비 자세">`).join('')}
+    ${g.comp&&!g.pages.length?'<div class="pg-note">손바닥 쪽 주사는 준비 자세 사진이 아직 없습니다 — 사진을 주시면 넣습니다.</div>':''}</div>`;
   ov.classList.add('show');};
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
 function renderSlipScreen(){
@@ -5750,7 +5768,8 @@ async function runSelfTest(){
       window.toast=_t;data=_d;ROOMS=_R;
       eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
      {const g=l=>posGuidesFor(l).map(x=>x.k).join();   // 주사 준비 자세 (2026-10-15)
-      eq('주사 준비 자세: 처방 줄의 부위 낱말 → 칩', [g(['med','sono shoulder rt']),g(['med','손톱 밑 주사']),g(['med','c-mbb rt 3,5 / lt 3,4,5']),g(['med','neuropathic pain 기'])], ['sono,shoulder','nail','cspine','']);}
+      eq('주사 준비 자세: 처방 줄의 부위 낱말 → 칩', [g(['med','sono shoulder rt']),g(['med','손톱 밑 주사']),g(['med','c-mbb rt 3,5 / lt 3,4,5']),g(['med','neuropathic pain 기'])], ['sono,shoulder','nail','cspine','']);
+      eq('주사 준비 자세: 손목 E1·E6 = 옆, E2~E5 = 손등, 수근관 = 손바닥', [g(['lt wrist E1 inj']),g(['E4 sono']),g(['rt E6, E2']),g(['carpal tunnel inj']),wristE('E1,2 / 3rd compartment').join()], ['wristside','sono,wristdorsal','wristside,wristdorsal','wristvolar','1,2,3']);}
      {const _so=slipOpen,_ra=window.recActive;slipOpen=false;window.recActive=()=>false;const a=autoReloadBlock();window.recActive=()=>true;const b=autoReloadBlock();window.recActive=()=>false;slipOpen=true;const c=autoReloadBlock();slipOpen=_so;window.recActive=_ra;   // 자동 새로고침 막기 (2026-10-15)
       eq('자동 새로고침: 평소엔 함, 녹음 중·슬립 화면이 열려 있으면 안 함', [a,b,c], ['','rec','slip']);}
      {const H={id:'hz',name:'보류',route:['진료실1','비용 상담'],step:0,bitHold:'진료보류'};const a=mirroredHere(H,'진료보류');H.step=1;const b=mirroredHere(H,'진료보류');H.bitHold='접수보류';const c=mirroredHere(H,'접수보류');   // 진료보류 유령 카드 (2026-10-15)
