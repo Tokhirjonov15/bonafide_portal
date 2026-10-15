@@ -14338,7 +14338,7 @@ boot();
     mr.ondataavailable=e=>{if(e.data&&e.data.size)append(rec,e.data);};
     mr.start(10000);REC=rec;badge();
     const meta={file:name,pid:p.id,mrn:String(p.mrn||'').trim(),pname:p.name||'',room:r,at:new Date(rec.started).toISOString()};
-    rec.meta=meta;const M=sttModes();if(M.has('local'))pendAdd(meta);if(M.has('chrome'))sttStart(rec,meta);
+    rec.meta=meta;const M=sttModes();pendAdd(meta);   // 2026-10-15: '진료실 PC 변환'을 안 켜도 — 이 PC 녹음 옆에 .txt 가 생기면 늘 가져간다(설치해 놓고 체크를 안 해 글이 안 보였다). 없으면 3일 뒤 저절로 빠짐if(M.has('chrome'))sttStart(rec,meta);
     try{audit('진료 녹음 시작',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+name);}catch(e){}}
   async function stop(why){const rec=REC;if(!rec)return;REC=null;
     await new Promise(res=>{rec.mr.onstop=res;try{rec.mr.stop();}catch(e){res();}});
@@ -14432,10 +14432,38 @@ boot();
         await cloud.ref.collection('recText').doc(id).set({mrn:x.mrn,pid:x.pid,name:x.pname,room:x.room,startedAt:x.at,date:String(x.at).slice(0,10),file:x.file,
           text:String(text).trim().slice(0,200000),at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
         try{audit('진료 녹음 받아쓰기',x.pname+(x.mrn?' ('+x.mrn+')':'')+' · '+x.file);}catch(e){}
+        try{upAdd(x.file);}catch(e){}   // 지난 파일 가져오기(recBackfill)가 다시 올리지 않게
         try{if(window.recTextCache)delete window.recTextCache[x.mrn];if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===x.mrn)fillRecTextBox(p);}}catch(e){}}
       catch(e){console.warn('recText',e);keep.push(x);}}
     pendSet(keep);POLL_BUSY=false;}
   setInterval(recPollTexts,30000);setTimeout(recPollTexts,8000);
+  /* 이미 쌓인 .txt 가져오기 (2026-10-15) — 대기 목록에 없는 녹음(체크를 켜기 전에 녹음한 것 등)의 .txt 를 파일 이름으로 환자를 찾아 올린다.
+     파일 이름 = '녹음 2026-10-14 홍길동 900101 진료실1 1856.txt'. 최근 3일, 이름(+생년월일 앞 6자리)이 한 명과만 맞을 때. 올린 것은 이 PC에 기억(dsRecUp) */
+  const LS_UP='dsRecUp';const upGet=()=>{try{return new Set(JSON.parse(localStorage.getItem(LS_UP)||'[]'));}catch(e){return new Set();}};
+  const upAdd=f=>{try{const s=upGet();s.add(f);localStorage.setItem(LS_UP,JSON.stringify([...s].slice(-800)));}catch(e){}};
+  let BF_BUSY=false;
+  async function recBackfill(){if(BF_BUSY||!DIR||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref)||!currentUser)return;if(!(await perm(false)))return;BF_BUSY=true;
+    try{const up=upGet(),pend=new Set(pendGet().map(x=>x.file)),lim=localYMD(new Date(Date.now()-3*864e5));
+      const people=[...(data||[]),...((typeof VISITS!=='undefined'&&VISITS)||[]),...((typeof regAll==='function'&&regAll())||[])];
+      const norm=s=>String(s||'').replace(/[\\/:*?"<>|\s]/g,'');
+      for await(const [nm,h] of DIR.entries()){
+        if(h.kind!=='file'||!/\.txt$/i.test(nm)||/\.(chrome|openai|clova)\.txt$/i.test(nm))continue;
+        const webm=nm.replace(/\.txt$/i,'.webm');if(up.has(webm)||pend.has(webm))continue;
+        const m=/^녹음 (\d{4}-\d{2}-\d{2}) (.+?)(?: (\d{6}))? (\S+) (\d{2})(\d{2})\.txt$/.exec(nm);if(!m||m[1]<lim)continue;
+        const nmK=norm(m[2]),b6=m[3]||'';
+        const hit=[...new Map(people.filter(q=>q&&normMrn(q.mrn)&&norm(q.name)===nmK&&(!b6||String(q.birth||'').replace(/\D/g,'').slice(2,8)===b6)).map(q=>[normMrn(q.mrn),q])).values()];
+        if(hit.length!==1)continue;   // 못 찾거나 동명이인 — 올리지 않는다
+        let text='';try{text=await (await h.getFile()).text();}catch(e){continue;}
+        const at=new Date(m[1]+'T'+m[5]+':'+m[6]+':00').toISOString(),mrn=normMrn(hit[0].mrn);
+        const id=webm.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
+        try{await cloud.ref.collection('recText').doc(id).set({mrn,pid:hit[0].id||'',name:hit[0].name||m[2],room:m[4],startedAt:at,date:m[1],file:webm,
+            text:String(text).trim().slice(0,200000),at:new Date().toISOString(),by:(currentUser&&currentUser.name)||'',src:'local'},{merge:true});
+          upAdd(webm);try{if(window.recTextCache)delete window.recTextCache[mrn];}catch(e){}
+          try{audit('진료 녹음 받아쓰기(지난 파일)',(hit[0].name||'')+' ('+mrn+') · '+webm);}catch(e){}}
+        catch(e){console.warn('rec backfill',e);}}}
+    catch(e){console.warn('rec backfill',e);}
+    BF_BUSY=false;}
+  setInterval(recBackfill,300000);setTimeout(recBackfill,20000);
   window.addEventListener('beforeunload',e=>{if(REC){e.preventDefault();e.returnValue='녹음 중입니다';}});
   /* 설정 창 */
   window.recListMics=async ask=>{const sel=document.getElementById('recMicSel');if(!sel)return;
