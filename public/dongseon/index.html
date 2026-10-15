@@ -2999,7 +2999,11 @@ function mirroredHere(p, room){
     if((p.spaceDone||[]).includes(room))return false;
     const need=spaceRoomsFromRx(p);
     return (need===null)?false:need.includes(room);}   // 처방이 아직 없으면 펼치지 않는다 — 환자가 있는 방에만 한 장 (2026-09-24)
-  if(p.bitHold&&p.bitHold===room&&cr!==room)return true;   // 비트 보류 — 보류 방에도 함께 (2026-10-01)
+  if(p.bitHold&&p.bitHold===room&&cr!==room){   // 비트 보류 — 보류 방에도 함께 (2026-10-01)
+    /* 2026-10-15 요청: 진료실에서 [종결]했는데 같은 카드가 또 뜬다 — 비트는 아직 진료보류라 진료보류 칸에 유령 카드가 남았다.
+       진료보류 유령 카드는 카드가 진료실에 있을 때만(진료실을 떠나면 숨김). 접수보류는 그대로 */
+    if(room==='진료보류'&&!isClinicRoom(cr))return false;
+    return true;}
   if(room===F4_MOVE_ROOM&&p.f4Move&&cr!==room)return true;  // 3,4층 이동 유령 카드 (2026-10-14)
   return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
 }
@@ -5703,6 +5707,8 @@ async function runSelfTest(){
       consultNoGoPay('cn1','비용 상담');consultNoGoPay('cn2','비용 상담');
       window.toast=_t;data=_d;ROOMS=_R;
       eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
+     {const H={id:'hz',name:'보류',route:['진료실1','비용 상담'],step:0,bitHold:'진료보류'};const a=mirroredHere(H,'진료보류');H.step=1;const b=mirroredHere(H,'진료보류');H.bitHold='접수보류';const c=mirroredHere(H,'접수보류');   // 진료보류 유령 카드 (2026-10-15)
+      eq('진료보류 유령 카드: 진료실에 있을 때만, 종결해서 진료실을 떠나면 숨김(접수보류는 그대로)', [a,b,c], [true,false,true]);}
      {const _d=data;data=[{id:'e1',mrn:'1',name:'앞으로4층',route:['진료실1','C-Arm','4층 대기실'],step:1},{id:'e2',mrn:'2',name:'4층없음',route:['진료실1','C-Arm','수납대기'],step:1},
         {id:'e3',mrn:'3',name:'4층다끝남',route:['4층 대기실','SASO','수납대기'],step:2},{id:'e4',mrn:'4',name:'지금4층',route:['진료실1','SASO','수납대기'],step:1}];   // 물리치료 접수 목록 (2026-10-14)
       const L=bonusMgrList().map(p=>p.name).join();data=_d;
