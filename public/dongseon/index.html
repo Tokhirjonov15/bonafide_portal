@@ -4732,25 +4732,32 @@ function holdDocMove(p,doc){
     try{audit('접수보류 → 담당의 진료실',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+doc+' → '+room);}catch(e){}});}
 function bitApplyHold(){
   if(!currentUser||!cloud.intakeCol||!cloud.ready.pts)return;
-  const want={},wantAt={},wantDoc={};   // 카드 id → 보류 방('' = 보류 아님) / 비트가 보류를 보낸 시각 / 접수보류의 담당의
+  const want={},wantAt={},wantDoc={},wantEv={};   // 카드 id → 보류 방('' = 보류 아님) / 비트가 보류를 보낸 시각 / 접수보류의 담당의 / 비트 상태가 바뀐 시각
   BIT_INTAKE.forEach(r=>{
     const stt=String(r.stt||'').trim();if(!stt||r.status==='취소')return;
     const ocm=String(r.ocmNum||'').trim(), mrn=String(r.mrn||'').trim();
     const p=bitCardFor(r);   // 손으로 만든 카드도 같은 환자번호면
     if(!p)return;
     const h=HOLD_ROOM[stt]||'';
-    if(h||!(p.id in want)){want[p.id]=h;if(h)wantAt[p.id]=(r.command===13&&r.eventAt)?r.eventAt:'';}   // 같은 환자의 접수가 둘이면 보류 쪽을 따른다
+    if(h||!(p.id in want)){want[p.id]=h;if(h)wantAt[p.id]=(r.command===13&&r.eventAt)?r.eventAt:'';wantEv[p.id]=String(r.eventAt||r.registeredAt||'');}   // 같은 환자의 접수가 둘이면 보류 쪽을 따른다
     if(h===HOLD_ROOM.WH&&String(r.doctor||'').trim())wantDoc[p.id]=String(r.doctor).trim();
   });
   data.forEach(p=>{if(p.discharged)return;
     const h=(p.id in want)?want[p.id]:(p.bitHold&&!BIT_INTAKE.length?p.bitHold:'');
     if((p.bitHold||'')===h&&(!h||p.bitHoldAt))return;
     if(h)ensureHoldRooms();
-    const at=wantAt[p.id]||new Date().toISOString(),changed=(p.bitHold||'')!==h;const apply=d=>{if(h){if(d.bitHold!==h||!d.bitHoldAt)d.bitHoldAt=at;d.bitHold=h;}else{delete d.bitHold;delete d.bitHoldAt;}return d;};   // bitHoldAt = 보류 시작 시각(보류 방에 머문 시간)
-    apply(p);saveLocal();cloudPatientTxn(p.id,apply);render();
-    if(!changed)return;   // 시각만 채운 경우엔 기록·알림 없음
-    {const tk=p.id+'|'+h;if(HOLD_TOASTED[tk])return;HOLD_TOASTED[tk]=1;}   // 같은 보류 알림은 이 화면에서 한 번만 (다른 화면이 표시를 지웠다 붙여도 반복하지 않게)
-    try{audit(h?('비트 '+h):'비트 보류 해제',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}
+    const at=wantAt[p.id]||new Date().toISOString(),changed=(p.bitHold||'')!==h,ev=wantEv[p.id]||'';
+    /* 2026-10-15: 켜진 직원 PC 모두가 같은 보류를 동시에 쓰다가, 비트 소식을 늦게 받은 PC 가 옛 상태(보류)를 다시 써서 진료보류 유령 카드가 사라졌다 다시 떴다.
+       카드에 비트 상태가 바뀐 시각(bitHoldEv)을 남기고, 그보다 옛 소식은 쓰지 않는다. 이미 같으면 쓰지 않는다. 기록은 실제로 바꾼 화면 한 곳만 */
+    const apply=d=>{if(ev&&d.bitHoldEv&&ev<d.bitHoldEv)return false;
+      if((d.bitHold||'')===h&&(!h||d.bitHoldAt))return false;
+      if(h){if(d.bitHold!==h||!d.bitHoldAt)d.bitHoldAt=at;d.bitHold=h;}else{delete d.bitHold;delete d.bitHoldAt;}if(ev)d.bitHoldEv=ev;return d;};   // bitHoldAt = 보류 시작 시각(보류 방에 머문 시간)
+    if(apply(p)===false)return;
+    saveLocal();render();
+    cloudPatientTxn(p.id,apply).then(r=>{
+      if(!changed||!r||r==='skip')return;   // 시각만 채운 경우·다른 화면이 먼저 바꾼 경우엔 기록 없음
+      {const tk=p.id+'|'+h;if(HOLD_TOASTED[tk])return;HOLD_TOASTED[tk]=1;}
+      try{audit(h?('비트 '+h):'비트 보류 해제',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}}).catch(()=>{});
     /* 2026-10-03 요청: 보류 알림(토스트)은 띄우지 않는다 — 보류 칸 표시와 기록만 */
   });
   Object.keys(wantDoc).forEach(pid=>{const p=data.find(x=>x.id===pid);if(p&&!p.discharged)try{holdDocMove(p,wantDoc[pid]);}catch(e){console.warn('holdDocMove',e);}});
