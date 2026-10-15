@@ -898,6 +898,16 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-detail{flex:1;overflow:auto;padding:18px 22px}
   .sd-name{font-size:30px;font-weight:800;line-height:1.2}.sd-sa{font-size:16px;font-weight:700;margin-left:10px;color:var(--sub)}
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
+  /* 주사 준비 자세 칩·사진 (2026-10-15) */
+  .sd-pos{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+  .sd-pos-h{font-size:13px;font-weight:800;color:var(--sub)}
+  .sd-pos-chip{border:2px solid #7c3aed;background:#f5f3ff;color:#5b21b6;border-radius:999px;padding:5px 14px;font:inherit;font-size:15px;font-weight:800;cursor:pointer}
+  .sd-pos-chip:hover{background:#ede9fe}
+  #posGuide{position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,.6);display:none;align-items:flex-start;justify-content:center;overflow:auto;padding:16px}
+  #posGuide.show{display:flex}
+  #posGuide .pg-box{background:#fff;border-radius:14px;max-width:1200px;width:100%;padding:12px}
+  #posGuide .pg-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:20px;color:#111}
+  #posGuide img{display:block;width:100%;height:auto;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px}
   .sd-lines{list-style:none;margin:16px 0 0;padding:0;border-top:2px solid var(--text)}
   /* 진료실 캡처 (2026-10-06) — MED 목록 오른쪽에 나란히. 인쇄(slipHTML)에는 넣지 않는다 */
   .sd-body.has-shots{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:start}
@@ -4068,6 +4078,34 @@ function fillCapBox(p){const box=document.getElementById('capBox');if(!box)retur
     grp('PT 캡처','pt',pt,neu.size?` <button type="button" class="btn sm cap-ok" onclick="ptShotSeen('${esc(n.docId)}')">✔ 4층 확인 (알림 끄기)</button>`:(n&&n.ptSeenBy?` <span class="hint">✔ ${esc(n.ptSeenBy)} 확인</span>`:''))+grp('주사 캡처','inj',inj);
   box.style.display='';if(box.dataset.h!==html){box.dataset.h=html;box.innerHTML=html;if(window.lucide)try{lucide.createIcons();}catch(e){}}
   slipShotsLoad(box);}
+/* ═════ 주사 준비 자세 (2026-10-15 요청 — '주사 준비 포지션.pdf') ═════
+   슬립 처방 줄에 부위 낱말이 있으면 머리에 칩(예: 'Shoulder 준비자세'), 누르면 그 자세 사진(PDF 한 장씩 img/pos/pNN.jpg)을 크게.
+   낱말·장 번호는 아래 표만 고치면 된다. 엘보는 지금 방식(26.07.13, 9장)을 먼저 */
+const POS_GUIDES=[
+  {k:'cspine',label:'C-spine',re:/c[-\s]?spine|cervical|경추|\bc[-\s]?mbb\b|\bc[2-7]\b/i,pages:[1]},
+  {k:'sono',label:'Sono 기본 자세',re:/\bsono\b|초음파/i,pages:[1]},
+  {k:'shoulder',label:'Shoulder',re:/shoulder|어깨|견관절|견봉|subacromial|\bsasd\b|glenohumeral/i,pages:[2]},
+  {k:'wrist',label:'손목(wrist)',re:/wrist|손목|carpal|수근관|\bcts\b/i,pages:[2,3]},
+  {k:'wristside',label:'손목 옆',re:/손목\s*옆|드퀘르벵|de\s*quervain|1st\s*(dorsal\s*)?compartment|radial\s*styloid/i,pages:[3]},
+  {k:'hand',label:'손·손가락 쿠션',re:/\bhand\b|finger|손가락|방아쇠|trigger\s*finger/i,pages:[3,4]},
+  {k:'nail',label:'손톱 밑',re:/손톱|\bnail\b|subungual/i,pages:[4]},
+  {k:'fjoint',label:'손가락 관절',re:/손가락\s*관절|\bpip\b|\bdip\b|\bmcp\b/i,pages:[4]},
+  {k:'thumb',label:'엄지',re:/thumb|엄지|\bcmc\b/i,pages:[4]},
+  {k:'icnb',label:'Rib·ICNB',re:/icnb|intercostal|\brib\b|늑간|늑골|갈비/i,pages:[5]},
+  {k:'snb',label:'SNB',re:/\bsnb\b|sciatic|좌골/i,pages:[6]},
+  {k:'elbow',label:'Elbow',re:/elbow|팔꿈치|주관절|epicondyl|테니스\s*엘보|골프\s*엘보/i,pages:[9,7,8]},
+  {k:'ankle',label:'발목(ankle)',re:/ankle|발목|족관절/i,pages:[10]},
+  {k:'knee',label:'무릎(knee)',re:/knee|무릎|슬관절/i,pages:[11]},
+  {k:'heel',label:'발뒤꿈치(heel)',re:/heel|뒤꿈치|족저|plantar/i,pages:[12]},
+  {k:'toe',label:'발가락(toe)',re:/\btoes?\b|발가락|hallux|무지/i,pages:[13]}];
+function posGuidesFor(lines){const t=(lines||[]).join('\n');return POS_GUIDES.filter(g=>g.re.test(t));}
+function posChipsHtml(it){const L=posGuidesFor(it&&it.lines);if(!L.length)return '';
+  return `<div class="sd-pos"><span class="sd-pos-h">준비 자세</span>${L.map(g=>`<button type="button" class="sd-pos-chip" onclick="posShow('${g.k}')">🧍 ${esc(g.label)}</button>`).join('')}</div>`;}
+window.posShow=function(k){const g=POS_GUIDES.find(x=>x.k===k);if(!g)return;let ov=document.getElementById('posGuide');
+  if(!ov){ov=document.createElement('div');ov.id='posGuide';ov.onclick=e=>{if(e.target===ov)ov.classList.remove('show');};document.body.appendChild(ov);}
+  ov.innerHTML=`<div class="pg-box"><div class="pg-head"><b>🧍 ${esc(g.label)} 준비 자세</b><button type="button" class="btn" onclick="document.getElementById('posGuide').classList.remove('show')">닫기</button></div>
+    ${g.pages.map(n=>`<img src="img/pos/p${String(n).padStart(2,'0')}.jpg" alt="${esc(g.label)} 준비 자세">`).join('')}</div>`;
+  ov.classList.add('show');};
 function slipSearch(v){SLIP_Q=String(v||'').trim();renderSlipScreen();}
 function renderSlipScreen(){
   if(!slipOpen)return;
@@ -4094,6 +4132,7 @@ function renderSlipScreen(){
       ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
       <div class="sd-meta">${h.birth?esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
+      ${posChipsHtml(it)}
     </div>
     ${SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:''}
     <div class="sd-body"><ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol><div class="sd-shot-slot"></div></div>
@@ -5710,6 +5749,8 @@ async function runSelfTest(){
       consultNoGoPay('cn1','비용 상담');consultNoGoPay('cn2','비용 상담');
       window.toast=_t;data=_d;ROOMS=_R;
       eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
+     {const g=l=>posGuidesFor(l).map(x=>x.k).join();   // 주사 준비 자세 (2026-10-15)
+      eq('주사 준비 자세: 처방 줄의 부위 낱말 → 칩', [g(['med','sono shoulder rt']),g(['med','손톱 밑 주사']),g(['med','c-mbb rt 3,5 / lt 3,4,5']),g(['med','neuropathic pain 기'])], ['sono,shoulder','nail','cspine','']);}
      {const _so=slipOpen,_ra=window.recActive;slipOpen=false;window.recActive=()=>false;const a=autoReloadBlock();window.recActive=()=>true;const b=autoReloadBlock();window.recActive=()=>false;slipOpen=true;const c=autoReloadBlock();slipOpen=_so;window.recActive=_ra;   // 자동 새로고침 막기 (2026-10-15)
       eq('자동 새로고침: 평소엔 함, 녹음 중·슬립 화면이 열려 있으면 안 함', [a,b,c], ['','rec','slip']);}
      {const H={id:'hz',name:'보류',route:['진료실1','비용 상담'],step:0,bitHold:'진료보류'};const a=mirroredHere(H,'진료보류');H.step=1;const b=mirroredHere(H,'진료보류');H.bitHold='접수보류';const c=mirroredHere(H,'접수보류');   // 진료보류 유령 카드 (2026-10-15)
