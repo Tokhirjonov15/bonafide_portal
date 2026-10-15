@@ -13980,7 +13980,7 @@ setInterval(memTick,60000); setTimeout(memTick,5000);
    구버전 화면이 남아 있으면 새 코드와 환자 문서를 서로 고쳐 쓰며 보드가 굳는다 (2026-09-28 사고) ═ */
 let APP_SIG='';
 async function checkNewBuild(){try{
-  const t=await (await fetch('index.html',{cache:'no-cache'})).text();   // 5분마다 받는다(압축돼 한 번에 약 150KB) — 서버가 ETag 를 주면 '바뀌었나'만 묻게 no-cache (2026-10-15)
+  const t=await (await fetch('index.html',{cache:'no-cache'})).text();   // 5분마다 받는다(압축돼 한 번에 약 450KB, PC 20대면 시간당 100MB 남짓) — 서버가 ETag 를 주면 '바뀌었나'만 묻게 no-cache (2026-10-15)
   if(!t||t.length<10000)return;                       // 오류 페이지 등은 무시
   let h=0;for(let i=0;i<t.length;i+=97)h=(h*31+t.charCodeAt(i))>>>0;
   const sig=t.length+'-'+h;
