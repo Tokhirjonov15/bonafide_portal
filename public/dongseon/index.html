@@ -3889,9 +3889,12 @@ function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=d
   {const wb=document.getElementById('slipWordsBtn');if(wb)wb.style.display=currentUser?'':'none';}
   renderSlipScreen();try{renderWaitPop();}catch(e){}}
 let SLIP_RELOAD_WAIT='';   // 슬립 때문에 미룬 새로고침 이유('새 버전'·'오래된 화면'·'메모리')
+/* 자동 새로고침을 하지 않는 때 (2026-10-15 요청): 진료실 녹음 중 · 슬립 화면이 열려 있을 때(보이든 안 보이든, ?slip 전용 창 포함).
+   새 버전·오래된 화면·메모리 새로고침 모두 — 녹음은 끝나면(3분 뒤 다시 확인), 슬립은 [지금 새로고침]이나 슬립을 닫을 때 */
+function autoReloadBlock(){if(typeof window.recActive==='function'&&window.recActive())return 'rec';if(slipOpen||SLIP_MODE)return 'slip';return '';}
 function slipReloadWait(why){SLIP_RELOAD_WAIT=SLIP_RELOAD_WAIT||why;const b=document.getElementById('slipUpd');if(b)b.style.display='';}
 function slipReloadNow(){try{audit('새로고침(슬립 닫힘)',SLIP_RELOAD_WAIT);}catch(e){}try{flushBigLocal();}catch(e){}setTimeout(()=>location.reload(),300);}
-document.addEventListener('visibilitychange',()=>{if(SLIP_RELOAD_WAIT&&document.visibilityState==='hidden')slipReloadNow();});   // 안 보일 때 미뤘던 새로고침
+document.addEventListener('visibilitychange',()=>{if(SLIP_RELOAD_WAIT&&document.visibilityState==='hidden'&&!autoReloadBlock())slipReloadNow();});   // 안 보일 때 미뤘던 새로고침 (슬립이 열려 있거나 녹음 중이면 안 함, 2026-10-15)
 function closeSlipScreen(){if(SLIP_RELOAD_WAIT){setTimeout(slipReloadNow,0);}slipOpen=false;try{sessionStorage.removeItem('slipKeep');}catch(e){}const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
 /* 슬립 화면 환자 검색 (2026-10-01 요청): 성함·차트번호 일부로 왼쪽 목록을 거른다. 검색 중에는 새 처방이 와도 선택이 옮겨 가지 않는다 */
 var SLIP_Q='';
@@ -5707,6 +5710,8 @@ async function runSelfTest(){
       consultNoGoPay('cn1','비용 상담');consultNoGoPay('cn2','비용 상담');
       window.toast=_t;data=_d;ROOMS=_R;
       eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
+     {const _so=slipOpen,_ra=window.recActive;slipOpen=false;window.recActive=()=>false;const a=autoReloadBlock();window.recActive=()=>true;const b=autoReloadBlock();window.recActive=()=>false;slipOpen=true;const c=autoReloadBlock();slipOpen=_so;window.recActive=_ra;   // 자동 새로고침 막기 (2026-10-15)
+      eq('자동 새로고침: 평소엔 함, 녹음 중·슬립 화면이 열려 있으면 안 함', [a,b,c], ['','rec','slip']);}
      {const H={id:'hz',name:'보류',route:['진료실1','비용 상담'],step:0,bitHold:'진료보류'};const a=mirroredHere(H,'진료보류');H.step=1;const b=mirroredHere(H,'진료보류');H.bitHold='접수보류';const c=mirroredHere(H,'접수보류');   // 진료보류 유령 카드 (2026-10-15)
       eq('진료보류 유령 카드: 진료실에 있을 때만, 종결해서 진료실을 떠나면 숨김(접수보류는 그대로)', [a,b,c], [true,false,true]);}
      {const _d=data;data=[{id:'e1',mrn:'1',name:'앞으로4층',route:['진료실1','C-Arm','4층 대기실'],step:1},{id:'e2',mrn:'2',name:'4층없음',route:['진료실1','C-Arm','수납대기'],step:1},
@@ -6234,7 +6239,7 @@ function ghostPatient(pid,why){
     if(REMOVED_PIDS.has(pid)||KNOWN_GONE.has(pid))return;   // 구독이 삭제를 봤다 — 정상 화면
     try{toast((nm?dispName(nm)+' 님 카드는 ':'이 카드는 ')+'다른 화면에서 이미 내보냈습니다. 화면이 오래되어 새로고침합니다.');}catch(e){}
     try{audit('오래된 화면 새로고침',nm+' — '+why);}catch(e){}
-    if(slipOpen&&document.visibilityState==='visible'){slipReloadWait('오래된 화면');return;}   // 슬립을 보는 중이면 닫을 때까지 미룬다 (2026-10-11)
+    {const bl=autoReloadBlock();if(bl==='slip'){slipReloadWait('오래된 화면');return;}if(bl==='rec')return;}   // 슬립이 열려 있으면 닫을 때까지, 녹음 중이면 하지 않음 (2026-10-11, 10-15)
     if(!_ghostReloadT)_ghostReloadT=setTimeout(()=>{try{flushBigLocal();}catch(e){}location.reload();},2500);
   },8000);
 }
@@ -13969,7 +13974,7 @@ function memTick(){
     try{console.warn('[mem] 높음',rec);}catch(e){}}
   if(pct<70)memWarned=false;
   if(pct>=92){   /* 곧 죽는다 — 입력 중이 아니고 창이 열려 있지 않으면 스스로 새로고침 */
-    const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''))||(slipOpen&&document.visibilityState==='visible'&&pct<97);   // 슬립 보는 중은 정말 죽기 직전(97%)까지 미룸
+    const busy=document.querySelector('.modal-bg.show')||(document.activeElement&&/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName||''))||(autoReloadBlock()&&pct<97);   // 녹음 중·슬립 화면도 정말 죽기 직전(97%)까지는 (2026-10-15)   // 슬립 보는 중은 정말 죽기 직전(97%)까지 미룸
     if(busy&&slipOpen)slipReloadWait('메모리');
     try{console.warn('[mem] 한계 근접',rec,busy?'(사용 중이라 새로고침 보류)':'(자동 새로고침)');}catch(e){}
     if(!busy){try{sessionStorage.setItem('memReload',JSON.stringify(rec));}catch(e){} location.reload();}
@@ -13990,7 +13995,7 @@ async function checkNewBuild(){try{
   if(busy){setTimeout(checkNewBuild,3*60000);return;} // 쓰는 중이면 3분 뒤 다시
   /* 2026-10-11 제보: 원장님이 주사하며 슬립을 보는 중 화면이 넘어갔다(주사 중엔 손을 못 댄다). 슬립이 열려 보이는 동안은 절대 새로고침하지 않고
      슬립 위에 [지금 새로고침]만 띄운다 — 슬립을 닫거나 화면이 안 보일 때(다른 창·잠듦) 새로고침 */
-  if(slipOpen&&document.visibilityState==='visible'){slipReloadWait('새 버전');setTimeout(checkNewBuild,3*60000);return;}
+  {const bl=autoReloadBlock();if(bl){if(bl==='slip')slipReloadWait('새 버전');setTimeout(checkNewBuild,3*60000);return;}}   // 녹음 중·슬립 화면이 열려 있으면 하지 않는다 (2026-10-15 요청) — 3분 뒤 다시
   try{audit('새 버전 자동 새로고침');}catch(e){}
   setTimeout(()=>location.reload(),800);   /* 기록이 서버에 닿을 시간 — 바로 새로고침하면 이 기록이 빠져 원인 추적이 어려웠다 */
 }catch(_){}}
@@ -14369,6 +14374,7 @@ boot();
     catch(e){console.warn('rec',e);toast('녹음을 시작하지 못했습니다: '+(e.message||e));}
     BUSY=false;badge();}
   window.recCheck=recCheck;
+  window.recActive=()=>!!REC;   // 녹음 중 — 자동 새로고침 안 함 (2026-10-15)
   setInterval(()=>{recCheck();if(REC)badge();},2000);
   /* ═ 받아쓰기 (2026-10-12) — 진료실 PC 의 변환 프로그램(tools/rec_transcribe.py)이 녹음 옆에 같은 이름의 .txt 를 만들면
      읽어서 recText/{파일} 문서로 올린다 → 환자 정보 창 '녹음기록'. 이 PC 가 녹음한 파일만(대기 목록), 3일 지나면 포기 ═ */
