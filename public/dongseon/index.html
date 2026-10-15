@@ -13976,11 +13976,11 @@ function memTick(){
   }
 }
 setInterval(memTick,60000); setTimeout(memTick,5000);
-/* ═ 새 배포 감지 — 30분마다 이 파일을 다시 받아 지문이 바뀌면(새 버전 배포) 한가할 때 스스로 새로고침.
+/* ═ 새 배포 감지 — 5분마다(2026-10-15, 전엔 30분) 이 파일을 다시 받아 지문이 바뀌면(새 버전 배포) 한가할 때 스스로 새로고침.
    구버전 화면이 남아 있으면 새 코드와 환자 문서를 서로 고쳐 쓰며 보드가 굳는다 (2026-09-28 사고) ═ */
 let APP_SIG='';
 async function checkNewBuild(){try{
-  const t=await (await fetch('index.html',{cache:'no-store'})).text();
+  const t=await (await fetch('index.html',{cache:'no-cache'})).text();   // 5분마다 받는다(압축돼 한 번에 약 150KB) — 서버가 ETag 를 주면 '바뀌었나'만 묻게 no-cache (2026-10-15)
   if(!t||t.length<10000)return;                       // 오류 페이지 등은 무시
   let h=0;for(let i=0;i<t.length;i+=97)h=(h*31+t.charCodeAt(i))>>>0;
   const sig=t.length+'-'+h;
@@ -13994,7 +13994,7 @@ async function checkNewBuild(){try{
   try{audit('새 버전 자동 새로고침');}catch(e){}
   setTimeout(()=>location.reload(),800);   /* 기록이 서버에 닿을 시간 — 바로 새로고침하면 이 기록이 빠져 원인 추적이 어려웠다 */
 }catch(_){}}
-setInterval(checkNewBuild,30*60000); setTimeout(checkNewBuild,60000);
+setInterval(checkNewBuild,5*60000); setTimeout(checkNewBuild,60000);   // 2026-10-15: 30분 → 5분 (고친 것이 직원 PC 에 빨리 닿게 — 직접 새로고침하지 않아도)
 /* 잠들었다 깬 태블릿·다시 연결된 화면은 곧바로 확인한다 — 30분 타이머는 잠든 동안 돌지 않아 옛 판이 몇 시간씩 남았다 (2026-09-30: 옛 판 화면이 내보낸 카드를 되살림) */
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(checkNewBuild,1500);});
 window.addEventListener('online',()=>setTimeout(checkNewBuild,3000));
