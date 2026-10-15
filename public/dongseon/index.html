@@ -4004,12 +4004,12 @@ function slipPastHtml(it){const mrn=normMrn(it&&it.mrn);if(!SLIP_PAST_OPEN.has(m
   const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
   return '<div class="sd-past">'+Object.keys(g).sort().reverse().map(d=>`<div class="sd-past-day"><div class="sd-past-h">${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</div><div class="sd-past-grid">`+
     g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
-function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 슬립에서 숨길까요?'))return;
+function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 지울까요?\n(슬립·환자 정보 창·4층 알림에서 모두 사라집니다)'))return;
   const n=BIT_NOTES.find(x=>x.docId===docId);const hid=[...new Set([...((n&&n.shotHidden)||[]),id])];
   saveSlipMark(docId,{shotHidden:hid});if(n)n.shotHidden=hid;
   try{const col=slipShotsCol(),mrn=normMrn(n&&n.mrn);if(col&&mrn)col.doc(mrn).set({mrn,hidden:firebase.firestore.FieldValue.arrayUnion(id)},{merge:true});}catch(e){}
   try{audit('진료실 캡처 숨김',docId);}catch(e){}
-  renderSlipScreen();}
+  renderSlipScreen();try{ptShotRefresh();}catch(e){}}   // 환자 정보 창 캡처 칸·4층 PT 알림·카드도 바로 (2026-10-15)
 /* ═════ PT 캡처 → 4층 (2026-10-13 요청) ═════
    진료실 캡처 바의 [PT 캡처](shots 의 kind='pt')는 슬립에 넣지 않고 4층으로 — ① 4층 비급여 예약 스케줄 위 알림 띠 ② 4층으로 가는 카드 색
    ③ 환자 정보 창 동선 아래 '진료실 캡처' 칸(주사·PT 둘 다). 4층에서 [확인]을 누르면 알림이 꺼진다(slipMark.ptSeen — 모든 화면 공유) */
@@ -4054,7 +4054,8 @@ function capPastHtml(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!slipShotsCol())ret
 function fillCapBox(p){const box=document.getElementById('capBox');if(!box)return;const n=bitNoteFor(p);const all=capShotsToday(n);const past=capPastHtml(p);
   if(!all.length&&!past.btn){box.style.display='none';box.innerHTML='';box.dataset.h='';return;}
   const neu=new Set(ptShotsNew(n).map(x=>x.id));const pt=all.filter(x=>x.kind==='pt'),inj=all.filter(x=>x.kind!=='pt');
-  const one=x=>'<div class="sd-shot'+(neu.has(x.id)?' cap-new':'')+'"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>'+(neu.has(x.id)?'<b class="cap-nb">새로 옴</b> ':'')+'📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>';
+  const one=x=>'<div class="sd-shot'+(neu.has(x.id)?' cap-new':'')+'"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>'+(neu.has(x.id)?'<b class="cap-nb">새로 옴</b> ':'')+'📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span>'
+    +'<button type="button" class="sd-shot-x" data-doc="'+esc(n.docId)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button></div>';   // 환자 정보 창에서도 지우기 (2026-10-15)
   const grp=(t,cls,L,extra)=>L.length?`<div class="cap-grp"><div class="cap-h"><span class="cap-k ${cls}">${t}</span> <span class="hint">${L.length}장</span>${extra||''}</div><div class="cap-grid">${L.map(one).join('')}</div></div>`:'';
   const html=`<div class="sect-t" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i data-lucide="images"></i> 진료실 캡처 <span class="hint">${all.length?'오늘 · 누르면 크게':'오늘 캡처 없음'}</span><span style="flex:1"></span>${past.btn}</div>`+past.body+
     grp('PT 캡처','pt',pt,neu.size?` <button type="button" class="btn sm cap-ok" onclick="ptShotSeen('${esc(n.docId)}')">✔ 4층 확인 (알림 끄기)</button>`:(n&&n.ptSeenBy?` <span class="hint">✔ ${esc(n.ptSeenBy)} 확인</span>`:''))+grp('주사 캡처','inj',inj);
