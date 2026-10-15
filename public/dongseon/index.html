@@ -4113,7 +4113,14 @@ function wristE(t){const s=new Set();t=String(t||'');
 let POS_LAST_E=[];
 function posGuidesFor(lines){const t=(lines||[]).join('\n');const L=POS_GUIDES.filter(g=>g.test?g.test(t):g.re.test(t));
   return L.some(g=>/^wrist(side|dorsal|volar)$/.test(g.k))?L.filter(g=>g.k!=='wrist'):L;}   // 옆·손등·손바닥이 정해지면 일반 '손목' 칩은 뺀다
-function posChipsHtml(it){const L=posGuidesFor(it&&it.lines);if(!L.length)return '';const E=wristE((it.lines||[]).join('\n'));POS_LAST_E=E;
+/* 준비 자세 사진은 SONO 주사용 — Sono 처방이 있는 환자만 (2026-10-15 요청): 비트 처방의 Sono 규칙 · 슬립 줄의 sono/초음파 · 카드 동선의 Sono */
+function posHasSono(it){if(!it)return false;
+  if(/\bsono|초음파/i.test((it.lines||[]).join('\n')))return true;
+  const p=it.p||{mrn:it.mrn};
+  try{const rule=ROUTE_RX_RULES.find(r=>r.room==='Sono'),rx=bitRxFor(p),items=rxLiveItems(p,(rx&&rx.items)||[]);
+    if(rule&&items.some(x=>rxRuleHit(rule,String(x.cod||'').trim(),String(x.nam||'').trim())))return true;}catch(e){}
+  return !!(it.p&&Array.isArray(it.p.route)&&it.p.route.includes('Sono'));}
+function posChipsHtml(it){if(!posHasSono(it))return '';const L=posGuidesFor(it&&it.lines);if(!L.length)return '';const E=wristE((it.lines||[]).join('\n'));POS_LAST_E=E;
   const eOf=g=>g.k==='wristside'?E.filter(n=>n===1||n===6):g.k==='wristdorsal'?E.filter(n=>n>=2&&n<=5):[];
   return `<div class="sd-pos"><span class="sd-pos-h">준비 자세</span>${L.map(g=>{const e=eOf(g);return `<button type="button" class="sd-pos-chip" onclick="posShow('${g.k}')">🧍 ${esc(g.label)}${e.length?' <span class="sd-pos-e">'+e.map(n=>'E'+n).join('·')+'</span>':''}</button>`;}).join('')}</div>`;}
 window.posShow=function(k){const g=POS_GUIDES.find(x=>x.k===k);if(!g)return;let ov=document.getElementById('posGuide');
@@ -5769,6 +5776,10 @@ async function runSelfTest(){
       eq('비용 상담 시행 안 함: 시술 방만 지우고 4층 치료가 있으면 4층 대기실로, 없으면 수납대기로', [A.route.slice(A.step),B.route.slice(B.step)], [['4층 대기실','수납대기'],['수납대기']]);}
      {const g=l=>posGuidesFor(l).map(x=>x.k).join();   // 주사 준비 자세 (2026-10-15)
       eq('주사 준비 자세: 처방 줄의 부위 낱말 → 칩', [g(['med','sono shoulder rt']),g(['med','손톱 밑 주사']),g(['med','c-mbb rt 3,5 / lt 3,4,5']),g(['med','neuropathic pain 기'])], ['sono,shoulder','nail','cspine','']);
+      {const _b=bitRxFor;bitRxFor=()=>null;
+       const a=!!posChipsHtml({lines:['med','sono shoulder rt'],p:null,mrn:''}),b=!!posChipsHtml({lines:['med','c-arm shoulder rt'],p:null,mrn:''}),c=!!posChipsHtml({lines:['med','shoulder rt'],p:{route:['진료실1','Sono']},mrn:''});
+       bitRxFor=()=>({items:[{cod:'sono3',nam:'근골격계초음파'}]});const d=!!posChipsHtml({lines:['med','shoulder rt'],p:null,mrn:'9'});bitRxFor=_b;
+       eq('주사 준비 자세: Sono 처방 환자만(슬립 줄·동선·비트 처방), C-Arm 만이면 안 뜸', [a,b,c,d], [true,false,true,true]);}
       eq('주사 준비 자세: 손목 E1·E6 = 옆, E2~E5 = 손등, 수근관 = 손바닥', [g(['lt wrist E1 inj']),g(['E4 sono']),g(['rt E6, E2']),g(['carpal tunnel inj']),wristE('E1,2 / 3rd compartment').join()], ['wristside','sono,wristdorsal','wristside,wristdorsal','wristvolar','1,2,3']);}
      {const _so=slipOpen,_ra=window.recActive;slipOpen=false;window.recActive=()=>false;const a=autoReloadBlock();window.recActive=()=>true;const b=autoReloadBlock();window.recActive=()=>false;slipOpen=true;const c=autoReloadBlock();slipOpen=_so;window.recActive=_ra;   // 자동 새로고침 막기 (2026-10-15)
       eq('자동 새로고침: 평소엔 함, 녹음 중·슬립 화면이 열려 있으면 안 함', [a,b,c], ['','rec','slip']);}
