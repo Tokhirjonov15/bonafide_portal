@@ -7389,13 +7389,16 @@ function render(){
     renderDischargedBoard(board,q);
   }else{
   let _qShown=0;
-  visibleRooms().forEach(room=>{
+  /* 2026-10-15 요청(검색해도 어디 있는지 안 뜨는 환자가 많다): 검색 중에는 지금 층 탭·내가 숨긴 방과 상관없이 모든 방에서 찾는다.
+     이름은 띄어쓰기를 빼고 비교 */
+  const _qk=q.replace(/\s+/g,''),qHit=p=>String(p.name||'').replace(/\s+/g,'').includes(_qk)||String(p.mrn||'').includes(q);
+  (q?orderedRooms():visibleRooms()).forEach(room=>{
     let list=data.filter(p=>!p.discharged&&p.route.length&&curRoom(p)===room).sort(viewSort(room));
-    if(q) list=list.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
+    if(q) list=list.filter(qHit);
     /* 거울 표시: 실제 위치가 짝 방이면 이 방에도 카드를 함께 표시 (환자 데이터는 하나 —
        어느 쪽에서든 종결·이동하면 실제 환자가 움직이므로 두 카드가 같이 사라지고 하나로 돌아감) */
     let mirrors=data.filter(p=>!p.discharged&&p.route.length&&mirroredHere(p,room)).sort(viewSort(room));
-    if(q) mirrors=mirrors.filter(p=>p.name.includes(q)||(p.mrn||"").includes(q));
+    if(q) mirrors=mirrors.filter(qHit);
     const shown=list.length+mirrors.length;
     /* 환자 검색 중에는 찾은 환자가 있는 방만 보인다 (2026-10-01 원장님들: 검색해도 보이지 않아 좌우로 밀어 찾아야 했다) */
     if(q&&!shown){return;}
@@ -7408,7 +7411,7 @@ function render(){
     }).join(""):'<span class="hint" style="font-size:11px">담당자 없음</span>';
 
     const col=document.createElement("div");
-    const folded=!!COL_FOLD[room];
+    const folded=!!COL_FOLD[room]&&!q;   // 검색 중에는 접어 둔 방도 펼쳐서 찾은 카드가 보이게 (2026-10-15)
     col.className="col"+(mineOwner?" owned":"")+(folded?" folded":"");col.dataset.room=room;
     if(folded)col.title=room+' — 누르면 펼치기 · 카드를 여기 놓으면 이 방으로 이동';
     col.innerHTML=`
