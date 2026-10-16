@@ -650,14 +650,14 @@
 
 <!-- 스캔 출고: 박스/개수 → 수량 (2026-10-16 요청 — 여러 개를 한 번에 출고) -->
 <div class="ovl" id="outOvl"><div class="modal" style="max-width:420px">
-  <h2><i data-lucide="package-open"></i> 출고</h2>
+  <h2 id="outTitle"><i data-lucide="package-open"></i> 출고</h2>
   <p id="outProd" style="font-weight:700; margin-bottom:2px"></p>
   <p class="muted" id="outNow" style="margin-bottom:10px"></p>
   <div id="outStep1">
     <div class="out-q">어떤 단위로 출고하시나요?</div>
     <div class="out-pick">
-      <button type="button" class="btn out-big" onclick="outPick('box')"><i data-lucide="package"></i> 박스 단위로 출고<span id="outBoxSz" class="muted"></span></button>
-      <button type="button" class="btn ghost out-big" onclick="outPick('ea')"><i data-lucide="hash"></i> 개수 단위로 출고</button>
+      <button type="button" class="btn out-big" onclick="outPick('box')"><i data-lucide="package"></i> <b class="out-v">박스 단위로 출고</b><span id="outBoxSz" class="muted"></span></button>
+      <button type="button" class="btn ghost out-big" onclick="outPick('ea')"><i data-lucide="hash"></i> <b class="out-v2">개수 단위로 출고</b></button>
     </div>
   </div>
   <div id="outStep2" style="display:none">
@@ -2119,12 +2119,19 @@ function showScanResult(kind, html){
 /* ═ 스캔 출고 — 박스/개수 → 수량 (2026-10-16 요청) ═
    출고 모드에서 찍으면 먼저 품목만 찾고(/scan lookup), '박스 단위 / 개수 단위'를 고른 뒤 수량을 넣어 한 번에 출고한다.
    박스 크기(발주단위 등)가 없는 품목은 바로 개수를 묻는다. 입고는 예전처럼(1스캔 = 1박스) */
-let OUT=null;   // {bar, product, stock, bs, unit}
-async function scanOutAsk(bar){
-  const r=await API.call("/scan",{ bar, mode:"out", lookup:true });
+let OUT=null;   // {bar, mode('in'|'out'), product, stock, bs, unit}
+/* 2026-10-16: 입고도 같은 창으로 — 박스(박스 수 × 1박스 개수) / 개수 */
+async function scanOutAsk(bar,mode){
+  mode=mode==="in"?"in":"out";
+  const r=await API.call("/scan",{ bar, mode, lookup:true });
   if(r.notFound) return r;
   const p=r.product, bs=Number(r.boxSize)||0;
-  OUT={bar, product:p, stock:Number(r.stock)||0, bs, unit:""};
+  OUT={bar, mode, product:p, stock:Number(r.stock)||0, bs, unit:""};
+  const W=mode==="in"?"입고":"출고";
+  $("outTitle").innerHTML=`<i data-lucide="${mode==="in"?"package-plus":"package-open"}"></i> ${W}`;
+  $("outOvl").querySelector(".out-q").textContent=`어떤 단위로 ${W}하시나요?`;
+  $("outOvl").querySelector(".out-v").textContent=`박스 단위로 ${W}`;$("outOvl").querySelector(".out-v2").textContent=`개수 단위로 ${W}`;
+  $("outOk").textContent=W;
   $("outProd").textContent=p.name;
   $("outNow").innerHTML=`현재 재고: <b>${OUT.stock}</b> ${esc(p.unit||"개")}${boxTxt(p,OUT.stock)?` = ${esc(boxTxt(p,OUT.stock))}`:""}`;
   $("outBoxSz").textContent=bs>1?` (1박스=${bs}개)`:"";
@@ -2140,13 +2147,17 @@ window.outPick=function(u){if(!OUT)return;OUT.unit=u;
   $("outQty").value=1;outHint();setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);};
 function outCount(){const q=Math.floor(Number($("outQty").value)||0);return OUT&&OUT.unit==="box"?q*OUT.bs:q;}
 window.outHint=function(){if(!OUT)return;const c=outCount(),el=$("outHintTx");
-  el.style.color=c>OUT.stock?"var(--warn)":"var(--accent)";
-  el.textContent=c<1?"수량을 넣어 주세요":(OUT.unit==="box"?`= ${c}개 출고`:`${c}개 출고`)+(c>OUT.stock?` — 재고(${OUT.stock})보다 많습니다`:"");};
+  const W=OUT.mode==="in"?"입고":"출고",over=OUT.mode==="out"&&c>OUT.stock;
+  el.style.color=over?"var(--warn)":"var(--accent)";
+  el.textContent=c<1?"수량을 넣어 주세요":(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
 window.outClose=function(){OUT=null;$("outOvl").classList.remove("show");focusScan();};
 window.outGo=async function(){if(!OUT)return;const c=outCount();if(c<1){$("outQty").focus();return;}
-  if(c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
-  const bar=OUT.bar;$("outOvl").classList.remove("show");OUT=null;
-  await doScan(bar,{qty:c});};
+  if(OUT.mode==="out"&&c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
+  /* 입고 박스: 서버가 박스 수 × 1박스 개수로 넣는다(입고 기록에 'N박스') · 개수: unit:'ea' 로 곱하지 않게 · 출고: 늘 개수 */
+  const o=OUT,boxes=Math.floor(Number($("outQty").value)||0);
+  const opt=o.mode==="in"?(o.unit==="box"?{qty:boxes,unit:"box"}:{qty:c,unit:"ea"}):{qty:c};
+  $("outOvl").classList.remove("show");OUT=null;
+  await doScan(o.bar,opt);};
 $("outOvl").addEventListener("keydown",e=>{
   if(e.key==="Escape"){e.preventDefault();outClose();}
   else if(e.key==="Enter"&&$("outStep2").style.display!=="none"){e.preventDefault();outGo();}
@@ -2157,11 +2168,11 @@ async function doScan(code,opt){
   if(!bar) return;
   $("scanIn").value="";
   try{
-    if(scanMode==="out"&&!(opt&&opt.qty)){   // 출고: 먼저 단위·수량을 묻는다
-      const a=await scanOutAsk(bar);
+    if(!(opt&&opt.qty)){   // 입고·출고 모두 먼저 단위·수량을 묻는다 (출고 2026-10-16 → 입고도 같은 날)
+      const a=await scanOutAsk(bar,scanMode);
       if(a&&a.asked) return;
     }
-    const r=await API.call("/scan",{ bar, mode:scanMode, qty:(opt&&opt.qty)||1,
+    const r=await API.call("/scan",{ bar, mode:scanMode, qty:(opt&&opt.qty)||1, unit:(opt&&opt.unit)||"",
       expiry:$("scanExp").value||"", loc:$("scanLoc").value||"" });
     if(r.notFound){
       beep(false);

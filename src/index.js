@@ -1436,7 +1436,7 @@ async function handleApi(request, env, url, ident, ctx) {
     /* 스캔 입고 = 박스 단위(박스 크기가 있으면 1스캔 = 1박스), 출고 = 낱개 */
     const bs = boxSizeOf(p);
     let appliedQty = qty, boxIn = null;
-    if (mode === "in" && bs > 1) { appliedQty = qty * bs; boxIn = { boxes: qty, per: bs }; }
+    if (mode === "in" && bs > 1 && body.unit !== "ea") { appliedQty = qty * bs; boxIn = { boxes: qty, per: bs }; }   // unit:'ea' = 개수 단위 입고(2026-10-16) — 박스로 곱하지 않음
     const floor = normFloor(body.floor || locSel);   // 이 기기의 층 = 입출고한 층 (2026-10-06)
     const gid = (await altParentOf(env, p.id)) || p.id;
     const prev = await groupStock(env, gid);
