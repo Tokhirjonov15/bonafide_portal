@@ -262,6 +262,11 @@
     background:#2f6fed; color:#fff; font-size:11px; font-weight:800; letter-spacing:.5px; box-shadow:0 6px 18px rgba(20,40,90,.28)}
   #topBtn.show{display:flex}
   #topBtn svg{width:18px; height:18px}
+  /* 스캔 출고 단위·수량 (2026-10-16) */
+  .out-q{font-weight:800; font-size:15px; margin:4px 0 8px}
+  .out-pick{display:flex; flex-direction:column; gap:8px}
+  .out-big{width:100%; justify-content:center; font-size:17px; padding:14px 12px}
+  .out-big span{font-weight:600; font-size:13px; margin-left:4px}
   .ovl{position:fixed; inset:0; background:rgba(20,30,45,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:14px}
   .ovl.show{display:flex}
   .lottbl{width:100%; border-collapse:collapse}
@@ -640,6 +645,28 @@
   <div class="mbtns">
     <button class="btn ghost" id="mvCancel">취소</button>
     <button class="btn" id="mvSave">확인</button>
+  </div>
+</div></div>
+
+<!-- 스캔 출고: 박스/개수 → 수량 (2026-10-16 요청 — 여러 개를 한 번에 출고) -->
+<div class="ovl" id="outOvl"><div class="modal" style="max-width:420px">
+  <h2><i data-lucide="package-open"></i> 출고</h2>
+  <p id="outProd" style="font-weight:700; margin-bottom:2px"></p>
+  <p class="muted" id="outNow" style="margin-bottom:10px"></p>
+  <div id="outStep1">
+    <div class="out-q">어떤 단위로 출고하시나요?</div>
+    <div class="out-pick">
+      <button type="button" class="btn out-big" onclick="outPick('box')"><i data-lucide="package"></i> 박스 단위로 출고<span id="outBoxSz" class="muted"></span></button>
+      <button type="button" class="btn ghost out-big" onclick="outPick('ea')"><i data-lucide="hash"></i> 개수 단위로 출고</button>
+    </div>
+  </div>
+  <div id="outStep2" style="display:none">
+    <label id="outQtyLabel">수량</label><input id="outQty" type="number" min="1" value="1" class="qbig" oninput="outHint()">
+    <p class="muted" id="outHintTx" style="margin:4px 0 0; font-weight:700"></p>
+  </div>
+  <div class="mbtns">
+    <button class="btn ghost" type="button" onclick="outClose()">취소</button>
+    <button class="btn" type="button" id="outOk" style="display:none" onclick="outGo()">출고</button>
   </div>
 </div></div>
 
@@ -2062,7 +2089,7 @@ $("scanLoc").onchange=()=>{ localStorage.setItem("jaego_loc",$("scanLoc").value)
 function focusScan(){
   if(window.innerWidth<760) return;   // 모바일: 키보드가 자동으로 튀어나오지 않게 (카메라 스캔 위주)
   if($("pgScan").style.display==="none") return;
-  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")) return;
+  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")||$("outOvl").classList.contains("show")) return;
   setTimeout(()=>$("scanIn").focus(), 30);
 }
 $("pgScan").addEventListener("click",e=>{
@@ -2089,12 +2116,52 @@ function showScanResult(kind, html){
   refreshIcons();
 }
 
-async function doScan(code){
+/* ═ 스캔 출고 — 박스/개수 → 수량 (2026-10-16 요청) ═
+   출고 모드에서 찍으면 먼저 품목만 찾고(/scan lookup), '박스 단위 / 개수 단위'를 고른 뒤 수량을 넣어 한 번에 출고한다.
+   박스 크기(발주단위 등)가 없는 품목은 바로 개수를 묻는다. 입고는 예전처럼(1스캔 = 1박스) */
+let OUT=null;   // {bar, product, stock, bs, unit}
+async function scanOutAsk(bar){
+  const r=await API.call("/scan",{ bar, mode:"out", lookup:true });
+  if(r.notFound) return r;
+  const p=r.product, bs=Number(r.boxSize)||0;
+  OUT={bar, product:p, stock:Number(r.stock)||0, bs, unit:""};
+  $("outProd").textContent=p.name;
+  $("outNow").innerHTML=`현재 재고: <b>${OUT.stock}</b> ${esc(p.unit||"개")}${boxTxt(p,OUT.stock)?` = ${esc(boxTxt(p,OUT.stock))}`:""}`;
+  $("outBoxSz").textContent=bs>1?` (1박스=${bs}개)`:"";
+  $("outStep1").style.display=bs>1?"":"none";
+  $("outOvl").classList.add("show");refreshIcons();
+  if(bs>1){ $("outStep2").style.display="none"; $("outOk").style.display="none"; setTimeout(()=>$("outOvl").querySelector(".out-big").focus(),30); }
+  else outPick("ea");
+  return {asked:true};
+}
+window.outPick=function(u){if(!OUT)return;OUT.unit=u;
+  $("outStep1").style.display="none";$("outStep2").style.display="";$("outOk").style.display="";
+  $("outQtyLabel").textContent=u==="box"?`박스 수 (1박스=${OUT.bs}개)`:"개수";
+  $("outQty").value=1;outHint();setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);};
+function outCount(){const q=Math.floor(Number($("outQty").value)||0);return OUT&&OUT.unit==="box"?q*OUT.bs:q;}
+window.outHint=function(){if(!OUT)return;const c=outCount(),el=$("outHintTx");
+  el.style.color=c>OUT.stock?"var(--warn)":"var(--accent)";
+  el.textContent=c<1?"수량을 넣어 주세요":(OUT.unit==="box"?`= ${c}개 출고`:`${c}개 출고`)+(c>OUT.stock?` — 재고(${OUT.stock})보다 많습니다`:"");};
+window.outClose=function(){OUT=null;$("outOvl").classList.remove("show");focusScan();};
+window.outGo=async function(){if(!OUT)return;const c=outCount();if(c<1){$("outQty").focus();return;}
+  if(c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
+  const bar=OUT.bar;$("outOvl").classList.remove("show");OUT=null;
+  await doScan(bar,{qty:c});};
+$("outOvl").addEventListener("keydown",e=>{
+  if(e.key==="Escape"){e.preventDefault();outClose();}
+  else if(e.key==="Enter"&&$("outStep2").style.display!=="none"){e.preventDefault();outGo();}
+});
+
+async function doScan(code,opt){
   const bar=(code||"").trim();
   if(!bar) return;
   $("scanIn").value="";
   try{
-    const r=await API.call("/scan",{ bar, mode:scanMode, qty:1,
+    if(scanMode==="out"&&!(opt&&opt.qty)){   // 출고: 먼저 단위·수량을 묻는다
+      const a=await scanOutAsk(bar);
+      if(a&&a.asked) return;
+    }
+    const r=await API.call("/scan",{ bar, mode:scanMode, qty:(opt&&opt.qty)||1,
       expiry:$("scanExp").value||"", loc:$("scanLoc").value||"" });
     if(r.notFound){
       beep(false);
@@ -2728,7 +2795,7 @@ refreshIcons();   /* 첫 화면(헤더·스캔·로그인창)의 정적 아이�
 refresh();
 setInterval(()=>{
   if(document.hidden) return;
-  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")) return;
+  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")||$("outOvl").classList.contains("show")) return;
   refresh(true);
 },15000);
 </script>

@@ -1422,6 +1422,8 @@ async function handleApi(request, env, url, ident, ctx) {
 
     const p = await findByBarcode(env, raw);
     if (!p) return json({ notFound: true, bar: raw, gs1: parseGs1(raw) });
+    /* 찾기만 (2026-10-16): 스캔 출고 때 '박스/개수 · 수량'을 묻기 전에 품목·재고·박스 크기만 — 입출고는 하지 않는다 */
+    if (body.lookup) return json({ ok: true, lookup: true, product: p, stock: await currentStock(env, p.id), boxSize: boxSizeOf(p) });
 
     /* 스캔 화면에서 선택한 보관위치: 품목에 위치가 비어 있으면 자동 저장 */
     const locSel = s(body.loc);
