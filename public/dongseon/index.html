@@ -11984,15 +11984,34 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
     /* 날짜별로 묶기 (2026-10-12 요청) — 오늘은 펼치고 지난 날은 접어 둔다(누르면 펼침, 펼친 날짜는 기억). 개수 제한 없음 */
     const today=localYMD(new Date()),g={};L.forEach((r,i)=>{const d=String(r.date||r.startedAt||'').slice(0,10)||'날짜 없음';(g[d]=g[d]||[]).push([r,i]);});
     const wd=['일','월','화','수','목','금','토'];const days=Object.keys(g).sort().reverse();
-    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${L.length}건 · 진료 녹음을 글로 바꾼 것 (틀린 곳이 있을 수 있음)</span></div>`+
+    const nRec=new Set(L.map(r=>r.file||r.startedAt)).size;
+    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${nRec}건 · ▶ 눌러 듣기 (받아쓴 글은 틀린 곳이 있을 수 있음)</span></div>`+
       days.map(d=>{const open=d===today?!REC_DAY_SHUT.has(mrn+d):REC_DAY_OPEN.has(mrn+d);const dw=/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':'';
-        return `<details class="rt-day"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} <span class="hint">${g[d].length}건</span></summary>`+
-        g[d].map(([r,i])=>`<div class="rt-item"><div class="rt-head"><b>${esc((()=>{const d=new Date(r.startedAt||'');return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');})())}</b> · ${esc(r.room||'')} <span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(({chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'})[r.src||'local']||r.src)}</span>
-        <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div></div>`).join('')+'</details>';}).join('');
-    box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}};
+        const byF=new Map();g[d].forEach(([r,i])=>{const k=r.file||r.startedAt||String(i);if(!byF.has(k))byF.set(k,[]);byF.get(k).push([r,i]);});
+        return `<details class="rt-day"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} <span class="hint">${byF.size}건</span></summary>`+
+        [...byF.values()].map(G=>recItemHtml(G)).join('')+'</details>';}).join('');
+    box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}recAudioLoad(box);};
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
   cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));   // 개수 제한 없이 (2026-10-12)
     recTextCache[mrn]={at:Date.now(),list:L};draw(L);}).catch(e=>console.warn('recText get',e));}
+/* 녹음 한 건(같은 파일) — 재생 막대(음성 메시지처럼) + 받아쓴 글은 접어서 (2026-10-16) */
+const REC_SRC_L={chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
+function recDurTxt(s){s=Math.round(Number(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+/* 2026-10-16 요청: 진료실 PC 받아쓰기를 기본으로 — 재생 막대 아래에 진료실 PC 글을 펼쳐 두고, 다른 방식(크롬·OpenAI·클로바) 글은 '다른 받아쓰기'로 접는다.
+   진료실 PC 글이 없으면 있는 글 중 첫째를 펼친다 */
+const REC_SRC_ORDER=['local','clova','openai','chrome'];
+function recItemHtml(G){const first=G[0][0];const au=G.find(([r])=>r.src==='audio');
+  const tx=G.filter(([r])=>r.src!=='audio').sort((a,b)=>REC_SRC_ORDER.indexOf(a[0].src||'local')-REC_SRC_ORDER.indexOf(b[0].src||'local'));
+  const t=(()=>{const d=new Date(first.startedAt||'');return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');})();
+  const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span></div>`:'';
+  const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>
+      <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
+  const main=tx.length?one(tx[0]):'',rest=tx.slice(1).map(one).join('');
+  return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':' <span class="hint">(소리 없음 — 글만)</span>'}</div>${player}
+    ${main}${rest?`<details class="rt-txt"><summary>다른 받아쓰기 ${tx.length-1}개 (${esc(tx.slice(1).map(([r])=>REC_SRC_L[r.src||'local']||r.src).join('·'))})</summary>${rest}</details>`:''}</div>`;}
+const REC_AUDIO_URL={};
+function recAudioLoad(box){try{if(!cloud.storage||!box)return;box.querySelectorAll('audio[data-path]').forEach(a=>{if(a.getAttribute('src'))return;const p=a.dataset.path;
+  if(REC_AUDIO_URL[p]){a.src=REC_AUDIO_URL[p];return;}cloud.storage.ref(p).getDownloadURL().then(u=>{REC_AUDIO_URL[p]=u;a.src=u;}).catch(e=>{console.warn('rec audio',e);a.insertAdjacentHTML('afterend','<span class="hint">소리를 불러오지 못했습니다</span>');});});}catch(e){}}
 const REC_DAY_OPEN=new Set(),REC_DAY_SHUT=new Set();   // 지난 날 펼친 것 / 오늘인데 접은 것 — 다시 그려도 그대로
 window.recDayToggle=function(k,open,isToday){if(isToday){open?REC_DAY_SHUT.delete(k):REC_DAY_SHUT.add(k);}else{open?REC_DAY_OPEN.add(k):REC_DAY_OPEN.delete(k);}};
 window.recTextCopy=function(i){const box=document.getElementById('recTextBox');const r=box&&box._list&&box._list[i];if(!r)return;
@@ -14193,6 +14212,8 @@ boot();
   .bb-tag.ok{background:var(--green-bg);color:var(--green)}
   .bb-tag.add{background:rgba(99,102,241,.16);color:var(--t-indigosoft)}
   .rx-tblwrap{max-height:320px;overflow:auto;margin-top:6px}
+  .rt-voice{display:flex;align-items:center;gap:8px;margin-top:6px}.rt-voice audio{flex:1;min-width:0;height:36px}.rt-dur{font-size:12px;font-weight:700;color:var(--sub)}   /* 음성 메시지처럼 (2026-10-16) */
+  .rt-txt{margin-top:6px}.rt-txt>summary{cursor:pointer;font-size:12.5px;color:var(--sub)}.rt-txh{display:flex;align-items:center;gap:6px;margin-top:6px}.rt-txh .btn{margin-left:auto}
   .rec-text-box{margin-top:12px}.rec-text-box .sect-t svg{width:15px;height:15px;vertical-align:-3px}
   .rt-item{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--panel2)}.rt-head{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}.rt-head .btn{margin-left:auto}
   .rec-stt{flex-direction:column;align-items:flex-start;gap:4px}.rec-stt label{display:flex;gap:6px;align-items:center;cursor:pointer}
@@ -14452,11 +14473,25 @@ boot();
   async function stop(why){const rec=REC;if(!rec)return;REC=null;
     await new Promise(res=>{rec.mr.onstop=res;try{rec.mr.stop();}catch(e){res();}});
     rec.stream.getTracks().forEach(t=>t.stop());await rec.chain;badge();
+    recUploadAudio(rec);   // 음성 메시지처럼 듣기 — 다른 PC 에서도 (2026-10-16)
     if(rec.stt)await sttStop(rec);
     {const M=sttModes();['openai','clova'].forEach(pv=>{if(M.has(pv)&&rec.meta)cloudStt(rec,pv);});}
     const mins=Math.round((Date.now()-rec.started)/60000);
     toast(rec.err?`녹음 저장 중 오류가 있었습니다: ${rec.name}`:`녹음 저장: ${rec.name} (${mins}분)`);
     try{audit('진료 녹음 저장',rec.name+' · '+Math.round(rec.size/1024)+'KB'+(why?' · '+why:''));}catch(e){}}
+  /* ═ 녹음을 음성 메시지처럼 (2026-10-16 요청: 받아쓴 글이 틀려 알아보기 어렵다 — 텔레그램 음성 메시지처럼 듣게) ═
+     멈추면 외장하드에 저장된 녹음 파일을 Firebase 저장소 rec_audio/{차트번호}/ 에 올리고(저장소 규칙에서 이 폴더의 audio/* 를 허용해야 한다 — patient_photos 는 사진만 받는다),
+     recText/{파일}__audio 문서를 남긴다 → 환자 정보 창 '녹음기록'에 재생 막대. 어느 PC 에서나 들을 수 있다 */
+  async function recUploadAudio(rec){
+    try{if(!(typeof cloud!=='undefined'&&cloud.active&&cloud.storage&&cloud.ref)||!rec.meta)return;
+      const f=await rec.fh.getFile();if(!f||!f.size)return;const m=rec.meta;
+      const path='rec_audio/'+pmKey(m.mrn||'_')+'/rec_'+String(m.at).replace(/\D/g,'').slice(0,14)+'_'+pmKey(m.room||'')+'.webm';
+      await cloud.storage.ref(path).put(f,{contentType:'audio/webm'});
+      await cloud.ref.collection('recText').doc(recDocId(m.file)+'__audio').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
+        src:'audio',audio:path,dur:Math.max(1,Math.round((Date.now()-rec.started)/1000)),size:f.size,text:'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
+      if(window.recTextCache)delete window.recTextCache[m.mrn];
+      try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}}
+    catch(e){console.warn('rec upload',e);if(!recUploadAudio.warned){recUploadAudio.warned=true;toast('녹음 소리를 올리지 못했습니다 — 외장하드의 파일은 그대로 있습니다 ('+(e.code||e.message||e)+')',8000);}}}
   /* 보드가 바뀔 때마다·2초마다: 이 진료실에서 '진행' 중인 환자 = 녹음 대상 */
   async function recCheck(){if(BUSY)return;const r=room();if(!r||!DIR||typeof data==='undefined')return;BUSY=true;
     try{const now=data.find(p=>p&&!p._viewOnly&&!p.discharged&&curRoom(p)===r&&p.status==='진행');
@@ -14479,7 +14514,7 @@ boot();
   /* ═ 크롬 실시간 받아쓰기 (2026-10-12 — 먼저 무료로 시험) — 녹음과 함께 크롬 음성인식(ko-KR)을 켜 두고, 끊기면(조용하면 저절로 멈춘다) 다시 켠다.
      말이 끝날 때마다 [분:초] 와 함께 쌓고 1분마다·끝날 때 recText/{파일} 에 저장 → 환자 정보 창 '녹음기록'. 마이크는 윈도우 '기본 장치' ═ */
   const LS_STT='dsRecStt';
-  function sttModes(){let v=null;try{v=localStorage.getItem(LS_STT);}catch(e){}if(v==null||v==='')v='chrome';if(v==='none')v='';return new Set(v.split(',').filter(Boolean));}   // 예전 값('chrome'·'local'·'')도 그대로 읽힌다
+  function sttModes(){let v=null;try{v=localStorage.getItem(LS_STT);}catch(e){}if(v==null||v==='')v='local';if(v==='none')v='';   /* 기본 = 진료실 PC (2026-10-16 — 크롬에서 바꿈) */return new Set(v.split(',').filter(Boolean));}   // 예전 값('chrome'·'local'·'')도 그대로 읽힌다
   window.sttModes=sttModes;
   const recDocId=file=>file.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
   async function sttSave(rec,final){const st=rec.stt;if(!st||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref))return;
