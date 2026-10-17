@@ -4957,6 +4957,23 @@ async function bitClaimAndCreate(r,name,reg){
   }catch(e){console.warn('bitClaimAndCreate',e);}
   finally{delete BIT_CLAIMING[r.docId];}
 }
+/* ═════ 비트 예약 시간 채우기 (2026-10-17 요청: 드물게 예약자인데 카드에 예약 시간이 안 뜬다 — 강문수) ═════
+   카드의 예약 시간은 접수 때 비트가 '이 접수 = 몇 시 예약'(RsvOcmNum)을 알려 줄 때만 들어간다. 예약 환자를 예약에서 불러오지 않고 새로 접수하면 연결이 없어 빈다.
+   그래서 카드에 예약 시간이 비어 있으면 오늘 비트 예약 목록(bitResv/오늘 — 에이전트가 쓰는 문서)에서 차트번호로 찾아 채운다(취소·예약금지 제외, 가장 이른 시각).
+   2분마다 문서 하나만 읽는다. 직원 보드만, 여러 화면이 동시에 해도 이미 채워졌으면 쓰지 않는다 */
+let RESV_FILL_AT=0;
+async function resvFill(){if(!currentUser||!cloud.resvCol||!cloud.patientsCol||BIT_SUB_ROLE!=='staff')return;
+  const need=(data||[]).filter(p=>p&&!p.discharged&&!p._viewOnly&&!p.reserveAt&&normMrn(p.mrn));if(!need.length)return;
+  if(Date.now()-RESV_FILL_AT<120000)return;RESV_FILL_AT=Date.now();
+  let items=[];try{const d=await cloud.resvCol.doc(localYMD(new Date())).get();items=(d.exists&&Array.isArray((d.data()||{}).items))?d.data().items:[];}catch(e){console.warn('resvFill',e);return;}
+  items=items.filter(x=>x&&!x.block&&String(x.sts||'')!=='OC'&&/^\d{2}:\d{2}$/.test(String(x.t||'')));if(!items.length)return;
+  let ch=false;
+  need.forEach(p=>{const m=normMrn(p.mrn);const L=items.filter(x=>normMrn(x.mrn)===m).map(x=>x.t).sort();if(!L.length)return;const t=L[0];
+    p.reserveAt=t;ch=true;
+    cloudPatientTxn(p.id,d=>{if(d.reserveAt)return false;d.reserveAt=t;d.reserveFrom='bitResv';return d;},{keepLocal:true}).then(r=>{
+      if(r===true)try{audit('비트 예약 시간 채움(예약 목록)',(p.name||'')+' ('+m+') · '+t);}catch(e){}}).catch(()=>{});});
+  if(ch){saveLocal();render();}}
+setInterval(()=>{try{resvFill();}catch(e){}},30000);
 function bitCreatePatient(r,name,reg){
   const mrn=String(r.mrn||'').trim();const today=localYMD(new Date());
   if(bitOnBoard(r))return null;
