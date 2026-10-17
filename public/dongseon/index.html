@@ -1265,6 +1265,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .cd-top .spacer{flex:1}
   .cd-body{flex:1;display:flex;min-height:0}
   .cd-list{width:320px;flex:none;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;border-right:1px solid var(--line)}
+  .cdesk.cd-nolist .cd-list{display:none}   /* 목록 접기 (2026-10-17) */
+  .cd-sum{align-items:center}
+  .cd-sum .btn.cd-sign2{margin-left:auto;background:#2563eb;color:#fff;border-color:#2563eb;font-weight:800}
   .cd-card{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel);cursor:pointer;display:flex;flex-direction:column;gap:3px}
   .cd-card.on{border:2px solid #4f6bed;background:#eef2ff}
   .cd-card.done{opacity:.7}
@@ -13738,9 +13741,15 @@ function cdRows(){const out=[];
   return out.sort((a,b)=>(a.all-b.all)||String(a.p.arrivedAt||'').localeCompare(String(b.p.arrivedAt||'')));}
 window.openConsentDesk=function(){CDESK_OPEN=true;let ov=document.getElementById('cdesk');
   if(!ov){ov=document.createElement('div');ov.id='cdesk';ov.className='cdesk';
-    ov.innerHTML='<div class="cd-top"><b><i data-lucide="pen-line"></i> 동의서</b><span class="hint" id="cdSum"></span><input id="cdSearch" placeholder="이름·차트번호 검색" oninput="renderConsentDesk()"><span class="spacer"></span><button type="button" class="btn sm" onclick="closeConsentDesk()">닫기</button></div><div class="cd-body"><div class="cd-list" id="cdList"></div><div class="cd-detail" id="cdDetail"></div></div>';
+    ov.innerHTML='<div class="cd-top"><button type="button" class="btn sm" id="cdListBtn" onclick="cdToggleList()" title="왼쪽 환자 목록 접기/펴기 — 동의 받을 때 다른 환자 이름이 보이지 않게">◀ 목록 접기</button><b><i data-lucide="pen-line"></i> 동의서</b><span class="hint" id="cdSum"></span><input id="cdSearch" placeholder="이름·차트번호 검색" oninput="renderConsentDesk()"><span class="spacer"></span><button type="button" class="btn sm" onclick="closeConsentDesk()">닫기</button></div><div class="cd-body"><div class="cd-list" id="cdList"></div><div class="cd-detail" id="cdDetail"></div></div>';
     document.body.appendChild(ov);}
-  ov.classList.add('show');renderConsentDesk();};
+  cdListApply();ov.classList.add('show');renderConsentDesk();};
+/* 왼쪽 환자 목록 접기 (2026-10-17 요청: 동의 받을 때 환자에게 다른 환자 이름이 안 보이게) — 이 기기에 기억 */
+function cdListHidden(){try{return localStorage.getItem('cdListHide')==='1';}catch(e){return false;}}
+function cdListApply(){const ov=document.getElementById('cdesk');if(!ov)return;const h=cdListHidden();ov.classList.toggle('cd-nolist',h);
+  const b=document.getElementById('cdListBtn');if(b)b.textContent=h?'▶ 목록 펴기':'◀ 목록 접기';
+  const s=document.getElementById('cdSearch');if(s)s.style.display=h?'none':'';}
+window.cdToggleList=function(){try{localStorage.setItem('cdListHide',cdListHidden()?'0':'1');}catch(e){}cdListApply();};
 window.closeConsentDesk=function(){CDESK_OPEN=false;const ov=document.getElementById('cdesk');if(ov)ov.classList.remove('show');};
 window.cdPick=function(pid){CDESK_PID=pid;renderConsentDesk();const d=document.getElementById('cdDetail');if(d)d.scrollTop=0;};
 function renderConsentDesk(){const L=document.getElementById('cdList'),Dt=document.getElementById('cdDetail');if(!L||!Dt)return;
@@ -13781,7 +13790,9 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
   let sumh='';{const L=(rx&&Array.isArray(rx.pay))?rx.pay:[];if(L.length){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
     const tot=L.reduce((s,x)=>s+n(x),0),non=L.filter(x=>String(x.ins==null?'':x.ins).trim()==='2').reduce((s,x)=>s+n(x),0);
-    sumh=`<div class="cd-sum"><span>총금액 <b>${esc(rxWon(tot))}원</b></span><span>비급여 <b>${esc(rxWon(non))}원</b></span></div>`;}}
+    /* 2026-10-17: '총금액'은 공단부담까지 합친 진료비라 환자 부담금이 아니다 — 이름을 바로잡는다. 환자 부담금(비트 '총 본인부담')은 비트 DB 칸을 찾으면 넣는다(tools/bit_db_find_amt.ps1) */
+    sumh=`<div class="cd-sum"><span>총 진료비 <b>${esc(rxWon(tot))}원</b> <span class="hint">(공단부담 포함)</span></span><span>비급여 <b>${esc(rxWon(non))}원</b></span>${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
+    else if(p.mrn)sumh=`<div class="cd-sum"><button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button></div>`;}
   const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${sumh}${rxh}</div>`;
   return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}
 
