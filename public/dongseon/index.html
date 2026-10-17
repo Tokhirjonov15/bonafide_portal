@@ -2138,13 +2138,13 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
 <div id="consentScreen" class="cst-screen">
   <div class="cst-box">
     <div class="cst-head">
-      <div><b>비급여 진료 동의서</b> <span class="hint" id="cstWho"></span></div>
+      <div><b>진료 동의서</b> <span class="hint" id="cstWho"></span></div>
       <div class="hint" id="cstDate"></div>
       <button type="button" class="btn sm" onclick="closeConsent()">닫기</button>
     </div>
     <div class="cst-body">
       <div id="cstForm"></div>   <!-- 1~5 절은 consentFormHtml() 이 그린다 (2026-10-03 새 양식) -->
-      <textarea id="cstMemo" rows="2" placeholder="추가로 설명한 내용이 있으면 적어 주세요 (선택)"></textarea>
+      <textarea id="cstMemo" rows="2" style="display:none" placeholder="추가로 설명한 내용이 있으면 적어 주세요 (선택)"></textarea>
 
       <div class="cst-sect-t">서명</div>
       <div class="cst-signer">
@@ -6165,6 +6165,10 @@ async function runSelfTest(){
      ok('researchCsvText: 헤더+행 생성', lines[0].includes('임상차트')&&lines[0].includes('연구차트') && csv.includes('내원완료') && csv.includes('진행중') && csv.includes('연구값') && csv.includes('현재연구'));
      ok('researchCsvText: CSV 이스케이프(따옴표·쉼표·줄바꿈)', csv.includes('""따옴표,쉼표""') && csv.includes('"임상\n줄바꿈"'));
      data=_d;VISITS=_v;}
+    // 동의서 v3 (2026-10-17): 보이는 부분은 안내 사항 + 동의 사항만, '금일 처방된 치료' 문구
+    {const h=consentFormHtml({mrn:'T1',name:'테스트'}),vis=h.split('<div id="cstDesc"></div></div>')[1]||'';
+     ok('동의서 v3: 항목 체크란은 숨김, 안내·동의만 보임', !vis.includes('cstChk')&&vis.includes('1. 안내 사항')&&vis.includes('2. 동의 사항')&&vis.includes('cstPrivY'));
+     ok('동의서 v3: 문구', vis.includes('금일 수납 금액이 변동')&&vis.includes('금일 처방된 치료 시행에 동의합니다')&&vis.includes('금일 처방된 치료의 시행과 관련한')&&!vis.includes('위 비급여')&&!vis.includes('별도 체크 없음'));}
   }catch(e){ok('테스트 실행 중 예외 없음',false,String(e));}
   finally{ data=snap.data;ROOM_META=snap.ROOM_META;PROC_MATERIALS=snap.PROC_MATERIALS;PREP_ITEMS=snap.PREP_ITEMS;PROC_SET=snap.PROC_SET;ROOMS=snap.ROOMS;PRINT_ROOMS=snap.PRINT_ROOMS;arrivalPrinted=snap.arrivalPrinted;arrivalSeeded=snap.arrivalSeeded;window.printLabel=snap.pl;REGISTRY=snap.REG; }
   console.log('[자체점검] '+pass+'/'+(pass+fail)+' 통과', R.filter(r=>!r.ok));
@@ -12719,6 +12723,15 @@ const CONSENT_NOTICE=[
 ];
 const CONSENT_AGREE='본인(또는 보호자)은 위 **「2. 시행 예정 비급여 항목 및 비용」**의 항목에 대하여 **① 항목의 명칭·목적·방법·소요시간, ② 예상 비용(전액 본인 부담) 및 급여 대체 치료 선택 가능성·미시행 시 예상 경과, ③ 예상되는 부작용·합병증과 그 발생 시 응급처치, ④ 시행 부위·횟수·사용 약제 변경 시 재설명·재동의의 절차**를 담당 의료인으로부터 **충분히 설명 듣고 이해하였으며**, 이에 동의하여 해당 비급여 항목의 **시행에 동의합니다.**';
 const CONSENT_PRIV='위 비급여 항목의 시행과 관련한 **진료·검사 결과 등 개인정보의 수집·이용**에 동의합니다.';
+/* 동의서 v3 (2026-10-17 요청) — 팝업에는 안내사항 + 동의 사항 + 서명만. 비급여 항목 체크·금액·항목별 설명은 화면에서 뺐다
+   (비트 처방으로 자동 체크한 항목은 숨긴 채 그대로 기록에 남긴다 — 동의서 화면의 항목별 '서명됨' 표시용). 예전(v2) 기록은 예전 문구로 보인다 */
+const CONSENT_NOTICE3=[
+  '비급여 항목은 건강보험(요양급여)이 적용되지 않아 **전액 본인이 부담**합니다.',
+  CONSENT_NOTICE[1],CONSENT_NOTICE[2],CONSENT_NOTICE[3],
+  '실제 시행하는 치료에 따라 **금일 수납 금액이 변동**될 수 있습니다.'
+];
+const CONSENT_AGREE3='본인(또는 보호자)은 **금일 처방된 치료**에 대하여 **① 치료의 명칭·목적·방법·소요시간, ② 예상 비용(비급여는 전액 본인 부담) 및 급여 대체 치료 선택 가능성·미시행 시 예상 경과, ③ 예상되는 부작용·합병증과 그 발생 시 응급처치, ④ 시행 부위·횟수·사용 약제 변경 시 재설명·재동의의 절차**를 담당 의료인으로부터 **충분히 설명 듣고 이해하였으며**, 이에 동의하여 **금일 처방된 치료 시행에 동의합니다.**';
+const CONSENT_PRIV3='금일 처방된 치료의 시행과 관련한 **진료·검사 결과 등 개인정보의 수집·이용**에 동의합니다.';
 const CONSENT_FOOT='※ 치료 중 언제든지 중단을 요청할 수 있으며, 실손의료보험 등 보험금의 지급 여부와 범위는 가입한 보험사 약관에 따르고 의료기관이 이를 보장하지 않습니다.';
 /* 예전 양식 문구 — 예전에 저장된 동의서를 보여 줄 때만 */
 const CONSENT_TEXT=[
@@ -12797,7 +12810,7 @@ function consentFormHtml(p){
       <td class="c"><input type="checkbox" id="cstChk${i}" onchange="consentSum()"></td>
       <td><button type="button" class="cst-iname" onclick="consentInfo('${it.key}')" title="누르면 설명">${esc(it.name)}${it.sub?` <small>(${esc(it.sub)})</small>`:''}</button>${consentSavedTag(saved[it.key])}</td>
       <td class="r"><input class="cst-price" id="cstPrc${i}" inputmode="numeric" placeholder="금액" oninput="consentSum()"></td></tr>`).join('');
-  return `<div class="cst-sect-t">1. 환자 정보</div>
+  return `<div class="cst-hidden" style="display:none"><div class="cst-sect-t">1. 환자 정보</div>
     <table class="cst-ftbl"><tr><th>성명</th><td>${esc(p.name||'')}</td><th>생년월일</th><td>${esc(p.birth||'')}</td></tr>
       <tr><th>구분</th><td colspan="3"><label class="cst-ck"><input type="radio" name="cstKind" id="cstKindOut" checked> 외래</label> <label class="cst-ck"><input type="radio" name="cstKind" id="cstKindIn"> 입원</label></td></tr></table>
     <div class="cst-sect-t">2. 시행 예정 비급여 항목 및 비용 <span class="hint">(항목 이름을 누르면 설명)</span></div>
@@ -12807,13 +12820,12 @@ function consentFormHtml(p){
       <tr class="sum"><th colspan="2" class="r">합계 금액</th><th class="r" id="cstTotal">0원</th></tr>
       <tr class="cst-cmp-row"><td colspan="2" class="r">비트 수납 비급여 합계</td><td class="r" id="cstBitCmp"></td></tr></tbody></table>
     <div class="hint cst-bitinfo" id="cstBitInfo"></div>
-    <div class="cst-sect-t">3. 안내 사항 <span class="hint">(담당 의료인의 설명 내용 — 별도 체크 없음)</span></div>
-    <div class="cst-notice"><ul>${CONSENT_NOTICE.map(t=>`<li>${cstBold(t)}</li>`).join('')}</ul><div class="hint">※ 위 안내에 대한 확인·동의는 5. 동의 사항에서 한 번에 받습니다.</div></div>
-    <div class="cst-sect-t">4. 비급여 항목별 설명 <span class="hint">(체크한 항목)</span></div>
-    <div id="cstDesc"></div>
-    <div class="cst-sect-t">5. 동의 사항</div>
-    <div class="cst-notice">${cstBold(CONSENT_AGREE)}</div>
-    <div class="cst-priv">${cstBold(CONSENT_PRIV)} <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivY" onchange="signLock()"> 동의</label> <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivN" onchange="signLock()"> 미동의</label></div>
+    <div id="cstDesc"></div></div>
+    <div class="cst-sect-t">1. 안내 사항</div>
+    <div class="cst-notice"><ul>${CONSENT_NOTICE3.map(t=>`<li>${cstBold(t)}</li>`).join('')}</ul></div>
+    <div class="cst-sect-t">2. 동의 사항</div>
+    <div class="cst-notice">${cstBold(CONSENT_AGREE3)}</div>
+    <div class="cst-priv">${cstBold(CONSENT_PRIV3)} <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivY" onchange="signLock()"> 동의</label> <label class="cst-ck"><input type="radio" name="cstPriv" id="cstPrivN" onchange="signLock()"> 미동의</label></div>
     <div class="hint" style="margin-top:4px">${esc(CONSENT_FOOT)}</div>`;
 }
 function consentDescHtml(keys){const L=CONSENT_ITEMS.filter(it=>keys.includes(it.key));
@@ -12900,7 +12912,6 @@ function signClear(){if(!consentSign)return;const{cv,g}=consentSign;g.clearRect(
 async function saveConsent(){
   const p=consentFor; if(!p)return;
   const items=consentPicked();
-  if(!items.length){alert('시행할 비급여 항목을 하나 이상 체크해 주세요.');return;}
   const py=document.getElementById('cstPrivY'),pn=document.getElementById('cstPrivN');
   if(!(py&&py.checked)){alert('개인정보 수집·이용에 [동의]를 눌러야 서명·저장할 수 있습니다.');return;}
   if(!consentSign||!consentSign.dirty){alert('환자(또는 보호자) 서명을 받아 주세요.');return;}
@@ -12908,7 +12919,7 @@ async function saveConsent(){
   const self=document.getElementById('cstSignerSelf').checked;
   const rel=(document.getElementById('cstRel').value||'').trim();
   const rec={
-    v:2, id:String(p.mrn).trim()+'_'+Date.now(),
+    v:3, id:String(p.mrn).trim()+'_'+Date.now(),
     mrn:String(p.mrn||'').trim(), name:p.name||'', birth:p.birth||'', sex:p.sex||'', pid:p.id||'',
     kind:document.getElementById('cstKindIn').checked?'입원':'외래',
     items, total:items.reduce((a,b)=>a+(Number(b.price)||0),0),
@@ -12924,13 +12935,30 @@ async function saveConsent(){
   try{
     await col.doc(rec.id).set(rec);
     const arr=CONSENTS[rec.mrn]||[]; CONSENTS[rec.mrn]=[rec,...arr];
-    try{audit('비급여 동의서',(p.name||'')+' ('+rec.mrn+') · '+items.map(i=>i.name).join(', '));}catch(e){}
+    try{audit('진료 동의서',(p.name||'')+' ('+rec.mrn+') · 금일 처방 치료'+(items.length?' ('+items.map(i=>i.name).join(', ')+')':''));}catch(e){}
     closeConsent(); renderConsentSection(); try{if(CDESK_OPEN)renderConsentDesk();}catch(e){}
   }catch(e){console.error(e);alert('저장하지 못했습니다: '+(e.message||e));}
   finally{if(btn){btn.disabled=false;btn.textContent='저장';}}
 }
 function findConsent(id){for(const k in CONSENTS){const f=(CONSENTS[k]||[]).find(c=>c.id===id);if(f)return f;}return null;}
 function consentHtml(c){
+  if(c.v===3){   /* v3 — 안내 사항 + 동의 사항 + 서명 (2026-10-17) */
+    const box=b=>b?'☑':'☐';
+    return `<div class="cst-doc">
+      <h2>진료 동의서</h2>
+      <table class="cst-info"><tr><th>성명</th><td>${esc(c.name||'')}</td><th>생년월일</th><td>${esc(c.birth||'')}</td></tr>
+        <tr><th>차트번호</th><td>${esc(c.mrn||'')}</td><th>작성일</th><td>${esc((c.at||'').replace('T',' ').slice(0,16))}</td></tr></table>
+      <div class="cd-t">1. 안내 사항</div>
+      <ul class="cst-text">${CONSENT_NOTICE3.map(t=>`<li>${cstBold(t)}</li>`).join('')}</ul>
+      <div class="cd-t">2. 동의 사항</div>
+      <div class="cst-memo">${cstBold(CONSENT_AGREE3)}</div>
+      <div class="cd-priv">${cstBold(CONSENT_PRIV3)} &nbsp; ${box(c.privacy==='동의')} 동의 &nbsp; ${box(c.privacy==='미동의')} 미동의</div>
+      <div class="cd-foot">${esc(CONSENT_FOOT)}</div>
+      ${c.memo?`<div class="cst-memo">${esc(c.memo)}</div>`:''}
+      <div class="cst-sign-box"><div class="cst-sign-lbl">${esc(c.signer||'환자 본인')} 서명</div>
+        <img class="cst-sign-img" src="${c.sign||''}" alt="서명"></div>
+      <div class="cst-by">설명·상담: ${esc(c.by||'')}${c.savedBy&&c.savedBy!==c.by?' (입력 '+esc(c.savedBy)+')':''}</div>
+    </div>`;}
   if(c.v===2){   /* 새 양식 — 작성 화면과 같은 1~5 절 */
     const on={};(c.items||[]).forEach(i=>{const k=consentKeyOf(i);if(k)on[k]=i;});
     const extra=(c.items||[]).filter(i=>!consentKeyOf(i));
