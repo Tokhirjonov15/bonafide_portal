@@ -207,6 +207,12 @@
   .wait-ct{display:flex;align-items:center;justify-content:center;gap:12px;font-size:clamp(19px,2vw,30px);font-weight:800;color:#fff;padding:15px 22px;margin:20px 20px 6px;border-radius:12px;background:#16325c;letter-spacing:-.3px;box-shadow:0 6px 16px rgba(22,50,92,.24);text-align:center}
   .wait-ct>span:first-child{text-align:center}
   .wait-list{flex:1;display:flex;flex-direction:column;gap:3px;padding:10px 12px;min-height:0;overflow:auto}
+  /* 대기자가 많으면 칸이 화면 아래로 잘려 이름이 안 보였다 (2026-10-18) → 칸 높이를 화면 안으로 묶고, 넘치면 목록이 천천히 위아래로 흐른다(wsScrollStep) */
+  .wait-cols>.wait-col:not(.wait-sheetcol){max-height:100%}
+  .wait-col:not(.wait-sheetcol) .wait-list{scrollbar-width:none}
+  .wait-col:not(.wait-sheetcol) .wait-list::-webkit-scrollbar{display:none}
+  .wait-list.ws-more{-webkit-mask-image:linear-gradient(#000 calc(100% - 46px),transparent);mask-image:linear-gradient(#000 calc(100% - 46px),transparent)}
+  .wait-list.ws-more.ws-end{-webkit-mask-image:none;mask-image:none}
   .wait-p{display:flex;align-items:center;gap:16px;padding:13px 14px;border-radius:16px;transition:background .2s}
   .wait-num{flex:0 0 auto;width:clamp(34px,2.6vw,46px);height:clamp(34px,2.6vw,46px);border-radius:50%;background:#eef3fc;color:#3b6bd6;font-size:clamp(15px,1.4vw,21px);font-weight:800;display:flex;align-items:center;justify-content:center}
   .wait-name{flex:1;font-size:clamp(26px,2.7vw,40px);font-weight:800;color:#223350;letter-spacing:3px}
@@ -5967,6 +5973,16 @@ async function runSelfTest(){
       waitRotIdx=1;renderWaitScreen();
       ok('검사실 보기 + 다른 방: 다음 단위는 x-ray실 한 칸(크게)', document.querySelectorAll('#waitCols .wait-col').length===1&&document.getElementById('waitCols').classList.contains('rot'));
       waitRotSec=0;waitRotIdx=0;waitRooms=waitRooms.filter(r=>r!=='x-ray실');
+      // 대기자가 많으면 칸이 화면 안에 묶이고 목록이 자동으로 내려간다 (2026-10-18)
+      {const ws=document.getElementById('waitScreen'),had=ws.classList.contains('show');ws.classList.add('show');
+       try{data=Array.from({length:40},(_,i)=>mk('m'+i,'Sono',i<2?'진행':'대기',i+1));renderWaitScreen();
+        const wc=document.getElementById('waitCols'),col=wc.querySelector('.wait-col'),L=col.querySelector('.wait-list');
+        ok('대기 많음: 칸이 화면(목록 영역) 밖으로 안 넘침', col.getBoundingClientRect().bottom<=wc.getBoundingClientRect().bottom+1&&L.scrollHeight>L.clientHeight+2);
+        Object.keys(WS_STATE).forEach(k=>delete WS_STATE[k]);wsScrollStep(16);wsScrollStep(WS_TOP+10);wsScrollStep(1000);
+        ok('대기 많음: 맨 위에서 잠깐 멈춘 뒤 천천히 내려감', L.scrollTop>10&&L.scrollTop<60&&L.classList.contains('ws-more'));
+        data=[mk('a','Sono','대기',1)];renderWaitScreen();wsScrollStep(16);
+        ok('대기 적음: 스크롤 없음', !wc.querySelector('.wait-list').classList.contains('ws-more'));
+       }finally{if(!had)ws.classList.remove('show');Object.keys(WS_STATE).forEach(k=>delete WS_STATE[k]);}}
       toggleWaitRoom('x-ray실');eq('검사실 보기: 다른 방을 고르면 보기가 닫히고 그 방만', waitRooms, ['x-ray실']);
       toggleWaitView('__EXAM__');toggleWaitView('__EXAM__');eq('검사실 보기: 칩 다시 누르면 해제', waitRooms, []);
      }finally{waitRooms=_wr;waitRotSec=_ws;ROOMS=_ro;ROOM_META=_rm;data=_dd;window.saveWaitPresets=_sp;const wc=document.getElementById('waitCols');if(wc)wc.innerHTML='';}}
@@ -7877,7 +7893,28 @@ function wtFrame(ts){
   const dt=wtLast?Math.min(100,ts-wtLast):0; wtLast=ts;   // 탭이 잠들었다 깨면 큰 dt 는 100ms 로 잘라 점프 방지
   const t=document.getElementById('waitTicker');
   if(t&&wtP>0&&!waitIdle){wtPos=(wtPos+WT_SPEED*dt/1000)%wtP;t.style.transform='translateX('+(-wtPos).toFixed(2)+'px)';}
+  try{wsScrollStep(dt);}catch(e){}
   wtRaf=requestAnimationFrame(wtFrame);}
+/* 대기 목록 자동 스크롤 (2026-10-18 요청: 주사 대기가 많으면 아래 환자가 잘려 '이름이 없다'는 분이 늘었다).
+   칸에 다 안 들어가면: 맨 위에서 WS_TOP 초 멈춤 → 천천히(WS_DOWN px/초) 내려감 → 맨 아래서 WS_BOT 초 멈춤 → 빠르게 위로 → 반복.
+   목록은 자주 다시 그려지므로 위치는 칸 제목별로 기억해 이어 간다. 다 들어가면 아무것도 안 한다 */
+const WS_DOWN=28, WS_UP=160, WS_TOP=4000, WS_BOT=3000;
+const WS_STATE={};
+function wsScrollStep(dt){
+  if(waitIdle)return;
+  document.querySelectorAll('#waitCols .wait-col:not(.wait-sheetcol)').forEach(col=>{
+    const L=col.querySelector('.wait-list');if(!L)return;
+    const ct=col.querySelector('.wait-ct');const key=ct?ct.textContent.trim():'';
+    const max=L.scrollHeight-L.clientHeight;
+    const st=WS_STATE[key]||(WS_STATE[key]={pos:0,phase:'top',wait:WS_TOP});
+    if(max<=2){if(st.pos){st.pos=0;L.scrollTop=0;}st.phase='top';st.wait=WS_TOP;L.classList.remove('ws-more','ws-end');return;}
+    L.classList.add('ws-more');
+    if(st.pos>max)st.pos=max;
+    if(st.phase==='top'||st.phase==='bot'){st.wait-=dt;if(st.wait<=0)st.phase=st.phase==='top'?'down':'up';}
+    else if(st.phase==='down'){st.pos+=WS_DOWN*dt/1000;if(st.pos>=max){st.pos=max;st.phase='bot';st.wait=WS_BOT;}}
+    else{st.pos-=WS_UP*dt/1000;if(st.pos<=0){st.pos=0;st.phase='top';st.wait=WS_TOP;}}
+    L.classList.toggle('ws-end',st.pos>=max-1);
+    if(Math.abs(L.scrollTop-st.pos)>=1)L.scrollTop=Math.round(st.pos);});}
 function wtStart(){if(wtRaf)return;wtLast=0;wtRaf=requestAnimationFrame(wtFrame);}
 function wtStop(){if(wtRaf)cancelAnimationFrame(wtRaf);wtRaf=null;}
 window.addEventListener('resize',()=>{if(waitOpen){waitTickerFit();waitSubFit();}});
