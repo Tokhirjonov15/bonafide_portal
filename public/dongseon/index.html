@@ -12045,10 +12045,10 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
     /* 날짜별로 묶기 (2026-10-12 요청) — 오늘은 펼치고 지난 날은 접어 둔다(누르면 펼침, 펼친 날짜는 기억). 개수 제한 없음 */
     const today=localYMD(new Date()),g={};L.forEach((r,i)=>{const d=String(r.date||r.startedAt||'').slice(0,10)||'날짜 없음';(g[d]=g[d]||[]).push([r,i]);});
     const wd=['일','월','화','수','목','금','토'];const days=Object.keys(g).sort().reverse();
-    const nRec=new Set(L.map(r=>r.file||r.startedAt)).size;
+    const nRec=new Set(L.map(r=>(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file)).size;
     box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${nRec}건 · ▶ 눌러 듣기 (받아쓴 글은 틀린 곳이 있을 수 있음)</span></div>`+
       days.map(d=>{const open=d===today?!REC_DAY_SHUT.has(mrn+d):REC_DAY_OPEN.has(mrn+d);const dw=/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':'';
-        const byF=new Map();g[d].forEach(([r,i])=>{const k=r.file||r.startedAt||String(i);if(!byF.has(k))byF.set(k,[]);byF.get(k).push([r,i]);});
+        const byF=new Map();g[d].forEach(([r,i])=>{const k=(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file||String(i);if(!byF.has(k))byF.set(k,[]);byF.get(k).push([r,i]);});
         return `<details class="rt-day"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} <span class="hint">${byF.size}건</span></summary>`+
         [...byF.values()].map(G=>recItemHtml(G)).join('')+'</details>';}).join('');
     box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}recAudioLoad(box);};
@@ -14527,7 +14527,17 @@ boot();
   const pad=n=>String(n).padStart(2,'0');
   const fileName=(p,r,d)=>{const b=String(p.birth||'').replace(/\D/g,'');const b6=b.length>=8?b.slice(2,8):b;
     const nm=String(p.name||'이름없음').replace(/[\\/:*?"<>|]/g,'').trim();
-    return `녹음 ${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${nm}${b6?' '+b6:''} ${r} ${pad(d.getHours())}${pad(d.getMinutes())}.webm`;};
+    return `녹음 ${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${nm}${b6?' '+b6:''} ${r} ${hms(d)}~녹음중.webm`;};
+  /* 2026-10-19 요청: 파일 이름에 '몇시몇분몇초~몇시몇분몇초' — 녹음 중에는 '시작~녹음중', 멈추면 끝 시각으로 이름을 바꾼다 */
+  const hms=d=>`${pad(d.getHours())}시${pad(d.getMinutes())}분${pad(d.getSeconds())}초`;
+  async function recRenameFinal(rec){try{
+    if(!/~녹음중\.webm$/.test(rec.name))return;const nn=rec.name.replace(/녹음중\.webm$/,hms(new Date())+'.webm');
+    if(typeof rec.fh.move==='function'){await rec.fh.move(nn);}
+    else{const nh=await DIR.getFileHandle(nn,{create:true});const w=await nh.createWritable();await w.write(await rec.fh.getFile());await w.close();
+      await DIR.removeEntry(rec.name);rec.fh=nh;}
+    pendSet(pendGet().map(x=>x.file===rec.name?Object.assign({},x,{file:nn}):x));   // 진료실 PC 받아쓰기(.txt)는 새 이름 옆에 생긴다
+    rec.name=nn;}
+  catch(e){console.warn('rec rename',e);}}   // 못 바꿔도 녹음은 '~녹음중' 이름으로 그대로 남는다
   async function perm(ask){if(!DIR)return false;try{const o={mode:'readwrite'};if(await DIR.queryPermission(o)==='granted')return true;return ask?(await DIR.requestPermission(o))==='granted':false;}catch(e){return false;}}
   function badge(){const el=document.getElementById('recBadge');if(!el)return;const r=room();
     if(!r){el.style.display='none';return;}el.style.display='flex';
@@ -14565,7 +14575,7 @@ boot();
     try{audit('진료 녹음 시작',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+name);}catch(e){}}
   async function stop(why){const rec=REC;if(!rec)return;REC=null;
     await new Promise(res=>{rec.mr.onstop=res;try{rec.mr.stop();}catch(e){res();}});
-    rec.stream.getTracks().forEach(t=>t.stop());await rec.chain;badge();
+    rec.stream.getTracks().forEach(t=>t.stop());await rec.chain;await recRenameFinal(rec);badge();
     recUploadAudio(rec);   // 음성 메시지처럼 듣기 — 다른 PC 에서도 (2026-10-16)
     if(rec.stt)await sttStop(rec);
     {const M=sttModes();['openai','clova'].forEach(pv=>{if(M.has(pv)&&rec.meta)cloudStt(rec,pv);});}
