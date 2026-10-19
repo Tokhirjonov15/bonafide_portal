@@ -5143,6 +5143,9 @@ function renderAccount(){
       </div>
       <p class="hint" style="margin-top:6px">${esc(PW_RULE_MSG)}</p>
     </div>`;
+  /* 접근·활동 기록 — 관리자가 아니어도 (2026-10-19 요청). 관리자는 아래 '데이터 관리'에 같은 버튼 */
+  if(!isAdmin())html+=`<div class="acc-sect"><div class="sect-t" style="margin-bottom:8px">기록</div>
+      <button class="btn sm" onclick="openAuditLog()"><i data-lucide="lock"></i> 접근·활동 기록</button></div>`;
   if(isAdmin()){
     const sup=isSuper();
     /* 계정 관리(관리자): 비밀번호를 잊은 직원에게 새 비밀번호 발급, 퇴사자 계정 삭제 — 서버(/api/dongseon/admin/*)가 Firebase 서비스 계정으로 처리 (2026-09-21) */
@@ -6493,7 +6496,7 @@ function pushAlarm(targets,title,body,url){
 }
 let auditDate=null, auditRows=[];
 function auditYMD(){return auditDate||localYMD(new Date());}
-function openAuditLog(){if(!isAdmin()){alert('관리자만 볼 수 있습니다.');return;}auditDate=null;loadAudit();document.getElementById('auditModal').classList.add('show');}
+function openAuditLog(){if(!currentUser)return;auditDate=null;   /* 2026-10-19 요청: 모든 직원이 볼 수 있게 (읽기만) */loadAudit();document.getElementById('auditModal').classList.add('show');}
 function closeAuditLog(){document.getElementById('auditModal').classList.remove('show');}
 function auditDateShift(d){const c=new Date(auditYMD());c.setDate(c.getDate()+d);auditDate=localYMD(c);loadAudit();}
 function setAuditDate(v){auditDate=v||null;loadAudit();}
@@ -12063,7 +12066,11 @@ function recDurTxt(s){s=Math.round(Number(s)||0);return Math.floor(s/60)+':'+Str
 const REC_SRC_ORDER=['local','clova','openai','chrome'];
 function recItemHtml(G){const first=G[0][0];const au=G.find(([r])=>r.src==='audio');
   const tx=G.filter(([r])=>r.src!=='audio').sort((a,b)=>REC_SRC_ORDER.indexOf(a[0].src||'local')-REC_SRC_ORDER.indexOf(b[0].src||'local'));
-  const t=(()=>{const d=new Date(first.startedAt||'');return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');})();
+  /* 녹음 시각 '시작 ~ 끝'(초까지, 2026-10-19 요청) — 끝 = endAt(새 녹음) 또는 시작 + 소리 길이(dur) */
+  const hms=d=>[d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+  const t=(()=>{const d=new Date(first.startedAt||'');if(isNaN(d))return '';
+    const ea=au&&(au[0].endAt?new Date(au[0].endAt):(au[0].dur?new Date(d.getTime()+Number(au[0].dur)*1000):null));
+    return hms(d)+(ea&&!isNaN(ea)?' ~ '+hms(ea):'');})();
   const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span></div>`:'';
   const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>
       <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
@@ -14531,7 +14538,7 @@ boot();
   /* 2026-10-19 요청: 파일 이름에 '몇시몇분몇초~몇시몇분몇초' — 녹음 중에는 '시작~녹음중', 멈추면 끝 시각으로 이름을 바꾼다 */
   const hms=d=>`${pad(d.getHours())}시${pad(d.getMinutes())}분${pad(d.getSeconds())}초`;
   async function recRenameFinal(rec){try{
-    if(!/~녹음중\.webm$/.test(rec.name))return;const nn=rec.name.replace(/녹음중\.webm$/,hms(new Date())+'.webm');
+    if(!/~녹음중\.webm$/.test(rec.name))return;const nn=rec.name.replace(/녹음중\.webm$/,hms(new Date(rec.endedAt||Date.now()))+'.webm');
     if(typeof rec.fh.move==='function'){await rec.fh.move(nn);}
     else{const nh=await DIR.getFileHandle(nn,{create:true});const w=await nh.createWritable();await w.write(await rec.fh.getFile());await w.close();
       await DIR.removeEntry(rec.name);rec.fh=nh;}
@@ -14573,7 +14580,7 @@ boot();
     pendAdd(meta);   // 2026-10-15: '진료실 PC 변환'을 안 켜도 — 이 PC 녹음 옆에 .txt 가 생기면 늘 가져간다(설치해 놓고 체크를 안 해 글이 안 보였다). 없으면 3일 뒤 저절로 빠짐
     if(M.has('chrome'))sttStart(rec,meta);   // (2026-10-15 고침: 위 줄 주석 끝에 붙어 있어 크롬 받아쓰기가 시작되지 않았다)
     try{audit('진료 녹음 시작',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+name);}catch(e){}}
-  async function stop(why){const rec=REC;if(!rec)return;REC=null;
+  async function stop(why){const rec=REC;if(!rec)return;REC=null;rec.endedAt=Date.now();   // 끝 시각 — 파일 이름·녹음기록 (2026-10-19)
     await new Promise(res=>{rec.mr.onstop=res;try{rec.mr.stop();}catch(e){res();}});
     rec.stream.getTracks().forEach(t=>t.stop());await rec.chain;await recRenameFinal(rec);badge();
     recUploadAudio(rec);   // 음성 메시지처럼 듣기 — 다른 PC 에서도 (2026-10-16)
@@ -14591,7 +14598,7 @@ boot();
       const path='rec_audio/'+pmKey(m.mrn||'_')+'/rec_'+String(m.at).replace(/\D/g,'').slice(0,14)+'_'+pmKey(m.room||'')+'.webm';
       await cloud.storage.ref(path).put(f,{contentType:'audio/webm'});
       await cloud.ref.collection('recText').doc(recDocId(m.file)+'__audio').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
-        src:'audio',audio:path,dur:Math.max(1,Math.round((Date.now()-rec.started)/1000)),size:f.size,text:'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
+        src:'audio',audio:path,dur:Math.max(1,Math.round(((rec.endedAt||Date.now())-rec.started)/1000)),endAt:new Date(rec.endedAt||Date.now()).toISOString(),size:f.size,text:'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
       if(window.recTextCache)delete window.recTextCache[m.mrn];
       try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}}
     catch(e){console.warn('rec upload',e);if(!recUploadAudio.warned){recUploadAudio.warned=true;toast('녹음 소리를 올리지 못했습니다 — 외장하드의 파일은 그대로 있습니다 ('+(e.code||e.message||e)+')',8000);}}}
