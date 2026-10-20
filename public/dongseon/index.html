@@ -11643,11 +11643,19 @@ function renderHistory(){
         <div class="cf-row" style="margin:0 0 0 auto">
           <button class="chipf ${histView==='all'?'on':''}" onclick="histView='all';renderHistory()">전체 기록</button>
           <button class="chipf ${histView==='consult'?'on':''}" onclick="histView='consult';renderHistory()"><i data-lucide="message-circle"></i> 상담만</button>
+          ${g.mrn?(()=>{const R=histRecList(g.mrn);return `<button class="chipf ${histView==='rec'?'on':''}" onclick="histView='rec';renderHistory()" title="이 환자의 진료 녹음 전체 — 눌러 듣기"><i data-lucide="mic"></i> 녹음 기록${R?' '+R.n:''}</button>`;})():''}
           ${isAdmin()?`<button class="btn sm" onclick="downloadPatientChart('${esc(g.key)}')" title="이 환자 차팅 전체 다운로드(관리자)">⬇️ 차팅 다운로드</button>`:''}
         </div>
         ${g.mrn?`<div class="pmemo" style="flex:1 1 100%"><div class="pm-head"><i data-lucide="pin"></i> 특이사항 <span class="hint" style="font-weight:400">(환자에게 항상 따라다니는 메모 — 전화 문의 시에도 참고)</span></div>
           <textarea rows="2" placeholder="예: 항응고제 복용, 조영제 알레르기, 응대 주의…" oninput="cvGrow(this)" onchange="setRegMemo('${esc(g.mrn)}','${esc(g.name)}',this.value)">${esc(regMemo(g.mrn))}</textarea></div>`:''}
       </div>`;
+    /* 녹음 기록 (2026-10-20 요청) — 이 환자의 지난 녹음 전체(날짜별, 최근 날 펼침), 음성 메시지처럼 듣기 · 받아쓴 글 · 내려받기 */
+    if(histView==='rec'&&g.mrn){const R=histRecList(g.mrn);
+      if(!R){box.innerHTML=head+'<div class="route-empty">녹음 기록을 불러오는 중…</div>';if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
+      if(!R.n){box.innerHTML=head+'<div class="route-empty">이 환자의 진료 녹음이 없습니다.</div>';if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
+      const wd=['일','월','화','수','목','금','토'];
+      box.innerHTML=head+`<div class="rec-text-box hist-rec">`+R.days.map((d,di)=>`<details class="rt-day"${di===0?' open':''}><summary>${esc(d)}${/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':''} <span class="hint">${R.g[d].length}건</span></summary>${R.g[d].map(G=>recItemHtml(G,true)).join('')}</details>`).join('')+'</div>';
+      if(window.lucide)try{lucide.createIcons();}catch(e){}recAudioLoad(box);return;}
     if(histView==='consult'){
       const cons=patientConsults(g);
       const roomsWith=[...new Set(cons.map(c=>c.room))];
@@ -12064,22 +12072,35 @@ function recDurTxt(s){s=Math.round(Number(s)||0);return Math.floor(s/60)+':'+Str
 /* 2026-10-16 요청: 진료실 PC 받아쓰기를 기본으로 — 재생 막대 아래에 진료실 PC 글을 펼쳐 두고, 다른 방식(크롬·OpenAI·클로바) 글은 '다른 받아쓰기'로 접는다.
    진료실 PC 글이 없으면 있는 글 중 첫째를 펼친다 */
 const REC_SRC_ORDER=['local','clova','openai','chrome'];
-function recItemHtml(G){const first=G[0][0];const au=G.find(([r])=>r.src==='audio');
+function recItemHtml(G,dl){const first=G[0][0];const au=G.find(([r])=>r.src==='audio');
   const tx=G.filter(([r])=>r.src!=='audio').sort((a,b)=>REC_SRC_ORDER.indexOf(a[0].src||'local')-REC_SRC_ORDER.indexOf(b[0].src||'local'));
   /* 녹음 시각 '시작 ~ 끝'(초까지, 2026-10-19 요청) — 끝 = endAt(새 녹음) 또는 시작 + 소리 길이(dur) */
   const hms=d=>[d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
   const t=(()=>{const d=new Date(first.startedAt||'');if(isNaN(d))return '';
     const ea=au&&(au[0].endAt?new Date(au[0].endAt):(au[0].dur?new Date(d.getTime()+Number(au[0].dur)*1000):null));
     return hms(d)+(ea&&!isNaN(ea)?' ~ '+hms(ea):'');})();
-  const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span></div>`:'';
+  const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span>${dl?`<button type="button" class="btn sm" title="녹음 파일 내려받기" onclick="recDownload('${esc(au[0].audio)}','${esc(String(au[0].file||'녹음.webm').replace(/'/g,''))}')"><i data-lucide="download"></i></button>`:''}</div>`:'';
   const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>
-      <button type="button" class="btn sm" onclick="recTextCopy(${i})"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
+      <button type="button" class="btn sm" onclick="recTextCopyEl(this)"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
   const main=tx.length?one(tx[0]):'',rest=tx.slice(1).map(one).join('');
   return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':' <span class="hint">(소리 없음 — 글만)</span>'}</div>${player}
     ${main}${rest?`<details class="rt-txt"><summary>다른 받아쓰기 ${tx.length-1}개 (${esc(tx.slice(1).map(([r])=>REC_SRC_L[r.src||'local']||r.src).join('·'))})</summary>${rest}</details>`:''}</div>`;}
 const REC_AUDIO_URL={};
 function recAudioLoad(box){try{if(!cloud.storage||!box)return;box.querySelectorAll('audio[data-path]').forEach(a=>{if(a.getAttribute('src'))return;const p=a.dataset.path;
   if(REC_AUDIO_URL[p]){a.src=REC_AUDIO_URL[p];return;}cloud.storage.ref(p).getDownloadURL().then(u=>{REC_AUDIO_URL[p]=u;a.src=u;}).catch(e=>{console.warn('rec audio',e);a.insertAdjacentHTML('afterend','<span class="hint">소리를 불러오지 못했습니다</span>');});});}catch(e){}}
+/* 환자 관리의 '녹음 기록' — recText 를 차트번호로(녹음기록 칸과 같은 캐시). 없으면 불러온 뒤 다시 그린다. {n, days, g:{날짜:[녹음 묶음]}} */
+function histRecList(mrn){mrn=String(mrn||'').trim();const c=recTextCache[mrn];
+  if(!c||Date.now()-c.at>60000){if(!(cloud.active&&cloud.ref))return null;if(!histRecList.busy){histRecList.busy=true;
+    cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));
+      recTextCache[mrn]={at:Date.now(),list:L};}).catch(e=>console.warn('hist rec',e)).finally(()=>{histRecList.busy=false;try{renderHistory();}catch(e){}});}
+    if(!c)return null;}
+  const g={},by=new Map();c.list.forEach((r,i)=>{const k=(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file||String(i);if(!by.has(k))by.set(k,[]);by.get(k).push([r,i]);});
+  by.forEach(G=>{const d=String(G[0][0].date||G[0][0].startedAt||'').slice(0,10)||'날짜 없음';(g[d]=g[d]||[]).push(G);});
+  return {n:by.size,days:Object.keys(g).sort().reverse(),g};}
+window.recTextCopyEl=function(btn){const t=btn&&btn.closest('.rt-txh');const el=t&&t.nextElementSibling;const s=el?el.textContent:'';
+  navigator.clipboard.writeText(s).then(()=>toast('녹음기록을 복사했습니다')).catch(()=>alert('복사하지 못했습니다'));};
+window.recDownload=function(path,name){const go=u=>{const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.download=name||'';a.click();};
+  if(REC_AUDIO_URL[path])go(REC_AUDIO_URL[path]);else if(cloud.storage)cloud.storage.ref(path).getDownloadURL().then(u=>{REC_AUDIO_URL[path]=u;go(u);}).catch(e=>alert('소리를 불러오지 못했습니다'));};
 const REC_DAY_OPEN=new Set(),REC_DAY_SHUT=new Set();   // 지난 날 펼친 것 / 오늘인데 접은 것 — 다시 그려도 그대로
 window.recDayToggle=function(k,open,isToday){if(isToday){open?REC_DAY_SHUT.delete(k):REC_DAY_SHUT.add(k);}else{open?REC_DAY_OPEN.add(k):REC_DAY_OPEN.delete(k);}};
 window.recTextCopy=function(i){const box=document.getElementById('recTextBox');const r=box&&box._list&&box._list[i];if(!r)return;
