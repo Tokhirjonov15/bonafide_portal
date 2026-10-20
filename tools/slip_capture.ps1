@@ -249,9 +249,9 @@ function SelectRegion($who, $where = '슬립에 올립니다') {
 $script:CurMrn = ''; $script:CurName = ''; $script:HoldUntil = [DateTime]::MinValue
 $bar = New-Object Windows.Forms.Form
 $bar.FormBorderStyle = 'None'; $bar.TopMost = $true; $bar.ShowInTaskbar = $false; $bar.StartPosition = 'Manual'
-$bar.Size = New-Object Drawing.Size 450, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
+$BarW = 540; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
 $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-$bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - 450) / 2)), $wa.Top
+$bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top
 try { if (Test-Path $PosFile) { $p = (Get-Content $PosFile -TotalCount 1) -split ','; $pt = New-Object Drawing.Point ([int]$p[0]), ([int]$p[1])
     if ([Windows.Forms.SystemInformation]::VirtualScreen.Contains($pt)) { $bar.Location = $pt } } } catch {}
 function CapButton($text, $x, $r, $g, $b) { $o = New-Object Windows.Forms.Button
@@ -260,14 +260,15 @@ function CapButton($text, $x, $r, $g, $b) { $o = New-Object Windows.Forms.Button
   $o.Location = New-Object Drawing.Point $x, 4; $o.Size = New-Object Drawing.Size 84, 30; $o.Cursor = [Windows.Forms.Cursors]::Hand; return $o }
 $btn = CapButton '주사 캡처' 4 59 130 246     # 파랑 — 슬립(주사)으로
 $btnPt = CapButton 'PT 캡처' 92 13 148 136    # 청록 — 4층으로 (2026-10-13)
+$btnPast = CapButton '지난 캡처' 180 71 85 105  # 회색 — 이 환자의 예전 캡처 보기 (2026-10-20)
 $lbl = New-Object Windows.Forms.Label
 $lbl.Font = New-Object Drawing.Font 'Malgun Gothic', 10; $lbl.ForeColor = [Drawing.Color]::White; $lbl.AutoSize = $false; $lbl.TextAlign = 'MiddleLeft'
-$lbl.Location = New-Object Drawing.Point 182, 4; $lbl.Size = New-Object Drawing.Size 264, 30; $lbl.Text = '비트 외래진료실 확인 중…'
-$bar.Controls.AddRange(@($btn, $btnPt, $lbl))
+$lbl.Location = New-Object Drawing.Point 270, 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
+$bar.Controls.AddRange(@($btn, $btnPt, $btnPast, $lbl))
 $drag = { param($s, $e) if ($e.Button -eq 'Left') { [void][SlipCap.U]::ReleaseCapture(); [void][SlipCap.U]::SendMessage($bar.Handle, 0xA1, 2, 0); try { "$($bar.Left),$($bar.Top)" | Set-Content $PosFile } catch {} } }   # 끌어서 옮기기
 $bar.Add_MouseDown($drag); $lbl.Add_MouseDown($drag)
 $menu = New-Object Windows.Forms.ContextMenuStrip
-[void]$menu.Items.Add('위치 초기화 (화면 위 가운데)', $null, { $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - 450) / 2)), $wa.Top; try { Remove-Item $PosFile -ErrorAction SilentlyContinue } catch {} })
+[void]$menu.Items.Add('위치 초기화 (화면 위 가운데)', $null, { $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top; try { Remove-Item $PosFile -ErrorAction SilentlyContinue } catch {} })
 [void]$menu.Items.Add('잠시 끄기 (5분 안에 다시 켜짐)', $null, { $bar.Close() })
 $bar.ContextMenuStrip = $menu; $lbl.ContextMenuStrip = $menu
 
@@ -277,7 +278,7 @@ function ReadPatient() {
   $mrn = ''; $name = ''
   try { $h = FindDoctorWindow; if ($h) { $d = ReadDoctor $h; if ($d) { $mrn = [string]$d.mrn; $name = [string]$d.name } } } catch { Log "창 읽기 오류: $($_.Exception.Message)" }
   $script:CurMrn = $mrn; $script:CurName = $name
-  $btn.Enabled = [bool]$mrn -or [bool]$Room; $btnPt.Enabled = $btn.Enabled
+  $btn.Enabled = [bool]$mrn -or [bool]$Room; $btnPt.Enabled = $btn.Enabled; $btnPast.Enabled = $btn.Enabled
   if ($mrn) { $lbl.ForeColor = [Drawing.Color]::White; $lbl.Text = "$name  ·  $mrn" }
   elseif ($Room) { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = "비트 환자 없음 → $Room 진행 환자로" }
   else { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = '비트 외래진료실에 환자 없음' }
@@ -305,8 +306,80 @@ function DoCapture($kind) {
   catch { $m = $_.Exception.Message; Log "올리기 실패 $mrn : $m"; SetStatus "✖ 올리기 실패 — 다시 눌러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 8
     [Windows.Forms.MessageBox]::Show("슬립에 올리지 못했습니다.`n`n$m`n`n로그: $LogFile", '슬립 캡처') | Out-Null }
 }
+# ── 지난 캡처 보기 (2026-10-20 요청: 원장님이 동선관리를 안 쓰셔서 진료실에서 바로) ──
+#  지금 환자(비트 창 → 없으면 이 진료실 진행 카드)의 캡처를 모두: 영구 목록 slipShots/{차트번호} + 아직 모이지 않은 최근 bitNote 의 shots.
+#  지운 캡처(hidden)는 뺀다. 왼쪽 목록에서 고르면 오른쪽에 크게, 사진을 두 번 누르면 Windows 사진 보기로(확대용)
+function FsArr($v) { if ($v -and $v.arrayValue -and $v.arrayValue.values) { return @($v.arrayValue.values) }; return @() }
+function ShotOf($v, $date) { $f = $v.mapValue.fields; if (-not $f) { return $null }
+  $p = [string](FsVal $f.path); if (-not $p) { return $null }
+  $id = [string](FsVal $f.id); if (-not $id) { $id = $p }
+  $k = [string](FsVal $f.kind); if (-not $k) { $k = 'inj' }
+  $d = [string](FsVal $f.date); if (-not $d) { $d = $date }
+  return [pscustomobject]@{ id = $id; path = $p; at = [string](FsVal $f.at); kind = $k; date = $d } }
+function PastShots($mrn) {
+  $tok = FbToken; $H = @{ Authorization = "Bearer $tok" }; $all = @{}; $hidden = @{}; $script:PastErr = ''
+  try { $d = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/slipShots/$([Uri]::EscapeDataString($mrn))" -Headers $H
+    foreach ($v in (FsArr $d.fields.shots)) { $s = ShotOf $v ''; if ($s) { if ($all[$s.id] -and $all[$s.id].kind -eq 'pt') { $s.kind = 'pt' }; $all[$s.id] = $s } }
+    foreach ($v in (FsArr $d.fields.hidden)) { $hidden[[string]$v.stringValue] = 1 } }
+  catch { if ("$($_.Exception.Message)" -notmatch '404') { Log "지난 캡처 목록 읽기 실패: $($_.Exception.Message)"; $script:PastErr = $_.Exception.Message } }
+  try { $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'bitNote' }); where = @{ fieldFilter = @{ field = @{ fieldPath = 'mrn' }; op = 'EQUAL'; value = @{ stringValue = "$mrn" } } } } } | ConvertTo-Json -Depth 10 -Compress
+    $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents:runQuery" -Headers $H -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+    foreach ($row in @($r)) { if (-not $row.document) { continue }; $f = $row.document.fields
+      foreach ($v in (FsArr $f.shots)) { $s = ShotOf $v ([string](FsVal $f.date)); if ($s -and -not $all[$s.id]) { $all[$s.id] = $s } } } }
+  catch { Log "최근 캡처 읽기 실패: $($_.Exception.Message)"; if (-not $script:PastErr) { $script:PastErr = $_.Exception.Message } }
+  return @($all.Values | Where-Object { -not $hidden[$_.id] } | Sort-Object at -Descending)
+}
+$script:ImgCache = @{}
+function ShotImage($path) {
+  if ($script:ImgCache[$path]) { return $script:ImgCache[$path] }
+  $tok = FbToken
+  $u = "https://firebasestorage.googleapis.com/v0/b/$Bucket/o/$([Uri]::EscapeDataString($path))?alt=media"
+  $wc = New-Object Net.WebClient; $wc.Headers.Add('Authorization', "Bearer $tok")
+  try { $bytes = $wc.DownloadData($u) } finally { $wc.Dispose() }
+  $script:ImgCache[$path] = $bytes; return $bytes
+}
+function ShowPast() {
+  $mrn = $script:CurMrn; $name = $script:CurName
+  if (-not $mrn) {
+    if (-not $Room) { SetStatus "✖ 비트 외래진료실에 환자를 먼저 불러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 6; return }
+    SetStatus "동선관리에서 $Room 진행 환자 찾는 중…" ([Drawing.Color]::FromArgb(253, 224, 71)) 30; [Windows.Forms.Application]::DoEvents()
+    $bp = $null; try { $bp = BoardPatient } catch { Log "동선관리 읽기 실패: $($_.Exception.Message)" }
+    $script:HoldUntil = [DateTime]::MinValue
+    if (-not $bp -or -not $bp.mrn) { SetStatus "✖ 비트 외래진료실에 환자를 먼저 불러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 6; return }
+    $mrn = $bp.mrn; $name = $bp.name }
+  SetStatus "지난 캡처 불러오는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 30; [Windows.Forms.Application]::DoEvents()
+  $L = @(); try { $L = PastShots $mrn } catch { $script:HoldUntil = [DateTime]::MinValue; [Windows.Forms.MessageBox]::Show("캡처 목록을 읽지 못했습니다.`n`n$($_.Exception.Message)", '지난 캡처') | Out-Null; return }
+  $script:HoldUntil = [DateTime]::MinValue
+  if (-not $L.Count -and $script:PastErr) { [Windows.Forms.MessageBox]::Show("캡처 목록을 읽지 못했습니다.`n`n$($script:PastErr)`n`n로그: $LogFile", '지난 캡처') | Out-Null; return }
+  if (-not $L.Count) { SetStatus "$name — 올린 캡처가 없습니다" ([Drawing.Color]::FromArgb(253, 224, 71)) 5; return }
+  $f = New-Object Windows.Forms.Form
+  $f.Text = "지난 캡처 — $name ($mrn) · $($L.Count)장"; $f.StartPosition = 'CenterScreen'; $f.TopMost = $true; $f.KeyPreview = $true
+  $wa2 = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $f.Size = New-Object Drawing.Size ([int]($wa2.Width * 0.8)), ([int]($wa2.Height * 0.85))
+  $f.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq 'Escape') { $s.Close() } })
+  $lb = New-Object Windows.Forms.ListBox; $lb.Dock = 'Left'; $lb.Width = 250; $lb.Font = New-Object Drawing.Font 'Malgun Gothic', 11; $lb.IntegralHeight = $false
+  $pb = New-Object Windows.Forms.PictureBox; $pb.Dock = 'Fill'; $pb.SizeMode = 'Zoom'; $pb.BackColor = [Drawing.Color]::FromArgb(17, 24, 39); $pb.Cursor = [Windows.Forms.Cursors]::Hand
+  $tip = New-Object Windows.Forms.Label; $tip.Dock = 'Bottom'; $tip.Height = 26; $tip.TextAlign = 'MiddleCenter'; $tip.Font = New-Object Drawing.Font 'Malgun Gothic', 9.5
+  $tip.Text = '사진을 두 번 누르면 크게(사진 보기)  ·  Esc = 닫기'
+  foreach ($s in $L) { $t = $s.at; try { $t = ([DateTime]::Parse($s.at)).ToString('yyyy-MM-dd  HH:mm') } catch { if (-not $t) { $t = $s.date } }
+    $kindTxt = if ($s.kind -eq 'pt') { 'PT' } else { '주사' }
+    [void]$lb.Items.Add("$t   [$kindTxt]") }
+  $script:PastL = $L; $script:PastPb = $pb; $script:PastLb = $lb   # 이벤트 안에서는 함수의 지역 변수가 안 보일 수 있어 script: 로
+  $lb.Add_SelectedIndexChanged({ $i = $this.SelectedIndex; if ($i -lt 0) { return }; $s = $script:PastL[$i]
+    $this.FindForm().Cursor = [Windows.Forms.Cursors]::WaitCursor
+    try { $b = ShotImage $s.path; $ms = New-Object IO.MemoryStream (, $b); $old = $script:PastPb.Image; $script:PastPb.Image = [Drawing.Image]::FromStream($ms); if ($old) { $old.Dispose() } }
+    catch { Log "캡처 사진 받기 실패 $($s.path): $($_.Exception.Message)"; [Windows.Forms.MessageBox]::Show("사진을 받지 못했습니다.`n`n$($_.Exception.Message)", '지난 캡처') | Out-Null }
+    finally { $this.FindForm().Cursor = [Windows.Forms.Cursors]::Default } })
+  $pb.Add_DoubleClick({ $i = $script:PastLb.SelectedIndex; if ($i -lt 0) { return }; $s = $script:PastL[$i]
+    try { $tmp = Join-Path $env:TEMP ("slipcap_" + ($s.id -replace '[^\w-]', '_') + '.jpg'); [IO.File]::WriteAllBytes($tmp, (ShotImage $s.path)); Start-Process $tmp } catch { Log "사진 보기 열기 실패: $($_.Exception.Message)" } })
+  $f.Controls.AddRange(@($pb, $tip, $lb))
+  $f.Add_Shown({ $script:PastLb.SelectedIndex = 0 })
+  $f.Add_FormClosed({ if ($script:PastPb.Image) { $script:PastPb.Image.Dispose() } })
+  SetStatus "$name — 지난 캡처 $($L.Count)장" ([Drawing.Color]::FromArgb(134, 239, 172)) 3
+  [void]$f.ShowDialog()
+}
 $btn.Add_Click({ DoCapture 'inj' })
 $btnPt.Add_Click({ DoCapture 'pt' })
+$btnPast.Add_Click({ ShowPast })
 $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ ReadPatient }); $timer.Start()
 $bar.Add_Shown({ ReadPatient })
 Log "시작 ($Pc)"
