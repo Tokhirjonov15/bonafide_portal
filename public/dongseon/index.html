@@ -3628,6 +3628,7 @@ function subscribeBitIntake(){
       try{bitRxCancelSync();}catch(e){console.warn('rx cancel',e);}   // 접수취소된 접수의 처방 빼기 (2026-10-14)
       try{bitBackfillMrn();}catch(e){console.warn(e);}try{bitBackfillMemo();}catch(e){console.warn(e);}   // 차트번호를 먼저 채운 뒤 메모 보충
       try{bitAutoProcess();}catch(e){console.warn(e);}try{bitApplyCancels();}catch(e){console.warn(e);}try{bitApplyReceiveEnd();}catch(e){console.warn(e);}try{bitApplyRestore();}catch(e){console.warn(e);}try{bitApplyHold();}catch(e){console.warn(e);}
+      try{bitComplainCheck();}catch(e){console.warn('cmp',e);}
     },err=>console.warn('bitIntake',err));
   } else {BIT_INTAKE=[];renderBitBar();}
   if((role==='staff'||role==='resv')&&cloud.resvCol&&(bitResvOpen||BITRESV_MODE)){   // 비트 진료 예약: 진료 예약 화면이 열려 있을 때만 듣는다(읽기 = 문서 변경 × 듣는 화면 수 — 2026-09-17 읽기 한도 초과 뒤 지연 구독)
@@ -6187,6 +6188,7 @@ async function runSelfTest(){
     // 동의서 v3 (2026-10-17): 보이는 부분은 안내 사항 + 동의 사항만, '금일 처방된 치료' 문구
     {const h=consentFormHtml({mrn:'T1',name:'테스트'}),vis=h.split('<div id="cstDesc"></div></div>')[1]||'';
      ok('동의서 v3: 항목 체크란은 숨김, 안내·동의만 보임', !vis.includes('cstChk')&&vis.includes('1. 안내 사항')&&vis.includes('2. 동의 사항')&&vis.includes('cstPrivY'));
+     ok('컴플레인: 연속메모에 본인 생년월일 → 6자리', cmpBirth({rrn7:'991010-1',memoCont:'991010-\n-+'})==='991010'&&cmpBirth({rrn7:'991010-1',memoCont:'허리 통증'})===''&&cmpBirth({rrn7:'',memoCont:'991010'})===''&&cmpBirth({rrn7:'850101-2',memoCont:'991010'})==='');
      ok('동의서 v3: 문구', vis.includes('금일 수납 금액이 변동')&&vis.includes('금일 처방된 치료 시행에 동의합니다')&&vis.includes('금일 처방된 치료의 시행과 관련한')&&!vis.includes('위 비급여')&&!vis.includes('별도 체크 없음'));}
   }catch(e){ok('테스트 실행 중 예외 없음',false,String(e));}
   finally{ data=snap.data;ROOM_META=snap.ROOM_META;PROC_MATERIALS=snap.PROC_MATERIALS;PREP_ITEMS=snap.PREP_ITEMS;PROC_SET=snap.PROC_SET;ROOMS=snap.ROOMS;PRINT_ROOMS=snap.PRINT_ROOMS;arrivalPrinted=snap.arrivalPrinted;arrivalSeeded=snap.arrivalSeeded;window.printLabel=snap.pl;REGISTRY=snap.REG; }
@@ -10303,6 +10305,17 @@ function syncRoomsToBot(){
       .then(r=>{if(r.ok)localStorage.setItem('pb_roomsSynced',sig);}).catch(()=>{}));
   }catch(e){}
 }
+/* 컴플레인 환자 접수 알림 (2026-10-21 요청): 비트 연속메모에 본인 생년월일 6자리(주민번호 앞자리, 예 991010)가 있으면
+   접수되자마자 텔레그램 방 알림 봇 '컴플레인 접수' 채널로 "991010 접수되었습니다". 이름은 보내지 않는다.
+   최근 30분 안에 접수된 것만(화면을 늦게 열었을 때 아침 접수까지 한꺼번에 가지 않게), 같은 날 같은 환자는 서버가 한 번만 보낸다 */
+const CMP_SENT=new Set();
+function cmpBirth(r){const b=String((r&&r.rrn7)||'').replace(/\D/g,'').slice(0,6);if(b.length!==6)return '';
+  return String((r&&r.memoCont)||'').replace(/\D/g,'').includes(b)?b:'';}
+function bitComplainCheck(){const today=localYMD(new Date()),now=Date.now();
+  (BIT_INTAKE||[]).forEach(r=>{if(!r||r.cancelled||r.date!==today)return;const b=cmpBirth(r);if(!b)return;
+    const at=Date.parse(r.registeredAt||r.seenAt||'');if(!at||now-at>30*60000)return;
+    const key=today+'|'+(normMrn(r.mrn)||r.docId);if(CMP_SENT.has(key))return;CMP_SENT.add(key);
+    roomNotify({name:'',mrn:''},'__cmp__','cmp',{key,birth:b,clinic:String(r.dep||'').trim()});});}
 function roomNotify(p,room,kind,extra){
   try{
     if(!p||!room||!(window.firebase&&firebase.auth)||!firebase.auth().currentUser)return;
