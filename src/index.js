@@ -626,7 +626,7 @@ async function roomBotUpdate(env, u) {
     if (v === "__close") {
       const subs = await roomBotSubs(env, chatId);
       await tgRoomApi(env, "editMessageText", { chat_id: chatId, message_id: q.message.message_id,
-        text: subs.length ? "설정 완료 ✅\n알림 받는 방: " + subs.join(", ") + "\n\n바꾸려면 /rooms 를 보내세요." : "켠 알림이 없습니다. 다시 고르려면 /rooms 를 보내세요." });
+        text: subs.length ? "설정 완료 ✅\n받는 알림: " + subs.join(", ") + "\n\n바꾸려면 /rooms 를 보내세요." : "켠 알림이 없습니다. 다시 고르려면 /rooms 를 보내세요." });
       await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id });
       return;
     }
