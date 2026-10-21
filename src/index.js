@@ -583,7 +583,10 @@ async function tgRoomApi(env, method, payload) {
    방마다 고르던 예전 구독(3층 대기실 등)은 더 이상 메뉴에도 없고 알림도 가지 않는다. 모두에게 가는 알림(D/C·상담진행X)은 그대로 */
 const BOT_CHANNELS = [
   { key: "엑스레이", match: (room, kind) => /x-?ray/i.test(room) && (kind === "in" || kind === "out") },
-  { key: "상담완료", match: (room, kind) => normRoom(room) === normRoom("진료 상담") && kind === "out" },
+  { key: "상담완료", match: (room, kind) => (normRoom(room) === normRoom("진료 상담") && kind === "out") || kind === "consult" },   // 상담진행X(사유)도 여기
+  /* 2026-10-21 요청: 알림 종류를 다섯으로 나누고, 메뉴에서 켠(✅) 것만 받는다 — 예전에는 D/C·상담진행X 가 봇 쓰는 모두에게 갔다 */
+  { key: "D/C", match: (room, kind) => kind === "dc" || kind === "dcundo" },
+  { key: "3,4층 이동", match: (room, kind) => kind === "floor" },
   /* 2026-10-21 요청: 컴플레인 환자는 비트 연속메모에 본인 생년월일(991010)을 적어 둔다 → 접수되면 "991010 접수되었습니다" */
   { key: "컴플레인 접수", match: (room, kind) => kind === "cmp" },
 ];
@@ -606,7 +609,7 @@ async function roomBotMenu(env, chatId) {
     kb.push(rooms.slice(i, i + 2).map(r => ({ text: (subs.includes(r) ? "✅ " : "") + r, callback_data: "r|" + r.slice(0, 55) })));
   }
   kb.push([{ text: "🔕 모두 해제", callback_data: "r|__off" }, { text: "완료", callback_data: "r|__close" }]);
-  const cur = subs.length ? "지금 알림 받는 방: " + subs.join(", ") : "아직 선택한 방이 없습니다.";
+  const cur = subs.length ? "지금 받는 알림: " + subs.join(", ") : "아직 켠 알림이 없습니다.";
   return { text: "받을 알림을 고르세요 (여러 개 가능).\n누르면 켜지고(✅), 다시 누르면 꺼집니다.\n\n" + cur, reply_markup: { inline_keyboard: kb } };
 }
 async function roomBotAuthorized(env, chatId) {
@@ -623,17 +626,17 @@ async function roomBotUpdate(env, u) {
     if (v === "__close") {
       const subs = await roomBotSubs(env, chatId);
       await tgRoomApi(env, "editMessageText", { chat_id: chatId, message_id: q.message.message_id,
-        text: subs.length ? "설정 완료 ✅\n알림 받는 방: " + subs.join(", ") + "\n\n바꾸려면 /rooms 를 보내세요." : "선택한 방이 없습니다. 다시 고르려면 /rooms 를 보내세요." });
+        text: subs.length ? "설정 완료 ✅\n알림 받는 방: " + subs.join(", ") + "\n\n바꾸려면 /rooms 를 보내세요." : "켠 알림이 없습니다. 다시 고르려면 /rooms 를 보내세요." });
       await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id });
       return;
     }
     if (v === "__off") {
       await env.DB.prepare(`DELETE FROM room_subs WHERE chat_id=? AND room<>'#auth'`).bind(chatId).run();
-      toast = "모든 방 알림을 껐습니다";
+      toast = "모든 알림을 껐습니다";
     } else {
       const rooms = await roomBotRooms(env);
       const room = rooms.find(r => r.slice(0, 55) === v);
-      if (!room) toast = "목록에 없는 방입니다";
+      if (!room) toast = "목록에 없는 알림입니다";
       else {
         const on = (await roomBotSubs(env, chatId)).includes(room);
         if (on) { await env.DB.prepare(`DELETE FROM room_subs WHERE chat_id=? AND room=?`).bind(chatId, room).run(); toast = room + " 알림 끔"; }
@@ -757,9 +760,9 @@ async function dongseonNotify(request, env) {
     await ensureSchema(env);
     /* room '__all__' = 봇을 쓰는 모든 사람(어느 방을 골랐든) — 처방 D/C·동선 변경은 모두에게 (2026-10-01 요청) */
     const allRows = (await env.DB.prepare(`SELECT chat_id, room FROM room_subs`).all()).results || [];
-    const subs = room === "__all__"
-      ? [...new Set(allRows.map((r) => String(r.chat_id)))].map((chat_id) => ({ chat_id }))
-      : allRows.filter((r) => { const c = BOT_CHANNELS.find((x) => x.key === r.room); return !!c && c.match(room, kind); });
+    /* 켠 알림 종류(채널)에 맞는 사람에게만 (2026-10-21) — room '__all__' 도 이제 모두가 아니라 그 종류를 켠 사람 */
+    const subs = [...new Map(allRows.filter((r) => { const c = BOT_CHANNELS.find((x) => x.key === r.room); return !!c && c.match(room, kind); })
+      .map((r) => [String(r.chat_id), { chat_id: r.chat_id }])).values()];
     if (!subs.length) return json({ ok: true, sent: 0 });
     const email = await fbEmailFromRequest(request);
     if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
