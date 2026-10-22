@@ -769,7 +769,7 @@ async function dongseonNotify(request, env) {
     /* 컴플레인 접수: 화면이 여러 개여도 같은 날 같은 환자는 한 번만 (wait_sent 를 같이 쓴다) */
     if (kind === "cmp") {
       const k = "cmp|" + s(b.key).slice(0, 120);
-      if (!s(b.key) || !/^d{6}$/.test(s(b.birth))) return json({ error: "key/birth 필요" }, 400);
+      if (!s(b.key) || !/^\d{6}$/.test(s(b.birth))) return json({ error: "key/birth 필요" }, 400);
       const ins = await env.DB.prepare(`INSERT OR IGNORE INTO wait_sent (k, at) VALUES (?,?)`).bind(k, Date.now()).run();
       if (!(ins.meta && ins.meta.changes)) return json({ ok: true, sent: 0, dup: true });
     }
