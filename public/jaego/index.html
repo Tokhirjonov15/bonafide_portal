@@ -2504,22 +2504,37 @@ function printBarLabels(items){
   let k=0;
   const cells=items.map(x=>{
     const nm=(x.name||"").replace(/</g,"&lt;");
-    return Array(x.copies).fill(0).map(()=>`<div class="lb"><div class="nm">${nm}</div><svg id="b${k}" data-code="${x.bar.replace(/"/g,"&quot;")}"></svg>${(k++,"")}</div>`).join("");
+    return Array(x.copies).fill(0).map(()=>`<div class="lb"><div class="in"><div class="nm">${nm}</div><svg id="b${k}" data-code="${x.bar.replace(/"/g,"&quot;")}"></svg>${(k++,"")}</div></div>`).join("");
   }).join("");
+  /* 2026-10-23: 라벨이 옆으로 누워 두 장에 걸쳐 나왔다 — 50×30(가로가 긴) 용지를 크롬이 '가로 방향'으로 보내면 라벨 프린터 드라이버가 90° 돌려 찍는다.
+     [90° 회전] = 용지를 30×50(세로)으로 보내고 라벨 내용만 90° 돌린다 → 드라이버가 어떻게 받든 50×30 라벨 한 장에 맞게. 고른 방향은 이 PC 에 기억(기본 90° 회전) */
+  let rot="1";try{const v=localStorage.getItem("jaego_labelRot");if(v==="0"||v==="1")rot=v;}catch(e){}
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
-    /* 라벨 프린터용: 용지 50×30mm, 라벨 1장 = 1페이지 */
-    @page{size:50mm 30mm;margin:0}
     body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
-    .lb{width:50mm;height:30mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;
-        border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
+    .lb{width:50mm;height:30mm;position:relative;border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
     .lb:last-child{page-break-after:auto;break-after:auto}
+    .lb .in{position:absolute;left:0;top:0;width:50mm;height:30mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;box-sizing:border-box}
+    body.rot .lb{width:30mm;height:50mm}
+    body.rot .lb .in{left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
     .lb .nm{font-size:9pt;font-weight:700;max-width:47mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
     .lb svg{width:46mm;height:17mm}
-    @media print{.lb{border:none}}
-  </style></head><body>
+    .bar{position:sticky;top:0;background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:8px 10px;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;z-index:5}
+    .bar button{font:inherit;padding:5px 12px;border:1px solid #94a3b8;border-radius:6px;background:#fff;cursor:pointer}
+    .bar button.on{background:#1d5fb8;color:#fff;border-color:#1d5fb8}
+    .bar .h{color:#475569}
+    @media print{.lb{border:none}.bar{display:none}}
+  </style><style id="pg">@page{size:${rot==="1"?"30mm 50mm":"50mm 30mm"};margin:0}</style></head><body class="${rot==="1"?"rot":""}">
+  <div class="bar"><b>라벨 방향</b>
+    <button id="r0" onclick="setRot('0')">기본 (50×30)</button><button id="r1" onclick="setRot('1')">90° 회전</button>
+    <button onclick="window.print()">인쇄</button>
+    <span class="h">옆으로 누워 두 장에 걸쳐 나오면 다른 쪽을 누르세요 — 이 PC 에 기억됩니다. 인쇄 창의 여백은 '없음'</span></div>
   ${cells}
   <script src="${lib}"><\/script>
   <script>
+    function mark(){var r=document.body.classList.contains('rot');document.getElementById('r1').className=r?'on':'';document.getElementById('r0').className=r?'':'on';}
+    function setRot(v){document.body.classList.toggle('rot',v==='1');document.getElementById('pg').textContent='@page{size:'+(v==='1'?'30mm 50mm':'50mm 30mm')+';margin:0}';
+      try{window.opener&&window.opener.localStorage.setItem('jaego_labelRot',v);}catch(e){}try{localStorage.setItem('jaego_labelRot',v);}catch(e){}mark();}
+    mark();
     document.querySelectorAll("svg[data-code]").forEach(el=>{
       JsBarcode(el, el.dataset.code, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0});
     });
