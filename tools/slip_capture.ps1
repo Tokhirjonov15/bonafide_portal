@@ -316,6 +316,7 @@ function ShotOf($v, $date) { $f = $v.mapValue.fields; if (-not $f) { return $nul
   $k = [string](FsVal $f.kind); if (-not $k) { $k = 'inj' }
   $d = [string](FsVal $f.date); if (-not $d) { $d = $date }
   return [pscustomobject]@{ id = $id; path = $p; at = [string](FsVal $f.at); kind = $k; date = $d } }
+# 2026-10-23: 부르는 쪽에서 @( ) 로 감싼다 — 1장이면 PowerShell 5.1 이 배열을 낱개로 풀어 .Count 가 비어 '올린 캡처가 없습니다'로 나왔다(33371)
 function PastShots($mrn) {
   $tok = FbToken; $H = @{ Authorization = "Bearer $tok" }; $all = @{}; $hidden = @{}; $script:PastErr = ''
   try { $d = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/slipShots/$([Uri]::EscapeDataString($mrn))" -Headers $H
@@ -348,7 +349,7 @@ function ShowPast() {
     if (-not $bp -or -not $bp.mrn) { SetStatus "✖ 비트 외래진료실에 환자를 먼저 불러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 6; return }
     $mrn = $bp.mrn; $name = $bp.name }
   SetStatus "지난 캡처 불러오는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 30; [Windows.Forms.Application]::DoEvents()
-  $L = @(); try { $L = PastShots $mrn } catch { $script:HoldUntil = [DateTime]::MinValue; [Windows.Forms.MessageBox]::Show("캡처 목록을 읽지 못했습니다.`n`n$($_.Exception.Message)", '지난 캡처') | Out-Null; return }
+  $L = @(); try { $L = @(PastShots $mrn) } catch { $script:HoldUntil = [DateTime]::MinValue; [Windows.Forms.MessageBox]::Show("캡처 목록을 읽지 못했습니다.`n`n$($_.Exception.Message)", '지난 캡처') | Out-Null; return }
   $script:HoldUntil = [DateTime]::MinValue
   if (-not $L.Count -and $script:PastErr) { [Windows.Forms.MessageBox]::Show("캡처 목록을 읽지 못했습니다.`n`n$($script:PastErr)`n`n로그: $LogFile", '지난 캡처') | Out-Null; return }
   if (-not $L.Count) { SetStatus "$name — 올린 캡처가 없습니다" ([Drawing.Color]::FromArgb(253, 224, 71)) 5; return }
