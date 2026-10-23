@@ -2516,14 +2516,17 @@ function printBarLabels(items){
   const rot=LS("jaego_labelRot",v=>v==="0"||v==="1"||v==="2","1");
   const LW=Number(LS("jaego_labelW",v=>Number(v)>=15&&Number(v)<=120,"50")),LH=Number(LS("jaego_labelH",v=>Number(v)>=10&&Number(v)<=120,"30"));
   const LZ=Number(LS("jaego_labelZ",v=>Number(v)>=50&&Number(v)<=300,"100")),LR=LS("jaego_labelTurn",v=>v==="0"||v==="90"||v==="270","0");
+  const LX=Number(LS("jaego_labelX",v=>v!==null&&v!==""&&Math.abs(Number(v))<=15,"0"));   // 좌우 이동(mm, 글 방향 기준, − = 왼쪽) — 프린터 설정대로에서만
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
     :root{--w:${LW}mm;--h:${LH}mm}
     body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
     .lb{width:var(--w);height:var(--h);position:relative;border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
     .lb:last-child{page-break-after:auto;break-after:auto}
-    .lb .in{position:absolute;left:0;top:0;width:var(--w);height:var(--h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--h)*.03);box-sizing:border-box;padding:calc(var(--h)*.05) 1.5mm}
+    .lb .in{position:absolute;left:0;top:0;width:var(--w);height:var(--h);transform:translateX(var(--dx,0mm));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--h)*.03);box-sizing:border-box;padding:calc(var(--h)*.05) 1.5mm}
     body.turn .lb{width:var(--h);height:var(--w)}
-    body.turn .lb .in{left:50%;top:50%;transform:translate(-50%,-50%) rotate(var(--deg))}
+    body.turn .lb .in{left:50%;top:50%;transform:translate(-50%,-50%) rotate(var(--deg)) translateX(var(--dx,0mm))}
+    .big{flex-basis:100%;font-size:18px;font-weight:800;color:#b91c1c;background:#fef2f2;border:2px solid #fca5a5;border-radius:8px;padding:8px 12px}
+    .big kbd{font:inherit;background:#fff;border:1px solid #b91c1c;border-radius:5px;padding:0 6px}
     .lb .nm{font-size:calc(var(--h)*.105);line-height:1.15;font-weight:700;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
     .lb svg{width:calc(var(--w) - 4mm);height:calc(var(--h)*.58)}
     .bar{position:sticky;top:0;background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:8px 10px;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;z-index:5}
@@ -2539,16 +2542,17 @@ function printBarLabels(items){
     <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button><button id="r2" onclick="setRot('2')" title="용지 크기를 정하지 않음 — 인쇄 창의 [시스템 대화상자를 사용하여 인쇄]로">프린터 설정대로</button>
     <span style="width:10px"></span><b>내용 회전</b>
     <button id="t0" onclick="setTurn('0')">0°</button><button id="t90" onclick="setTurn('90')">90°</button><button id="t270" onclick="setTurn('270')">270°</button>
-    · 확대 <input id="lz" type="number" min="50" max="300" step="10" value="${LZ}"> %
-    <button onclick="window.print()">인쇄</button>
-    <span class="h" id="rh"></span></div>
+    · 확대 <input id="lz" type="number" min="50" max="300" step="10" value="${LZ}"> % · 좌우 <input id="lx" type="number" min="-15" max="15" step="0.5" value="${LX}" title="− 왼쪽 / + 오른쪽 (mm, 라벨 글 방향 기준)"> mm
+    <button id="pb">인쇄</button>
+    <span class="h" id="rh"></span><div class="big" id="sysTip" style="display:none">⌨ 키보드 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> 를 누르세요 — 윈도우 인쇄 창(BY-482BT · 용지 50×30 · 세로)으로 인쇄해야 라벨에 맞게 나옵니다</div></div>
   ${cells}
   <script src="${lib}"><\/script>
   <script>
     var MODE='${rot}',TURN='${LR}';
     function sv(k,v){try{window.opener&&window.opener.localStorage.setItem(k,v);}catch(e){}try{localStorage.setItem(k,v);}catch(e){}}
     function num(id,d){var v=Number(document.getElementById(id).value);return v>0?v:d;}
-    function apply(){var W0=num('lw',50),H0=num('lh',30),p2=MODE==='2',Z=p2?num('lz',100)/100:1,W=W0*Z,H=H0*Z;
+    function apply(){var W0=num('lw',50),H0=num('lh',30),p2=MODE==='2',Z=p2?num('lz',100)/100:1,W=W0*Z,H=H0*Z,DX=p2?(Number(document.getElementById('lx').value)||0):0;
+      document.documentElement.style.setProperty('--dx',DX+'mm');document.getElementById('lx').disabled=!p2;document.getElementById('sysTip').style.display=p2?'':'none';
       var turn=MODE==='1'||(p2&&TURN!=='0'),deg=MODE==='1'?90:(TURN==='270'?-90:90);
       document.body.classList.toggle('turn',turn);
       var R=document.documentElement.style;R.setProperty('--w',W+'mm');R.setProperty('--h',H+'mm');R.setProperty('--deg',deg+'deg');
@@ -2557,17 +2561,22 @@ function printBarLabels(items){
       ['0','90','270'].forEach(function(k){var b=document.getElementById('t'+k);b.className=p2&&TURN===k?'on':'';b.disabled=!p2;});
       document.getElementById('lz').disabled=!p2;
       document.getElementById('rh').textContent=p2
-        ?'인쇄 창 아래 [시스템 대화상자를 사용하여 인쇄](Ctrl+Shift+P) → 기본 설정: 용지 '+W0+'×'+H0+' · 방향 세로 → 1장 시험. 글이 라벨의 짧은 쪽으로 서면 [내용 회전] 90°(거꾸로면 270°), 작으면 [확대]'
+        ?'처음 한 번: 글이 짧은 쪽으로 서면 [내용 회전] 90°(거꾸로면 270°), 작으면 [확대], 한쪽이 잘리면 [좌우](− 왼쪽) — 이 PC 에 기억됩니다'
         :'라벨 한 장의 실제 크기를 자로 재어 넣으세요. 글이 서거나 잘리면 [프린터 설정대로]를 쓰세요 — 이 PC 에 기억됩니다. 인쇄 창: 여백 없음 · 머리글과 바닥글 끔 · 배율 100';}
     function setRot(v){MODE=v;sv('jaego_labelRot',v);apply();}
     function setTurn(v){TURN=v;sv('jaego_labelTurn',v);apply();}
     ['lw','lh'].forEach(function(id){document.getElementById(id).addEventListener('change',function(){var v=Number(this.value);if(!(v>=10&&v<=120))return;sv(id==='lw'?'jaego_labelW':'jaego_labelH',String(v));apply();});});
     document.getElementById('lz').addEventListener('change',function(){var v=Number(this.value);if(!(v>=50&&v<=300))return;sv('jaego_labelZ',String(v));apply();});
+    document.getElementById('lx').addEventListener('change',function(){var v=Number(this.value)||0;if(Math.abs(v)>15)return;sv('jaego_labelX',String(v));apply();});
+    /* 프린터 설정대로: 크롬 인쇄 창(Ctrl+P)은 이 라벨을 두 장에 걸쳐 찍는다 → 윈도우 인쇄 창(Ctrl+Shift+P)만 쓰게 */
+    function sysOnly(){alert('이 라벨 프린터는 윈도우 인쇄 창으로 인쇄해야 맞게 나옵니다.\\n\\n키보드 Ctrl + Shift + P 를 누르세요.');}
+    document.addEventListener('keydown',function(e){if(MODE==='2'&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='p'||e.key==='P')){e.preventDefault();sysOnly();}},true);
+    document.getElementById('pb').onclick=function(){if(MODE==='2')sysOnly();else window.print();};
     apply();
     document.querySelectorAll("svg[data-code]").forEach(el=>{
       JsBarcode(el, el.dataset.code, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0});
     });
-    window.onload=()=>setTimeout(()=>window.print(),300);
+    window.onload=()=>setTimeout(()=>{if(MODE!=='2')window.print();else window.focus();},300);   // 프린터 설정대로는 크롬 인쇄 창을 자동으로 띄우지 않는다
   <\/script></body></html>`);
   w.document.close();
 }
