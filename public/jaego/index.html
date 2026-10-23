@@ -2513,10 +2513,10 @@ function printBarLabels(items){
      '프린터 설정대로'에서: 내용 회전 0/90/270° · 확대 %. 크롬 인쇄 창은 '세로' 용지를 늘 좁은 쪽이 가로가 되게 잡아(31.8×50.8)
      50×30 라벨이 잘렸다 → 시스템 대화상자(Ctrl+Shift+P)로 인쇄하고 내용을 90° 돌리면 라벨에 꽉 찬다 */
   const LS=(k,ok,d)=>{try{const v=localStorage.getItem(k);return ok(v)?v:d;}catch(e){return d;}};
-  const rot=LS("jaego_labelRot",v=>v==="0"||v==="1"||v==="2","1");
+  const rot=LS("jaego_labelRot",v=>v==="0"||v==="1"||v==="2","2");   // 기본값 = BY-482BT 에 맞춘 설정(2026-10-23 시험): 프린터 설정대로 · 내용 90° · 좌우 −1.5mm
   const LW=Number(LS("jaego_labelW",v=>Number(v)>=15&&Number(v)<=120,"50")),LH=Number(LS("jaego_labelH",v=>Number(v)>=10&&Number(v)<=120,"30"));
-  const LZ=Number(LS("jaego_labelZ",v=>Number(v)>=50&&Number(v)<=300,"100")),LR=LS("jaego_labelTurn",v=>v==="0"||v==="90"||v==="270","0");
-  const LX=Number(LS("jaego_labelX",v=>v!==null&&v!==""&&Math.abs(Number(v))<=15,"0"));   // 좌우 이동(mm, 글 방향 기준, − = 왼쪽) — 프린터 설정대로에서만
+  const LZ=Number(LS("jaego_labelZ",v=>Number(v)>=50&&Number(v)<=300,"100")),LR=LS("jaego_labelTurn",v=>v==="0"||v==="90"||v==="270","90");
+  const LX=Number(LS("jaego_labelX",v=>v!==null&&v!==""&&Math.abs(Number(v))<=15,"-1.5"));   // 좌우 이동(mm, 글 방향 기준, − = 왼쪽) — 프린터 설정대로에서만
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
     :root{--w:${LW}mm;--h:${LH}mm}
     body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
