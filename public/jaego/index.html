@@ -2508,56 +2508,61 @@ function printBarLabels(items){
   }).join("");
   /* 2026-10-23: 라벨이 옆으로 누워 두 장에 걸쳐 나왔다 — 50×30(가로가 긴) 용지를 크롬이 '가로 방향'으로 보내면 라벨 프린터 드라이버가 90° 돌려 찍는다.
      [90° 회전] = 용지를 30×50(세로)으로 보내고 라벨 내용만 90° 돌린다 → 드라이버가 어떻게 받든 50×30 라벨 한 장에 맞게. 고른 방향은 이 PC 에 기억(기본 90° 회전) */
-  let rot="1";try{const v=localStorage.getItem("jaego_labelRot");if(v==="0"||v==="1"||v==="2")rot=v;}catch(e){}   // 2 = 프린터 설정대로(용지 크기를 정하지 않음, 2026-10-23)
-  /* 2026-10-23: 라벨 크기를 이 PC 에서 고른다(mm) — 실제 라벨이 50×30 보다 작을 수 있어(40×20 등) 큰 쪽지가 두 장에 걸쳐 나왔다. 기본 50×30 */
-  let LW=50,LH=30,LZ=100;try{const a=Number(localStorage.getItem("jaego_labelW")),b=Number(localStorage.getItem("jaego_labelH")),z=Number(localStorage.getItem("jaego_labelZ"));if(a>=15&&a<=120)LW=a;if(b>=10&&b<=120)LH=b;if(z>=50&&z<=300)LZ=z;}catch(e){}
-  let LX=0,LY=0;try{const x=Number(localStorage.getItem("jaego_labelX")),y=Number(localStorage.getItem("jaego_labelY"));if(x>=-60&&x<=60)LX=x;if(y>=-60&&y<=60)LY=y;}catch(e){}   // 이동(mm) — '프린터 설정대로'에서 라벨이 한쪽으로 치우칠 때
-  /* 확대(%) — '프린터 설정대로'에서 크롬이 라벨을 작게 줄여 찍을 때(2026-10-23) 라벨 전체를 키운다. 이 PC 에 기억 */
+  /* 라벨 인쇄 설정 — 이 PC 에 기억 (2026-10-23, BY-482BT 로 맞춤)
+     방향: 0 기본(용지 W×H) · 1 90° 회전(용지 H×W, 내용 돌림) · 2 프린터 설정대로(용지 크기를 정하지 않음 → 인쇄 창에서 고름)
+     '프린터 설정대로'에서: 내용 회전 0/90/270° · 확대 %. 크롬 인쇄 창은 '세로' 용지를 늘 좁은 쪽이 가로가 되게 잡아(31.8×50.8)
+     50×30 라벨이 잘렸다 → 시스템 대화상자(Ctrl+Shift+P)로 인쇄하고 내용을 90° 돌리면 라벨에 꽉 찬다 */
+  const LS=(k,ok,d)=>{try{const v=localStorage.getItem(k);return ok(v)?v:d;}catch(e){return d;}};
+  const rot=LS("jaego_labelRot",v=>v==="0"||v==="1"||v==="2","1");
+  const LW=Number(LS("jaego_labelW",v=>Number(v)>=15&&Number(v)<=120,"50")),LH=Number(LS("jaego_labelH",v=>Number(v)>=10&&Number(v)<=120,"30"));
+  const LZ=Number(LS("jaego_labelZ",v=>Number(v)>=50&&Number(v)<=300,"100")),LR=LS("jaego_labelTurn",v=>v==="0"||v==="90"||v==="270","0");
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
     :root{--w:${LW}mm;--h:${LH}mm}
     body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
     .lb{width:var(--w);height:var(--h);position:relative;border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
     .lb:last-child{page-break-after:auto;break-after:auto}
     .lb .in{position:absolute;left:0;top:0;width:var(--w);height:var(--h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--h)*.03);box-sizing:border-box;padding:calc(var(--h)*.05) 1.5mm}
-    body.rot .lb{width:var(--h);height:var(--w)}
-    body.rot .lb .in{left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
+    body.turn .lb{width:var(--h);height:var(--w)}
+    body.turn .lb .in{left:50%;top:50%;transform:translate(-50%,-50%) rotate(var(--deg))}
     .lb .nm{font-size:calc(var(--h)*.105);line-height:1.15;font-weight:700;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
     .lb svg{width:calc(var(--w) - 4mm);height:calc(var(--h)*.58)}
     .bar{position:sticky;top:0;background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:8px 10px;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;z-index:5}
     .bar button{font:inherit;padding:5px 12px;border:1px solid #94a3b8;border-radius:6px;background:#fff;cursor:pointer}
     .bar button.on{background:#1d5fb8;color:#fff;border-color:#1d5fb8}
+    .bar button:disabled{opacity:.4;cursor:default}
     .bar input{width:52px;font:inherit;padding:4px 6px;border:1px solid #94a3b8;border-radius:6px}
     .bar .h{color:#475569;flex-basis:100%}
     @media print{.lb{border:none}.bar{display:none}}
-  </style><style id="pg"></style></head><body class="${rot==="1"?"rot":""}">
+  </style><style id="pg"></style></head><body>
   <div class="bar"><b>라벨 크기</b> 가로 <input id="lw" type="number" min="15" max="120" value="${LW}"> × 세로 <input id="lh" type="number" min="10" max="120" value="${LH}"> mm
-    · 확대 <input id="lz" type="number" min="50" max="300" step="10" value="${LZ}"> %
-    · 좌우 <input id="lx" type="number" min="-60" max="60" step="1" value="${LX}" title="+ 오른쪽 / − 왼쪽 (mm)"> 상하 <input id="ly" type="number" min="-60" max="60" step="1" value="${LY}" title="+ 아래 / − 위 (mm)"> mm
     <span style="width:10px"></span><b>방향</b>
-    <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button><button id="r2" onclick="setRot('2')" title="용지 크기를 정하지 않음 — 인쇄 창에서 용지(라벨 크기)와 레이아웃 '세로'를 고르세요">프린터 설정대로</button>
+    <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button><button id="r2" onclick="setRot('2')" title="용지 크기를 정하지 않음 — 인쇄 창의 [시스템 대화상자를 사용하여 인쇄]로">프린터 설정대로</button>
+    <span style="width:10px"></span><b>내용 회전</b>
+    <button id="t0" onclick="setTurn('0')">0°</button><button id="t90" onclick="setTurn('90')">90°</button><button id="t270" onclick="setTurn('270')">270°</button>
+    · 확대 <input id="lz" type="number" min="50" max="300" step="10" value="${LZ}"> %
     <button onclick="window.print()">인쇄</button>
     <span class="h" id="rh"></span></div>
   ${cells}
   <script src="${lib}"><\/script>
   <script>
+    var MODE='${rot}',TURN='${LR}';
     function sv(k,v){try{window.opener&&window.opener.localStorage.setItem(k,v);}catch(e){}try{localStorage.setItem(k,v);}catch(e){}}
-    var MODE='${rot}';
-    function apply(){var W0=Number(document.getElementById('lw').value)||50,H0=Number(document.getElementById('lh').value)||30,Z=MODE==='2'?(Number(document.getElementById('lz').value)||100)/100:1,W=W0*Z,H=H0*Z,r=MODE==='1';
-      ['lz','lx','ly'].forEach(function(id){document.getElementById(id).disabled=MODE!=='2';});   /* 확대·이동은 '프린터 설정대로'에서만 — 기본·90° 는 용지가 라벨 크기 그대로 */
-      var X=MODE==='2'?(Number(document.getElementById('lx').value)||0):0,Y=MODE==='2'?(Number(document.getElementById('ly').value)||0):0;
-      document.querySelectorAll('.lb').forEach(function(el){el.style.left=X+'mm';el.style.top=Y+'mm';});   /* .lb 는 position:relative — 쪽 안에서 그대로 옮긴다 */
-      document.body.classList.toggle('rot',r);
-      document.documentElement.style.setProperty('--w',W+'mm');document.documentElement.style.setProperty('--h',H+'mm');
-      /* 2 = 프린터 설정대로: 용지 크기를 정하지 않는다 → 크롬이 '가로'로 보내지 않고, 인쇄 창에 레이아웃(세로/가로)이 나온다 */
-      document.getElementById('pg').textContent=MODE==='2'?'@page{margin:0}':'@page{size:'+(r?H0+'mm '+W0+'mm':W0+'mm '+H0+'mm')+';margin:0}';
+    function num(id,d){var v=Number(document.getElementById(id).value);return v>0?v:d;}
+    function apply(){var W0=num('lw',50),H0=num('lh',30),p2=MODE==='2',Z=p2?num('lz',100)/100:1,W=W0*Z,H=H0*Z;
+      var turn=MODE==='1'||(p2&&TURN!=='0'),deg=MODE==='1'?90:(TURN==='270'?-90:90);
+      document.body.classList.toggle('turn',turn);
+      var R=document.documentElement.style;R.setProperty('--w',W+'mm');R.setProperty('--h',H+'mm');R.setProperty('--deg',deg+'deg');
+      document.getElementById('pg').textContent=p2?'@page{margin:0}':'@page{size:'+(MODE==='1'?H0+'mm '+W0+'mm':W0+'mm '+H0+'mm')+';margin:0}';
       ['0','1','2'].forEach(function(k){document.getElementById('r'+k).className=MODE===k?'on':'';});
-      document.getElementById('rh').textContent=MODE==='2'
-        ?'인쇄 창에서: 용지 크기 = 라벨 크기 · 레이아웃 = 세로 (안 맞으면 가로) · 여백 없음 · 머리글과 바닥글 끔 · 배율 100 — 라벨에 작게 찍히면 [확대]를 올리고(예 160), 한쪽으로 치우치면 [좌우]·[상하]로 옮기세요(mm, 한 장씩 시험)'
-        :'라벨 한 장의 실제 크기를 자로 재어 넣으세요. 글이 세로로 서거나 두 장에 걸치면 [프린터 설정대로]를 눌러 보세요 — 이 PC 에 기억됩니다. 인쇄 창: 여백 없음 · 머리글과 바닥글 끔 · 배율 100';}
+      ['0','90','270'].forEach(function(k){var b=document.getElementById('t'+k);b.className=p2&&TURN===k?'on':'';b.disabled=!p2;});
+      document.getElementById('lz').disabled=!p2;
+      document.getElementById('rh').textContent=p2
+        ?'인쇄 창 아래 [시스템 대화상자를 사용하여 인쇄](Ctrl+Shift+P) → 기본 설정: 용지 '+W0+'×'+H0+' · 방향 세로 → 1장 시험. 글이 라벨의 짧은 쪽으로 서면 [내용 회전] 90°(거꾸로면 270°), 작으면 [확대]'
+        :'라벨 한 장의 실제 크기를 자로 재어 넣으세요. 글이 서거나 잘리면 [프린터 설정대로]를 쓰세요 — 이 PC 에 기억됩니다. 인쇄 창: 여백 없음 · 머리글과 바닥글 끔 · 배율 100';}
     function setRot(v){MODE=v;sv('jaego_labelRot',v);apply();}
+    function setTurn(v){TURN=v;sv('jaego_labelTurn',v);apply();}
     ['lw','lh'].forEach(function(id){document.getElementById(id).addEventListener('change',function(){var v=Number(this.value);if(!(v>=10&&v<=120))return;sv(id==='lw'?'jaego_labelW':'jaego_labelH',String(v));apply();});});
     document.getElementById('lz').addEventListener('change',function(){var v=Number(this.value);if(!(v>=50&&v<=300))return;sv('jaego_labelZ',String(v));apply();});
-    ['lx','ly'].forEach(function(id){document.getElementById(id).addEventListener('change',function(){var v=Number(this.value)||0;if(!(v>=-60&&v<=60))return;sv(id==='lx'?'jaego_labelX':'jaego_labelY',String(v));apply();});});
     apply();
     document.querySelectorAll("svg[data-code]").forEach(el=>{
       JsBarcode(el, el.dataset.code, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0});
