@@ -2509,32 +2509,41 @@ function printBarLabels(items){
   /* 2026-10-23: 라벨이 옆으로 누워 두 장에 걸쳐 나왔다 — 50×30(가로가 긴) 용지를 크롬이 '가로 방향'으로 보내면 라벨 프린터 드라이버가 90° 돌려 찍는다.
      [90° 회전] = 용지를 30×50(세로)으로 보내고 라벨 내용만 90° 돌린다 → 드라이버가 어떻게 받든 50×30 라벨 한 장에 맞게. 고른 방향은 이 PC 에 기억(기본 90° 회전) */
   let rot="1";try{const v=localStorage.getItem("jaego_labelRot");if(v==="0"||v==="1")rot=v;}catch(e){}
+  /* 2026-10-23: 라벨 크기를 이 PC 에서 고른다(mm) — 실제 라벨이 50×30 보다 작을 수 있어(40×20 등) 큰 쪽지가 두 장에 걸쳐 나왔다. 기본 50×30 */
+  let LW=50,LH=30;try{const a=Number(localStorage.getItem("jaego_labelW")),b=Number(localStorage.getItem("jaego_labelH"));if(a>=15&&a<=120)LW=a;if(b>=10&&b<=120)LH=b;}catch(e){}
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
+    :root{--w:${LW}mm;--h:${LH}mm}
     body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
-    .lb{width:50mm;height:30mm;position:relative;border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
+    .lb{width:var(--w);height:var(--h);position:relative;border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
     .lb:last-child{page-break-after:auto;break-after:auto}
-    .lb .in{position:absolute;left:0;top:0;width:50mm;height:30mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1mm;box-sizing:border-box}
-    body.rot .lb{width:30mm;height:50mm}
+    .lb .in{position:absolute;left:0;top:0;width:var(--w);height:var(--h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--h)*.03);box-sizing:border-box;padding:calc(var(--h)*.05) 1.5mm}
+    body.rot .lb{width:var(--h);height:var(--w)}
     body.rot .lb .in{left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
-    .lb .nm{font-size:9pt;font-weight:700;max-width:47mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
-    .lb svg{width:46mm;height:17mm}
+    .lb .nm{font-size:calc(var(--h)*.105);line-height:1.15;font-weight:700;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;text-align:center}
+    .lb svg{width:calc(var(--w) - 4mm);height:calc(var(--h)*.58)}
     .bar{position:sticky;top:0;background:#f1f5f9;border-bottom:1px solid #cbd5e1;padding:8px 10px;font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;z-index:5}
     .bar button{font:inherit;padding:5px 12px;border:1px solid #94a3b8;border-radius:6px;background:#fff;cursor:pointer}
     .bar button.on{background:#1d5fb8;color:#fff;border-color:#1d5fb8}
-    .bar .h{color:#475569}
+    .bar input{width:52px;font:inherit;padding:4px 6px;border:1px solid #94a3b8;border-radius:6px}
+    .bar .h{color:#475569;flex-basis:100%}
     @media print{.lb{border:none}.bar{display:none}}
-  </style><style id="pg">@page{size:${rot==="1"?"30mm 50mm":"50mm 30mm"};margin:0}</style></head><body class="${rot==="1"?"rot":""}">
-  <div class="bar"><b>라벨 방향</b>
-    <button id="r0" onclick="setRot('0')">기본 (50×30)</button><button id="r1" onclick="setRot('1')">90° 회전</button>
+  </style><style id="pg"></style></head><body class="${rot==="1"?"rot":""}">
+  <div class="bar"><b>라벨 크기</b> 가로 <input id="lw" type="number" min="15" max="120" value="${LW}"> × 세로 <input id="lh" type="number" min="10" max="120" value="${LH}"> mm
+    <span style="width:10px"></span><b>방향</b>
+    <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button>
     <button onclick="window.print()">인쇄</button>
-    <span class="h">옆으로 누워 두 장에 걸쳐 나오면 다른 쪽을 누르세요 — 이 PC 에 기억됩니다. 인쇄 창의 여백은 '없음'</span></div>
+    <span class="h">라벨 한 장의 실제 크기를 자로 재어 넣으세요(가로 = 프린터에서 나오는 방향과 직각). 옆으로 눕거나 두 장에 걸치면 방향을 바꿔 보세요 — 이 PC 에 기억됩니다. 인쇄 창: 여백 없음 · 머리글과 바닥글 끔 · 배율 100</span></div>
   ${cells}
   <script src="${lib}"><\/script>
   <script>
-    function mark(){var r=document.body.classList.contains('rot');document.getElementById('r1').className=r?'on':'';document.getElementById('r0').className=r?'':'on';}
-    function setRot(v){document.body.classList.toggle('rot',v==='1');document.getElementById('pg').textContent='@page{size:'+(v==='1'?'30mm 50mm':'50mm 30mm')+';margin:0}';
-      try{window.opener&&window.opener.localStorage.setItem('jaego_labelRot',v);}catch(e){}try{localStorage.setItem('jaego_labelRot',v);}catch(e){}mark();}
-    mark();
+    function sv(k,v){try{window.opener&&window.opener.localStorage.setItem(k,v);}catch(e){}try{localStorage.setItem(k,v);}catch(e){}}
+    function apply(){var W=Number(document.getElementById('lw').value)||50,H=Number(document.getElementById('lh').value)||30,r=document.body.classList.contains('rot');
+      document.documentElement.style.setProperty('--w',W+'mm');document.documentElement.style.setProperty('--h',H+'mm');
+      document.getElementById('pg').textContent='@page{size:'+(r?H+'mm '+W+'mm':W+'mm '+H+'mm')+';margin:0}';
+      document.getElementById('r1').className=r?'on':'';document.getElementById('r0').className=r?'':'on';}
+    function setRot(v){document.body.classList.toggle('rot',v==='1');sv('jaego_labelRot',v);apply();}
+    ['lw','lh'].forEach(function(id){document.getElementById(id).addEventListener('change',function(){var v=Number(this.value);if(!(v>=10&&v<=120))return;sv(id==='lw'?'jaego_labelW':'jaego_labelH',String(v));apply();});});
+    apply();
     document.querySelectorAll("svg[data-code]").forEach(el=>{
       JsBarcode(el, el.dataset.code, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0});
     });
