@@ -2508,7 +2508,7 @@ function printBarLabels(items){
   }).join("");
   /* 2026-10-23: 라벨이 옆으로 누워 두 장에 걸쳐 나왔다 — 50×30(가로가 긴) 용지를 크롬이 '가로 방향'으로 보내면 라벨 프린터 드라이버가 90° 돌려 찍는다.
      [90° 회전] = 용지를 30×50(세로)으로 보내고 라벨 내용만 90° 돌린다 → 드라이버가 어떻게 받든 50×30 라벨 한 장에 맞게. 고른 방향은 이 PC 에 기억(기본 90° 회전) */
-  let rot="1";try{const v=localStorage.getItem("jaego_labelRot");if(v==="0"||v==="1")rot=v;}catch(e){}
+  let rot="1";try{const v=localStorage.getItem("jaego_labelRot");if(v==="0"||v==="1"||v==="2")rot=v;}catch(e){}   // 2 = 프린터 설정대로(용지 크기를 정하지 않음, 2026-10-23)
   /* 2026-10-23: 라벨 크기를 이 PC 에서 고른다(mm) — 실제 라벨이 50×30 보다 작을 수 있어(40×20 등) 큰 쪽지가 두 장에 걸쳐 나왔다. 기본 50×30 */
   let LW=50,LH=30;try{const a=Number(localStorage.getItem("jaego_labelW")),b=Number(localStorage.getItem("jaego_labelH"));if(a>=15&&a<=120)LW=a;if(b>=10&&b<=120)LH=b;}catch(e){}
   w.document.write(`<html><head><title>라벨 ${total}장</title><style>
@@ -2530,18 +2530,24 @@ function printBarLabels(items){
   </style><style id="pg"></style></head><body class="${rot==="1"?"rot":""}">
   <div class="bar"><b>라벨 크기</b> 가로 <input id="lw" type="number" min="15" max="120" value="${LW}"> × 세로 <input id="lh" type="number" min="10" max="120" value="${LH}"> mm
     <span style="width:10px"></span><b>방향</b>
-    <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button>
+    <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button><button id="r2" onclick="setRot('2')" title="용지 크기를 정하지 않음 — 인쇄 창에서 용지(라벨 크기)와 레이아웃 '세로'를 고르세요">프린터 설정대로</button>
     <button onclick="window.print()">인쇄</button>
-    <span class="h">라벨 한 장의 실제 크기를 자로 재어 넣으세요(가로 = 프린터에서 나오는 방향과 직각). 옆으로 눕거나 두 장에 걸치면 방향을 바꿔 보세요 — 이 PC 에 기억됩니다. 인쇄 창: 여백 없음 · 머리글과 바닥글 끔 · 배율 100</span></div>
+    <span class="h" id="rh"></span></div>
   ${cells}
   <script src="${lib}"><\/script>
   <script>
     function sv(k,v){try{window.opener&&window.opener.localStorage.setItem(k,v);}catch(e){}try{localStorage.setItem(k,v);}catch(e){}}
-    function apply(){var W=Number(document.getElementById('lw').value)||50,H=Number(document.getElementById('lh').value)||30,r=document.body.classList.contains('rot');
+    var MODE='${rot}';
+    function apply(){var W=Number(document.getElementById('lw').value)||50,H=Number(document.getElementById('lh').value)||30,r=MODE==='1';
+      document.body.classList.toggle('rot',r);
       document.documentElement.style.setProperty('--w',W+'mm');document.documentElement.style.setProperty('--h',H+'mm');
-      document.getElementById('pg').textContent='@page{size:'+(r?H+'mm '+W+'mm':W+'mm '+H+'mm')+';margin:0}';
-      document.getElementById('r1').className=r?'on':'';document.getElementById('r0').className=r?'':'on';}
-    function setRot(v){document.body.classList.toggle('rot',v==='1');sv('jaego_labelRot',v);apply();}
+      /* 2 = 프린터 설정대로: 용지 크기를 정하지 않는다 → 크롬이 '가로'로 보내지 않고, 인쇄 창에 레이아웃(세로/가로)이 나온다 */
+      document.getElementById('pg').textContent=MODE==='2'?'@page{margin:0}':'@page{size:'+(r?H+'mm '+W+'mm':W+'mm '+H+'mm')+';margin:0}';
+      ['0','1','2'].forEach(function(k){document.getElementById('r'+k).className=MODE===k?'on':'';});
+      document.getElementById('rh').textContent=MODE==='2'
+        ?'인쇄 창에서: 용지 크기 = 라벨 크기('+W+'×'+H+') · 레이아웃 = 세로 (안 맞으면 가로) · 여백 없음 · 머리글과 바닥글 끔 · 배율 100'
+        :'라벨 한 장의 실제 크기를 자로 재어 넣으세요. 글이 세로로 서거나 두 장에 걸치면 [프린터 설정대로]를 눌러 보세요 — 이 PC 에 기억됩니다. 인쇄 창: 여백 없음 · 머리글과 바닥글 끔 · 배율 100';}
+    function setRot(v){MODE=v;sv('jaego_labelRot',v);apply();}
     ['lw','lh'].forEach(function(id){document.getElementById(id).addEventListener('change',function(){var v=Number(this.value);if(!(v>=10&&v<=120))return;sv(id==='lw'?'jaego_labelW':'jaego_labelH',String(v));apply();});});
     apply();
     document.querySelectorAll("svg[data-code]").forEach(el=>{
