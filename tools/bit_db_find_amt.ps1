@@ -10,14 +10,22 @@
   하는 일: ① 그 날 그 차트번호의 접수번호(OcmNum) ② 접수번호 칸(…OcmNum)이 있는 모든 표의 숫자 칸 중 금액이 같은 칸
   결과는 화면과 같은 폴더의 bit_db_find_amt.txt 에 — 그 내용을 보내 주세요.
 #>
-param([Parameter(Mandatory = $true)][string]$Mrn, [Parameter(Mandatory = $true)][decimal]$Amount, [string]$Day = (Get-Date).ToString('yyyyMMdd'),
+param([string]$Mrn = '', [string]$Amount = '', [string]$Day = '',
       [string]$SqlServer = '192.168.0.250', [string]$Database = 'drbitpack', [string]$SqlUser = 'dongseon_ro', [string]$Secret = 'C:\bitplus\bit_db_agent.sql.secret')
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
+# 2026-10-25: 명령어를 치다 틀리는 일이 없게 — 인수 없이 두 번 클릭(접수PC_본인부담찾기.bat)하면 여기서 묻는다. 숫자가 아니면 다시 묻는다
+while (($Mrn -replace '\D', '') -eq '') { $Mrn = Read-Host '차트번호 (숫자만)' }
+$Mrn = $Mrn -replace '\D', ''
+while (($Amount -replace '\D', '') -eq '') { $Amount = Read-Host '수납금액 (숫자만, 쉼표 없이 — 예: 299600)' }
+$Amount = [decimal]($Amount -replace '\D', '')
+# 날짜를 안 주면 오늘부터 14일 전까지 그 차트번호의 접수를 모두 본다(예전 날짜 예시로 해도 찾게)
+$Days = if ($Day) { @(($Day -replace '\D', '')) } else { @(0..14 | ForEach-Object { (Get-Date).AddDays(-$_).ToString('yyyyMMdd') }) }
 $out = Join-Path $PSScriptRoot 'bit_db_find_amt.txt'
 $lines = New-Object System.Collections.ArrayList
 function Say($s) { Write-Host $s; [void]$lines.Add([string]$s) }
-if (-not (Test-Path $Secret)) { Write-Host "비밀번호 파일이 없습니다: $Secret — 비트 DB 에이전트가 깔린 접수 PC 에서 실행해 주세요" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path $Secret)) { $m = "비밀번호 파일이 없습니다: $Secret — 이 PC 에는 비트 DB 에이전트가 없습니다. '접수PC_에이전트업데이트.bat' 을 한 접수 PC 에서 실행해 주세요"
+  Write-Host $m -ForegroundColor Red; try { [IO.File]::WriteAllLines($out, @("== $(Get-Date -Format 'yyyy-MM-dd HH:mm') $env:COMPUTERNAME", $m), (New-Object Text.UTF8Encoding $true)) } catch {}; exit 1 }
 $pw = (Get-Content $Secret -Encoding UTF8 -TotalCount 1).Trim()
 $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$pw;Connect Timeout=8;ApplicationIntent=ReadOnly")
 $cn.Open()
@@ -28,9 +36,11 @@ function Q($sql, $params) {   # SELECT 만
   $c.CommandText = $sql; if ($params) { foreach ($k in $params.Keys) { [void]$c.Parameters.AddWithValue($k, $params[$k]) } }
   $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close(); return ,$t }
 try {
-  Say "== 비트 DB 본인부담 칸 찾기 — 차트번호 $Mrn · 금액 $Amount · 날짜 $Day =="
-  $ocm = Q "SELECT OcmNum AS k, RTRIM(OcmComStt) AS stt, RTRIM(OcmAcpDtm) AS acp FROM OcmInf WITH (NOLOCK) WHERE OcmChtNum = @m AND LEFT(OcmAcpDtm, 8) = @d" @{ '@m' = $Mrn; '@d' = $Day }
-  if (-not $ocm.Rows.Count) { Say "그 날 이 차트번호의 접수가 없습니다."; return }
+  Say "== 비트 DB 본인부담 칸 찾기 — 차트번호 $Mrn · 금액 $Amount · 날짜 $($Days[-1])~$($Days[0]) · PC $env:COMPUTERNAME =="
+  # 차트번호 칸은 앞에 공백·0 이 채워져 있을 수 있다 → 앞뒤 공백을 떼고 숫자로 비교
+  $ocm = New-Object Data.DataTable
+  foreach ($d in $Days) { $t = Q "SELECT OcmNum AS k, RTRIM(OcmComStt) AS stt, RTRIM(OcmAcpDtm) AS acp FROM OcmInf WITH (NOLOCK) WHERE LTRIM(RTRIM(OcmChtNum)) IN (@m, @m0) AND LEFT(OcmAcpDtm, 8) = @d" @{ '@m' = $Mrn; '@m0' = $Mrn.PadLeft(8, '0'); '@d' = $d }; $ocm.Merge($t) }
+  if (-not $ocm.Rows.Count) { Say "최근 15일 동안 이 차트번호의 접수가 없습니다 — 차트번호를 확인해 주세요."; return }
   foreach ($r in $ocm.Rows) { Say ("접수번호 [{0}] 상태 {1} 접수 {2}" -f $r.k, $r.stt, $r.acp) }
   $cols = Q @"
 SELECT t.name AS tbl, c.name AS col, ty.name AS typ
