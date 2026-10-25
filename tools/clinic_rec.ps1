@@ -1,0 +1,309 @@
+﻿# ─────────────────────────────────────────────────────────────
+#  진료 녹음 (원장님 진료실 PC) — 2026-10-25 요청
+#  비트 외래진료실 창에 지금 불러온 환자(차트번호·이름)를 1.5초마다 읽어, 환자가 바뀌면(진료대기·진료보류에서 다른 환자를 더블클릭)
+#  앞 환자 녹음을 끊어 외장하드에 저장하고 새 환자 녹음을 시작한다. 동선관리 화면이 없어도 된다.
+#   · 파일: '녹음 2026-10-25 홍길동 900101 진료실1 09시15분03초~09시20분10초.wav'  (16kHz 모노 — 1분 약 1.9MB)
+#   · 녹음 중에는 이 PC 의 임시 폴더에 쌓고, 끊을 때 외장하드로 옮긴다. 외장하드가 빠져 있으면 C:\bitplus\녹음_임시 에 두었다가 꽂히면 옮긴다
+#   · 받아쓰기: 같은 폴더를 보는 rec_transcribe.py(rec_install.bat 로 설치)가 옆에 .txt 를 만들면 동선관리 '녹음기록'(recText)에 올린다
+#   · 녹음 엔진: Windows 기본 MCI(winmm) — 설치할 것 없음. 마이크 = Windows '기본 녹음 장치'
+#   · 오른쪽 아래 알림 영역 아이콘: 빨강 = 녹음 중, 회색 = 대기. 오른쪽 클릭 → 폴더 열기 · 이번 환자 녹음 멈추기
+#  비트에는 아무것도 입력·클릭하지 않는다(창의 글자만 읽음 — 캡처 바·감시 스크립트와 같은 방법).
+#  설치: clinic_rec_install.ps1 (USB 의 '진료실PC_녹음설치.bat')
+# ─────────────────────────────────────────────────────────────
+param([string]$Pc = $env:COMPUTERNAME,
+      [string]$Room = '',          # 파일 이름에 넣을 진료실(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
+      [string]$Dir = '',           # 녹음 폴더(외장하드). 비우면 같은 폴더의 clinic_rec.dir 에 적힌 곳
+      [int]$MaxMin = 60,           # 한 환자 최대 녹음(분) — 넘으면 저장하고 그 환자는 더 녹음하지 않는다(점심시간에 창을 열어 둔 채 계속 녹음되지 않게)
+      [int]$MinSec = 8,            # 이보다 짧은 녹음은 버린다(환자를 잘못 눌렀다 바로 바꾼 경우)
+      [string]$SimFile = '',       # 시험용: 비트 창 대신 이 파일의 'mrn|이름|주민앞7' 한 줄을 지금 환자로 읽는다
+      [switch]$Test)               # 마이크 시험: 3초 녹음해서 소리 크기만 알려 주고 끝
+$ErrorActionPreference = 'Continue'
+$ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
+$ProjectId = 'bonafide-dongseon-108e2'
+$BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'bitbot' (받아쓴 글 올리기용)
+$BoardDoc  = 'patientboard_v3/' + [Uri]::EscapeDataString('반듯한정형외과')
+if (-not $Room -and $Pc -match '^진료실') { $Room = $Pc }
+$DirFile    = Join-Path $PSScriptRoot 'clinic_rec.dir'
+$SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret'
+$TokenFile  = Join-Path $PSScriptRoot 'clinic_rec.token'
+$Hold       = Join-Path $PSScriptRoot '녹음_임시'          # 외장하드가 없을 때 잠시 두는 곳
+$LogDir  = Join-Path $env:LOCALAPPDATA 'bitplus_watcher'; New-Item -ItemType Directory -Force $LogDir | Out-Null
+$LogFile = Join-Path $LogDir 'clinic_rec.log'
+$Work    = Join-Path $LogDir 'clinic_rec_work'; New-Item -ItemType Directory -Force $Work | Out-Null   # 녹음 중 임시 파일(영문 경로)
+$QueueFile = Join-Path $LogDir 'clinic_rec_queue.json'      # 받아쓴 글을 올릴 녹음 목록
+if (-not $Dir -and (Test-Path $DirFile)) { $Dir = ([string](Get-Content $DirFile -Encoding UTF8 -TotalCount 1)).Trim() }
+function Log($m) { try { Add-Content $LogFile "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" -Encoding UTF8 } catch {} }
+function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
+function Iso($d) { return ([DateTime]$d).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
+
+# ── 녹음 엔진 (MCI waveaudio) ──
+Add-Type -Namespace ClinicRec -Name Mci -MemberDefinition @'
+[DllImport("winmm.dll", CharSet=CharSet.Unicode)] public static extern int mciSendString(string cmd, System.Text.StringBuilder ret, int len, System.IntPtr cb);
+[DllImport("winmm.dll", CharSet=CharSet.Unicode)] public static extern bool mciGetErrorString(int err, System.Text.StringBuilder buf, int len);
+[DllImport("winmm.dll")] public static extern int waveInGetNumDevs();
+'@
+function Mci($cmd) { $sb = New-Object Text.StringBuilder 256; $e = [ClinicRec.Mci]::mciSendString($cmd, $sb, 256, [IntPtr]::Zero)
+  if ($e) { $eb = New-Object Text.StringBuilder 256; [void][ClinicRec.Mci]::mciGetErrorString($e, $eb, 256); throw "MCI '$($cmd.Split(' ')[0])' 오류 ${e}: $($eb.ToString())" }
+  return $sb.ToString() }
+function MciQuiet($cmd) { try { [void](Mci $cmd) } catch {} }
+function WavPeak($path) {   # 16비트 PCM 의 가장 큰 소리(0~100%) — 마이크 시험용
+  $b = [IO.File]::ReadAllBytes($path); $max = 0
+  for ($i = 44; $i -lt $b.Length - 1; $i += 2) { $v = [Math]::Abs([int][BitConverter]::ToInt16($b, $i)); if ($v -gt $max) { $max = $v } }
+  return [Math]::Round($max * 100 / 32768, 1) }
+
+if ($Test) {
+  $n = [ClinicRec.Mci]::waveInGetNumDevs()
+  if ($n -lt 1) { Write-Host '마이크(녹음 장치)가 없습니다 — 마이크를 꽂고 다시 시험하세요.' -ForegroundColor Red; exit 2 }
+  $t = Join-Path $Work 'mic_test.wav'
+  try { MciQuiet 'close crTest'; [void](Mci 'open new type waveaudio alias crTest'); [void](Mci 'set crTest bitspersample 16 samplespersec 16000 channels 1 bytespersec 32000 alignment 2')
+    Write-Host '3초 동안 말해 보세요…' -ForegroundColor Cyan; [void](Mci 'record crTest'); Start-Sleep -Seconds 3; [void](Mci 'stop crTest'); [void](Mci "save crTest `"$t`""); MciQuiet 'close crTest'
+    $pk = WavPeak $t; $kb = [Math]::Round((Get-Item $t).Length / 1024)
+    if ($pk -lt 1) { Write-Host "녹음은 되지만 소리가 거의 없습니다(최대 $pk%) — Windows 설정 → 개인 정보 → 마이크 → '데스크톱 앱이 마이크에 액세스' 켜기, 소리 설정의 기본 녹음 장치를 확인하세요." -ForegroundColor Yellow; exit 3 }
+    Write-Host "마이크 정상 — 소리 최대 $pk% ($kb KB)" -ForegroundColor Green; exit 0 }
+  catch { MciQuiet 'close crTest'; Write-Host "녹음 시험 실패: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+}
+
+# 한 번만 실행 (로그온 작업이 5분마다 다시 시작해도 이미 떠 있으면 그냥 끝난다)
+$script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideClinicRec')
+if (-not $script:Mtx.WaitOne(0)) { exit }
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$BotPassword = ''; if (Test-Path $SecretFile) { $BotPassword = ([string](Get-Content $SecretFile -Encoding UTF8 -TotalCount 1)).Trim() }
+
+# ── 비트 외래진료실 창 읽기 (slip_capture.ps1 · bitplus_watcher.ps1 과 같은 방법 — 고칠 때 함께 고친다) ──
+Add-Type -Namespace BitW -Name U32 -UsingNamespace System.Collections.Generic, System.Text -MemberDefinition @'
+public delegate bool EnumProc(IntPtr h, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc cb, IntPtr l);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, StringBuilder s, uint flags, uint timeout, out IntPtr res);
+[DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr res);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+public static List<IntPtr> Tops() { var l = new List<IntPtr>(); EnumWindows((h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
+public static List<IntPtr> Children(IntPtr p) { var l = new List<IntPtr>(); EnumChildWindows(p, (h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
+public static string Text(IntPtr h) {
+  IntPtr res;
+  if (SendMessageTimeout(h, 0x000E, IntPtr.Zero, IntPtr.Zero, 0x0002, 500, out res) == IntPtr.Zero) return "";
+  int n = (int)res; if (n <= 0) return "";
+  var sb = new StringBuilder(n + 2);
+  if (SendMessageTimeout(h, 0x000D, (IntPtr)(n + 1), sb, 0x0002, 500, out res) == IntPtr.Zero) return "";
+  return sb.ToString();
+}
+public static string Cls(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
+public static int Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h, out p); return (int)p; }
+'@
+function FindDoctorWindow() {
+  $proc = Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $proc) { return $null }
+  foreach ($h in [BitW.U32]::Tops()) { if ([BitW.U32]::Pid($h) -ne $proc.Id) { continue }
+    if ((([BitW.U32]::Text($h)) -replace '\s', '') -like '외래진료실*') { return $h } }
+  return $null
+}
+function Rrn7($t) { $m = [regex]::Match([string]$t, '^\s*(\d{6})-?(\d)'); if ($m.Success) { return $m.Groups[1].Value + '-' + $m.Groups[2].Value } else { return '' } }
+$script:DocCache = $null; $script:DocRetry = 0
+function ReadDoctor($hwnd) {   # 차트번호 · 수진자명 · 주민번호 앞 7자리만 (증상·메모는 읽지 않는다)
+  $c = $script:DocCache
+  $okH = { param($h) ($null -eq $h) -or [BitW.U32]::IsWindow($h) }
+  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and (& $okH $c.name) -and (& $okH $c.rrn)) {
+    $missing = ($null -eq $c.name) -or ($null -eq $c.rrn)
+    if ($missing -and $script:DocRetry -lt 5 -and ((([BitW.U32]::Text($c.mrn)) -replace '\D', '') -ne '')) { $script:DocRetry++; $script:DocCache = $null }
+    else { return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); name = $(if ($null -ne $c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
+                     rrn7 = (Rrn7 $(if ($null -ne $c.rrn) { [BitW.U32]::Text($c.rrn) } else { '' })); hasName = ($null -ne $c.name) } }
+  }
+  $script:DocCache = $null
+  $els = @()
+  foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch '\.(Window|STATIC|EDIT)\.') { continue }
+    if (-not [BitW.U32]::IsWindowVisible($h)) { continue }
+    $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
+    if (($r.R - $r.L) -le 0) { continue }
+    $els += [pscustomobject]@{ hw = $h; x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
+  }
+  $lblMrn = $els | Where-Object { (($_.name -replace '\s', '') -eq '차트번호') -and $_.w -lt 120 } | Select-Object -First 1
+  $lblName = $els | Where-Object { (($_.name -replace '\s', '') -eq '수진자명') -and $_.w -lt 120 } | Select-Object -First 1
+  if (-not $lblMrn) { return $null }
+  $mrnEl = $els | Where-Object { $_.cls -match 'EDIT' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 60) } | Sort-Object x | Select-Object -First 1
+  $rowLbl = @($els | Where-Object { $_.cls -match '\.(Window|STATIC)\.' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 } | Sort-Object x)
+  $nextOf = { param($e) $rowLbl | Where-Object { $_.hw -ne $e.hw -and [Math]::Abs($_.x - ($e.x + $e.w)) -le 8 } | Sort-Object x | Select-Object -First 1 }
+  $nameEl = $null; $sexEl = $null; $rrnEl = $null
+  if ($lblName) {
+    $nameEl = & $nextOf $lblName
+    if ($nameEl) { $sexEl = & $nextOf $nameEl }
+    if ($sexEl) { $rrnEl = & $nextOf $sexEl }
+    if ($nameEl -and (($nameEl.name -replace '\s', '') -in @('보험유형','특이사항','조합기호','증번호'))) { $nameEl = $null; $sexEl = $null; $rrnEl = $null }
+    if ($sexEl -and $sexEl.name.Trim() -and $sexEl.name -notmatch '^\s*\((M|F)/') { $sexEl = $null }
+    if ($rrnEl -and $rrnEl.name.Trim() -and $rrnEl.name -notmatch '^\s*\d{6}-') { $rrnEl = $null }
+  }
+  if (-not $nameEl -and $lblName) { $nameEl = $els | Where-Object { $_.hw -ne $lblName.hw -and [Math]::Abs($_.y - $lblName.y) -le 10 -and $_.x -ge ($lblName.x + $lblName.w - 8) -and $_.x -le ($lblName.x + $lblName.w + 60) -and $_.name.Trim() } | Sort-Object x | Select-Object -First 1 }
+  if (-not $rrnEl) { $rrnEl = $els | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.name -match '^\s*\d{6}-\d' } | Select-Object -First 1 }
+  $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
+  if ($mrnEl) {
+    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { $null }); rrn = $(if ($rrnEl) { $rrnEl.hw } else { $null }) }
+    if ($nameEl -and $rrnEl) { $script:DocRetry = 0 }
+  }
+  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); rrn7 = (Rrn7 $(if ($rrnEl) { $rrnEl.name } else { '' })); hasName = ($null -ne $nameEl) }
+}
+# 지금 환자: @{ mrn; name; rrn7 } — 환자 없음/창 없음이면 mrn ''.
+#  차트번호 칸에 번호를 치는 중(이름이 아직 안 바뀜)은 환자로 보지 않는다: 이름 칸이 있는 창이면 이름(또는 주민번호)이 있어야 환자
+function CurrentPatient() {
+  if ($SimFile) { $l = ''; try { $l = ([string](Get-Content $SimFile -Encoding UTF8 -TotalCount 1)).Trim() } catch {}
+    $a = $l -split '\|'; return @{ mrn = ([string]$a[0] -replace '\D', ''); name = [string]$a[1]; rrn7 = [string]$a[2] } }
+  $h = FindDoctorWindow; if (-not $h) { return @{ mrn = ''; name = ''; rrn7 = '' } }
+  $d = ReadDoctor $h; if (-not $d -or -not $d.mrn) { return @{ mrn = ''; name = ''; rrn7 = '' } }
+  if ($d.hasName -and -not $d.name -and -not $d.rrn7) { return @{ mrn = ''; name = ''; rrn7 = ''; typing = $true } }
+  return @{ mrn = $d.mrn; name = $d.name; rrn7 = $d.rrn7 }
+}
+
+# ── Firebase (받아쓴 글 올리기 — 감시 스크립트 계정. 비밀번호 파일이 없으면 녹음만 한다) ──
+$script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null; $script:LoginFailAt = [DateTime]::MinValue
+if (Test-Path $TokenFile) { try { $script:Refresh = (Get-Content $TokenFile -TotalCount 1 -ErrorAction Stop).Trim() } catch { $script:Refresh = $null } }
+function FbToken() {
+  if ($script:Tok -and (Get-Date) -lt $script:TokExp) { return $script:Tok }
+  if ($script:Refresh) {
+    try { $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://securetoken.googleapis.com/v1/token?key=$ApiKey" -ContentType 'application/x-www-form-urlencoded' -Body "grant_type=refresh_token&refresh_token=$($script:Refresh)"
+      $script:Tok = $r.id_token; $script:Refresh = $r.refresh_token; $script:TokExp = (Get-Date).AddSeconds([int]$r.expires_in - 300)
+      try { [IO.File]::WriteAllText($TokenFile, $script:Refresh, (New-Object Text.UTF8Encoding $false)) } catch {}; return $script:Tok }
+    catch { Log "토큰 갱신 실패 → 비밀번호로: $($_.Exception.Message)"; $script:Refresh = $null } }
+  if (-not $BotPassword) { throw '비밀번호 파일 없음(받아쓴 글은 올리지 않음)' }
+  if (((Get-Date) - $script:LoginFailAt).TotalSeconds -lt 300) { throw '로그인 대기 중(최근 실패)' }
+  $body = @{ email = $BotEmail; password = $BotPassword; returnSecureToken = $true } | ConvertTo-Json -Compress
+  try { $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) }
+  catch { $script:LoginFailAt = Get-Date; throw "로그인 실패: $($_.Exception.Message)" }
+  $script:Tok = $r.idToken; $script:Refresh = $r.refreshToken; $script:TokExp = (Get-Date).AddSeconds([int]$r.expiresIn - 300)
+  try { [IO.File]::WriteAllText($TokenFile, $script:Refresh, (New-Object Text.UTF8Encoding $false)) } catch {}
+  return $script:Tok
+}
+function FsStr($v) { return @{ stringValue = [string]$v } }
+function PutRecText($docId, $fields) {   # recText/{docId} 문서 쓰기(덮어쓰기) — 동선관리 브라우저 녹음과 같은 모양
+  $f = @{}; foreach ($k in $fields.Keys) { $v = $fields[$k]; if ($v -is [int] -or $v -is [long]) { $f[$k] = @{ integerValue = [string]$v } } else { $f[$k] = FsStr $v } }
+  $body = @{ fields = $f } | ConvertTo-Json -Depth 6 -Compress
+  $u = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/recText/$([Uri]::EscapeDataString($docId))"
+  Invoke-RestMethod -TimeoutSec 30 -Method Patch -Uri $u -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
+}
+
+# ── 녹음 ──
+$script:Cur = $null          # 녹음 중: @{ mrn; name; rrn7; start(DateTime); tmp }
+$script:StopKey = ''         # 이 차트번호는 (최대 시간·직접 멈춤으로) 다시 녹음하지 않는다 — 다른 환자로 바뀌면 풀림
+$script:LastErr = ''
+function Hms($d) { return "{0:00}시{1:00}분{2:00}초" -f $d.Hour, $d.Minute, $d.Second }
+function SafeName($s) { return (([string]$s) -replace '[\\/:*?"<>|]', '').Trim() }
+function RecFolder() { if ($Dir -and (Test-Path -LiteralPath $Dir)) { return $Dir }; New-Item -ItemType Directory -Force $Hold | Out-Null; return $Hold }
+function StartRec($p) {
+  $tmp = Join-Path $Work ("cur_" + (Get-Date).ToString('yyyyMMddHHmmss') + '.wav')
+  MciQuiet 'close crRec'
+  try { [void](Mci 'open new type waveaudio alias crRec'); [void](Mci 'set crRec bitspersample 16 samplespersec 16000 channels 1 bytespersec 32000 alignment 2'); [void](Mci 'record crRec') }
+  catch { MciQuiet 'close crRec'; $script:LastErr = $_.Exception.Message; Log "녹음 시작 실패 $($p.mrn): $($script:LastErr)"; SetIcon; return }
+  $script:LastErr = ''
+  $script:Cur = @{ mrn = $p.mrn; name = $p.name; rrn7 = $p.rrn7; start = (Get-Date); tmp = $tmp }
+  Log "녹음 시작: $($p.name) ($($p.mrn))"; SetIcon
+}
+function StopRec($why) {
+  $c = $script:Cur; if (-not $c) { return }; $script:Cur = $null
+  $end = Get-Date; $sec = [int]($end - $c.start).TotalSeconds
+  try { [void](Mci 'stop crRec') } catch { Log "멈춤 오류: $($_.Exception.Message)" }
+  if ($sec -lt $MinSec) { MciQuiet 'close crRec'; Log "짧아서 버림($sec 초): $($c.name) ($($c.mrn)) · $why"; SetIcon; return }
+  try { [void](Mci "save crRec `"$($c.tmp)`"") } catch { MciQuiet 'close crRec'; $script:LastErr = $_.Exception.Message; Log "저장 실패 $($c.mrn): $($script:LastErr)"; SetIcon; return }
+  MciQuiet 'close crRec'
+  $b6 = ([string]$c.rrn7 -replace '\D', ''); if ($b6.Length -gt 6) { $b6 = $b6.Substring(0, 6) }
+  $nm = SafeName $(if ($c.name) { $c.name } else { "차트$($c.mrn)" })
+  $base = "녹음 $($c.start.ToString('yyyy-MM-dd')) $nm$(if ($b6) { ' ' + $b6 }) $(SafeName $Room) $(Hms $c.start)~$(Hms $end)" -replace '\s+', ' '
+  $folder = RecFolder; $dest = Join-Path $folder "$base.wav"; $i = 2
+  while (Test-Path -LiteralPath $dest) { $dest = Join-Path $folder "$base ($i).wav"; $i++ }
+  try { Move-Item -LiteralPath $c.tmp -Destination $dest -Force -ErrorAction Stop } catch { $script:LastErr = "옮기기 실패: $($_.Exception.Message)"; Log "$($script:LastErr) — 임시 파일은 $($c.tmp) 에 남음"; SetIcon; return }
+  $kb = [Math]::Round((Get-Item -LiteralPath $dest).Length / 1024)
+  Log "저장: $dest ($sec 초, $kb KB) · $why$(if ($folder -eq $Hold) { ' — 외장하드 없음, 임시 폴더' })"
+  QueueAdd @{ file = (Split-Path $dest -Leaf); mrn = $c.mrn; name = $c.name; room = $Room; at = (Iso $c.start); endAt = (Iso $end); dur = $sec }
+  SetIcon
+}
+# 외장하드가 다시 꽂히면 임시 폴더의 녹음을 옮긴다
+function MoveHeld() {
+  if (-not ($Dir -and (Test-Path -LiteralPath $Dir)) -or -not (Test-Path $Hold)) { return }
+  Get-ChildItem -LiteralPath $Hold -Filter '*.wav' -ErrorAction SilentlyContinue | ForEach-Object {
+    try { Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Dir $_.Name) -ErrorAction Stop; Log "임시 폴더 → 외장하드: $($_.Name)" } catch { Log "임시 폴더 옮기기 실패 $($_.Name): $($_.Exception.Message)" } }
+}
+
+# ── 받아쓴 글 올리기: 녹음 옆에 같은 이름의 .txt 가 생기면 recText 에 (3일 지나면 포기) ──
+function QueueGet() { try { if (Test-Path $QueueFile) { return @((Get-Content $QueueFile -Raw -Encoding UTF8 | ConvertFrom-Json)) } } catch {}; return @() }
+function QueueSet($L) { try { ConvertTo-Json -InputObject @($L) -Depth 4 -Compress | Set-Content $QueueFile -Encoding UTF8 } catch {} }
+function QueueAdd($x) { $L = @(QueueGet | Where-Object { $_ -and $_.file -ne $x.file }); $L += [pscustomobject]$x; QueueSet $L }
+function RecDocId($file) { return (($file -replace '\.(wav|webm)$', '') -replace '[\/#?\[\]*]', '_').Substring(0, [Math]::Min(140, ($file -replace '\.(wav|webm)$', '').Length)) }
+function PushTexts() {
+  if (-not $BotPassword -and -not $script:Refresh) { if (-not $script:NoPwLogged) { $script:NoPwLogged = $true; Log "비밀번호 파일이 없어 받아쓴 글은 동선관리에 올리지 않습니다(녹음·.txt 는 외장하드에 그대로): $SecretFile" }; return }
+  $L = @(QueueGet | Where-Object { $_ }); if (-not $L.Count) { return }
+  $keep = @(); $changed = $false
+  for ($i = 0; $i -lt $L.Count; $i++) { $x = $L[$i]
+    $txt = $null
+    foreach ($fd in @($Dir, $Hold)) { if (-not $fd) { continue }; $p = Join-Path $fd (($x.file -replace '\.wav$', '') + '.txt'); if (Test-Path -LiteralPath $p) { $txt = $p; break } }
+    if (-not $txt) { if (((Get-Date) - [DateTime]::Parse($x.at)).TotalDays -lt 3) { $keep += $x } else { $changed = $true; Log "받아쓴 글이 3일 안에 안 생겨 포기: $($x.file)" }; continue }
+    try {
+      $text = [IO.File]::ReadAllText($txt, [Text.Encoding]::UTF8).Trim(); if ($text.Length -gt 200000) { $text = $text.Substring(0, 200000) }
+      PutRecText (RecDocId $x.file) ([ordered]@{ mrn = [string]$x.mrn; pid = ''; name = [string]$x.name; room = [string]$x.room; startedAt = [string]$x.at; endAt = [string]$x.endAt
+        date = ([string]$x.at).Substring(0, 10); file = [string]$x.file; text = $text; src = 'local'; dur = [int]$x.dur; at = (NowIso); by = "녹음($Pc)" })
+      Log "받아쓴 글 올림: $($x.file) ($($text.Length)자)"; $changed = $true }
+    catch { Log "받아쓴 글 올리기 실패 $($x.file): $($_.Exception.Message)"; $keep += @($L[$i..($L.Count - 1)]); break }   # 인터넷·로그인 문제면 이것과 남은 것 모두 다음에 다시
+  }
+  if ($changed) { QueueSet $keep }
+}
+
+# ── 알림 영역 아이콘 ──
+function DotIcon($r, $g, $b) { $bm = New-Object Drawing.Bitmap 16, 16; $gr = [Drawing.Graphics]::FromImage($bm); $gr.SmoothingMode = 'AntiAlias'
+  $gr.Clear([Drawing.Color]::Transparent); $gr.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.Color]::FromArgb($r, $g, $b))), 2, 2, 12, 12); $gr.Dispose()
+  return [Drawing.Icon]::FromHandle($bm.GetHicon()) }
+$IcoRec = DotIcon 220 38 38; $IcoIdle = DotIcon 148 163 184; $IcoWarn = DotIcon 245 158 11
+$tray = New-Object Windows.Forms.NotifyIcon; $tray.Visible = $true
+function SetIcon() {
+  $hdd = ($Dir -and (Test-Path -LiteralPath $Dir))
+  if ($script:Cur) { $m = [int]((Get-Date) - $script:Cur.start).TotalMinutes; $tray.Icon = $IcoRec; $t = "녹음 중 · $($script:Cur.name) · ${m}분" }
+  elseif ($script:LastErr) { $tray.Icon = $IcoWarn; $t = "녹음 오류 · $($script:LastErr)" }
+  elseif (-not $hdd) { $tray.Icon = $IcoWarn; $t = '녹음 대기 · 외장하드 없음(임시 폴더에 저장)' }
+  else { $tray.Icon = $IcoIdle; $t = '진료 녹음 대기 · 외래진료실에 환자를 부르면 녹음' }
+  if ($t.Length -gt 63) { $t = $t.Substring(0, 63) }; $tray.Text = $t
+}
+$menu = New-Object Windows.Forms.ContextMenuStrip
+[void]$menu.Items.Add('녹음 폴더 열기', $null, { $f = RecFolder; Start-Process explorer.exe "`"$f`"" })
+[void]$menu.Items.Add('이번 환자 녹음 멈추기 (다음 환자부터 다시 녹음)', $null, { if ($script:Cur) { $script:StopKey = $script:Cur.mrn; StopRec '직접 멈춤' } })
+[void]$menu.Items.Add('기록 보기', $null, { Start-Process notepad.exe "`"$LogFile`"" })
+$tray.ContextMenuStrip = $menu
+
+# ── 1.5초마다: 지금 환자 확인 → 바뀌었으면 끊고 새로 ──
+#  흔들림 막기: 새 환자는 2번 연속(3초), '환자 없음'은 4번 연속(6초) 같은 값이어야 따른다
+$script:Cand = ''; $script:CandN = 0; $script:CandP = $null; $script:Tick = 0
+function Poll() {
+  $script:Tick++
+  $p = $null; try { $p = CurrentPatient } catch { Log "창 읽기 오류: $($_.Exception.Message)"; return }
+  $key = [string]$p.mrn
+  # 차트번호 칸에 다른 번호를 치는 중(번호만 바뀌고 이름은 그대로) — 같은 환자로 본다. 다른 환자를 불러오면 이름도 바뀐다
+  if ($script:Cur -and $key -and $key -ne $script:Cur.mrn -and $p.name -and $script:Cur.name -and $p.name -eq $script:Cur.name) { $key = $script:Cur.mrn }
+  if ($key -eq $script:Cand) { $script:CandN++ } else { $script:Cand = $key; $script:CandN = 1 }
+  $script:CandP = $p
+  if ($script:Cur -and $key -eq $script:Cur.mrn -and -not $script:Cur.name -and $p.name) { $script:Cur.name = $p.name; $script:Cur.rrn7 = $p.rrn7 }   # 이름이 늦게 뜬 경우
+  $need = if ($key) { 2 } else { 4 }
+  if ($script:CandN -ge $need) {
+    if ($script:StopKey -and $key -ne $script:StopKey) { $script:StopKey = '' }
+    $curKey = if ($script:Cur) { $script:Cur.mrn } else { '' }
+    if ($key -ne $curKey) {
+      if ($script:Cur) { StopRec $(if ($key) { "환자 바뀜 → $($p.name) ($key)" } else { '외래진료실 환자 없음' }) }
+      if ($key -and $key -ne $script:StopKey) { StartRec $p }
+    }
+  }
+  if ($script:Cur -and ((Get-Date) - $script:Cur.start).TotalMinutes -ge $MaxMin) { $script:StopKey = $script:Cur.mrn; StopRec "최대 ${MaxMin}분" }
+  if ($script:Tick % 4 -eq 0) { SetIcon }
+  if ($script:Tick % 20 -eq 0) { try { MoveHeld } catch {}; try { PushTexts } catch { Log "글 올리기 오류: $($_.Exception.Message)" } }   # 30초마다
+}
+
+# 숨은 창: 로그오프·종료 때 녹음 중이면 저장하고 끝낸다
+$form = New-Object Windows.Forms.Form
+$form.ShowInTaskbar = $false; $form.WindowState = 'Minimized'; $form.FormBorderStyle = 'FixedToolWindow'; $form.Opacity = 0; $form.Size = New-Object Drawing.Size 1, 1
+$form.Add_Shown({ $form.Hide() })
+$form.Add_FormClosing({ try { StopRec '프로그램 종료(로그오프·종료)' } catch {}; try { $tray.Visible = $false; $tray.Dispose() } catch {} })
+$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ try { Poll } catch { Log "주기 오류: $($_.Exception.Message)" } }); $timer.Start()
+Log "시작: PC=$Pc 진료실=$Room 폴더=$(if ($Dir) { $Dir } else { '(없음 — 임시 폴더)' }) 최대 ${MaxMin}분$(if ($SimFile) { ' [시험: ' + $SimFile + ']' })"
+if (-not $Dir) { Log '녹음 폴더가 정해지지 않았습니다 — clinic_rec_install.ps1 로 외장하드 폴더를 고르세요' }
+SetIcon
+[Windows.Forms.Application]::Run($form)
+try { StopRec '끝' } catch {}
+Log '종료'

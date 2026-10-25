@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """진료 녹음 받아쓰기 (2026-10-12) — 진료실 PC 에서 돈다.
 
-동선관리 [녹음]이 외장하드 폴더에 저장한 '녹음 … .webm' 을 지켜보다가, 녹음이 끝난 파일(90초 넘게 그대로인 것)을
+동선관리 [녹음]이 외장하드 폴더에 저장한 '녹음 … .webm' (원장님 PC 녹음 프로그램 clinic_rec.ps1 은 '.wav', 2026-10-25) 을 지켜보다가, 녹음이 끝난 파일(90초 넘게 그대로인 것)을
 faster-whisper 로 한국어 글로 바꿔 같은 이름의 .txt 를 옆에 만든다. 인터넷으로 소리를 보내지 않는다(모델은 처음 한 번만 내려받음).
 동선관리 화면이 그 .txt 를 읽어 환자 정보 창 '녹음기록' 에 올린다 — 이 프로그램은 동선관리에 접속하지 않는다.
 
@@ -72,10 +72,10 @@ def todo(folder):
     out = []
     now = time.time()
     for fn in os.listdir(folder):
-        if not fn.lower().endswith('.webm'):
+        if not fn.lower().endswith(('.webm', '.wav')):
             continue
         p = os.path.join(folder, fn)
-        base = p[:-5]
+        base = os.path.splitext(p)[0]
         try:
             st = os.stat(p)
         except OSError:
@@ -97,7 +97,7 @@ def todo(folder):
 
 
 def run_one(p, name, threads):
-    base = p[:-5]
+    base = os.path.splitext(p)[0]
     log('바꾸는 중:', os.path.basename(p))
     try:
         text = transcribe(p, name, threads)
