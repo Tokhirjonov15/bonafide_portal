@@ -1808,6 +1808,20 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
 </head>
 <body>
 <script>document.documentElement.dataset.theme='light';/* 라이트 테마 고정(다크 모드 제거) */</script>
+<script>/* 이 PC 의 동선관리 저장 데이터 초기화 (2026-10-25: 시크릿 창에서는 되는데 일반 크롬에서만 '자료 연결 중'에서 멈춤 — 저장 데이터가 꼬인 PC)
+   주소 끝에 ?reset 을 붙여 열면: 이 사이트의 저장 데이터(로그인 정보·화면 설정·임시 저장)와 백그라운드 작업을 지우고 처음 화면으로. 서버 자료는 그대로 */
+(function(){if(!/[?&]reset\b/.test(location.search))return;
+  if(!confirm('이 PC의 동선관리 저장 데이터(로그인 정보, 이 PC 화면 설정)를 지우고 다시 시작할까요?\n환자·통계 등 서버 자료는 지워지지 않습니다.')){location.replace(location.pathname);return;}
+  try{window.stop();}catch(e){}   // 이 뒤의 화면·클라우드 코드는 실행하지 않는다(지우는 사이 다시 만들지 않게)
+  document.body?document.body.innerHTML='<p style="font:16px Malgun Gothic,sans-serif;padding:30px">초기화 중…</p>':document.write('<p style="font:16px Malgun Gothic,sans-serif;padding:30px">초기화 중…</p>');
+  const jobs=[];
+  try{localStorage.clear();}catch(e){}try{sessionStorage.clear();}catch(e){}
+  try{if(indexedDB.databases)jobs.push(indexedDB.databases().then(L=>Promise.all(L.map(d=>new Promise(r=>{const q=indexedDB.deleteDatabase(d.name);q.onsuccess=q.onerror=q.onblocked=()=>r();})))));
+      else ['firebaseLocalStorageDb','firebase-heartbeat-database','firebase-installations-database'].forEach(n=>{try{indexedDB.deleteDatabase(n);}catch(e){}});}catch(e){}
+  try{if(navigator.serviceWorker)jobs.push(navigator.serviceWorker.getRegistrations().then(L=>Promise.all(L.map(r=>r.unregister()))));}catch(e){}
+  try{if(window.caches)jobs.push(caches.keys().then(K=>Promise.all(K.map(k=>caches.delete(k)))));}catch(e){}
+  Promise.all(jobs).catch(()=>{}).then(()=>{alert('초기화했습니다. 다시 로그인해 주세요.');location.replace(location.pathname);});
+  })();</script>
 
 <!-- 상단 바 -->
 <div class="topbar">
