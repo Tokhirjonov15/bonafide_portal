@@ -294,11 +294,11 @@ function DoCapture($kind) {
     $mrn = $bp.mrn; $name = $bp.name; $src = '동선관리'
     $script:HoldUntil = [DateTime]::MinValue
   }
-  $bar.Hide(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 250
+  $script:Capturing = $true; $bar.Hide(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 250
   $shot = $null
   $where = if ($kind -eq 'pt') { 'PT(4층)으로 보냅니다' } else { '주사 슬립에 올립니다' }
   try { $shot = SelectRegion "$name ($mrn)" $where } catch { Log "캡처 오류: $($_.Exception.Message)" }
-  $bar.Show(); $bar.TopMost = $true
+  $bar.Show(); $bar.TopMost = $true; $script:Capturing = $false
   if (-not $shot) { return }
   SetStatus "올리는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 60; [Windows.Forms.Application]::DoEvents()
   $done = if ($kind -eq 'pt') { '4층으로 보냄' } else { '슬립에 올림' }
@@ -381,7 +381,21 @@ function ShowPast() {
 $btn.Add_Click({ DoCapture 'inj' })
 $btnPt.Add_Click({ DoCapture 'pt' })
 $btnPast.Add_Click({ ShowPast })
-$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ ReadPatient }); $timer.Start()
+# 바가 안 보이게 된 경우 되살리기 (2026-10-25: 진료실 캡처 바가 갑자기 사라짐) — 모니터를 끄거나 해상도·배치가 바뀌어 바가 화면 밖에 남았거나,
+#  캡처 중 오류로 숨겨진 채 남았을 때. 1.5초마다: 어느 화면에도 걸치지 않으면 화면 위 가운데로, 숨겨져 있으면 다시 보이게
+$script:Capturing = $false
+function EnsureBarVisible() {
+  if ($script:Capturing) { return }
+  try {
+    $on = $false; foreach ($sc in [Windows.Forms.Screen]::AllScreens) { if ($sc.WorkingArea.IntersectsWith($bar.Bounds)) { $on = $true; break } }
+    if (-not $on) { $wa0 = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $bar.Location = New-Object Drawing.Point ([int]($wa0.Left + ($wa0.Width - $BarW) / 2)), $wa0.Top
+      try { Remove-Item $PosFile -ErrorAction SilentlyContinue } catch {}; Log "바가 화면 밖에 있어 위 가운데로 옮김" }
+    if (-not $bar.Visible) { $bar.Show(); Log "숨겨진 바를 다시 보이게 함" }
+    if ($bar.WindowState -ne 'Normal') { $bar.WindowState = 'Normal' }
+    $bar.TopMost = $true
+  } catch { Log "바 표시 확인 오류: $($_.Exception.Message)" }
+}
+$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient }); $timer.Start()
 $bar.Add_Shown({ ReadPatient })
 Log "시작 ($Pc)"
 [Windows.Forms.Application]::Run($bar)
