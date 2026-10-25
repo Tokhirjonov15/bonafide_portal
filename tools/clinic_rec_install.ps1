@@ -6,7 +6,7 @@
 #
 #  하는 일: ① C:\bitplus 에 clinic_rec.ps1 복사 ② 녹음 폴더(외장하드) 고르기 ③ 마이크 3초 시험
 #           ④ 로그온 시 자동 시작 작업 'ClinicRec' 등록(5분마다 확인 — 꺼져 있으면 다시 켬) → 지금 시작
-#  받아쓰기(.txt)는 따로: rec_install.bat 으로 이 PC 에 받아쓰기 프로그램을 설치하고 같은 폴더를 고른다
+#  받아쓰기: 기본은 OpenAI(저장하면 자동으로 포털 서버로 보내 받아씀 — 이 PC 에 설치할 것 없음). 이 PC 에서 무료로 하려면 rec_install.bat 으로 받아쓰기 프로그램을 따로 설치
 # ─────────────────────────────────────────────────────────────
 param([Parameter(Mandatory = $true)][string]$Pc, [string]$Dest = 'C:\bitplus', [string]$Folder = '', [switch]$NoTask)
 $ErrorActionPreference = 'Stop'

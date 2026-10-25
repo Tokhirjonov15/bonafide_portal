@@ -16,6 +16,9 @@ param([string]$Pc = $env:COMPUTERNAME,
       [int]$MaxMin = 60,           # 한 환자 최대 녹음(분) — 넘으면 저장하고 그 환자는 더 녹음하지 않는다(점심시간에 창을 열어 둔 채 계속 녹음되지 않게)
       [int]$MinSec = 8,            # 이보다 짧은 녹음은 버린다(환자를 잘못 눌렀다 바로 바꾼 경우)
       [string]$SimFile = '',       # 시험용: 비트 창 대신 이 파일의 'mrn|이름|주민앞7' 한 줄을 지금 환자로 읽는다
+      [string]$Stt = 'openai',     # 받아쓰기: openai = 저장하면 포털 서버(/api/dongseon/stt)로 보내 OpenAI 로 받아씀(1분 약 9원) · none = 안 함
+      [string]$SttJob = '',        # (내부용) 이 녹음 파일 하나를 OpenAI 로 받아쓰고 끝 — 녹음 프로그램이 따로 띄운다(녹음·자르기가 멈추지 않게)
+      [string]$Portal = 'https://bonafide-portal.seoulgijibae.workers.dev',
       [switch]$Test)               # 마이크 시험: 3초 녹음해서 소리 크기만 알려 주고 끝
 $ErrorActionPreference = 'Continue'
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -64,8 +67,10 @@ if ($Test) {
 }
 
 # 한 번만 실행 (로그온 작업이 5분마다 다시 시작해도 이미 떠 있으면 그냥 끝난다)
-$script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideClinicRec')
-if (-not $script:Mtx.WaitOne(0)) { exit }
+if (-not $SttJob) {
+  $script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideClinicRec')
+  if (-not $script:Mtx.WaitOne(0)) { exit }
+}
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $BotPassword = ''; if (Test-Path $SecretFile) { $BotPassword = ([string](Get-Content $SecretFile -Encoding UTF8 -TotalCount 1)).Trim() }
@@ -185,8 +190,78 @@ function PutRecText($docId, $fields) {   # recText/{docId} 문서 쓰기(덮어�
   Invoke-RestMethod -TimeoutSec 30 -Method Patch -Uri $u -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
 }
 
+# ── OpenAI 받아쓰기 (따로 띄운 프로세스에서 파일 하나씩) ──
+#  WAV 를 10분(약 19MB)씩 잘라 서버로 보낸다(OpenAI 는 25MB 까지) → '<녹음>.openai.txt' 를 옆에 쓰고 recText/<녹음>__openai 에 올린다
+#  실패하면 '<녹음>.openai.err' 에 횟수 — 3번 실패하면 그 파일은 건너뛴다
+function WavParts($path, $maxSec) {
+  $b = [IO.File]::ReadAllBytes($path)
+  $i = 12; $fmt = $null; $data = -1; $len = 0
+  while ($i -lt $b.Length - 8) { $id = [Text.Encoding]::ASCII.GetString($b, $i, 4); $sz = [BitConverter]::ToInt32($b, $i + 4)
+    if ($id -eq 'fmt ') { $fmt = $i } elseif ($id -eq 'data') { $data = $i + 8; $len = [Math]::Min($sz, $b.Length - $data); break }
+    $i += 8 + $sz + ($sz % 2) }
+  if (-not $fmt -or $data -lt 0) { throw 'WAV 형식을 읽지 못했습니다' }
+  $rate = [BitConverter]::ToInt32($b, $fmt + 16); $align = [BitConverter]::ToInt16($b, $fmt + 20); if ($rate -le 0) { $rate = 32000 }; if ($align -le 0) { $align = 2 }
+  $step = [int]([Math]::Floor($rate * $maxSec / $align) * $align)
+  $parts = @()
+  for ($o = 0; $o -lt $len; $o += $step) {
+    $n = [Math]::Min($step, $len - $o); $ms = New-Object IO.MemoryStream; $w = New-Object IO.BinaryWriter $ms
+    $w.Write([Text.Encoding]::ASCII.GetBytes('RIFF')); $w.Write([int](36 + $n)); $w.Write([Text.Encoding]::ASCII.GetBytes('WAVEfmt '))
+    $w.Write([int]16); $w.Write($b, $fmt + 8, 16); $w.Write([Text.Encoding]::ASCII.GetBytes('data')); $w.Write([int]$n); $w.Write($b, $data + $o, $n); $w.Flush()
+    $parts += , $ms.ToArray(); $w.Dispose() }
+  return , $parts
+}
+function RunStt($wav) {
+  $fileName = Split-Path $wav -Leaf; $base = $wav -replace '\.wav$', ''
+  $meta = @(QueueGet | Where-Object { $_ -and $_.file -eq $fileName }) | Select-Object -First 1
+  try {
+    $parts = WavParts $wav 600; $texts = @(); $k = 0
+    foreach ($p in $parts) { $k++
+      $r = Invoke-RestMethod -TimeoutSec 600 -Method Post -Uri "$Portal/api/dongseon/stt" -Headers @{ Authorization = "Bearer $(FbToken)"; 'x-provider' = 'openai' } -ContentType 'audio/wav' -Body $p
+      $t = ([string]$r.text).Trim(); if ($parts.Count -gt 1) { $t = "[$(($k - 1) * 10)분부터] " + $t }; if ($t) { $texts += $t } }
+    $text = ($texts -join "`r`n"); if (-not $text) { $text = '(받아쓴 말이 없습니다)' }
+    [IO.File]::WriteAllText("$base.openai.txt", $text, (New-Object Text.UTF8Encoding $true))
+    Remove-Item -LiteralPath "$base.openai.err" -Force -ErrorAction SilentlyContinue
+    Log "OpenAI 받아쓰기: $fileName ($($parts.Count)조각, $($text.Length)자)"
+    if ($meta) {
+      try { PutRecText ((RecDocId $fileName) + '__openai') ([ordered]@{ mrn = [string]$meta.mrn; pid = ''; name = [string]$meta.name; room = [string]$meta.room; startedAt = [string]$meta.at; endAt = [string]$meta.endAt
+          date = ([string]$meta.at).Substring(0, 10); file = $fileName; text = $(if ($text.Length -gt 200000) { $text.Substring(0, 200000) } else { $text }); src = 'openai'; dur = [int]$meta.dur; at = (NowIso); by = "녹음($Pc)" })
+        Log "OpenAI 받아쓴 글 올림: $fileName" }
+      catch { Log "OpenAI 받아쓴 글 올리기 실패 $fileName : $($_.Exception.Message) (글은 외장하드 .openai.txt 에 있음)" } }
+  } catch {
+    $n = 0; try { $n = [int]([string](Get-Content -LiteralPath "$base.openai.err" -TotalCount 1 -ErrorAction Stop)) } catch {}
+    try { [IO.File]::WriteAllText("$base.openai.err", [string]($n + 1)) } catch {}
+    $msg = $_.Exception.Message; try { $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $msg += ' ' + $sr.ReadToEnd() } catch {}
+    Log "OpenAI 받아쓰기 실패($($n + 1)번째) $fileName : $msg"
+  }
+}
+# 녹음 프로그램 쪽: 30초마다 받아쓸 녹음이 있으면(한 번에 하나) 따로 띄운다
+$script:SttProc = $null
+function SttNext() {
+  if ($Stt -ne 'openai' -or -not ($BotPassword -or $script:Refresh)) { return }
+  if ($script:SttProc -and -not $script:SttProc.HasExited) { return }
+  foreach ($x in @(QueueGet | Where-Object { $_ })) {
+    $wav = $null; foreach ($fd in @($Dir, $Hold)) { if (-not $fd) { continue }; $p = Join-Path $fd $x.file; if (Test-Path -LiteralPath $p) { $wav = $p; break } }
+    if (-not $wav) { continue }
+    $base = $wav -replace '\.wav$', ''
+    if (Test-Path -LiteralPath "$base.openai.txt") { continue }
+    $n = 0; try { $n = [int]([string](Get-Content -LiteralPath "$base.openai.err" -TotalCount 1 -ErrorAction Stop)) } catch {}
+    if ($n -ge 3) { continue }
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$PSCommandPath`"", '-Pc', "`"$Pc`"", '-SttJob', "`"$wav`"")
+    if ($Dir) { $a += @('-Dir', "`"$Dir`"") }
+    try { $script:SttProc = Start-Process powershell.exe -ArgumentList $a -WindowStyle Hidden -PassThru } catch { Log "받아쓰기 시작 실패: $($_.Exception.Message)" }
+    return
+  }
+}
+function SttDone($x) {   # 대기 목록에서 빼도 되는가: OpenAI 를 쓰면 .openai.txt 가 생겼거나 3번 실패
+  if ($Stt -ne 'openai') { return $true }
+  foreach ($fd in @($Dir, $Hold)) { if (-not $fd) { continue }; $b = Join-Path $fd ($x.file -replace '\.wav$', '')
+    if (Test-Path -LiteralPath "$b.openai.txt") { return $true }
+    try { if ([int]([string](Get-Content -LiteralPath "$b.openai.err" -TotalCount 1 -ErrorAction Stop)) -ge 3) { return $true } } catch {} }
+  return $false
+}
+
 # ── 녹음 ──
-$script:Cur = $null          # 녹음 중: @{ mrn; name; rrn7; start(DateTime); tmp }
+$script:Cur = $null         # 녹음 중: @{ mrn; name; rrn7; start(DateTime); tmp }
 $script:StopKey = ''         # 이 차트번호는 (최대 시간·직접 멈춤으로) 다시 녹음하지 않는다 — 다른 환자로 바뀌면 풀림
 $script:LastErr = ''
 function Hms($d) { return "{0:00}시{1:00}분{2:00}초" -f $d.Hour, $d.Minute, $d.Second }
@@ -232,22 +307,30 @@ function QueueSet($L) { try { ConvertTo-Json -InputObject @($L) -Depth 4 -Compre
 function QueueAdd($x) { $L = @(QueueGet | Where-Object { $_ -and $_.file -ne $x.file }); $L += [pscustomobject]$x; QueueSet $L }
 function RecDocId($file) { return (($file -replace '\.(wav|webm)$', '') -replace '[\/#?\[\]*]', '_').Substring(0, [Math]::Min(140, ($file -replace '\.(wav|webm)$', '').Length)) }
 function PushTexts() {
-  if (-not $BotPassword -and -not $script:Refresh) { if (-not $script:NoPwLogged) { $script:NoPwLogged = $true; Log "비밀번호 파일이 없어 받아쓴 글은 동선관리에 올리지 않습니다(녹음·.txt 는 외장하드에 그대로): $SecretFile" }; return }
   $L = @(QueueGet | Where-Object { $_ }); if (-not $L.Count) { return }
+  $canUp = [bool]($BotPassword -or $script:Refresh)
+  if (-not $canUp -and -not $script:NoPwLogged) { $script:NoPwLogged = $true; Log "비밀번호 파일이 없어 받아쓴 글은 동선관리에 올리지 않습니다(녹음·.txt 는 외장하드에 그대로): $SecretFile" }
   $keep = @(); $changed = $false
   for ($i = 0; $i -lt $L.Count; $i++) { $x = $L[$i]
-    $txt = $null
-    foreach ($fd in @($Dir, $Hold)) { if (-not $fd) { continue }; $p = Join-Path $fd (($x.file -replace '\.wav$', '') + '.txt'); if (Test-Path -LiteralPath $p) { $txt = $p; break } }
-    if (-not $txt) { if (((Get-Date) - [DateTime]::Parse($x.at)).TotalDays -lt 3) { $keep += $x } else { $changed = $true; Log "받아쓴 글이 3일 안에 안 생겨 포기: $($x.file)" }; continue }
-    try {
-      $text = [IO.File]::ReadAllText($txt, [Text.Encoding]::UTF8).Trim(); if ($text.Length -gt 200000) { $text = $text.Substring(0, 200000) }
-      PutRecText (RecDocId $x.file) ([ordered]@{ mrn = [string]$x.mrn; pid = ''; name = [string]$x.name; room = [string]$x.room; startedAt = [string]$x.at; endAt = [string]$x.endAt
-        date = ([string]$x.at).Substring(0, 10); file = [string]$x.file; text = $text; src = 'local'; dur = [int]$x.dur; at = (NowIso); by = "녹음($Pc)" })
-      Log "받아쓴 글 올림: $($x.file) ($($text.Length)자)"; $changed = $true }
-    catch { Log "받아쓴 글 올리기 실패 $($x.file): $($_.Exception.Message)"; $keep += @($L[$i..($L.Count - 1)]); break }   # 인터넷·로그인 문제면 이것과 남은 것 모두 다음에 다시
+    $old = $false; try { $old = ((Get-Date) - [DateTime]::Parse($x.at)).TotalDays -ge 3 } catch { $old = $true }
+    if ($old) { $changed = $true; continue }   # 3일 지나면 목록에서 뺀다(파일은 외장하드에 그대로)
+    if (-not $x.localDone -and $canUp) {   # 이 PC 받아쓰기(rec_transcribe.py)가 만든 '<녹음>.txt'
+      $txt = $null
+      foreach ($fd in @($Dir, $Hold)) { if (-not $fd) { continue }; $p = Join-Path $fd (($x.file -replace '\.wav$', '') + '.txt'); if (Test-Path -LiteralPath $p) { $txt = $p; break } }
+      if ($txt) {
+        try {
+          $text = [IO.File]::ReadAllText($txt, [Text.Encoding]::UTF8).Trim(); if ($text.Length -gt 200000) { $text = $text.Substring(0, 200000) }
+          PutRecText (RecDocId $x.file) ([ordered]@{ mrn = [string]$x.mrn; pid = ''; name = [string]$x.name; room = [string]$x.room; startedAt = [string]$x.at; endAt = [string]$x.endAt
+            date = ([string]$x.at).Substring(0, 10); file = [string]$x.file; text = $text; src = 'local'; dur = [int]$x.dur; at = (NowIso); by = "녹음($Pc)" })
+          Log "받아쓴 글 올림: $($x.file) ($($text.Length)자)"; $x | Add-Member -NotePropertyName localDone -NotePropertyValue $true -Force; $changed = $true }
+        catch { Log "받아쓴 글 올리기 실패 $($x.file): $($_.Exception.Message)"; $keep += @($L[$i..($L.Count - 1)]); $changed = $true; break } }   # 인터넷·로그인 문제면 이것과 남은 것 모두 다음에 다시
+    }
+    if ($x.localDone -and (SttDone $x)) { $changed = $true; continue }   # 다 끝남
+    $keep += $x
   }
   if ($changed) { QueueSet $keep }
 }
+if ($SttJob) { RunStt $SttJob; exit }   # (내부용) OpenAI 받아쓰기만 하고 끝 — 아래 화면·녹음은 띄우지 않는다
 
 # ── 알림 영역 아이콘 ──
 function DotIcon($r, $g, $b) { $bm = New-Object Drawing.Bitmap 16, 16; $gr = [Drawing.Graphics]::FromImage($bm); $gr.SmoothingMode = 'AntiAlias'
@@ -292,7 +375,7 @@ function Poll() {
   }
   if ($script:Cur -and ((Get-Date) - $script:Cur.start).TotalMinutes -ge $MaxMin) { $script:StopKey = $script:Cur.mrn; StopRec "최대 ${MaxMin}분" }
   if ($script:Tick % 4 -eq 0) { SetIcon }
-  if ($script:Tick % 20 -eq 0) { try { MoveHeld } catch {}; try { PushTexts } catch { Log "글 올리기 오류: $($_.Exception.Message)" } }   # 30초마다
+  if ($script:Tick % 20 -eq 0) { try { MoveHeld } catch {}; try { PushTexts } catch { Log "글 올리기 오류: $($_.Exception.Message)" }; try { SttNext } catch { Log "받아쓰기 오류: $($_.Exception.Message)" } }   # 30초마다
 }
 
 # 숨은 창: 로그오프·종료 때 녹음 중이면 저장하고 끝낸다

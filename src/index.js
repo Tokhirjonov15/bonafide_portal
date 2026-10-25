@@ -524,11 +524,14 @@ async function dongseonStt(request, env) {
   const audio = await request.arrayBuffer();
   if (!audio.byteLength) return json({ error: "녹음 파일이 비었습니다." }, 400);
   if (audio.byteLength > 24 * 1024 * 1024) return json({ error: "녹음이 너무 깁니다(24MB 넘음)." }, 413);
-  const blob = new Blob([audio], { type: "audio/webm" });
+  /* 원장님 PC 녹음 프로그램(clinic_rec.ps1)은 WAV 로 보낸다 (2026-10-25) — 형식은 content-type 으로 */
+  const isWav = /wav/i.test(request.headers.get("content-type") || "");
+  const blob = new Blob([audio], { type: isWav ? "audio/wav" : "audio/webm" });
+  const fname = isWav ? "rec.wav" : "rec.webm";
   if (provider === "openai") {
     if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 가 설정되지 않았습니다 (Cloudflare → Workers → bonafide-portal → 설정 → 변수 및 비밀)." }, 501);
     const fd = new FormData();
-    fd.append("file", blob, "rec.webm");
+    fd.append("file", blob, fname);
     fd.append("model", env.OPENAI_STT_MODEL || "gpt-4o-transcribe");
     fd.append("language", "ko");
     fd.append("prompt", STT_PROMPT);
@@ -541,7 +544,7 @@ async function dongseonStt(request, env) {
   if (provider === "clova") {
     if (!env.CLOVA_INVOKE_URL || !env.CLOVA_SECRET) return json({ error: "CLOVA_INVOKE_URL · CLOVA_SECRET 이 설정되지 않았습니다." }, 501);
     const fd = new FormData();
-    fd.append("media", blob, "rec.webm");
+    fd.append("media", blob, fname);
     fd.append("params", new Blob([JSON.stringify({ language: "ko-KR", completion: "sync", wordAlignment: false, fullText: true,
       boostings: [{ words: "무릎, 어깨, 허리, 발목, 손목, 주사, 물리치료, 도수치료, 체외충격파, 엑스레이, MRI, 처방" }] })], { type: "application/json" }));
     const r = await fetch(env.CLOVA_INVOKE_URL.replace(/\/+$/, "") + "/recognizer/upload", { method: "POST", headers: { "X-CLOVASpeech-API-Key": env.CLOVA_SECRET }, body: fd });
