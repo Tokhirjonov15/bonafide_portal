@@ -3335,15 +3335,20 @@ function setLoginReady(ready){
   const b=document.querySelector('#loginBody .btn.primary'); if(!b)return;
   b.disabled=!ready; b.textContent=ready?'로그인':'클라우드 연결 중…'; b.style.opacity=ready?'':'.65'; b.style.cursor=ready?'':'wait';
 }
-function loginMsg(m){const e=document.getElementById('loginMsg');if(!e)return;e.textContent=m;e.style.display=m?'block':'none';}
+function loginMsg(m){const e=document.getElementById('loginMsg');if(!e)return;e.style.whiteSpace='pre-line';e.textContent=m;e.style.display=m?'block':'none';}
 async function doLogin(){
   const name=(document.getElementById('lg_name').value||'').trim(), pw=document.getElementById('lg_pw').value||'';
   if(!name||!pw){loginMsg('아이디와 비밀번호를 입력하세요');return;}
   if(!(window.firebase&&firebase.auth)){loginMsg('클라우드 연결 준비 중입니다. 잠시 후 다시 시도하세요.');return;}
   loginMsg('로그인 중…');
+  /* 30초가 지나도 화면이 안 열리면 어디서 멈췄는지 알려 준다 (2026-10-25: '로그인 중…' 만 뜨고 끝나지 않음) */
+  clearTimeout(window._loginWd);window._loginWd=setTimeout(()=>{if(currentUser)return;const e=document.getElementById('loginMsg');const st=e?e.textContent:'';
+    loginMsg('연결이 오래 걸립니다 — '+(st||'로그인 중')+'\n인터넷 연결을 확인하고 F5(새로고침) 후 다시 로그인해 주세요. 계속되면 이 화면을 찍어 보내 주세요.');},30000);
   try{
     const em=await authEmail(name);
+    loginMsg('로그인 중… (계정 확인 중)');
     await firebase.auth().signInWithEmailAndPassword(em,pw);
+    {const e=document.getElementById('loginMsg');if(e&&/계정 확인/.test(e.textContent))loginMsg('로그인 중… (자료 연결 중)');}
     // 이후는 onAuthStateChanged → establishSession 이 처리
   }catch(e){loginMsg(authErrMsg(e));}
 }
@@ -6617,8 +6622,14 @@ async function startHosted(){
       try{await migrateIfNeeded();}catch(e){console.error('migrate',e);}
       /* 내원 기록·체류 기록은 여기서 클라우드에서 통째로 받는다(화면은 이 메모리 배열을 쓴다).
          로컬에는 최근 것만 캐시한다 — 전체를 쓰면 3.7MB 라 용량 한도에 걸린다 (2026-09-29) */
-      try{const vs=await cloud.visitsCol.get();VISITS=vs.docs.map(d=>d.data());
-        lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));fixAutoClosedDates();}catch(e){}
+      /* 2026-10-25: 다른 PC 에서 '로그인 중…' 에서 멈춤 — 로그인 때 내원 기록 전체(수천 건, 날마다 늘어남)와 체류 기록 전체를 다 받은 뒤에야
+         화면을 열어서, 느린 PC·네트워크에서는 한참(또는 끝없이) 기다렸다. 이제 최근 사흘 것만 받고 바로 연다. 전체는 뒤에서 받아 합친다
+         (오늘 것만 쓰는 자동 접수·번호 매기기는 최근 것으로 충분하고, 통계·내원 횟수는 전체가 오면 다시 그린다) */
+      loginMsg('로그인 중… (오늘 자료 받는 중)');
+      try{const d3=new Date();d3.setHours(0,0,0,0);d3.setDate(d3.getDate()-3);
+        const vs=await cloud.visitsCol.where('dischargedAt','>=',d3.toISOString()).get();
+        visitsMerge(vs.docs.map(d=>d.data()));fixAutoClosedDates();}catch(e){console.warn('visits recent',e);}
+      if(!VISITS_FULL_T)VISITS_FULL_T=setTimeout(loadVisitsFull,3000);
       /* 오늘 내원 기록은 실시간으로 듣는다 (2026-09-29): 전에는 로그인 때 한 번만 받아서, 다른 PC 가 [내보내기] 한 환자가
          이 PC 의 내원 목록에는 새로고침 전까지 없었다 — 접수 #번호가 빠져 보이고 '완료 0' 으로 나왔다.
          '다시 원내로'로 지운 기록도 바로 빠진다. 지난 날짜는 위의 한 번 받기로 충분하고, 오늘(현지 자정 이후) 완료 문서만 들으니 가볍다 */
@@ -6634,7 +6645,10 @@ async function startHosted(){
            else if(JSON.stringify(VISITS[i])!==JSON.stringify(v)){VISITS[i]=v;n++;}});
          if(n){try{renderThrottled();}catch(e){}}
        },err=>console.warn('visits snap',err));}
-      try{const ss=await cloud.statsCol.get();STATS=ss.docs.map(d=>d.data());lsSet(STATS_STORE,JSON.stringify(STATS));}catch(e){}
+      /* 체류 기록 전체도 뒤에서 (로그인을 막지 않게, 2026-10-25) */
+      cloud.statsCol.get().then(ss=>{const all=ss.docs.map(d=>d.data()),ids=new Set(all.map(x=>x.id));const d0=new Date();d0.setHours(0,0,0,0);const t0=d0.toISOString();
+        STATS=all.concat((STATS||[]).filter(x=>x&&x.id&&!ids.has(x.id)&&String(x.leftAt||'')>=t0));   // 받는 사이 실시간으로 들어온 오늘 기록만 더한다
+        lsSet(STATS_STORE,JSON.stringify(STATS));try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}}).catch(e=>console.warn('stats full',e));
       /* 오늘 방별 체류 기록도 실시간으로 (2026-10-01): 전에는 로그인 때 한 번만 받아, 다른 PC 에서 종결한 환자가 통계의 '최근 종결 기록'에
          새로고침 전까지 없었다(내원 목록에는 있는데 통계에는 적게 보임). 오늘 0시 이후 나간 기록만 듣는다 */
       if(cloud.unsubS)cloud.unsubS();
@@ -6648,7 +6662,8 @@ async function startHosted(){
            if(i<0){STATS.push(v);n++;}else if(JSON.stringify(STATS[i])!==JSON.stringify(v)){STATS[i]=v;n++;}});
          if(n){try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}}
        },err=>console.warn('stats snap',err));}
-      try{await loadRegistryExt();}catch(e){console.warn('registryChunks',e);}   // 비트 EMR 대용량 명단(있으면)
+      loadRegistryExt().catch(e=>console.warn('registryChunks',e));   // 비트 EMR 대용량 명단(있으면) — 뒤에서 (로그인을 막지 않게, 2026-10-25)
+      loginMsg('로그인 중… (설정 받는 중)');
       if(cloud.unsub)cloud.unsub();
       cloud.unsub=cloud.ref.onSnapshot(s=>{cloud.active=true;setSync('live');
         if(s.metadata&&s.metadata.hasPendingWrites)return;
@@ -6743,7 +6758,23 @@ function saveSeen(){let a=[...seenAlarms];if(a.length>4000)a=a.slice(-4000);seen
    그래서: 작은 것(카드)만 즉시, 큰 것은 3초 뒤 한 번만, 모든 쓰기는 try/catch,
    그리고 클라우드 저장을 먼저 해서 로컬 저장 실패가 절대 클라우드 저장을 막지 못하게 한다.
    VISITS 캐시는 최근 것만 둔다 — 전체 목록은 로그인할 때 클라우드에서 다시 받으므로 손실이 아니다. */
-const VISIT_CACHE=300;   /* 오프라인일 때 최근 내원만 보이면 된다 — 전체는 로그인할 때 클라우드에서 받는다 */
+const VISIT_CACHE=300;   /* 오프라인일 때 최근 내원만 보이면 된다 — 전체는 로그인 뒤 클라우드에서 받는다 */
+/* 로그인 때는 최근 사흘 내원만 먼저(그 구간은 서버 것으로 바꾼다), 전체는 뒤에서 받아 바꾼다 (2026-10-25: '로그인 중…' 멈춤) */
+let VISITS_FULL_T=null;
+const visitIso=v=>String((v&&v.dischargedAt)||'');
+function visitsMerge(recent,sinceIso){const since=sinceIso||(()=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-3);return d.toISOString();})();
+  const ids=new Set(recent.map(v=>v&&v.id));
+  VISITS=(Array.isArray(VISITS)?VISITS:[]).filter(v=>v&&!ids.has(v.id)&&visitIso(v)<since).concat(recent);
+  lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));}
+async function loadVisitsFull(){
+  if(!cloud.visitsCol||!(firebase.auth&&firebase.auth().currentUser))return;
+  try{const vs=await cloud.visitsCol.get();const all=vs.docs.map(d=>d.data()),ids=new Set(all.map(v=>v&&v.id));
+    const d0=new Date();d0.setHours(0,0,0,0);const t0=d0.toISOString();
+    const extra=(VISITS||[]).filter(v=>v&&v.id&&!ids.has(v.id)&&visitIso(v)>=t0);   // 받는 사이 오늘 새로 끝난 내원(실시간으로 들어온 것)
+    VISITS=all.concat(extra);
+    lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));fixAutoClosedDates();
+    try{renderThrottled();}catch(e){}
+  }catch(e){console.warn('visits full',e);VISITS_FULL_T=setTimeout(loadVisitsFull,60000);}}
 function lsSet(k,v){
   try{localStorage.setItem(k,v);return true;}
   catch(e){
