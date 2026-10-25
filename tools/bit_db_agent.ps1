@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.6'   # 1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.7'   # 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -242,7 +242,50 @@ function Send($docId, $fields, $what) {
   if ($DryRun) { Log "DRY 전송: $docId $what"; return }
   if (-not $script:IsLeader) { Log "대기 중 — 생략(전송 담당: $($script:LeaderInfo)): $docId $what"; return }   # 상태는 보낸 것으로 기록 → 담당이 되는 순간부터 새 변화만 보낸다
   FsPatch "bitIntake/$docId" $fields
+  if ($docId -match '_ocm(\d+)$') { $script:Conf[$Matches[1]] = 1 }   # 실제로 썼음(확인됨)
   Log "전송: $docId $what"
+}
+
+# 새 접수 문서 내용 (보통 전송과 빠진 접수 보충이 같이 쓴다). $late = 보충: 접수 시각은 비트의 실제 접수 시각, late 표시(동선관리가 이미 다녀간 환자면 카드를 만들지 않게)
+function RegFields($r, $base, $cmd, $hm, $today8, $k, $late) {
+  $mrn = ([string]$r.mrn -replace '\D', ''); if (-not $mrn) { $mrn = ([string]$r.mrn).Trim() }
+  $name = ([string]$r.name).Trim()
+  $regAt = if ($late -and $hm -ge 0) { (Get-Date).Date.AddMinutes($hm).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') } else { NowIso }
+  $f = $base + @{ name = $name; mrn = $mrn; rrn7 = (Rrn7 $r.rrn $r.bir $r.sex); doctor = ([string]$r.dr).Trim(); dep = ([string]$r.dep).Trim(); hourMin = $hm
+                  command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; registered = $true; registeredAt = $regAt; cancelled = $false; seenAt = (NowIso) }
+  if ($late) { $f.late = $true }
+  $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }
+  $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
+  $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }   # 휴대폰(없으면 전화) 숫자만 — 카드의 전화 칸(문자 발송용). 2026-09-17 사용자 결정으로 추가
+  $fv = DateOf $r.newdte; if ($fv) { $f.firstVisit = $fv }
+  try { $vs = VisitStats ([string]$r.mrn).Trim() $today8; $f.visits = [int]$vs.n; if ($vs.prev) { $f.prevVisit = $vs.prev }; if ($vs.first -and -not $f.firstVisit) { $f.firstVisit = $vs.first } } catch { Log "내원 횟수 조회 오류 ocm${k}: $($_.Exception.Message)" }   # 오늘 포함 N회째, 직전 내원일
+  $rv = DtmOf $r.rsvdtm; if ($rv -and $rv.StartsWith((Today))) { $f.nextResv = $rv }
+  if ($f.rrn7 -eq '') { $f.Remove('rrn7') }
+  return $f
+}
+# ── 빠진 접수 보충 (db1.7, 2026-10-25) ──
+#  '보낸 것으로' 기록됐지만 이 에이전트가 직접 쓰지 않은 접수(시작 스냅샷, 대기 PC 일 때 넘긴 것)를 담당일 때 한 번 확인한다:
+#  Firestore 에 그 문서가 있으면 확인 완료, 없으면 지금 보낸다. 문서마다 하루 한 번만 읽는다(batchGet, 100건씩)
+$script:Conf = @{}; $script:RecFailAt = [DateTime]::MinValue
+function Reconcile($chk, $base, $today8) {
+  if (-not $chk.Count -or ((Get-Date) - $script:RecFailAt).TotalSeconds -lt 120) { return }
+  $root = "projects/$ProjectId/databases/(default)/documents/bitIntake/"
+  $miss = @()
+  try {
+    for ($i = 0; $i -lt $chk.Count; $i += 100) {
+      $part = @($chk[$i..([Math]::Min($i + 99, $chk.Count - 1))])
+      $body = @{ documents = @($part | ForEach-Object { $root + "$(Today)_ocm$($_.k)" }) } | ConvertTo-Json -Compress -Depth 4
+      $res = Invoke-RestMethod -TimeoutSec 30 -Method Post -Uri "$DocBase`:batchGet" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+      foreach ($x in @($res)) {
+        $nm = if ($x.found) { [string]$x.found.name } elseif ($x.missing) { [string]$x.missing } else { '' }
+        if ($nm -notmatch '_ocm(\d+)$') { continue }; $kk = $Matches[1]
+        if ($x.found) { $script:Conf[$kk] = 1 } else { $miss += $kk } }
+    }
+  } catch { $script:RecFailAt = Get-Date; Log "빠진 접수 확인 실패(2분 뒤 다시): $($_.Exception.Message)"; return }
+  foreach ($kk in $miss) { $c = $chk | Where-Object { $_.k -eq $kk } | Select-Object -First 1; if (-not $c) { continue }
+    $cmd = CmdOf $c.stt $null
+    $f = RegFields $c.r ($base + @{ stt = $c.stt; ocmNum = $kk }) $cmd $c.hm $today8 $kk $true
+    try { Send "$(Today)_ocm$kk" $f "빠진 접수 보충 $($CMD_NAMES[$cmd]) (접수 $([Math]::Floor($c.hm / 60)):$('{0:00}' -f ($c.hm % 60)))"; $script:Conf[$kk] = 1 } catch { Log "보충 전송 오류 ocm${kk}: $($_.Exception.Message)" } }
 }
 
 # ── 한 번의 폴링: 오늘 행 전체를 읽고 decide ──
@@ -250,7 +293,7 @@ function Poll($st, $first) {
   $today8 = (Get-Date).ToString('yyyyMMdd')
   $rows = SqlRows ($QUERY -f $today8)
   $now = Get-Date; $nowMin = $now.Hour * 60 + $now.Minute
-  $done = @{}; $n = 0
+  $done = @{}; $n = 0; $chk = New-Object System.Collections.ArrayList
   foreach ($r in $rows.Rows) {
     $k = ([string]$r.k -replace '\D', ''); if (-not $k -or $done.ContainsKey($k)) { continue }; $done[$k] = 1; $n++   # OcmNum 은 char(10) 앞 공백 패딩('    182357') → 숫자만. 캐스트 채널(bitplus_watcher)과 같은 문서 id 가 된다. RsvInf 조인으로 같은 접수가 두 줄이면 첫 줄만
     $stt = [string]$r.stt; $prev = $st.seen[$k]
@@ -274,15 +317,7 @@ function Poll($st, $first) {
       if (-not $st.sent.ContainsKey($k)) {
         if ($hm -gt $nowMin + $LeadMin) { if ($prev -ne $stt) { Log "보류(사전 등록, 접수 시각이 미래): ocm$k $tag" }; $st.seen[$k] = $stt; continue }   # 그 시각이 되면 보냄
         $cmd = CmdOf $stt $null
-        $f = $base + @{ name = $name; mrn = $mrn; rrn7 = (Rrn7 $r.rrn $r.bir $r.sex); doctor = ([string]$r.dr).Trim(); dep = ([string]$r.dep).Trim(); hourMin = $hm
-                        command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; registered = $true; registeredAt = (NowIso); cancelled = $false; seenAt = (NowIso) }
-        $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }
-        $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
-        $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }   # 휴대폰(없으면 전화) 숫자만 — 카드의 전화 칸(문자 발송용). 2026-09-17 사용자 결정으로 추가
-        $fv = DateOf $r.newdte; if ($fv) { $f.firstVisit = $fv }
-        try { $vs = VisitStats ([string]$r.mrn).Trim() $today8; $f.visits = [int]$vs.n; if ($vs.prev) { $f.prevVisit = $vs.prev }; if ($vs.first -and -not $f.firstVisit) { $f.firstVisit = $vs.first } } catch { Log "내원 횟수 조회 오류 ocm${k}: $($_.Exception.Message)" }   # 오늘 포함 N회째, 직전 내원일
-        $rv = DtmOf $r.rsvdtm; if ($rv -and $rv.StartsWith((Today))) { $f.nextResv = $rv }
-        if ($f.rrn7 -eq '') { $f.Remove('rrn7') }
+        $f = RegFields $r $base $cmd $hm $today8 $k $false
         try { Send "$(Today)_ocm$k" $f "$($CMD_NAMES[$cmd]) $tag"; $st.sent[$k] = $cmd } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
       }
       elseif ($prev -ne $stt) {   # 이미 보낸 접수의 상태 변화: 수납대기/수납완료/수납취소/보류/취소 후 재접수
@@ -302,7 +337,9 @@ function Poll($st, $first) {
       try { Send "$(Today)_ocm$k" $f "접수취소 $tag"; $st.sent[$k] = 3 } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
     }
     $st.seen[$k] = $stt
+    if ($isActive -and $st.sent.ContainsKey($k) -and -not $script:Conf.ContainsKey($k)) { $hmc = HourMinOf $r.recv; if ($hmc -le $nowMin + $LeadMin) { [void]$chk.Add(@{ k = $k; r = $r; stt = $stt; hm = $hmc }) } }
   }
+  if ($script:IsLeader -and -not $DryRun -and $chk.Count) { Reconcile $chk @{ pc = $Pc; src = 'db'; date = (Today); lastSeenAt = (NowIso) } $today8 }
   return $n
 }
 
@@ -558,7 +595,7 @@ if (-not $first) { Log "상태 파일 복원: 오늘 본 접수 $($st.seen.Count
 $lastBeat = [DateTime]::MinValue; $sqlOk = $null; $cyc = 0
 while ($true) {
   $cycStart = Get-Date
-  if ($st.date -ne (Today)) { Log "날짜 변경 → 상태 초기화"; $st = @{ date = (Today); seen = @{}; sent = @{}; fresh = $true }; $first = $true; TrimLog }
+  if ($st.date -ne (Today)) { Log "날짜 변경 → 상태 초기화"; $st = @{ date = (Today); seen = @{}; sent = @{}; fresh = $true }; $first = $true; $script:Conf = @{}; TrimLog }
   HealthDrain
   if ($Peers.Count) { ElectLeader }   # 다른 에이전트가 있으면 매 주기 우선순위 확인(LAN, 수 ms)
   try {

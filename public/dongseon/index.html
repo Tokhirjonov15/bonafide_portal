@@ -4565,6 +4565,9 @@ function bitCoveredByVisit(r,mrn){
      if(!test&&ro&&vo&&ro===vo&&localYMD(new Date(v.dischargedAt||0))===today)return true;}
     const a=new Date(v.arrivedAt||0).getTime(),d=new Date(v.dischargedAt||0).getTime();
     return !isNaN(a)&&!isNaN(d)&&localYMD(new Date(d))===today&&a<=t+60000&&d>=t;});}
+function bitLateSeen(mrn){const today=localYMD(new Date()),m=normMrn(mrn);if(!m)return false;
+  if((data||[]).some(p=>normMrn(p.mrn)===m&&localYMD(new Date(p.arrivedAt||0))===today))return true;
+  return (Array.isArray(VISITS)?VISITS:[]).some(v=>normMrn(v.mrn)===m&&localYMD(new Date(v.dischargedAt||v.arrivedAt||0))===today);}
 function bitArrivalMin(r){if(typeof r.hourMin==='number'&&r.hourMin>=0)return r.hourMin;const t=new Date(r.seenAt||0);return isNaN(t)?9999:t.getHours()*60+t.getMinutes();}
 async function bitAutoProcess(){
   if(!BIT_AUTO||!currentUser||!cloud.ready.pts||!cloud.intakeCol)return;
@@ -4581,9 +4584,18 @@ async function bitAutoProcess(){
         const age=Date.now()-new Date(r.registeredAt||r.seenAt||0).getTime();
         if(age<4000){clearTimeout(_bitRetryT);_bitRetryT=setTimeout(bitAutoProcess,4500);continue;}
       }
-      const reg=mrn?regFind(mrn):null;if(reg&&reg.name&&r.name&&reg.name!==r.name)continue;   // 명단과 이름 불일치 → 수동
+      /* 에이전트가 뒤늦게 보충한 접수(late — 재시작·담당 PC 교대 사이에 빠졌던 것, db1.7): 오늘 이미 카드가 있었거나 다녀간 환자면 만들지 않는다
+         (직원이 손으로 카드를 만들어 진료를 끝냈을 수 있다) — 2026-10-25 권루아 */
+      if(r.late&&mrn&&bitLateSeen(mrn)){
+        try{cloud.intakeCol.doc(r.docId).set({status:'무시',handledBy:'자동(늦게 온 접수 — 오늘 이미 카드 있음)',handledAt:new Date().toISOString()},{merge:true});}catch(e){}
+        r.status='무시';continue;}
+      const reg=mrn?regFind(mrn):null;
+      /* 명단과 이름이 다르면 예전에는 자동으로 만들지 않고 '비트 접수 대기' 줄에만 남겼다 → 직원이 못 보면 환자가 동선관리에 안 떴다 (2026-10-25).
+         비트 DB 에이전트 문서(src='db')는 이름·차트번호가 비트 원본이므로 비트를 믿고 만든다(명단 이름은 만들 때 비트 이름으로 바뀐다). 캐스트만 온 문서는 종전대로 수동 */
+      const dbSrc=r.src==='db';
+      if(!dbSrc&&reg&&reg.name&&r.name&&reg.name!==r.name)continue;   // 명단과 이름 불일치 → 수동
       const name=r.name||(reg&&reg.name)||'';if(!name)continue;
-      if(mrn&&mrnConflict(mrn,name))continue;
+      if(!dbSrc&&mrn&&mrnConflict(mrn,name))continue;
       /* 같은 환자의 두 번째 접수 문서(비트에서 과·담당의를 바꿔 다시 접수 등)는 카드가 보드에 있는 동안엔 그 카드에 묶여 있다가,
          그 카드를 [내보내기]하는 순간 '보드에 없는 접수'가 되어 새 카드로 되살아났다 (2026-10-01: 종결한 환자가 다시 나옴).
          이 접수 시각에 이미 보드에 있다가 그 뒤에 나간 내원 기록이 있으면 같은 방문으로 보고 만들지 않는다. 나간 뒤에 새로 접수하면 그대로 만든다 */
@@ -6188,6 +6200,8 @@ async function runSelfTest(){
     // 동의서 v3 (2026-10-17): 보이는 부분은 안내 사항 + 동의 사항만, '금일 처방된 치료' 문구
     {const h=consentFormHtml({mrn:'T1',name:'테스트'}),vis=h.split('<div id="cstDesc"></div></div>')[1]||'';
      ok('동의서 v3: 항목 체크란은 숨김, 안내·동의만 보임', !vis.includes('cstChk')&&vis.includes('1. 안내 사항')&&vis.includes('2. 동의 사항')&&vis.includes('cstPrivY'));
+     {const _d=data,_v=VISITS;const now=new Date().toISOString();data=[{id:'L1',mrn:'7001',arrivedAt:now,route:[],step:0}];VISITS=[{mrn:'7002',arrivedAt:now,dischargedAt:now}];
+      ok('늦게 온 접수: 오늘 카드·내원 있으면 건너뜀, 없으면 만듦', bitLateSeen('7001')&&bitLateSeen(' 7002')&&!bitLateSeen('7003'));data=_d;VISITS=_v;}
      ok('컴플레인: 연속메모에 본인 생년월일 → 6자리', cmpBirth({rrn7:'991010-1',memoCont:'991010-\n-+'})==='991010'&&cmpBirth({rrn7:'991010-1',memoCont:'허리 통증'})===''&&cmpBirth({rrn7:'',memoCont:'991010'})===''&&cmpBirth({rrn7:'850101-2',memoCont:'991010'})==='');
      ok('동의서 v3: 문구', vis.includes('금일 수납 금액이 변동')&&vis.includes('금일 처방된 치료 시행에 동의합니다')&&vis.includes('금일 처방된 치료의 시행과 관련한')&&!vis.includes('위 비급여')&&!vis.includes('별도 체크 없음'));}
   }catch(e){ok('테스트 실행 중 예외 없음',false,String(e));}
