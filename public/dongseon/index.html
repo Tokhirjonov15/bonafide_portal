@@ -2040,6 +2040,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
     </div>
     <div class="foot">
       <span class="hint" id="histAdminHint" style="margin-right:auto;display:none">🗑 개별 삭제는 관리자만 가능 · 전체 삭제·백업은 계정 메뉴에 있어요</span>
+      <button class="btn" onclick="bitFindOpen()" title="비트에 접수됐는데 동선관리에 안 뜨는 환자 — 이름·차트번호로 최근 3일 비트 접수를 찾아 왜 안 떴는지 보여 주고, 오늘 접수면 카드를 바로 만듭니다">🔍 비트 접수 찾기</button>
       <button class="btn" id="histAddBtn" style="display:none" onclick="addMissedVisit()" title="비트에는 접수됐는데 동선관리에 카드가 안 생겨 빠진 내원을 날짜를 정해 넣습니다 (관리자)">＋ 빠진 내원 넣기</button>
       <button class="btn primary" onclick="closeHistory()">닫기</button>
     </div>
@@ -6270,7 +6271,12 @@ async function runSelfTest(){
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우','정상민','채상훈'].includes(n);
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'조선형'},{room:'C-Arm',doctor:'김현우',staff:''},{room:'C-Arm',doctor:'정상민',staff:'조선형'},{room:'Sono',doctor:'김현우',staff:'부경지'},{room:'진료실1',doctor:'김현우',staff:''},{room:'진료실2',doctor:'한효주',staff:''},{room:'진료실1',doctor:'채상훈',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
-      {const _d=data,_cf=window.confirm,_tx=window.cloudPatientTxn,_sl=window.saveLocal,_rd=window.render,_au=window.audit;
+      {const _d=data,_v=VISITS;data=[];VISITS=[];const today=localYMD(new Date());
+      const W=r=>bitWhy(Object.assign({docId:'x',date:today,registered:true,src:'db',mrn:'8801',name:'권루아',ocmNum:'901'},r)).code;
+      const a=[W({cancelled:true}),W({status:'무시',handledBy:'직원'}),W({status:'자동접수'}),W({status:'자동접수',patientId:'gone'}),W({date:'2000-01-01'}),W({})];
+      VISITS=[{id:'v1',mrn:'8801',bit:{ocmNum:'901'},dischargedAt:new Date().toISOString()}];const b=W({status:'자동접수',patientId:'v1'});data=_d;VISITS=_v;
+      ok('비트 접수 찾기: 안 뜬 까닭 판정', a.join(',')==='cancel,ignored,stuck,deleted,old,wait'&&b==='visit',a.join(',')+' / '+b);}
+     {const _d=data,_cf=window.confirm,_tx=window.cloudPatientTxn,_sl=window.saveLocal,_rd=window.render,_au=window.audit;
       window.cloudPatientTxn=()=>Promise.resolve(true);window.saveLocal=()=>{};window.render=()=>{};window.audit=()=>{};
       try{const now=new Date().toISOString(),old=new Date(Date.now()-60000).toISOString();
         data=[{id:'g1',name:'진행',route:['진료실1'],step:0,status:'진행',statusSince:now,roomDocs:{'진료실1':'김현우'},notes:{}}];
@@ -11274,21 +11280,74 @@ function histAdminHint(){const b=document.getElementById("histAdminHint");if(b)b
 /* 빠진 내원 넣기 (2026-10-25 요청: 10/24 권루아님 — 비트에는 접수됐는데 동선관리에 카드가 안 떠 내원·통계에서 빠졌다).
    관리자가 날짜·차트번호·시각을 넣으면 그날 내원 기록 하나를 만든다(방별 체류 시간은 없음 — 방 통계는 건드리지 않고 내원 수·환자 기록에만).
    기록에 manual 표시와 넣은 사람을 남긴다. 같은 날 같은 차트번호 내원이 이미 있으면 한 번 더 묻는다 */
+/* ═ 비트 접수 찾기 (2026-10-25: '권루아님 접수됐는데 안 뜸' — 원인을 그 자리에서 보고 바로 카드를 만들게) ═
+   최근 3일 비트 접수 문서(bitIntake)에서 이름·차트번호로 찾아, 문서마다 왜 보드에 없는지 한 줄로. 오늘 접수 = [지금 카드 만들기], 지난 날 = [빠진 내원 넣기] */
+function bitWhy(r){const today=localYMD(new Date());const ocm=String(r.ocmNum||'').trim();
+  const p=bitCardFor(r);if(p)return {code:'board',txt:'보드에 있음 — '+(curRoom(p)||'')};
+  const v=(Array.isArray(VISITS)?VISITS:[]).find(x=>x&&((ocm&&x.bit&&String(x.bit.ocmNum||'').trim()===ocm)||(r.patientId&&x.id===r.patientId)));
+  if(v)return {code:'visit',txt:'이미 내보냄 — 내원 기록 있음('+String(v.dischargedAt||'').slice(5,16).replace('T',' ')+')'};
+  if(r.cancelled)return {code:'cancel',txt:'비트에서 접수취소됨'};
+  if(r.status==='취소')return {code:'cancel',txt:'접수취소로 처리됨'};
+  if(r.status==='무시')return {code:'ignored',txt:'무시됨 — '+(r.handledBy||'직원')};
+  if((r.status==='자동접수'||r.status==='접수')&&r.patientId)return {code:'deleted',txt:'카드를 만들었는데 지금 보드에 없음(지워졌거나 내원 기록 없이 사라짐) — '+(r.handledBy||'')};
+  if(r.status==='자동접수')return {code:'stuck',txt:'자동 접수가 멈춤(카드 만들기 전에 화면이 멈춤)'};
+  if(r.date!==today)return {code:'old',txt:'지난 날 접수 — 그날 카드가 안 생겼음'};
+  if(!bitIsRegisteredToday(r))return {code:'lookup',txt:'비트에서 조회만 됨(접수 기록 없음)'};
+  const reg=regFind(r.mrn);if(reg&&reg.name&&r.name&&reg.name!==r.name)return {code:'name',txt:'명단 이름('+reg.name+')과 다름(개명 등)'};
+  return {code:'wait',txt:'자동 접수 대기 중 — 곧 카드가 생겨야 함'};}
+let BIT_FIND=null;
+async function bitFindOpen(){
+  const q=String(prompt('찾을 환자 이름 또는 차트번호')||'').trim();if(!q)return;
+  const qn=q.replace(/\s+/g,''),qd=normMrn(q);
+  const days=[0,1,2].map(i=>localYMD(new Date(Date.now()-i*864e5)));
+  let L=(BIT_INTAKE||[]).slice();
+  try{if(cloud.intakeCol){const s=await cloud.intakeCol.where('date','in',days).get();const seen=new Set(L.map(x=>x.docId));
+    s.docs.forEach(d=>{if(!seen.has(d.id))L.push(Object.assign({docId:d.id},d.data()));});}}
+  catch(e){console.warn('bitFind',e);toast('지난 날 접수를 읽지 못했습니다 — 오늘 것만 찾습니다');}
+  L=L.filter(r=>r&&(String(r.name||'').replace(/\s+/g,'').includes(qn)||(/^\d+$/.test(qd)&&normMrn(r.mrn)===qd)))
+     .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||(Number(b.hourMin)||0)-(Number(a.hourMin)||0));
+  BIT_FIND={q,L};bitFindRender();}
+function bitFindRender(){let ov=document.getElementById('bitFindOv');if(!BIT_FIND){if(ov)ov.remove();return;}
+  if(!ov){ov=document.createElement('div');ov.id='bitFindOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov){BIT_FIND=null;bitFindRender();}};document.body.appendChild(ov);}
+  const today=localYMD(new Date()),hm=m=>(typeof m==='number'&&m>=0)?String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0'):'';
+  const rows=BIT_FIND.L.map((r,i)=>{const w=bitWhy(r);
+    const act=r.date===today?(['board','visit'].includes(w.code)?'':`<button class="btn sm primary" onclick="bitFindMake(${i})">지금 카드 만들기</button>`)
+      :(w.code==='visit'?'':`<button class="btn sm" onclick="bitFindPast(${i})">빠진 내원 넣기</button>`);
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px"><b>${esc(r.name||'(이름 없음)')}</b> <span class="hint">${esc(r.mrn||'')} · ${esc(r.date||'')} ${hm(r.hourMin)} 접수${r.src==='db'?'':' · 캐스트'}</span>
+        <div style="margin-top:3px;font-size:13px;color:${['board','visit'].includes(w.code)?'var(--green,#15803d)':'#b45309'}">${esc(w.txt)}</div></div>${act}</div>`;}).join('');
+  ov.innerHTML=`<div class="modal" style="width:640px"><h3>🔍 비트 접수 찾기 — ${esc(BIT_FIND.q)}</h3><div class="body" style="display:flex;flex-direction:column;gap:8px;max-height:65vh;overflow:auto">
+    ${rows||`<div class="hint" style="padding:10px">최근 3일 비트 접수에서 찾지 못했습니다. <b>접수 PC 에이전트가 이 접수를 동선관리로 보내지 못한 것</b>입니다 — 접수 PC 3대에서 '접수PC_에이전트업데이트.bat' 을 실행해 주세요(새 버전은 빠진 접수를 다시 보냅니다). 급하면 보드에서 [＋ 접수]로 직접 넣어 주세요.</div>`}</div>
+    <div class="foot"><button class="btn primary" onclick="BIT_FIND=null;bitFindRender()">닫기</button></div></div>`;}
+async function bitFindMake(i){const r=BIT_FIND&&BIT_FIND.L[i];if(!r)return;
+  if(bitOnBoard(r)){toast('이미 보드에 있습니다');bitFindRender();return;}
+  const reg=regFind(r.mrn);const name=r.name||(reg&&reg.name)||'';if(!name){alert('이름이 없어 만들 수 없습니다 — 보드에서 [＋ 접수]로 넣어 주세요.');return;}
+  if(!confirm(name+'('+(r.mrn||'')+') 카드를 지금 만들까요?'))return;
+  try{await cloud.intakeCol.doc(r.docId).set({status:'',cancelled:false,registered:true,revivedBy:(currentUser&&currentUser.name)||'',revivedAt:new Date().toISOString()},{merge:true});
+    r.status='';r.cancelled=false;r.registered=true;
+    try{audit('비트 접수 찾기 → 카드 만듦',name+' ('+(r.mrn||'')+') ocm'+(r.ocmNum||''));}catch(e){}
+    await bitClaimAndCreate(r,name,reg);
+    toast(bitOnBoard(r)?name+' 카드를 만들었습니다':'카드를 만들지 못했습니다 — 보드에서 [＋ 접수]로 넣어 주세요');}
+  catch(e){alert('만들지 못했습니다: '+(e.message||e));}
+  bitFindRender();}
+function bitFindPast(i){const r=BIT_FIND&&BIT_FIND.L[i];if(!r)return;const m=Number(r.hourMin);
+  const tm=(m>=0&&m<24*60)?String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')+'-'+String(Math.floor(Math.min(m+30,1439)/60)).padStart(2,'0')+':'+String(Math.min(m+30,1439)%60).padStart(2,'0'):'';
+  BIT_FIND=null;bitFindRender();addMissedVisit({day:r.date,mrn:normMrn(r.mrn),name:r.name||'',tm});}
 function missedVisitRec(o){const day=o.day,a=new Date(day+'T'+o.from+':00'),d=new Date(day+'T'+o.to+':00');
   return {id:id(),seq:null,mrn:o.mrn,name:o.name,birth:o.birth||'',sex:o.sex||'',doctor:'',routeFull:o.room?[o.room]:[],receiveAt:'',reserveAt:'',
     arrivedAt:a.toISOString(),dischargedAt:d.toISOString(),autoClosed:false,totalMs:Math.max(0,d-a),rooms:[],roomDocs:{},roomNurses:{},progLog:{},roomRads:{},notes:{},consults:{},
     chart:'',chartAt:'',chartBy:'',chartOk:null,rxDc:{},researchChart:'',rxProc:'',rxItems:'',silbi:false,silbiLimit:0,ins:o.ins||'',smsHistory:[],bit:null,
     manual:true,manualBy:o.by||'',manualAt:new Date().toISOString(),manualNote:o.note||''};}
-function addMissedVisit(){
+function addMissedVisit(pre){pre=pre||{};
   if(!isAdmin()){alert('관리자만 넣을 수 있습니다.');return;}
   const y=new Date(Date.now()-864e5);
-  let day=prompt('빠진 내원 날짜 (예: 2026-10-24)',localYMD(y));if(day==null)return;day=String(day).trim();
+  let day=prompt('빠진 내원 날짜 (예: 2026-10-24)',pre.day||localYMD(y));if(day==null)return;day=String(day).trim();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||isNaN(new Date(day+'T00:00:00'))){alert('날짜를 2026-10-24 처럼 넣어 주세요.');return;}
   if(day>=localYMD(new Date())){alert('오늘 환자는 보드에서 [접수]로 넣어 주세요. 지난 날짜만 넣을 수 있습니다.');return;}
-  let mrn=prompt('차트번호');if(mrn==null)return;mrn=normMrn(mrn);if(!mrn){alert('차트번호를 넣어 주세요.');return;}
+  let mrn=prompt('차트번호',pre.mrn||'');if(mrn==null)return;mrn=normMrn(mrn);if(!mrn){alert('차트번호를 넣어 주세요.');return;}
   const reg=regFind(mrn)||(VISITS||[]).slice().reverse().find(v=>normMrn(v.mrn)===mrn)||null;
-  let name=prompt('환자 이름',(reg&&reg.name)||'');if(name==null)return;name=String(name).trim();if(!name){alert('이름을 넣어 주세요.');return;}
-  let tm=prompt('도착~종결 시각 (예: 10:30-11:20). 모르면 비워 두세요 — 12:00-12:30 으로 넣습니다','');if(tm==null)return;
+  let name=prompt('환자 이름',pre.name||(reg&&reg.name)||'');if(name==null)return;name=String(name).trim();if(!name){alert('이름을 넣어 주세요.');return;}
+  let tm=prompt('도착~종결 시각 (예: 10:30-11:20). 모르면 비워 두세요 — 12:00-12:30 으로 넣습니다',pre.tm||'');if(tm==null)return;
   let from='12:00',to='12:30';{const m=/^\s*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})\s*$/.exec(String(tm));
     if(String(tm).trim()&&!m){alert('시각은 10:30-11:20 처럼 넣어 주세요.');return;}
     if(m){from=String(m[1]).padStart(2,'0')+':'+m[2];to=String(m[3]).padStart(2,'0')+':'+m[4];if(to<from){alert('종결 시각이 도착보다 빠릅니다.');return;}}}
