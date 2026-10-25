@@ -6270,7 +6270,16 @@ async function runSelfTest(){
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우','정상민','채상훈'].includes(n);
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'조선형'},{room:'C-Arm',doctor:'김현우',staff:''},{room:'C-Arm',doctor:'정상민',staff:'조선형'},{room:'Sono',doctor:'김현우',staff:'부경지'},{room:'진료실1',doctor:'김현우',staff:''},{room:'진료실2',doctor:'한효주',staff:''},{room:'진료실1',doctor:'채상훈',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
-      {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'의사':['김현우','정상민'],'간호사':['김현지','이아람']});
+      {const _d=data,_cf=window.confirm,_tx=window.cloudPatientTxn,_sl=window.saveLocal,_rd=window.render,_au=window.audit;
+      window.cloudPatientTxn=()=>Promise.resolve(true);window.saveLocal=()=>{};window.render=()=>{};window.audit=()=>{};
+      try{const now=new Date().toISOString(),old=new Date(Date.now()-60000).toISOString();
+        data=[{id:'g1',name:'진행',route:['진료실1'],step:0,status:'진행',statusSince:now,roomDocs:{'진료실1':'김현우'},notes:{}}];
+        let asked=0;window.confirm=()=>{asked++;return false;};setStatus('g1','진행');const a=data[0].status+asked;   // 3초 안 → 무시(묻지도 않음)
+        data[0].statusSince=old;setStatus('g1','진행');const b=data[0].status+asked;                                   // 묻고 [취소] → 그대로 진행
+        window.confirm=()=>true;setStatus('g1','진행');const c=data[0].status;                                         // [확인] → 대기
+        ok('진행 두 번 누름: 3초 안은 무시, 그 뒤엔 물어보고 확인해야 대기로', a==='진행0'&&b==='진행1'&&c==='대기',[a,b,c].join(','));}
+      finally{data=_d;window.confirm=_cf;window.cloudPatientTxn=_tx;window.saveLocal=_sl;window.render=_rd;window.audit=_au;}}
+     {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'의사':['김현우','정상민'],'간호사':['김현지','이아람']});
       const o=staffOpts('',['김현지','김현우','이아람'],'의사'),c=onlyDocs(['김현지','정상민']);STAFF_ROSTER=_sr;
       ok('의사 칸: 그 방 명단의 간호사는 빼고 의사만', !o.includes('김현지')&&!o.includes('이아람')&&o.includes('김현우')&&o.includes('정상민')&&JSON.stringify(c)==='["정상민"]',JSON.stringify(o));}
      ok('원장님별 진료: 의사만(간호·물리치료 이름은 빼고 건수만)', JSON.stringify(d.clinic)===JSON.stringify([['김현우',1],['채상훈',1]])&&d.clinicSkip===1,JSON.stringify(d.clinic)+' skip '+d.clinicSkip);
@@ -9608,7 +9617,14 @@ function autoAssignRoomStaff(p){
 }
 function setStatus(pid,st){const p=data.find(x=>x.id===pid);if(!p)return;
   /* 2026-10-13 요청: [진행]을 잘못 눌렀으면 한 번 더 눌러 대기로 되돌린다 (모든 방) */
-  if(p.status===st){if(st!=='진행')return;st='대기';
+  if(p.status===st){if(st!=='진행')return;
+    /* 2026-10-25: '진행 눌러도 자꾸 꺼진다' — 두 번 누르기(더블클릭·반응이 늦어 또 누름)로 바로 대기로 꺼졌다. 진료실은 녹음까지 끊겼다.
+       진행된 지 3초 안에 또 누른 것은 무시하고, 그 뒤에는 꼭 물어본다 */
+    const since=new Date(p.statusSince||0).getTime();
+    if(since&&Date.now()-since<3000)return;
+    const _r0=curRoom(p),_clinic=/^진료실\s*\d/.test(_r0||'');
+    if(!confirm(`'${p.name||''}'님 [진행]을 취소하고 대기로 되돌릴까요?${_clinic?'\n\n※ 진료실 녹음 중이면 녹음도 여기서 끊겨 저장됩니다.':''}\n\n(진행 중이면 [취소]를 누르세요)`))return;
+    st='대기';
     try{audit('진행 취소',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p));}catch(e){}}
   /* 진료의 미지정이면 진행 시작 불가 — 누가 치료하는지 반드시 지정 후 진행.
      상담 방은 카드 위 선택칸을 없앴으므로(2026-09-22) 아래 '담당자'로 판단한다 */
