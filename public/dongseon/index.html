@@ -2023,6 +2023,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
     </div>
     <div class="foot">
       <span class="hint" id="histAdminHint" style="margin-right:auto;display:none">🗑 개별 삭제는 관리자만 가능 · 전체 삭제·백업은 계정 메뉴에 있어요</span>
+      <button class="btn" id="histAddBtn" style="display:none" onclick="addMissedVisit()" title="비트에는 접수됐는데 동선관리에 카드가 안 생겨 빠진 내원을 날짜를 정해 넣습니다 (관리자)">＋ 빠진 내원 넣기</button>
       <button class="btn primary" onclick="closeHistory()">닫기</button>
     </div>
   </div>
@@ -6221,6 +6222,8 @@ async function runSelfTest(){
      ok('동의서 v3: 항목 체크란은 숨김, 안내·동의만 보임', !vis.includes('cstChk')&&vis.includes('1. 안내 사항')&&vis.includes('2. 동의 사항')&&vis.includes('cstPrivY'));
      {const _d=data,_v=VISITS;const now=new Date().toISOString();data=[{id:'L1',mrn:'7001',arrivedAt:now,route:[],step:0}];VISITS=[{mrn:'7002',arrivedAt:now,dischargedAt:now}];
       ok('늦게 온 접수: 오늘 카드·내원 있으면 건너뜀, 없으면 만듦', bitLateSeen('7001')&&bitLateSeen(' 7002')&&!bitLateSeen('7003'));data=_d;VISITS=_v;}
+     {const r=missedVisitRec({day:'2026-10-24',from:'10:30',to:'11:20',mrn:'5555',name:'권루아',room:'진료실1',by:'관리자'});
+      ok('빠진 내원 넣기: 그날 시각·이름·직접 넣음 표시, 방 체류 없음', localYMD(new Date(r.dischargedAt))==='2026-10-24'&&r.totalMs===50*60000&&r.name==='권루아'&&r.manual===true&&r.rooms.length===0&&r.routeFull[0]==='진료실1');}
      ok('컴플레인: 연속메모에 본인 생년월일 → 6자리', cmpBirth({rrn7:'991010-1',memoCont:'991010-\n-+'})==='991010'&&cmpBirth({rrn7:'991010-1',memoCont:'허리 통증'})===''&&cmpBirth({rrn7:'',memoCont:'991010'})===''&&cmpBirth({rrn7:'850101-2',memoCont:'991010'})==='');
      ok('동의서 v3: 문구', vis.includes('금일 수납 금액이 변동')&&vis.includes('금일 처방된 치료 시행에 동의합니다')&&vis.includes('금일 처방된 치료의 시행과 관련한')&&!vis.includes('위 비급여')&&!vis.includes('별도 체크 없음'));}
   }catch(e){ok('테스트 실행 중 예외 없음',false,String(e));}
@@ -11145,7 +11148,37 @@ const HIST_PAGE=50;         // 한 페이지 환자 수
 function histGo(d){histPage=Math.max(0,histPage+d);renderHistory();const b=document.querySelector('#historyModal .body');if(b)b.scrollTop=0;}
 let histView='all';        // all=내원기록 전체, consult=상담만
 let histConsultRoom='전체'; // 상담만 모드에서 방 필터
-function histAdminHint(){const b=document.getElementById("histAdminHint");if(b)b.style.display=isAdmin()?"":"none";}
+function histAdminHint(){const b=document.getElementById("histAdminHint");if(b)b.style.display=isAdmin()?"":"none";const a=document.getElementById("histAddBtn");if(a)a.style.display=isAdmin()?"":"none";}
+/* 빠진 내원 넣기 (2026-10-25 요청: 10/24 권루아님 — 비트에는 접수됐는데 동선관리에 카드가 안 떠 내원·통계에서 빠졌다).
+   관리자가 날짜·차트번호·시각을 넣으면 그날 내원 기록 하나를 만든다(방별 체류 시간은 없음 — 방 통계는 건드리지 않고 내원 수·환자 기록에만).
+   기록에 manual 표시와 넣은 사람을 남긴다. 같은 날 같은 차트번호 내원이 이미 있으면 한 번 더 묻는다 */
+function missedVisitRec(o){const day=o.day,a=new Date(day+'T'+o.from+':00'),d=new Date(day+'T'+o.to+':00');
+  return {id:id(),seq:null,mrn:o.mrn,name:o.name,birth:o.birth||'',sex:o.sex||'',doctor:'',routeFull:o.room?[o.room]:[],receiveAt:'',reserveAt:'',
+    arrivedAt:a.toISOString(),dischargedAt:d.toISOString(),autoClosed:false,totalMs:Math.max(0,d-a),rooms:[],roomDocs:{},roomNurses:{},progLog:{},roomRads:{},notes:{},consults:{},
+    chart:'',chartAt:'',chartBy:'',chartOk:null,rxDc:{},researchChart:'',rxProc:'',rxItems:'',silbi:false,silbiLimit:0,ins:o.ins||'',smsHistory:[],bit:null,
+    manual:true,manualBy:o.by||'',manualAt:new Date().toISOString(),manualNote:o.note||''};}
+function addMissedVisit(){
+  if(!isAdmin()){alert('관리자만 넣을 수 있습니다.');return;}
+  const y=new Date(Date.now()-864e5);
+  let day=prompt('빠진 내원 날짜 (예: 2026-10-24)',localYMD(y));if(day==null)return;day=String(day).trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||isNaN(new Date(day+'T00:00:00'))){alert('날짜를 2026-10-24 처럼 넣어 주세요.');return;}
+  if(day>=localYMD(new Date())){alert('오늘 환자는 보드에서 [접수]로 넣어 주세요. 지난 날짜만 넣을 수 있습니다.');return;}
+  let mrn=prompt('차트번호');if(mrn==null)return;mrn=normMrn(mrn);if(!mrn){alert('차트번호를 넣어 주세요.');return;}
+  const reg=regFind(mrn)||(VISITS||[]).slice().reverse().find(v=>normMrn(v.mrn)===mrn)||null;
+  let name=prompt('환자 이름',(reg&&reg.name)||'');if(name==null)return;name=String(name).trim();if(!name){alert('이름을 넣어 주세요.');return;}
+  let tm=prompt('도착~종결 시각 (예: 10:30-11:20). 모르면 비워 두세요 — 12:00-12:30 으로 넣습니다','');if(tm==null)return;
+  let from='12:00',to='12:30';{const m=/^\s*(\d{1,2}):(\d{2})\s*[-~]\s*(\d{1,2}):(\d{2})\s*$/.exec(String(tm));
+    if(String(tm).trim()&&!m){alert('시각은 10:30-11:20 처럼 넣어 주세요.');return;}
+    if(m){from=String(m[1]).padStart(2,'0')+':'+m[2];to=String(m[3]).padStart(2,'0')+':'+m[4];if(to<from){alert('종결 시각이 도착보다 빠릅니다.');return;}}}
+  const room=String(prompt('진료실 (예: 진료실1 — 모르면 비워 두세요)','')||'').trim();
+  const dup=(VISITS||[]).filter(v=>normMrn(v.mrn)===mrn&&localYMD(new Date(v.dischargedAt||v.arrivedAt||0))===day);
+  if(dup.length&&!confirm(`${day} 에 ${name}(${mrn}) 내원 기록이 이미 ${dup.length}건 있습니다. 그래도 하나 더 넣을까요?`))return;
+  if(!confirm(`이렇게 넣을까요?\n\n${day} ${from}~${to}\n${name} (${mrn})${room?' · '+room:''}\n\n(방별 체류 시간 없이 내원 기록만 — '직접 넣음' 표시)`))return;
+  const rec=missedVisitRec({day,from,to,mrn,name,birth:reg&&reg.birth,sex:reg&&reg.sex,room,by:(currentUser&&currentUser.name)||'',note:'비트 접수 누락 보충'});
+  VISITS.push(rec);cloudAddVisit(rec);
+  try{audit('빠진 내원 넣음',`${name} (${mrn}) ${day} ${from}~${to}${room?' '+room:''}`);}catch(e){}
+  try{lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));}catch(e){}
+  toast(`${day} ${name}(${mrn}) 내원을 넣었습니다`);try{renderHistory();}catch(e){}}
 function openHistory(){histKey=null;histView='all';histConsultRoom='전체';histPage=0;histQ='';document.getElementById("histSearch").value="";histFrom='';histTo='';histQuickKind='all';{const f=document.getElementById('histFrom'),g=document.getElementById('histTo');if(f)f.value='';if(g)g.value='';}try{histChipSync();}catch(e){}histAdminHint();renderHistory();document.getElementById("historyModal").classList.add("show");}
 function closeHistory(){document.getElementById("historyModal").classList.remove("show");}
 /* 보드 카드 → 그 환자의 과거 기록 바로 열기 */
