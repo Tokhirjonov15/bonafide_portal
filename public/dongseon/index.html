@@ -662,6 +662,7 @@
 .ds-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
 .ds-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel)}
 .ds-t{font-weight:800;margin-bottom:6px}
+.ds-sec{font-weight:900;font-size:15px;margin:16px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
 .ds-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0}
 .ds-k{flex:0 0 46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ds-bar{flex:1;height:8px;background:var(--panel2);border-radius:6px;overflow:hidden}
@@ -6266,6 +6267,9 @@ async function runSelfTest(){
       VISITS=[{mrn:'9001',bit:{ocmNum:'777'},dischargedAt:new Date().toISOString()}];const a5=bitStuckClaim(base,now);
       data=_d;VISITS=_v;
       ok('멈춘 자동 접수: 2분 지나고 카드·내원 없을 때만 되살림', a1===true&&a2===false&&a3===false&&a4===false&&a5===false,[a1,a2,a3,a4,a5].join(','));}
+     {const _sr=window.docStatRooms;window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'조선형'},{room:'C-Arm',doctor:'김현우',staff:''},{room:'C-Arm',doctor:'정상민',staff:'조선형'},{room:'Sono',doctor:'김현우',staff:'부경지'}];
+      let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;}const c=d.proc.find(x=>x.room==='C-Arm');
+      ok('원장님·시술 통계: 원장님별 총·직원별 총 따로', JSON.stringify(c.byDoc)===JSON.stringify([['김현우',2],['정상민',1]])&&JSON.stringify(c.byStaff)===JSON.stringify([['조선형',2],['(미지정)',1]])&&c.list.length===3,JSON.stringify([c.byDoc,c.byStaff]));}
      {const h=wbHtml(['김현우','정상민']);
       ok('주사팀 배너: 오늘 원장님 이름·사진(있으면)·없으면 첫 글자', h.includes('김현우 원장님')&&h.includes('정상민 원장님')&&h.includes('img/doc/kimhw.jpg')&&h.includes('wb-ph')&&h.includes('주사전담 치료팀'));}
      {const r=missedVisitRec({day:'2026-10-24',from:'10:30',to:'11:20',mrn:'5555',name:'권루아',room:'진료실1',by:'관리자'});
@@ -11192,23 +11196,28 @@ function docStatRooms(){
     out.push({room:v.room,doctor:String(docFor(p,v.room)||'').trim(),staff:String(radFor(p,v.room)||nurseFor(p,v.room)||'').trim()});}));
   return out;}
 function docStatData(){
-  const rooms=docStatRooms();const clinic={};const proc={};
+  /* 2026-10-25 요청: 술기 의사(담당 직원) 조합 말고 원장님 한 분이 한 총 건수, 직원 한 명이 맡은 총 건수도 따로 */
+  const rooms=docStatRooms();const clinic={};const proc={},byDoc={},byStaff={};
+  const inc=(o,k)=>{o[k]=(o[k]||0)+1;};
   rooms.forEach(r=>{
-    if(/^진료실\s*\d/.test(r.room)){const k=r.doctor||'(미지정)';clinic[k]=(clinic[k]||0)+1;}
-    else if(DOC_STAT_PROC.includes(r.room)){const k=(r.doctor||'(미지정)')+(r.staff?'('+r.staff+')':'');const o=proc[r.room]||(proc[r.room]={});o[k]=(o[k]||0)+1;}});
+    if(/^진료실\s*\d/.test(r.room)){inc(clinic,r.doctor||'(미지정)');}
+    else if(DOC_STAT_PROC.includes(r.room)){const k=(r.doctor||'(미지정)')+(r.staff?'('+r.staff+')':'');
+      inc(proc[r.room]||(proc[r.room]={}),k);inc(byDoc[r.room]||(byDoc[r.room]={}),r.doctor||'(미지정)');inc(byStaff[r.room]||(byStaff[r.room]={}),r.staff||'(미지정)');}});
   const sortE=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ko'));
-  return {clinic:sortE(clinic),proc:DOC_STAT_PROC.map(r=>({room:r,list:sortE(proc[r]||{})}))};}
+  return {clinic:sortE(clinic),proc:DOC_STAT_PROC.map(r=>({room:r,list:sortE(proc[r]||{}),byDoc:sortE(byDoc[r]||{}),byStaff:sortE(byStaff[r]||{})}))};}
 function docStatHtml(){
   const d=docStatData();const sum=l=>l.reduce((s,x)=>s+x[1],0);
   const row=(k,n,max)=>`<div class="ds-row"><span class="ds-k">${esc(k)}</span><span class="ds-bar"><i style="width:${Math.max(4,Math.round(n/max*100))}%"></i></span><b>${n}</b>건</div>`;
   const block=(title,list,hint)=>{const max=Math.max(1,...list.map(x=>x[1]));
     return `<div class="ds-card"><div class="ds-t">${esc(title)} <span class="hint">합계 ${sum(list)}건${hint?' · '+hint:''}</span></div>${list.map(x=>row(x[0],x[1],max)).join('')||'<div class="hint">기록이 없습니다.</div>'}</div>`;};
   return `<div class="hint" style="margin-bottom:8px">진료 = 진료실을 거친 횟수(그 방 담당 진료의 기준) · 시술 = <b>술기 의사(담당 직원)</b>별 건수 — 담당 직원은 그 방의 방사선 담당, 없으면 간호 담당입니다.</div>
-    <div class="ds-grid">${block('원장님별 진료',d.clinic)}${d.proc.map(x=>block(x.room+' 술기',x.list)).join('')}</div>`;}
+    <div class="ds-grid">${block('원장님별 진료',d.clinic)}</div>
+    ${d.proc.map(x=>`<div class="ds-sec">${esc(x.room)} 술기 <span class="hint">합계 ${sum(x.list)}건</span></div>
+      <div class="ds-grid">${block(x.room+' · 원장님별 총',x.byDoc)}${block(x.room+' · 직원별 총',x.byStaff,'방사선 담당, 없으면 간호 담당')}${block(x.room+' · 원장님(직원)',x.list)}</div>`).join('')}`;}
 function exportDocStats(){
   const d=docStatData();const out=[['구분','이름','건수']];
   d.clinic.forEach(x=>out.push(['진료',x[0],x[1]]));
-  d.proc.forEach(p=>p.list.forEach(x=>out.push([p.room+' 술기',x[0],x[1]])));
+  d.proc.forEach(p=>{p.byDoc.forEach(x=>out.push([p.room+' 술기 원장님별',x[0],x[1]]));p.byStaff.forEach(x=>out.push([p.room+' 술기 직원별',x[0],x[1]]));p.list.forEach(x=>out.push([p.room+' 술기 원장님(직원)',x[0],x[1]]));});
   if(out.length<2){alert('내보낼 기록이 없습니다.');return;}
   downloadCSV('원장님_시술'+statRangeTag()+'.csv',out);}
 
