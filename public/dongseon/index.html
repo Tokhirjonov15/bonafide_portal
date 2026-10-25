@@ -3343,7 +3343,7 @@ async function doLogin(){
   loginMsg('로그인 중…');
   /* 30초가 지나도 화면이 안 열리면 어디서 멈췄는지 알려 준다 (2026-10-25: '로그인 중…' 만 뜨고 끝나지 않음) */
   clearTimeout(window._loginWd);window._loginWd=setTimeout(()=>{if(currentUser)return;const e=document.getElementById('loginMsg');const st=e?e.textContent:'';
-    loginMsg('연결이 오래 걸립니다 — '+(st||'로그인 중')+'\n인터넷 연결을 확인하고 F5(새로고침) 후 다시 로그인해 주세요. 계속되면 이 화면을 찍어 보내 주세요.');},30000);
+    loginMsg('연결이 오래 걸립니다 — '+(st||'로그인 중')+'\n인터넷 연결을 확인하고 F5(새로고침) 후 다시 로그인해 주세요.\n계속되면 주소창에 '+location.origin+'/dongseon/nettest.html 을 열어 연결 점검 결과를 찍어 보내 주세요.');},30000);
   try{
     const em=await authEmail(name);
     loginMsg('로그인 중… (계정 확인 중)');

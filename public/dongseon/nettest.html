@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>연결 점검</title>
+<style>
+  :root{--bg:#f5f7fb;--card:#fff;--ink:#1f2937;--mut:#6b7280;--ok:#15803d;--bad:#b91c1c;--line:#e5e7eb}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f172a;--card:#1e293b;--ink:#e5e7eb;--mut:#94a3b8;--ok:#4ade80;--bad:#f87171;--line:#334155}}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Malgun Gothic',system-ui,sans-serif}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 16px}
+  h1{font-size:22px;margin:0 0 6px} p{color:var(--mut);margin:0 0 16px;font-size:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 16px}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+  .row:last-child{border-bottom:0} .r{font-weight:700;white-space:nowrap} .ok{color:var(--ok)} .bad{color:var(--bad)} .mut{color:var(--mut)}
+  .sum{margin-top:16px;font-size:15px;line-height:1.6;font-weight:600}
+</style></head>
+<body><div class="wrap">
+<h1>동선관리 연결 점검</h1>
+<p>이 PC에서 동선관리에 필요한 서버에 연결되는지 확인합니다. 로그인은 필요 없습니다. 결과 화면을 사진으로 찍어 보내 주세요.</p>
+<div class="card" id="list"></div>
+<div class="sum" id="sum">점검 중…</div>
+</div>
+<script>
+/* 2026-10-25: 한 PC 가 로그인 뒤 '자료 연결 중'에서 멈춤 — 어느 서버가 막혔는지, PC 시계가 맞는지 확인 */
+const T=[
+  {k:'auth',n:'로그인 서버 (identitytoolkit)',u:'https://identitytoolkit.googleapis.com/v1/projects'},
+  {k:'fs',n:'자료 서버 (firestore)',u:'https://firestore.googleapis.com/v1/projects/bonafide-dongseon-108e2/databases/(default)/documents/x/y'},
+  {k:'fsch',n:'자료 서버 실시간 연결 (firestore channel)',u:'https://firestore.googleapis.com/google.firestore.v1.Firestore/Listen/channel?VER=8'},
+  {k:'tok',n:'로그인 유지 서버 (securetoken)',u:'https://securetoken.googleapis.com/v1/token'},
+  {k:'gs',n:'프로그램 파일 (gstatic)',u:'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js'},
+  {k:'st',n:'사진 저장소 (firebasestorage)',u:'https://firebasestorage.googleapis.com/v0/b/x/o'}];
+const list=document.getElementById('list'),R={};
+T.forEach(t=>{list.insertAdjacentHTML('beforeend',`<div class="row"><span>${t.n}</span><span class="r mut" id="r_${t.k}">확인 중…</span></div>`);});
+list.insertAdjacentHTML('beforeend',`<div class="row"><span>PC 시계 (서버 시각과 차이)</span><span class="r mut" id="r_clock">확인 중…</span></div>`);
+function set(k,ok,txt){const e=document.getElementById('r_'+k);e.className='r '+(ok?'ok':'bad');e.textContent=txt;R[k]=ok;}
+function probe(t){const c=new AbortController(),t0=Date.now();const to=setTimeout(()=>c.abort(),10000);
+  return fetch(t.u,{mode:'no-cors',cache:'no-store',signal:c.signal}).then(()=>set(t.k,true,'정상 ('+(Date.now()-t0)+'ms)'))
+    .catch(e=>set(t.k,false,e&&e.name==='AbortError'?'응답 없음 (10초)':'막힘'))
+    .finally(()=>clearTimeout(to));}
+async function clock(){try{const r=await fetch(location.href.split('?')[0]+'?t='+Date.now(),{method:'HEAD',cache:'no-store'});const d=new Date(r.headers.get('date'));
+  if(isNaN(d)){set('clock',true,'확인 불가');return;}const diff=Math.round((Date.now()-d.getTime())/1000);
+  set('clock',Math.abs(diff)<120,(Math.abs(diff)<120?'정상':'틀림')+' ('+(diff>0?'+':'')+diff+'초)');}catch(e){set('clock',false,'확인 실패');}}
+Promise.all([...T.map(probe),clock()]).then(()=>{
+  const s=document.getElementById('sum');const msg=[];
+  if(R.auth&&(R.fs===false||R.fsch===false))msg.push('로그인 서버는 되는데 <b>자료 서버(firestore)가 막혀 있습니다</b> — 백신(V3·알약 등) 웹 보호/방화벽, 또는 회사 보안 장비가 막는 경우입니다. 예외에 firestore.googleapis.com 을 넣어 주세요.');
+  if(R.clock===false)msg.push('<b>PC 시계가 틀립니다</b> — Windows 설정 → 시간 및 언어 → 날짜 및 시간 → <b>지금 동기화</b>를 눌러 주세요.');
+  if(R.auth===false)msg.push('<b>로그인 서버부터 막혀 있습니다</b> — 인터넷 연결이나 보안 프로그램을 확인해 주세요.');
+  if(R.gs===false)msg.push('<b>프로그램 파일 서버가 막혀 있습니다</b> — 인터넷/보안 프로그램 확인.');
+  s.innerHTML=msg.length?msg.join('<br>'):'<span class="ok">모든 서버에 정상 연결됩니다.</span> 이 PC의 연결 문제는 아닙니다 — 크롬 시크릿 창(Ctrl+Shift+N)에서 로그인해 보세요.';});
+</script>
+</body></html>
