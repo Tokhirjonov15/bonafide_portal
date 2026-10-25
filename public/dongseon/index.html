@@ -6270,7 +6270,10 @@ async function runSelfTest(){
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우','정상민','채상훈'].includes(n);
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'조선형'},{room:'C-Arm',doctor:'김현우',staff:''},{room:'C-Arm',doctor:'정상민',staff:'조선형'},{room:'Sono',doctor:'김현우',staff:'부경지'},{room:'진료실1',doctor:'김현우',staff:''},{room:'진료실2',doctor:'한효주',staff:''},{room:'진료실1',doctor:'채상훈',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
-      ok('원장님별 진료: 의사만(간호·물리치료 이름은 빼고 건수만)', JSON.stringify(d.clinic)===JSON.stringify([['김현우',1],['채상훈',1]])&&d.clinicSkip===1,JSON.stringify(d.clinic)+' skip '+d.clinicSkip);
+      {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'의사':['김현우','정상민'],'간호사':['김현지','이아람']});
+      const o=staffOpts('',['김현지','김현우','이아람'],'의사'),c=onlyDocs(['김현지','정상민']);STAFF_ROSTER=_sr;
+      ok('의사 칸: 그 방 명단의 간호사는 빼고 의사만', !o.includes('김현지')&&!o.includes('이아람')&&o.includes('김현우')&&o.includes('정상민')&&JSON.stringify(c)==='["정상민"]',JSON.stringify(o));}
+     ok('원장님별 진료: 의사만(간호·물리치료 이름은 빼고 건수만)', JSON.stringify(d.clinic)===JSON.stringify([['김현우',1],['채상훈',1]])&&d.clinicSkip===1,JSON.stringify(d.clinic)+' skip '+d.clinicSkip);
       ok('원장님·시술 통계: 원장님별 총·직원별 총 따로', JSON.stringify(c.byDoc)===JSON.stringify([['김현우',2],['정상민',1]])&&JSON.stringify(c.byStaff)===JSON.stringify([['조선형',2],['(미지정)',1]])&&c.list.length===3,JSON.stringify([c.byDoc,c.byStaff]));}
      {const h=wbHtml(['김현우','정상민']);
       ok('주사팀 배너: 오늘 원장님 이름·사진(있으면)·없으면 첫 글자', h.includes('김현우 원장님')&&h.includes('정상민 원장님')&&h.includes('img/doc/kimhw.jpg')&&h.includes('wb-ph')&&h.includes('주사전담 치료팀'));}
@@ -9593,7 +9596,7 @@ function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOStri
 /* 방에 진료의/간호사가 딱 1명이면 도착 즉시 자동 지정 (이미 지정돼 있으면 유지) */
 function autoAssignRoomStaff(p){
   const r=curRoom(p);if(!r)return;
-  const ds=(meta(r).doctors||[]).filter(n=>!isOffToday(n)),   // 휴무자는 자동 지정 안 됨
+  const ds=(()=>{const L=(meta(r).doctors||[]).filter(n=>!isOffToday(n));return (isProcRoom(r)||isClinicRoom(r))?onlyDocs(L):L;})(),   // 휴무자는 자동 지정 안 됨 · 진료실·시술 방은 의사만(그 방 명단의 간호사가 술기 원장님으로 자동 지정되지 않게, 2026-10-25)
         ns=(meta(r).nurses||[]).filter(n=>!isOffToday(n)),
         xs=(meta(r).rads||[]).filter(n=>!isOffToday(n));
   /* has(): 그 방에 이미 기록이 있으면 손대지 않는다. 빈칸('')도 기록 — 일부러 '(미지정)'으로 둔 것이므로 다시 채우지 않는다 (2026-09-24) */
@@ -12546,7 +12549,7 @@ function rbyFields(p,room){
   const proc=isProcRoom(room),clinic=isClinicRoom(room),rdocs=(meta(room).doctors||[]).filter(off);
   if(!CARD_STAFF_HIDE.doc(room)){if(proc){const sd=seenDocFor(p,room);F.push({k:'seen',label:'진료 원장님',cur:sd,opts:staffOpts(sd,[],'의사')});}
     if(clinic||proc||!roomHasStaff(room)){const cur=docFor(p,room);
-      F.push({k:'doc',label:proc?'술기 원장님':'원장님',cur,opts:clinic?uniqStaff([cur,...rdocs,...allClinicDoctors()]):staffOpts(cur,proc?rdocs:[],'의사')});}
+      F.push({k:'doc',label:proc?'술기 원장님':'원장님',cur,opts:clinic?uniqStaff([cur,...onlyDocs(rdocs),...allClinicDoctors()]):staffOpts(cur,proc?rdocs:[],'의사')});}
     else{/* 담당 명단이 따로 있는 방(물리치료 = 치료사, 수납대기 = 원무 등) — 이 방에서 고른 사람만(접수 원장님으로 채우지 않음), 의사는 목록에서 뺀다 (2026-10-13) */
       const cur=(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))?(p.roomDocs[room]||''):'';
       const L=rdocs.filter(n=>rosterPart(n)!=='의사'),parts=L.map(rosterPart).filter(Boolean);
@@ -12681,7 +12684,7 @@ function doctorChipHtml(p,room){
   /* 방에 전담 진료의가 지정돼 있으면 그 방 목록만 보여준다(다른 방 진료의는 배정 불가).
      지정이 없는 방만 전체 진료의 목록으로 폴백. 이미 선택된 값은 항상 보존. */
   const opts=isClinicRoom(_r)
-    ? uniqStaff([cur,...roomDocs,...allClinicDoctors()])   // 진료실: 모든 의사(이 방 의사가 먼저) — 다른 진료실 의사를 고르면 그 진료실로 옮김 (2026-10-06)
+    ? uniqStaff([cur,...onlyDocs(roomDocs),...allClinicDoctors()])   // 진료실: 모든 의사(이 방 의사가 먼저) — 다른 진료실 의사를 고르면 그 진료실로 옮김 (2026-10-06)
     : isProcRoom(_r)
     ? staffOpts(cur,roomDocs,'의사')   // 시술 방 술기: 이 방 의사 먼저, 그 뒤 직원 목록 의사 전부 (2026-10-14)
     : (_r&&roomHasStaff(_r))
@@ -12740,7 +12743,11 @@ const isClinicRoom=r=>/^진료실\s*\d/.test(String(r||'').trim());
 function rosterNames(part){try{return (staffRoster()[part]||[]).map(e=>{const m=/^(.*?)\s*\(.*\)\s*$/.exec(String(e));return (m?m[1]:String(e)).trim();}).filter(Boolean);}catch(e){return [];}}
 const staffKey=n=>String(n||'').replace(/\s+/g,'').toLowerCase();
 function uniqStaff(L){const seen=new Set();return L.filter(n=>{if(!n)return false;const k=staffKey(n);if(seen.has(k))return false;seen.add(k);return true;});}
-function staffOpts(cur,list,part){const R=part?rosterNames(part):[];const keep=(list||[]).filter(n=>!R.length||rosterPart(n));
+/* 2026-10-25: 의사 칸(진료·술기 원장님)에 그 방 명단의 간호사·방사선사도 섞여 나와 직원 이름이 술기 원장님으로 골라졌다(통계에 김현지·이아람 등).
+   의사 칸은 직원 목록 '의사' 파트만 — 다른 칸(간호·방사선·물리치료)은 종전대로 그 방 명단을 먼저 */
+function onlyDocs(L){const R=rosterNames('의사');if(!R.length)return (L||[]).filter(Boolean);return (L||[]).filter(n=>n&&rosterPart(n)==='의사');}
+function staffOpts(cur,list,part){const R=part?rosterNames(part):[];
+  const keep=(list||[]).filter(n=>!R.length||(part==='의사'?rosterPart(n)==='의사':rosterPart(n)));
   return uniqStaff([cur,...[...keep,...R].filter(n=>!isOffToday(n))]);}
 /* 진료실 관리에서 이름을 적지 않고 고르기만 (2026-10-14 요청: '직원 목록에서 알아서 따오면 안 되나') — 방마다
    staffPart(담당 파트) · showNurse/showRad(간호·방사선 칸 표시). 아직 안 고른 방은 예전 이름 칸 내용으로 정한다(있으면 그 파트·칸 표시) */
