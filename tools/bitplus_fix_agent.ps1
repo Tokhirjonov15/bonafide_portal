@@ -13,21 +13,36 @@ $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 # 접수 PC 표 (2026-09-17). IP 가 바뀌면 여기만 고친다
 $MAP = @{
-  '192.168.0.16' = @{ pc = '접수1'; prio = 3 }
+  '192.168.0.18' = @{ pc = '접수1'; prio = 3 }   # 2026-10-25 확인(.16 에서 바뀜)
+  '192.168.0.16' = @{ pc = '접수1'; prio = 3 }   # 예전 IP
   '192.168.0.44' = @{ pc = '접수2'; prio = 2 }
   '192.168.0.57' = @{ pc = '접수3'; prio = 1 }
 }
 function Say($s, $c = 'Gray') { Write-Host $s -ForegroundColor $c }
 $fail = @()
-$MIN_VER = 'db1.3'   # 이 버전보다 낮으면 옛 스크립트가 그대로 돌고 있는 것 — 1.1: 전화번호·내원 횟수·처방 (2026-09-23), 1.2: 처방 금액(비급여 동의서) (2026-10-01)
+$MIN_VER = 'db1.8'   # 이 버전보다 낮으면 옛 스크립트가 그대로 돌고 있는 것 — 1.1: 전화번호·내원 횟수·처방 (2026-09-23), 1.2: 처방 금액(비급여 동의서) (2026-10-01)
 
 # ── 1. 이 PC 알아내기 ──
+#  2026-10-25: 접수 PC 의 IP 가 바뀌어(192.168.0.18) 표에 없다며 멈췄다 → ① IP 표 ② 이 PC 에 이미 등록된 에이전트 작업의 인수(-Pc DB-접수N -Priority N)
+#  ③ 그래도 모르면 물어본다(1/2/3). 동료 목록은 표의 IP 대신 같은 망을 훑어 상태 포트(9001)가 열린 PC 를 찾는다(IP 가 바뀌어도 맞게)
 $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress } | Where-Object { $_ -like '192.168.*' })
-$me = $null; foreach ($ip in $ips) { if ($MAP.ContainsKey($ip)) { $me = $MAP[$ip]; $myIp = $ip } }
-if (-not $me -and $Pc) { foreach ($k in $MAP.Keys) { if ($MAP[$k].pc -eq $Pc) { $me = $MAP[$k]; $myIp = $k } } }
-if (-not $me) { Say "이 PC 의 IP($($ips -join ', '))가 접수 PC 표에 없습니다. -Pc 접수N 으로 지정하거나 스크립트의 `$MAP 을 고치세요." Red; exit 1 }
-$peers = @($MAP.Keys | Where-Object { $_ -ne $myIp } | Sort-Object)
-Say "== 이 PC: $($me.pc) ($myIp)  우선순위 $($me.prio)  동료 $($peers -join ', ') ==" Cyan
+$me = $null; $myIp = $null; foreach ($ip in $ips) { if ($MAP.ContainsKey($ip)) { $me = $MAP[$ip]; $myIp = $ip } }
+$PRIO = @{ '접수1' = 3; '접수2' = 2; '접수3' = 1 }
+if (-not $me -and $Pc) { $p0 = ($Pc -replace '^DB-', ''); if ($PRIO.ContainsKey($p0)) { $me = @{ pc = $p0; prio = $PRIO[$p0] } } }
+if (-not $me) { try { $ta = [string](Get-ScheduledTask -TaskName BitDbAgent -ErrorAction Stop).Actions[0].Arguments
+    $m1 = [regex]::Match($ta, '-Pc\s+"?DB-([^"\s]+)'); $m2 = [regex]::Match($ta, '-Priority\s+(\d+)')
+    if ($m1.Success) { $p0 = $m1.Groups[1].Value; $me = @{ pc = $p0; prio = $(if ($m2.Success) { [int]$m2.Groups[1].Value } elseif ($PRIO.ContainsKey($p0)) { $PRIO[$p0] } else { 1 }) }; Say "   (IP 표에 없어 이 PC 에 등록돼 있던 설정으로: $p0)" Yellow } } catch {} }
+while (-not $me) { $a = (Read-Host "이 PC 의 IP($($ips -join ', '))를 모릅니다. 이 PC 는 접수 몇 번인가요? (1 / 2 / 3)").Trim()
+  if ($a -match '^[123]$') { $p0 = "접수$a"; $me = @{ pc = $p0; prio = $PRIO[$p0] } } }
+if (-not $myIp) { $myIp = $ips | Select-Object -First 1 }
+# 같은 망(192.168.x.1~254)에서 상태 포트 9001 이 열린 PC = 다른 에이전트 (1~2초)
+$found = @()
+try { $pre = ($myIp -replace '\.\d+$', '.'); $tries = @()
+  foreach ($i in 1..254) { $h = "$pre$i"; if ($ips -contains $h) { continue }; $c = New-Object Net.Sockets.TcpClient; $tries += @{ h = $h; c = $c; ar = $c.BeginConnect($h, 9001, $null, $null) } }
+  Start-Sleep -Milliseconds 1500
+  foreach ($t in $tries) { try { if ($t.ar.IsCompleted -and $t.c.Connected) { $found += $t.h } } catch {}; try { $t.c.Close() } catch {} } } catch {}
+$peers = @(@($found) + @($MAP.Keys | Where-Object { $ips -notcontains $_ }) | Select-Object -Unique | Sort-Object)
+Say "== 이 PC: $($me.pc) ($($ips -join ', '))  우선순위 $($me.prio)  동료 $($peers -join ', ') $(if ($found.Count) { '(찾음: ' + ($found -join ', ') + ')' } else { '(망에서 찾은 에이전트 없음 — 표의 IP 사용)' }) ==" Cyan
 if ($Test) { Say "(-Test: 여기까지, 아무것도 바꾸지 않음)"; exit 0 }
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) { Say "관리자 PowerShell 이 아닙니다 — 작업을 다시 만들 수 없어 여기서 멈춥니다(아무것도 바꾸지 않음). 시작 → PowerShell 오른쪽 클릭 → '관리자 권한으로 실행' 후 다시." Red; exit 1 }   # 2026-09-17: 비관리자로 계속 진행하면 옛 프로세스만 죽이고 작업은 못 만들어 에이전트가 빈 채로 남는다

@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.7'   # 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.8'   # 1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -387,6 +387,24 @@ function ProbePeer($ip) {   # 300ms 안에 연결·응답이 없으면 죽은 �
     return @{ ok = ($f[0] -eq 'OK'); prio = $pr; pc = $(if ($f.Count -gt 2) { $f[2] } else { '' }); known = $known } }
   catch { return $null } finally { try { $cli.Close() } catch {} }
 }
+# 2026-10-25: 접수1 의 IP 가 바뀌었는데(.16→.18) 접수2 는 옛 IP 만 알아 접수1 이 없는 줄 알고 둘 다 전송 담당이 됐다.
+#  동료가 있는 설정이면 10분마다 같은 망(내 IP 의 x.x.x.1~254)을 훑어 상태 포트가 열린 PC 를 동료 목록에 더한다(0.8초, LAN 만)
+$script:DiscAt = [DateTime]::MinValue
+function DiscoverPeers() {
+  if (-not @($Peers).Count -or ((Get-Date) - $script:DiscAt).TotalMinutes -lt 10) { return }
+  $script:DiscAt = Get-Date
+  # 훑을 망 = 이미 아는 동료의 망(VPN 등 다른 어댑터 주소를 고르지 않게). 없으면 내 192.168.* 주소의 망
+  $ref = @(@($Peers) + @($MyIps | Where-Object { $_ -like '192.168.*' }) | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' }) | Select-Object -First 1; if (-not $ref) { return }
+  $pre = ($ref -replace '\.\d+$', '.'); $tries = @(); $new = @()
+  try {
+    foreach ($i in 1..254) { $h = "$pre$i"; if ($MyIps -contains $h -or @($Peers) -contains $h) { continue }
+      $c = New-Object Net.Sockets.TcpClient; try { $tries += @{ h = $h; c = $c; ar = $c.BeginConnect($h, $PeerPort, $null, $null) } } catch { $c.Close() } }
+    $end = (Get-Date).AddMilliseconds(1500); while ((Get-Date) -lt $end) { HealthDrain; Start-Sleep -Milliseconds 100 }
+    foreach ($t in $tries) { try { if ($t.ar.IsCompleted -and $t.c.Connected) { $new += $t.h } } catch {}; try { $t.c.Close() } catch {} }
+  } catch { Log "동료 찾기 오류: $($_.Exception.Message)" }
+  if ($new.Count) { $script:Peers = @($Peers) + $new; Log "동료 목록에 추가(망에서 찾음): $($new -join ', ') → $($script:Peers -join ', ')"
+    try { [IO.File]::WriteAllText($PeersFile, ("# DB 에이전트가 있는 다른 PC (망에서 찾아 갱신 $(Get-Date -Format 'yyyy-MM-dd HH:mm'))`r`n" + (@($script:Peers) -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false)) } catch {} }
+}
 function ElectLeader() {   # 나보다 우선순위가 높은(같으면 PC 이름이 앞선) 정상 에이전트가 하나라도 있으면 대기. 동료가 알려 준 IP 는 내 목록에 합친다
   $lead = $true; $who = ''; $learned = @()
   foreach ($ip in @($Peers)) { $p = ProbePeer $ip
@@ -597,7 +615,7 @@ while ($true) {
   $cycStart = Get-Date
   if ($st.date -ne (Today)) { Log "날짜 변경 → 상태 초기화"; $st = @{ date = (Today); seen = @{}; sent = @{}; fresh = $true }; $first = $true; $script:Conf = @{}; TrimLog }
   HealthDrain
-  if ($Peers.Count) { ElectLeader }   # 다른 에이전트가 있으면 매 주기 우선순위 확인(LAN, 수 ms)
+  if ($Peers.Count) { DiscoverPeers; ElectLeader }   # 다른 에이전트가 있으면 매 주기 우선순위 확인(LAN, 수 ms)
   try {
     $n = Poll $st $first
     $script:LastDbOk = Get-Date
