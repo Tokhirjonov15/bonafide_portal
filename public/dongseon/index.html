@@ -6596,6 +6596,9 @@ async function startHosted(){
     cloud.app=firebase.initializeApp(HOST_FIREBASE_CONFIG);
     /* App Check는 우리 프로젝트에 설정 후 사이트 키를 넣고 활성화 (이전 지점 키 제거) */
     cloud.db=firebase.firestore();
+    /* 2026-10-25: 어떤 PC 는 로그인은 되는데 '자료 연결 중'에서 멈췄다 — 백신·방화벽·네트워크 장비가 Firestore 의 실시간 연결을 막는 경우.
+       그런 PC 는 아래 감시가 표시(pb_fsLongPoll)를 남기고 새로고침 → 그 PC 만 롱폴링(보통 HTTP 요청)으로 연결한다. 다른 PC 는 그대로 */
+    try{if(localStorage.getItem('pb_fsLongPoll')==='1'){cloud.db.settings({experimentalForceLongPolling:true,merge:true});console.warn('Firestore: 롱폴링으로 연결');}}catch(e){console.warn('fs settings',e);}
     cloud.ref=cloud.db.collection(HOST_COL).doc(HOST_ROOM);
     cloud.patientsCol=cloud.ref.collection('patients');
     cloud.visitsCol=cloud.ref.collection('visits');
@@ -6619,7 +6622,11 @@ async function startHosted(){
         if(!document.getElementById('loginBody').querySelector('#lg_name'))showLogin();return;}
       if(!user.email){try{await firebase.auth().signOut();}catch(e){}return;}  // 익명 등 이메일 없는 세션 정리
       cloud.user=user.uid;cloud.email=user.email||'';
+      /* 자료 서버 첫 읽기가 12초 안에 안 끝나면 연결 방식을 롱폴링으로 바꿔 새로고침(이 PC 에만 기억). 이미 롱폴링인데도 안 되면 그대로 두고 로그인 감시가 안내 */
+      const fsWd=setTimeout(()=>{try{if(localStorage.getItem('pb_fsLongPoll')!=='1'){localStorage.setItem('pb_fsLongPoll','1');
+        loginMsg('자료 서버 연결 방식을 바꿔 다시 연결합니다…');showReconnecting(true);setTimeout(()=>location.reload(),800);}}catch(e){}},12000);
       try{await migrateIfNeeded();}catch(e){console.error('migrate',e);}
+      clearTimeout(fsWd);
       /* 내원 기록·체류 기록은 여기서 클라우드에서 통째로 받는다(화면은 이 메모리 배열을 쓴다).
          로컬에는 최근 것만 캐시한다 — 전체를 쓰면 3.7MB 라 용량 한도에 걸린다 (2026-09-29) */
       /* 2026-10-25: 다른 PC 에서 '로그인 중…' 에서 멈춤 — 로그인 때 내원 기록 전체(수천 건, 날마다 늘어남)와 체류 기록 전체를 다 받은 뒤에야
