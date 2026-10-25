@@ -6271,7 +6271,10 @@ async function runSelfTest(){
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우','정상민','채상훈'].includes(n);
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'조선형'},{room:'C-Arm',doctor:'김현우',staff:''},{room:'C-Arm',doctor:'정상민',staff:'조선형'},{room:'Sono',doctor:'김현우',staff:'부경지'},{room:'진료실1',doctor:'김현우',staff:''},{room:'진료실2',doctor:'한효주',staff:''},{room:'진료실1',doctor:'채상훈',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
-      {const _d=data,_v=VISITS;data=[];VISITS=[];const today=localYMD(new Date());
+      {const _bi=BIT_INTAKE,_v=VISITS,_rg=REGISTRY;REGISTRY=[{mrn:'8802',name:'권예전',birth:'1990-01-01',sex:'여'}];BIT_INTAKE=[{mrn:'8802',name:'권루아',rrn7:'900101-2'}];VISITS=[];
+      let L=[];try{fillRegOpts('권루아');L=[...document.querySelectorAll('#regOpts option')].map(o=>o.value);}finally{BIT_INTAKE=_bi;VISITS=_v;REGISTRY=_rg;}
+      ok('재진 불러오기: 개명한 새 이름(비트)으로도 찾음', L.includes('권루아 8802'),JSON.stringify(L));}
+     {const _d=data,_v=VISITS;data=[];VISITS=[];const today=localYMD(new Date());
       const W=r=>bitWhy(Object.assign({docId:'x',date:today,registered:true,src:'db',mrn:'8801',name:'권루아',ocmNum:'901'},r)).code;
       const a=[W({cancelled:true}),W({status:'무시',handledBy:'직원'}),W({status:'자동접수'}),W({status:'자동접수',patientId:'gone'}),W({date:'2000-01-01'}),W({})];
       VISITS=[{id:'v1',mrn:'8801',bit:{ocmNum:'901'},dischargedAt:new Date().toISOString()}];const b=W({status:'자동접수',patientId:'v1'});data=_d;VISITS=_v;
@@ -12721,11 +12724,22 @@ function moveRouteStep(i,d){const j=i+d;if(j<0||j>=routeDraft.length)return;[rou
 function reorderRoute(from,to){if(from==null||from===to||from<0||to<0||to>=routeDraft.length)return;const it=routeDraft.splice(from,1)[0];routeDraft.splice(to,0,it);routeChanged();}
 
 /* 재진 검색 목록: 명단이 수만 명이라 입력한 글자로 걸러 최대 30명만 datalist에 채움 */
+/* 2026-10-25: 개명한 환자(권루아)가 새 이름으로 안 찾아졌다 — 명단에는 예전 이름만 있다. 오늘 비트 접수·조회 기록(새 이름)도 후보로 넣는다 */
+function bitNameCands(){const m=new Map();
+  [...(BIT_INTAKE||[]),...(BIT_LOOKUP||[])].forEach(r=>{const mrn=normMrn(r&&r.mrn),nm=String((r&&r.name)||'').trim();if(!mrn||!nm)return;
+    const b=String(r.rrn7||'').replace(/\D/g,'');const reg=regFind(mrn);
+    if(!m.has(mrn+'|'+nm))m.set(mrn+'|'+nm,{mrn,name:nm,birth:(reg&&reg.name===nm&&reg.birth)||(reg&&reg.birth)||'',sex:(reg&&reg.sex)||'',bit:true});});
+  /* 지난 내원 기록의 이름이 명단 이름과 다르면(개명 뒤 내원·빠진 내원 넣기) 그 이름도 */
+  (Array.isArray(VISITS)?VISITS:[]).forEach(v=>{const mrn=normMrn(v&&v.mrn),nm=String((v&&v.name)||'').trim();if(!mrn||!nm||m.has(mrn+'|'+nm))return;
+    const reg=regFind(mrn);if(reg&&reg.name===nm)return;m.set(mrn+'|'+nm,{mrn,name:nm,birth:v.birth||(reg&&reg.birth)||'',sex:v.sex||(reg&&reg.sex)||'',bit:true});});
+  return [...m.values()];}
 function fillRegOpts(q){
   q=(q||'').trim().toLowerCase();
   let list;
   if(!q)list=REGISTRY.slice(-30).reverse();                      // 입력 전: 최근 등록 30명
-  else list=regAll().filter(r=>((r.name||'').toLowerCase().includes(q))||((r.mrn||'').startsWith(q))).slice(0,30);
+  else{const hit=r=>((r.name||'').toLowerCase().includes(q))||((r.mrn||'').startsWith(q));
+    const bitL=bitNameCands().filter(hit),seen=new Set(bitL.map(r=>r.name+' '+r.mrn));
+    list=[...bitL,...regAll().filter(r=>hit(r)&&!seen.has((r.name||'')+' '+(r.mrn||'')))].slice(0,30);}
   document.getElementById("regOpts").innerHTML=list.map(r=>`<option value="${esc((r.name||'')+' '+(r.mrn||''))}">`).join("");
 }
 window.onReloadInput=function(){ fillRegOpts(document.getElementById("f_reload").value); onReloadPick(); };
@@ -12894,7 +12908,10 @@ function reloadEnter(){const inp=document.getElementById("f_reload");const v=inp
   if(!hits.length)hits=all.filter(x=>((x.name||'')+' '+(x.mrn||'')).includes(v)).slice(0,2);
   if(hits.length===1){inp.value=(hits[0].name||'')+' '+(hits[0].mrn||'');onReloadPick();}
   else if(hits.length>1)toast('같은 이름이 여러 명입니다 — 목록에서 병록번호로 골라 주세요.');}
-function onReloadPick(){const v=document.getElementById("f_reload").value.trim();const r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);
+function onReloadPick(){const v=document.getElementById("f_reload").value.trim();
+  let r=regAll().find(x=>((x.name||'')+' '+(x.mrn||''))===v);
+  if(!r){const b=bitNameCands().find(x=>(x.name+' '+x.mrn)===v);   // 비트의 새 이름(개명)으로 고른 경우 — 명단 정보에 새 이름
+    if(b){const reg=regFind(b.mrn);r=Object.assign({},reg||{},{mrn:b.mrn,name:b.name});}}
   /* 오늘 보드에 있는 환자면 그 카드의 환자 정보 창으로 바꿔 연다 (2026-10-05 요청 — 동선·처방내역까지 그대로) */
   if(r&&normMrn(r.mrn)){const bc=data.find(x=>!x._viewOnly&&!x.discharged&&normMrn(x.mrn)===normMrn(r.mrn));if(bc){openEdit(bc.id);return;}}
   if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");if(!editId)try{fillRxHist({mrn:r.mrn||""},'rxHistAdd');}catch(e){}fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});addLoadFull(r);}if(reloadHistOpen)renderReloadHistory();}
