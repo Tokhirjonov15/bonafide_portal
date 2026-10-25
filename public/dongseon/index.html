@@ -6271,7 +6271,10 @@ async function runSelfTest(){
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우','정상민','채상훈'].includes(n);
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'조선형'},{room:'C-Arm',doctor:'김현우',staff:''},{room:'C-Arm',doctor:'정상민',staff:'조선형'},{room:'Sono',doctor:'김현우',staff:'부경지'},{room:'진료실1',doctor:'김현우',staff:''},{room:'진료실2',doctor:'한효주',staff:''},{room:'진료실1',doctor:'채상훈',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
-      {const _bi=BIT_INTAKE,_v=VISITS,_rg=REGISTRY;REGISTRY=[{mrn:'8802',name:'권예전',birth:'1990-01-01',sex:'여'}];BIT_INTAKE=[{mrn:'8802',name:'권루아',rrn7:'900101-2'}];VISITS=[];
+      {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'방사선사':['조선형'],'간호사':['곽민솔']});
+      const a=[docStatStaff('C-Arm','조선형',''),docStatStaff('C-Arm','','곽민솔'),docStatStaff('C-Arm','곽민솔',''),docStatStaff('Sono','','곽민솔')];STAFF_ROSTER=_sr;
+      ok('C-Arm 직원별: 방사선사만(간호 담당·간호사 이름은 방사선사 미지정)', a.join(',')==='조선형,(방사선사 미지정),(방사선사 미지정),곽민솔',a.join(','));}
+     {const _bi=BIT_INTAKE,_v=VISITS,_rg=REGISTRY;REGISTRY=[{mrn:'8802',name:'권예전',birth:'1990-01-01',sex:'여'}];BIT_INTAKE=[{mrn:'8802',name:'권루아',rrn7:'900101-2'}];VISITS=[];
       let L=[];try{fillRegOpts('권루아');L=[...document.querySelectorAll('#regOpts option')].map(o=>o.value);}finally{BIT_INTAKE=_bi;VISITS=_v;REGISTRY=_rg;}
       ok('재진 불러오기: 개명한 새 이름(비트)으로도 찾음', L.includes('권루아 8802'),JSON.stringify(L));}
      {const _d=data,_v=VISITS;data=[];VISITS=[];const today=localYMD(new Date());
@@ -11218,12 +11221,20 @@ function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else if(s
    · C-Arm·Sono·근전도검사 = 술기 의사(담당 직원) 별 건수 — 예) 김현우(김진규). 담당 직원 = 그 방의 방사선 담당, 없으면 간호 담당
    자료: 내원 기록(VISITS)의 방별 기록 + 아직 보드에 있는 환자가 이미 거친 방. 기간 선택은 다른 탭과 같다. 테스트 환자는 뺀다 */
 const DOC_STAT_PROC=['C-Arm','Sono','근전도검사'];
+/* 담당 직원: C-Arm 은 방사선사만(2026-10-25 요청 — 예전 기록의 간호 담당·방사선 칸에 잘못 고른 간호사는 '(방사선사 미지정)'),
+   그 밖의 방(Sono·근전도)은 방사선 담당, 없으면 간호 담당 */
+const DOC_STAT_RAD_ONLY=['C-Arm'];
+function docStatStaff(room,rad,nurse){rad=String(rad||'').trim();nurse=String(nurse||'').trim();
+  if(!DOC_STAT_RAD_ONLY.includes(room))return rad||nurse;
+  if(!rad)return '(방사선사 미지정)';
+  let part='';try{part=rosterPart(rad);}catch(e){}
+  return (part&&part!=='방사선사')?'(방사선사 미지정)':rad;}
 function docStatRooms(){
   const out=[];
-  statsVis().forEach(v=>(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({room:r.room,doctor:String(r.doctor||'').trim(),staff:String(r.rad||r.nurse||'').trim()});}));
+  statsVis().forEach(v=>(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({room:r.room,doctor:String(r.doctor||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse)});}));
   data.filter(p=>p&&!p._viewOnly&&!p.discharged&&!isTestPatient(p)).forEach(p=>(p.visits||[]).forEach(v=>{
     if(!v||!v.room)return;if((statsDate||statsDays)&&!statInRange(v.leftAt||v.enteredAt))return;
-    out.push({room:v.room,doctor:String(docFor(p,v.room)||'').trim(),staff:String(radFor(p,v.room)||nurseFor(p,v.room)||'').trim()});}));
+    out.push({room:v.room,doctor:String(docFor(p,v.room)||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room))});}));
   return out;}
 function docStatData(){
   /* 2026-10-25 요청: 술기 의사(담당 직원) 조합 말고 원장님 한 분이 한 총 건수, 직원 한 명이 맡은 총 건수도 따로 */
@@ -11233,7 +11244,7 @@ function docStatData(){
   const inc=(o,k)=>{o[k]=(o[k]||0)+1;};
   rooms.forEach(r=>{
     if(/^진료실\s*\d/.test(r.room)){if(r.doctor&&!isDoc(r.doctor)){clinicSkip++;return;}inc(clinic,r.doctor||'(미지정)');}
-    else if(DOC_STAT_PROC.includes(r.room)){const k=(r.doctor||'(미지정)')+(r.staff?'('+r.staff+')':'');
+    else if(DOC_STAT_PROC.includes(r.room)){const k=(r.doctor||'(미지정)')+(r.staff&&!/미지정/.test(r.staff)?'('+r.staff+')':'');
       inc(proc[r.room]||(proc[r.room]={}),k);
       if(r.doctor&&!isDoc(r.doctor))procSkip[r.room]=(procSkip[r.room]||0)+1;else inc(byDoc[r.room]||(byDoc[r.room]={}),r.doctor||'(미지정)');
       inc(byStaff[r.room]||(byStaff[r.room]={}),r.staff||'(미지정)');}});
@@ -11254,7 +11265,7 @@ function docStatHtml(){
   return `<div class="hint" style="margin-bottom:8px">진료 = 진료실을 거친 횟수(그 방 담당 진료의 기준) · 시술 = <b>술기 의사(담당 직원)</b>별 건수 — 담당 직원은 그 방의 방사선 담당, 없으면 간호 담당입니다.</div>
     <div class="ds-grid">${block('원장님별 진료',d.clinic,d.clinicSkip?'의사 아닌 담당(간호·물리치료 등) '+d.clinicSkip+'건 제외':'')}</div>
     ${d.proc.map(x=>`<div class="ds-sec">${esc(x.room)} 술기 <span class="hint">합계 ${sum(x.list)}건</span></div>
-      <div class="ds-grid">${block(x.room+' · 원장님별 총',x.byDoc,x.docSkip?'의사 아닌 이름 '+x.docSkip+'건 제외':'')}${block(x.room+' · 직원별 총',x.byStaff,'방사선 담당, 없으면 간호 담당')}${block(x.room+' · 원장님(직원)',x.list)}</div>`).join('')}`;}
+      <div class="ds-grid">${block(x.room+' · 원장님별 총',x.byDoc,x.docSkip?'의사 아닌 이름 '+x.docSkip+'건 제외':'')}${block(x.room+' · 직원별 총',x.byStaff,DOC_STAT_RAD_ONLY.includes(x.room)?'방사선사만':'방사선 담당, 없으면 간호 담당')}${block(x.room+' · 원장님(직원)',x.list)}</div>`).join('')}`;}
 function exportDocStats(){
   const d=docStatData();const out=[['구분','이름','건수']];
   d.clinic.forEach(x=>out.push(['진료',x[0],x[1]]));
