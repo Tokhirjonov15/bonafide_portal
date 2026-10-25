@@ -8022,7 +8022,7 @@ function wtFrame(ts){
    배너 = '주사전담 치료팀' + 오늘 근무 원장님(4층 비급여 화면의 원장님 근무표 — pt4Meta.docDuty[오늘]) 사진·이름 + ONE DAY ONE STOP SYSTEM.
    사진은 img/doc/ 에 이름별로(없으면 이름 첫 글자 동그라미). 근무표가 비었으면 배너를 건너뛴다. TV 마다 켜고 끔(기본 켬) ═ */
 const WB_LIST_SEC=50, WB_BAN_SEC=10;
-const DOC_PHOTO={'김현우':{f:'kimhw.jpg',pos:'63% 30%'},'채상훈':{f:'chaesh.jpg',pos:'38% 30%'}};   // 사진을 받으면 여기에 더한다 (예: '정상민':{f:'jungsm.jpg',pos:'50% 30%'})
+const DOC_PHOTO={'김현우':{f:'kimhw.jpg',pos:'63% 30%'}};   // 사진을 받으면 여기에 더한다 (예: '정상민':{f:'jungsm.jpg',pos:'50% 30%'})
 let WB_DOCS=null,WB_DOCS_AT=0,WB_PHASE='list',WB_AT=0;
 function waitBannerOn(){try{return localStorage.getItem('dsWaitBanner')!=='0';}catch(e){return true;}}
 window.setWaitBanner=on=>{try{localStorage.setItem('dsWaitBanner',on?'1':'0');}catch(e){}if(!on)wbShow(false);WB_PHASE='list';WB_AT=Date.now();};
