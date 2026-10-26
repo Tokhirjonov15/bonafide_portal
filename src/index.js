@@ -607,6 +607,8 @@ const BOT_CHANNELS = [
   { key: "3,4층 이동", match: (room, kind) => kind === "floor" },
   /* 2026-10-21 요청: 컴플레인 환자는 비트 연속메모에 본인 생년월일(991010)을 적어 둔다 → 접수되면 "991010 접수되었습니다" */
   { key: "컴플레인 접수", match: (room, kind) => kind === "cmp" },
+  /* 2026-10-26 요청: 서류 발급 태블릿(?docs)에서 신청이 완료되면 */
+  { key: "서류발급", match: (room, kind) => kind === "docs" },
 ];
 async function roomBotRooms(env) { return BOT_CHANNELS.map((c) => c.key); }
 async function roomBotRoomsOld(env) {
@@ -772,7 +774,7 @@ async function dongseonNotify(request, env) {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
     const room = s(b.room), kind = s(b.kind);
-    if (!room || !["in", "out", "dc", "dcundo", "floor", "wait", "route", "consult", "cmp"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
+    if (!room || !["in", "out", "dc", "dcundo", "floor", "wait", "route", "consult", "cmp", "docs"].includes(kind)) return json({ error: "room/kind 필요" }, 400);
     if (kind === "route") return json({ ok: true, skipped: "route alerts off (2026-10-03)" });   // 동선 변경·처방 변경 알림은 끔 — 새로고침 안 된 옛 화면이 보내도 서버에서 버린다
     if (!env.ROOM_BOT_TOKEN && !env.TELEGRAM_TOKEN) return json({ ok: true, sent: 0 });
     await ensureSchema(env);
@@ -807,7 +809,11 @@ async function dongseonNotify(request, env) {
         (s(b.to) ? `\n\n→ ${s(b.to).slice(0, 300)}` : "")
       : "";
     const dcRooms = s(b.rooms) || room;
-    const text = kind === "cmp" ? `⚠️ ${s(b.birth)} 접수되었습니다${s(b.clinic) ? " · " + s(b.clinic) : ""} · ${hm}`
+    const text = kind === "docs" ? `📄 서류발급 신청 · ${hm}
+${s(b.name)}${s(b.birth) ? " " + s(b.birth) : ""}${s(b.mrn) ? " (" + s(b.mrn) + ")" : ""}${s(b.who) ? " · " + s(b.who) : ""}
+서류: ${s(b.items).slice(0, 300)}
+기간: ${s(b.period).slice(0, 80)}`
+      : kind === "cmp" ? `⚠️ ${s(b.birth)} 접수되었습니다${s(b.clinic) ? " · " + s(b.clinic) : ""} · ${hm}`
       : kind === "consult" ? `🙅 ${(s(b.mrn) ? s(b.mrn) + "." : "") + s(b.name)}님 상담진행X ${s(b.reason).slice(0, 60)}${s(b.consultRoom) ? " · " + s(b.consultRoom) : ""}${s(b.by) ? " · " + s(b.by) : ""}`   /* 상담 시행 안 함 + 사유 (2026-10-03) */
       : kind === "route" ? routeTxt
       : kind === "wait" ? `⏰ ${room} 대기 ${Number(b.min) || 30}분 넘음 · ${who} · 진행을 눌러 주세요`

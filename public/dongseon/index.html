@@ -15254,6 +15254,28 @@ boot();
   .dk-date.on{background:var(--dk-blue);border-color:var(--dk-blue);color:#fff}
   .dk-extra{width:100%;font:inherit;font-size:22px;padding:14px 18px;border:2px solid var(--dk-line);border-radius:14px;outline:0}
   .dk-extra:focus{border-color:var(--dk-blue)}
+  .dk-optrow{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
+  .dk-optrow .dk-opt{margin-bottom:0}
+  .dk-allinfo{padding:24px;font-size:22px;font-weight:700;color:var(--dk-navy)}
+  .dk-cal{padding:14px 18px 12px}
+  .dk-cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .dk-cal-h b{font-size:22px;color:var(--dk-navy)}
+  .dk-cal-nav{width:48px;height:42px;border-radius:12px;border:2px solid var(--dk-line);background:#fff;font-size:24px;font-weight:900;color:var(--dk-navy);cursor:pointer}
+  .dk-cal-nav:disabled{opacity:.3}
+  .dk-cal-w,.dk-cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+  .dk-cal-w span{font-size:15px;font-weight:800;color:var(--dk-mut);padding:2px 0}
+  .dk-cal-w .sun,.dk-day.sun{color:#d92d2d}.dk-cal-w .sat,.dk-day.sat{color:#1d5fd1}
+  .dk-day{position:relative;height:35px;border:0;border-radius:10px;background:transparent;font-size:19px;font-weight:700;color:var(--dk-ink);cursor:pointer}
+  .dk-day.dis{color:#cdd5e1 !important;cursor:default}
+  .dk-day.tod{box-shadow:inset 0 0 0 2px #c8d6ef}
+  .dk-day.vis::after{content:"";position:absolute;left:50%;bottom:4px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#f59e0b}
+  .dk-day.in{background:#dbe7ff;border-radius:0}
+  .dk-day.edge{background:var(--dk-blue);color:#fff !important;border-radius:10px}
+  .dk-cal-f{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:18px;color:var(--dk-mut);font-weight:700}
+  .dk-cal-f b{color:var(--dk-blue);font-size:20px}
+  .dk-cal-f .lg{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:15px}
+  .dk-cal-f .lg i{width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block}
+  .dk-cal-clr{border:2px solid var(--dk-line);background:#fff;border-radius:10px;padding:4px 12px;font-size:16px;font-weight:800;color:var(--dk-navy);cursor:pointer}
   .dk-sum{padding:22px 24px}
   .dk-sum h3{margin:0 0 14px;font-size:22px;font-weight:900;color:var(--dk-navy)}
   .dk-sum .r{display:flex;gap:12px;font-size:19px;padding:9px 0;border-top:1px dashed var(--dk-line)}
@@ -15300,7 +15322,7 @@ boot();
   const today=()=>ymd(new Date());
   const logo=()=>{try{return (typeof WAIT_DEFAULT_LOGO!=='undefined'&&WAIT_DEFAULT_LOGO)||'';}catch(e){return '';}};
   const itemName=it=>it.n+(it.s?' ('+it.s+')':'');
-  function reset(){S={step:0,who:'',name:'',birth:'',free:[],paid:[],all:false,pick:false,dates:[],extra:'',err:''};}
+  function reset(){S={step:0,who:'',name:'',birth:'',free:[],paid:[],all:false,pick:false,from:'',to:'',cm:'',err:''};}
   function bump(){clearTimeout(IDLE_T);if(S&&S.step>0&&S.step<5)IDLE_T=setTimeout(()=>{reset();render();},120000);}   // 2분 손대지 않으면 처음으로
   function b6(s){const d=String(s||'').replace(/\D/g,'');return d.length===8?d.slice(2):d.length===6?d:'';}
   function myVisits(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);if(!nk||!bk)return [];
@@ -15350,33 +15372,53 @@ boot();
       <div class="dk-docs"><div class="dk-card dk-grp"><div class="dk-grp-h">무료 서류 <span class="dk-tag free">무료</span></div>${FREE.map((x,i)=>it(x,i,'free')).join('')}</div>
         <div class="dk-card dk-grp"><div class="dk-grp-h">유료 서류 <span class="dk-tag paid">유료</span></div>${PAID.map((x,i)=>it(x,i,'paid')).join('')}</div></div>
       <div class="dk-err">${E(S.err)}</div></div>`+foot(2,'dkDocsNext()','다음',n>0).replace('<button class="dk-b next',`${n?`<span class="dk-count">${n}개 선택</span>`:''}<button class="dk-b next`);return;}
-    if(S.step===4){const D=myVisits();const ready=S.all||(S.pick&&(S.dates.length||String(S.extra||'').trim()));
+    if(S.step===4){const D=myVisits();const ready=S.all||(S.pick&&S.from);
       const docs=[...S.free.slice().sort().map(i=>itemName(FREE[i])),...S.paid.slice().sort().map(i=>itemName(PAID[i])+' · '+PAID[i].f)];
       el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급 기간을 골라 주세요</h1><p class="dk-sub">진료받으신 날짜의 서류를 발급해 드립니다.</p>
-      <div class="dk-per"><div>
-        <button class="dk-opt ${S.all?'on':''}" onclick="dkPer('all')"><span class="rd"></span><span><div class="t">내원이력 전체</div><div class="d">지금까지 진료받으신 날짜 모두</div></span></button>
-        <button class="dk-opt ${S.pick?'on':''}" onclick="dkPer('pick')"><span class="rd"></span><span><div class="t">날짜 골라서</div><div class="d">필요한 날짜만</div></span></button>
-        ${S.pick?`<div class="dk-card" style="padding:18px 20px">${D.length?`<div class="dk-fl" style="margin-top:0">내원하신 날짜 (누르면 선택)</div><div class="dk-dates">${D.map(d=>`<button class="dk-date ${S.dates.includes(d)?'on':''}" onclick="dkDate('${d}')">${dateLbl(d)}</button>`).join('')}</div>`
-            :`<div class="dk-mutnote" style="margin:0 0 12px">10월 이후 내원 기록을 찾지 못했습니다 — 아래에 날짜를 적어 주세요.</div>`}
-          <input class="dk-extra" id="dkExtra" value="${E(S.extra)}" placeholder="날짜 직접 입력 (예: 10월 3일, 10월 10일)" oninput="dkSet('extra',this.value)">
-          <div class="dk-mutnote">10월 이전 날짜는 데스크에 문의해 주세요.</div></div>`:''}
+      <div class="dk-optrow">
+        <button class="dk-opt ${S.all?'on':''}" onclick="dkPer('all')"><span class="rd"></span><span><div class="t">내원이력 전체</div><div class="d">진료받으신 날짜 모두</div></span></button>
+        <button class="dk-opt ${S.pick?'on':''}" onclick="dkPer('pick')"><span class="rd"></span><span><div class="t">날짜 선택</div><div class="d">달력에서 며칠부터 며칠까지</div></span></button></div>
+      <div class="dk-per"><div>${S.pick?calHtml(D):S.all?`<div class="dk-card dk-allinfo">✓ 진료받으신 날짜 <b>모두</b>의 서류를 발급해 드립니다.${D.length?`<div class="dk-mutnote">10월 이후 내원 ${D.length}일 확인됨</div>`:''}</div>`:`<div class="dk-need-ph">위에서 발급 기간을 골라 주세요</div>`}
         <div class="dk-err">${E(S.err)}</div></div>
       <div class="dk-card dk-sum"><h3>신청 내용</h3>
         <div class="r"><span class="k">발급 대상</span><span class="v">${E((WHO[S.who]||{}).t||'')}</span></div>
         <div class="r"><span class="k">성함</span><span class="v">${E(S.name)}</span></div>
         <div class="r"><span class="k">생년월일</span><span class="v">${E(birthLbl(S.birth))}</span></div>
         <div class="r"><span class="k">서류</span><span class="v">${docs.map(E).join('<br>')}</span></div>
-        <div class="r"><span class="k">기간</span><span class="v">${S.all?'내원이력 전체':S.pick?(([...S.dates].sort().map(dateLbl).concat(String(S.extra||'').trim()?[E(S.extra)]:[])).join(', ')||'<span style="color:#b3bfd1">날짜를 골라 주세요</span>'):'<span style="color:#b3bfd1">위에서 골라 주세요</span>'}</span></div>
+        <div class="r"><span class="k">기간</span><span class="v">${S.all?'내원이력 전체':S.pick?(S.from?E(rangeLbl()):'<span style="color:#b3bfd1">달력에서 골라 주세요</span>'):'<span style="color:#b3bfd1">위에서 골라 주세요</span>'}</span></div>
       </div></div></div>${foot(3,'dkSubmit()','신청하기',ready)}`;return;}
     if(S.step===5){el.innerHTML=`<div class="dk-done" onclick="dkHome()">${ex}<div class="ok">✓</div><div class="t">신청이 완료되었습니다</div>
       <div class="m">모든 서류는 확인 절차를 거친 후 발급까지 <b>약 15분</b> 소요되며<br>시간이 지체될 시 직원이 다시 안내해 드리겠습니다.<br><br><b>자리에 앉아 계시면 호명해 드리겠습니다</b> ☺</div>
       <div class="cd"><i></i></div><div class="s">잠시 후 처음 화면으로 돌아갑니다 · 화면을 누르면 바로 돌아가요</div></div>`;
       clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},30000);return;}}
+  /* 기간 달력 (2026-10-26 요청: '날짜 선택' — 달력에서 며칠부터 며칠까지). 시작일 → 끝일 차례로 누른다(같은 날 한 번만 누르면 그날 하루).
+     고를 수 있는 날 = 10월 1일 ~ 오늘. 내원하신 날은 점으로 표시 */
+  function rangeLbl(){if(!S.from)return '';const a=dateLbl(S.from);return (!S.to||S.to===S.from)?a:a+' ~ '+dateLbl(S.to);}
+  function calHtml(D){const t=today();const vis=new Set(D);
+    const cm=S.cm||(S.from||D[0]||t).slice(0,7);const [y,m]=cm.split('-').map(Number);
+    const first=new Date(y,m-1,1),days=new Date(y,m,0).getDate(),lead=first.getDay();
+    const minM=SINCE.slice(0,7),maxM=t.slice(0,7);
+    const cells=[];for(let i=0;i<lead;i++)cells.push('<span></span>');
+    for(let d=1;d<=days;d++){const k=y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');const dis=k<SINCE||k>t;
+      const to=S.to||S.from;const inR=S.from&&k>=S.from&&k<=to;const edge=k===S.from||k===to;const dow=(lead+d-1)%7;
+      cells.push(`<button class="dk-day ${dis?'dis':''} ${inR?'in':''} ${edge&&S.from?'edge':''} ${vis.has(k)?'vis':''} ${dow===0?'sun':dow===6?'sat':''} ${k===t?'tod':''}" ${dis?'disabled':`onclick="dkCal('${k}')"`}>${d}</button>`);}
+    return `<div class="dk-card dk-cal"><div class="dk-cal-h"><button class="dk-cal-nav" ${cm<=minM?'disabled':''} onclick="dkCalMove(-1)">‹</button><b>${y}년 ${m}월</b><button class="dk-cal-nav" ${cm>=maxM?'disabled':''} onclick="dkCalMove(1)">›</button></div>
+      <div class="dk-cal-w">${'일월화수목금토'.split('').map((w,i)=>`<span class="${i===0?'sun':i===6?'sat':''}">${w}</span>`).join('')}</div>
+      <div class="dk-cal-g">${cells.join('')}</div>
+      <div class="dk-cal-f">${S.from?`<b>${E(rangeLbl())}</b> <button class="dk-cal-clr" onclick="dkCalClr()">다시 고르기</button>`:'<span>① 시작일 → ② 끝일을 차례로 눌러 주세요</span>'}<span class="lg"><i></i>내원하신 날</span></div>
+      <div class="dk-mutnote">10월 이전 날짜는 데스크에 문의해 주세요.</div></div>`;}
+  window.dkCal=k=>{   // 처음(또는 범위를 다 고른 뒤) 누르면 시작일, 그다음 누르면 끝일(시작보다 앞이면 시작일을 바꿈)
+    if(!S.from||S.to){S.from=k;S.to='';}
+    else if(k<S.from)S.from=k;
+    else S.to=k;
+    S.cm=k.slice(0,7);S.err='';render();};
+  window.dkCalMove=d=>{const cm=S.cm||(S.from||today()).slice(0,7);const [y,m]=cm.split('-').map(Number);const t=new Date(y,m-1+d,1);S.cm=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0');render();};
+  window.dkCalClr=()=>{S.from='';S.to='';render();};
   window.dkGo=n=>{S.step=n;S.err='';render();};
   window.dkHome=()=>{clearTimeout(DONE_T);reset();render();};
   window.dkWho=k=>{S.who=k;S.err='';render();};
   window.dkWhoNext=()=>{if(!S.who){kToast('발급 대상을 먼저 골라 주세요.');return;}dkGo(2);};
-  window.dkSet=(k,v)=>{S[k]=v;bump();if(k==='name'||k==='extra'){const nx=document.querySelector('#docKiosk .dk-b.next');if(nx){const ok=k==='name'?(String(S.name).trim()&&(S.birth.length===6||S.birth.length===8)):(S.all||(S.pick&&(S.dates.length||String(S.extra).trim())));nx.classList.toggle('dis',!ok);}}};
+  window.dkSet=(k,v)=>{S[k]=v;bump();if(k==='name'){const nx=document.querySelector('#docKiosk .dk-b.next');if(nx)nx.classList.toggle('dis',!(String(S.name).trim()&&(S.birth.length===6||S.birth.length===8)));}};
   window.dkPadFor=()=>{};
   window.dkKey=k=>{let b=String(S.birth||'');if(k==='bs')b=b.slice(0,-1);else if(k==='clr')b='';else if(b.length<8)b+=k;S.birth=b;S.err='';
     const el=document.getElementById('dkBirth');if(el){el.textContent=b?birthLbl(b):'예: 90.01.01';el.classList.toggle('ph',!b);}
@@ -15388,16 +15430,16 @@ boot();
   window.dkTog=(k,i)=>{const L=S[k];const j=L.indexOf(i);if(j>=0)L.splice(j,1);else L.push(i);S.err='';render();};
   window.dkDocsNext=()=>{if(!S.free.length&&!S.paid.length){S.err='발급할 서류를 하나 이상 골라 주세요.';render();return;}dkGo(4);};
   window.dkPer=k=>{if(k==='all'){S.all=true;S.pick=false;}else{S.pick=true;S.all=false;}S.err='';render();};
-  window.dkDate=d=>{const j=S.dates.indexOf(d);if(j>=0)S.dates.splice(j,1);else S.dates.push(d);render();};
   window.dkSubmit=async()=>{
     if(!S.all&&!S.pick){S.err='발급 기간을 골라 주세요.';render();return;}
-    if(S.pick&&!S.dates.length&&!String(S.extra||'').trim()){S.err='날짜를 하나 이상 고르거나 직접 적어 주세요.';render();return;}
+    if(S.pick&&!S.from){S.err='달력에서 날짜를 골라 주세요.';render();return;}
     const c=col();if(!c){S.err='지금 신청을 보낼 수 없습니다 — 직원 호출을 눌러 주세요.';render();return;}
     const id='dr'+Date.now();
     const rec={id,type:'docs',at:new Date().toISOString(),date:today(),who:(WHO[S.who]||{}).t||'',name:String(S.name).trim(),birth:String(S.birth),mrn:matchMrn(),
       items:[...S.free.slice().sort().map(i=>({name:itemName(FREE[i]),fee:'무료'})),...S.paid.slice().sort().map(i=>({name:itemName(PAID[i]),fee:PAID[i].f}))],
-      period:S.all?'내원이력 전체':('선택: '+[...S.dates.slice().sort(),String(S.extra||'').trim()].filter(Boolean).join(', ')),status:'대기',device:navigator.userAgent.slice(0,80)};
+      period:S.all?'내원이력 전체':rangeLbl(),from:S.all?'':S.from,to:S.all?'':(S.to||S.from),status:'대기',device:navigator.userAgent.slice(0,80)};
     try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 직원 호출을 눌러 주세요.';render();return;}
+    try{if(typeof roomNotify==='function')roomNotify({name:rec.name,mrn:rec.mrn},'__docs__','docs',{who:rec.who,birth:rec.birth,items:rec.items.map(x=>x.name+(x.fee&&x.fee!=='무료'?' ('+x.fee+')':'')).join(', '),period:rec.period});}catch(e){}   // 텔레그램 '서류발급' (2026-10-26)
     dkGo(5);};
   let CALL_AT=0;
   window.dkCall=async()=>{if(Date.now()-CALL_AT<30000){kToast('직원을 불렀습니다.<br>잠시만 기다려 주세요.');return;}CALL_AT=Date.now();
