@@ -15195,23 +15195,24 @@ boot();
   .dk-prep li{counter-increment:n;font-size:19px;line-height:1.45;margin:9px 0;padding-left:36px;position:relative}
   .dk-prep li::before{content:counter(n);position:absolute;left:0;top:1px;width:26px;height:26px;border-radius:50%;background:#e8eefb;color:var(--dk-blue);font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center}
   .dk-alert{margin-top:20px;display:flex;align-items:center;gap:14px;background:#fff4e5;border:2px solid #ffd59a;color:#8a4b00;border-radius:18px;padding:16px 22px;font-size:21px;font-weight:800}
-  .dk-who{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-  .dk-whob{display:flex;align-items:center;gap:14px;text-align:left;padding:20px 20px;border:3px solid var(--dk-line);border-radius:22px;background:#fff;cursor:pointer;min-height:104px;box-shadow:0 6px 22px rgba(22,50,92,.05)}
+  .dk-who{display:flex;flex-direction:column;gap:12px}
+  .dk-whoi{border:3px solid var(--dk-line);border-radius:22px;background:#fff;box-shadow:0 6px 22px rgba(22,50,92,.05);overflow:hidden;transition:border-color .15s,box-shadow .2s}
+  .dk-whoi.on{border-color:var(--dk-blue);box-shadow:0 10px 26px rgba(29,95,209,.18)}
+  .dk-whob{display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:14px 20px;border:0;background:#fff;cursor:pointer;min-height:84px}
   .dk-whob:active{transform:scale(.98)}
   .dk-whob .n{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:#e8eefb;color:var(--dk-blue);font-weight:900;font-size:19px;display:flex;align-items:center;justify-content:center}
   .dk-whob .ic{flex:0 0 auto;width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:28px}
   .dk-whob .t{flex:1;font-size:22px;font-weight:900;color:var(--dk-navy);line-height:1.25;word-break:keep-all}
   .dk-whob .ar{color:#a5b2c6;font-size:16px}
-  .dk-whob.on{border-color:var(--dk-blue);background:#eef4ff;box-shadow:0 10px 26px rgba(29,95,209,.18)}
-  .dk-whob.on .n{background:var(--dk-blue);color:#fff}.dk-whob.on .ar{color:var(--dk-blue)}
-  .dk-need{margin-top:16px;padding:20px 26px;border:2px solid #cfe0ff;background:#f8fbff;animation:dkDrop .28s ease-out;transform-origin:top}
+  .dk-whoi.on .dk-whob{background:#eef4ff}
+  .dk-whoi.on .n{background:var(--dk-blue);color:#fff}.dk-whoi.on .ar{color:var(--dk-blue)}
+  .dk-need{padding:14px 26px 18px 70px;border-top:2px solid #dbe7ff;background:#f8fbff;animation:dkDrop .28s ease-out;transform-origin:top}
   @keyframes dkDrop{from{opacity:0;transform:translateY(-10px) scaleY(.92)}to{opacity:1;transform:none}}
-  .dk-need .h{font-size:22px;font-weight:900;color:var(--dk-navy);margin-bottom:8px}
+  .dk-need .h{font-size:19px;font-weight:800;color:var(--dk-mut);margin-bottom:4px}
   .dk-need ol{margin:0;padding-left:0;list-style:none;counter-reset:n}
   .dk-need li{counter-increment:n;font-size:22px;line-height:1.45;margin:10px 0;padding-left:40px;position:relative;font-weight:600}
   .dk-need li::before{content:counter(n);position:absolute;left:0;top:2px;width:28px;height:28px;border-radius:50%;background:var(--dk-blue);color:#fff;font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center}
   .dk-need-ph{margin-top:16px;padding:26px;border:2px dashed #d3dcea;border-radius:22px;text-align:center;color:#9aa8bf;font-size:20px;font-weight:700}
-  @media (max-width:1000px){.dk-who{grid-template-columns:1fr}}
   /* ② 본인 확인 */
   .dk-id{display:grid;grid-template-columns:1.25fr 1fr;gap:26px;align-items:start}
   .dk-fl{display:block;font-size:22px;font-weight:900;color:var(--dk-navy);margin:6px 0 10px}
@@ -15352,8 +15353,9 @@ boot();
         <button class="dk-staffexit" onclick="event.stopPropagation();dkExitAsk()">직원용 · 나가기</button></div>`;return;}
     if(S.step===1){const w=WHO[S.who];
       el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급 대상을 확인하겠습니다</h1><p class="dk-sub">서류를 받으시는 분을 골라 주세요. 누르면 준비하실 서류가 아래에 나옵니다.</p>
-      <div class="dk-who">${Object.entries(WHO).map(([k,v],i)=>`<button class="dk-whob ${S.who===k?'on':''}" onclick="dkWho('${k}')"><span class="n">${i+1}</span><span class="ic" style="background:${v.bg}">${v.ic}</span><span class="t">${v.t}</span><span class="ar">${S.who===k?'▲':'▼'}</span></button>`).join('')}</div>
-      ${w?`<div class="dk-card dk-need" key="${S.who}"><div class="h">${w.ic} ${w.t} — 이렇게 준비해 주세요</div><ol>${w.L.map(x=>`<li>${x}</li>`).join('')}</ol></div>`:`<div class="dk-need-ph">위에서 발급 대상을 눌러 주세요</div>`}
+      <div class="dk-who">${Object.entries(WHO).map(([k,v],i)=>{const on=S.who===k;return `<div class="dk-whoi ${on?'on':''}"><button class="dk-whob" onclick="dkWho('${k}')"><span class="n">${i+1}</span><span class="ic" style="background:${v.bg}">${v.ic}</span><span class="t">${v.t}</span><span class="ar">${on?'▲':'▼'}</span></button>
+        ${on?`<div class="dk-need"><div class="h">이렇게 준비해 주세요</div><ol>${v.L.map(x=>`<li>${x}</li>`).join('')}</ol></div>`:''}</div>`;}).join('')}</div>
+      ${w?'':`<div class="dk-need-ph">위에서 발급 대상을 눌러 주세요</div>`}
       <div class="dk-alert">⚠️ 캡쳐·촬영·저장된 파일보다는 <u>실물</u>로 준비 부탁드립니다.</div></div>${foot(0,'dkWhoNext()','다음',!!w)}`;return;}
     if(S.step===2){const ok=String(S.name||'').trim()&&(S.birth.length===6||S.birth.length===8);
       el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">서류 받으실 분(당사자) 확인</h1><p class="dk-sub">진료받으신 분의 성함과 생년월일을 입력해 주세요.</p>
