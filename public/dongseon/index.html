@@ -15134,54 +15134,130 @@ boot();
       if(DIR&&!(await perm(false))){const el=document.getElementById('recBadge');if(el)el.dataset.noperm='1';}}catch(e){console.warn('rec init',e);}badge();})();
 })();
 </script>
-<!-- ═════ 서류 발급 전용 태블릿 (2026-10-26 요청 — 럭스꼬 '서류발급태블릿 계획') ═════
+<!-- ═════ 서류 발급 전용 태블릿 (2026-10-26 요청 — 럭스꼬 '서류발급태블릿 계획', 같은 날 디자인 다듬음) ═════
    주소 끝에 ?docs 를 붙여 연 태블릿은 로그인하면 이 화면이 가득 찬다(환자용 — 동선관리 알림·팝업·자동 로그아웃 없음).
-   시작 → 준비 안내 → 성함·생년월일 → 서류 선택(무료·유료) → 발급 기간(동선관리 내원 기록) → 완료(30초 뒤 처음으로). 2분 동안 손대지 않으면 처음으로.
-   신청은 docReq 문서로 저장 → 직원 화면 맨 위 [📄 서류발급]에 숫자·알림, 목록에서 [발급 완료]. [직원 호출]도 같은 목록에 '호출'로.
+   시작 → ① 준비 안내 → ② 본인 확인(성함·생년월일 — 숫자 키패드) → ③ 서류 선택(무료·유료) → ④ 발급 기간(동선관리 내원 기록)+신청 내용 → 완료(30초 뒤 처음으로).
+   2분 동안 손대지 않으면 처음으로. 신청은 docReq 문서 → 직원 화면 맨 위 [📄 서류발급]에 숫자·알림, 목록에서 [발급 완료]. [직원 호출]도 같은 목록에 '호출'로.
    태블릿에서 나가기: 오른쪽 위 모서리를 3초 누르기 → 확인 -->
 <style>
-  .dk{position:fixed;inset:0;z-index:4000;background:#fff;color:#111;display:none;flex-direction:column;font-family:'Noto Sans KR','Malgun Gothic',sans-serif;user-select:none;-webkit-user-select:none}
+  .dk{--dk-navy:#16325c;--dk-blue:#1d5fd1;--dk-blue2:#2f74e8;--dk-bg:#f3f6fb;--dk-line:#dde5f0;--dk-ink:#14213d;--dk-mut:#5b6b85;--dk-red:#d92d2d;--dk-ok:#16a34a;
+    position:fixed;inset:0;z-index:4000;background:var(--dk-bg);color:var(--dk-ink);display:none;flex-direction:column;font-family:'Noto Sans KR','Malgun Gothic',sans-serif;
+    user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;letter-spacing:-.3px}
   .dk.show{display:flex}
-  .dk-body{flex:1;min-height:0;overflow:auto;padding:5vh 6vw 3vh;display:flex;flex-direction:column}
-  .dk h1{font-size:clamp(34px,6vw,72px);font-weight:900;margin:0 0 3vh;letter-spacing:-1px}
-  .dk-start{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer}
-  .dk-start .t1{font-size:clamp(48px,10vw,120px);font-weight:900;line-height:1.1;letter-spacing:-2px}
-  .dk-start .t2{font-size:clamp(28px,5vw,60px);margin-top:6vh}
-  .dk-start .t3{color:#dc2626;font-weight:800;font-size:clamp(18px,2.6vw,32px);margin-top:8vh;line-height:1.6}
-  .dk-start .t3 b{font-size:1.9em;vertical-align:-.15em}
-  .dk-sec{margin:0 0 2.4vh}
-  .dk-sec .h{font-size:clamp(20px,2.8vw,32px);font-weight:900}
-  .dk-sec .l{font-size:clamp(17px,2.3vw,28px);margin-top:.4vh;line-height:1.45}
-  .dk-warn{font-size:clamp(18px,2.4vw,28px);font-weight:900;margin-top:1vh}
-  .dk-foot{display:flex;align-items:center;gap:14px;padding:2vh 6vw 3vh}
-  .dk-btn{font:inherit;font-size:clamp(20px,2.6vw,30px);font-weight:800;border:0;border-radius:14px;padding:1.4vh 3.4vw;background:#3b6fd4;color:#fff;cursor:pointer;min-width:150px}
-  .dk-btn.ghost{background:#e5ebf5;color:#1f3b73}
-  .dk-btn:disabled{opacity:.4}
-  .dk-call{margin-left:auto;font-size:clamp(15px,1.8vw,20px);padding:1vh 2vw;background:#fff;color:#b91c1c;border:2px solid #fca5a5;min-width:0}
-  .dk-field{display:flex;align-items:center;gap:2vw;margin:2.4vh 0}
-  .dk-field label{font-size:clamp(26px,4vw,48px);font-weight:900;min-width:7em}
-  .dk-field input{flex:1;max-width:620px;font:inherit;font-size:clamp(26px,3.6vw,44px);padding:1.2vh 1.4vw;border:3px solid #c7d2e3;border-radius:14px;outline:0}
-  .dk-field input:focus{border-color:#3b6fd4}
-  .dk-note{font-size:clamp(16px,2.1vw,26px);line-height:1.7;margin-top:2vh}
-  .dk-err{color:#dc2626;font-weight:800;font-size:clamp(16px,2vw,24px);min-height:1.5em;margin-top:1vh}
-  .dk-two{display:flex;gap:4vw;flex-wrap:wrap;align-items:flex-start}
-  .dk-tbl{flex:1;min-width:300px;border-collapse:separate;border-spacing:0 6px;font-size:clamp(17px,2.2vw,26px)}
-  .dk-tbl caption{font-weight:900;padding:1vh;color:#fff;border-radius:10px 10px 0 0;font-size:clamp(18px,2.3vw,28px)}
-  .dk-tbl.free caption{background:#ea7a2e}.dk-tbl.paid caption{background:#f4b400;color:#222}
-  .dk-tbl td{padding:1.1vh 1vw;background:#fdf1ea}.dk-tbl.paid td{background:#fff6dd}
-  .dk-tbl tr{cursor:pointer}
-  .dk-tbl tr.on td{background:#dbeafe !important;font-weight:800}
-  .dk-tbl td.ck{width:2.4em;text-align:center;font-size:1.3em}
-  .dk-tbl td.fee{text-align:right;white-space:nowrap;color:#555}
-  .dk-opt{display:flex;align-items:center;gap:1.4vw;font-size:clamp(24px,3.6vw,44px);margin:2.6vh 0;cursor:pointer}
-  .dk-opt .bx{width:1.1em;height:1.1em;border:3px solid #333;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.8em}
-  .dk-opt.on .bx{background:#3b6fd4;border-color:#3b6fd4;color:#fff}
-  .dk-dates{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 1vh 4vw}
-  .dk-date{font:inherit;font-size:clamp(18px,2.3vw,28px);padding:1vh 1.6vw;border:2px solid #c7d2e3;border-radius:12px;background:#fff;cursor:pointer}
-  .dk-date.on{background:#dbeafe;border-color:#3b6fd4;font-weight:800}
-  .dk-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:clamp(24px,3.8vw,46px);font-weight:900;line-height:1.5}
-  .dk-done .s{font-size:.5em;color:#999;font-weight:500;margin-top:5vh}
-  .dk-exit{position:absolute;top:0;right:0;width:70px;height:70px}
+  .dk *{box-sizing:border-box}
+  .dk button{font-family:inherit;-webkit-tap-highlight-color:transparent}
+  /* 머리줄: 로고·병원 이름 · 진행 단계 · 직원 호출 */
+  .dk-top{display:flex;align-items:center;gap:20px;padding:18px 34px;background:#fff;border-bottom:1px solid var(--dk-line)}
+  .dk-brand{display:flex;align-items:center;gap:12px;font-weight:900;font-size:22px;color:var(--dk-navy);white-space:nowrap}
+  .dk-brand img{width:44px;height:44px;border-radius:50%;object-fit:cover}
+  .dk-brand span{font-weight:500;color:var(--dk-mut);font-size:18px}
+  .dk-steps{flex:1;display:flex;justify-content:center;gap:6px;min-width:0}
+  .dk-st{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;color:#9aa8bf;white-space:nowrap}
+  .dk-st i{font-style:normal;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e8edf5;color:#8796ad;font-size:15px;font-weight:900}
+  .dk-st.on{color:var(--dk-blue)}.dk-st.on i{background:var(--dk-blue);color:#fff;box-shadow:0 0 0 5px rgba(29,95,209,.15)}
+  .dk-st.done{color:var(--dk-navy)}.dk-st.done i{background:var(--dk-navy);color:#fff}
+  .dk-st+.dk-st::before{content:"";width:34px;height:2px;background:#d6deea;margin-right:6px}
+  .dk-callbtn{border:2px solid #f5b3b3;background:#fff5f5;color:var(--dk-red);font-weight:800;font-size:17px;padding:10px 18px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .dk-callbtn:active{transform:scale(.97)}
+  /* 본문 */
+  .dk-body{flex:1;min-height:0;overflow:auto;padding:26px 48px 12px;display:flex;flex-direction:column}
+  .dk-h{font-size:clamp(32px,4vw,50px);font-weight:900;color:var(--dk-navy);margin:0 0 4px;letter-spacing:-1.2px}
+  .dk-sub{font-size:clamp(17px,2vw,22px);color:var(--dk-mut);margin:0 0 18px}
+  .dk-card{background:#fff;border:1px solid var(--dk-line);border-radius:22px;box-shadow:0 6px 22px rgba(22,50,92,.06)}
+  /* 아래 버튼 줄 */
+  .dk-foot{display:flex;align-items:center;gap:14px;padding:10px 48px 20px;background:linear-gradient(180deg,rgba(243,246,251,0),var(--dk-bg) 30%)}
+  .dk-b{border:0;border-radius:18px;min-height:72px;padding:0 34px;font-size:26px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:10px;transition:transform .08s,box-shadow .2s}
+  .dk-b:active{transform:scale(.97)}
+  .dk-b.prev{background:#fff;color:var(--dk-navy);border:2px solid var(--dk-line);min-width:160px}
+  .dk-b.home{background:transparent;color:var(--dk-mut);font-size:20px;font-weight:700;padding:0 18px}
+  .dk-b.next{margin-left:auto;min-width:260px;background:linear-gradient(135deg,var(--dk-blue),var(--dk-blue2));color:#fff;box-shadow:0 10px 26px rgba(29,95,209,.32)}
+  .dk-b.next.dis{background:#c8d3e6;box-shadow:none;color:#fff}
+  .dk-err{color:var(--dk-red);font-weight:800;font-size:20px;min-height:28px;margin-top:14px}
+  /* 시작 화면 */
+  .dk-start{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer;color:#fff;
+    background:radial-gradient(1200px 700px at 50% 0%,#2a5aa8 0%,#16325c 60%,#0f2444 100%);position:relative;overflow:hidden}
+  .dk-start::after{content:"";position:absolute;inset:-40%;background:conic-gradient(from 200deg,transparent,rgba(255,255,255,.05),transparent 30%);animation:dkSpin 18s linear infinite;pointer-events:none}
+  @keyframes dkSpin{to{transform:rotate(360deg)}}
+  .dk-start .logo{width:110px;height:110px;border-radius:50%;background:#fff;object-fit:cover;box-shadow:0 10px 40px rgba(0,0,0,.25);margin-bottom:26px;position:relative;z-index:1}
+  .dk-start .clinic{font-size:24px;font-weight:700;opacity:.85;position:relative;z-index:1}
+  .dk-start .t1{font-size:clamp(56px,9vw,112px);font-weight:900;line-height:1.08;letter-spacing:-3px;margin-top:14px;position:relative;z-index:1}
+  .dk-start .touch{margin-top:44px;display:inline-flex;align-items:center;gap:14px;font-size:clamp(26px,3.4vw,40px);font-weight:800;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);padding:18px 38px;border-radius:999px;position:relative;z-index:1;animation:dkPulse 2.2s ease-in-out infinite}
+  @keyframes dkPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,255,255,.35)}50%{transform:scale(1.04);box-shadow:0 0 0 18px rgba(255,255,255,0)}}
+  .dk-start .note{margin-top:56px;background:#fff;color:var(--dk-red);font-weight:800;font-size:clamp(18px,2.2vw,26px);line-height:1.55;padding:18px 34px;border-radius:18px;position:relative;z-index:1;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+  .dk-start .note b{font-size:1.6em;vertical-align:-.12em}
+  /* ① 준비 안내 */
+  .dk-prep{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .dk-prep .dk-card{padding:24px 24px 20px}
+  .dk-prep .ic{width:58px;height:58px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:12px}
+  .dk-prep .t{font-size:24px;font-weight:900;color:var(--dk-navy);margin-bottom:12px}
+  .dk-prep ol{margin:0;padding-left:0;list-style:none;counter-reset:n}
+  .dk-prep li{counter-increment:n;font-size:19px;line-height:1.45;margin:9px 0;padding-left:36px;position:relative}
+  .dk-prep li::before{content:counter(n);position:absolute;left:0;top:1px;width:26px;height:26px;border-radius:50%;background:#e8eefb;color:var(--dk-blue);font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center}
+  .dk-alert{margin-top:20px;display:flex;align-items:center;gap:14px;background:#fff4e5;border:2px solid #ffd59a;color:#8a4b00;border-radius:18px;padding:16px 22px;font-size:21px;font-weight:800}
+  /* ② 본인 확인 */
+  .dk-id{display:grid;grid-template-columns:1.25fr 1fr;gap:26px;align-items:start}
+  .dk-fl{display:block;font-size:22px;font-weight:900;color:var(--dk-navy);margin:6px 0 10px}
+  .dk-in{width:100%;font:inherit;font-size:38px;font-weight:700;padding:16px 22px;border:3px solid var(--dk-line);border-radius:18px;background:#fff;outline:0;color:var(--dk-ink);min-height:84px}
+  .dk-in:focus,.dk-in.act{border-color:var(--dk-blue);box-shadow:0 0 0 5px rgba(29,95,209,.12)}
+  .dk-in.ph{color:#b3bfd1;font-weight:500}
+  .dk-in.birth{letter-spacing:6px;cursor:pointer}
+  .dk-info{margin-top:22px;padding:18px 22px;font-size:18px;line-height:1.75;color:var(--dk-mut)}
+  .dk-info b{color:var(--dk-ink)}
+  .dk-pad{padding:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .dk-pad button{min-height:78px;border-radius:16px;border:1px solid var(--dk-line);background:#f7f9fd;font-size:34px;font-weight:800;color:var(--dk-navy);cursor:pointer}
+  .dk-pad button:active{background:#dfe8fb}
+  .dk-pad .fn{font-size:20px;color:var(--dk-mut)}
+  .dk-pad-h{grid-column:1/-1;font-size:17px;color:var(--dk-mut);font-weight:700;padding:2px 4px}
+  /* ③ 서류 선택 */
+  .dk-docs{display:grid;grid-template-columns:1fr 1.3fr;gap:24px;align-items:start}
+  .dk-grp{padding:14px}
+  .dk-grp-h{display:flex;align-items:center;justify-content:space-between;font-size:21px;font-weight:900;margin:2px 4px 10px}
+  .dk-tag{font-size:15px;font-weight:800;padding:4px 12px;border-radius:999px}
+  .dk-tag.free{background:#e7f6ec;color:#15803d}.dk-tag.paid{background:#fff3d6;color:#9a6200}
+  .dk-it{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:2px solid var(--dk-line);background:#fff;border-radius:16px;padding:8px 16px;margin-bottom:8px;cursor:pointer;min-height:58px;transition:border-color .15s,background .15s}
+  .dk-it:active{transform:scale(.99)}
+  .dk-it .ck{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:3px solid #c3cee0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:900}
+  .dk-it .nm{flex:1;font-size:20px;font-weight:700;line-height:1.25}
+  .dk-it .fee{font-size:18px;font-weight:800;color:var(--dk-mut);white-space:nowrap}
+  .dk-it.on{border-color:var(--dk-blue);background:#eef4ff}
+  .dk-it.on .ck{background:var(--dk-blue);border-color:var(--dk-blue)}
+  .dk-it.on .nm{color:var(--dk-navy)}
+  .dk-count{margin-left:auto;font-size:20px;font-weight:800;color:var(--dk-blue);padding-right:8px}
+  /* ④ 발급 기간 */
+  .dk-per{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;align-items:start}
+  .dk-opt{display:flex;align-items:center;gap:18px;width:100%;text-align:left;padding:14px 22px;margin-bottom:12px;border:2px solid var(--dk-line);border-radius:20px;background:#fff;cursor:pointer}
+  .dk-opt .rd{flex:0 0 auto;width:38px;height:38px;border-radius:50%;border:3px solid #c3cee0;position:relative}
+  .dk-opt.on{border-color:var(--dk-blue);background:#eef4ff}
+  .dk-opt.on .rd{border-color:var(--dk-blue)}
+  .dk-opt.on .rd::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--dk-blue)}
+  .dk-opt .t{font-size:26px;font-weight:900;color:var(--dk-navy)}
+  .dk-opt .d{font-size:17px;color:var(--dk-mut);margin-top:3px}
+  .dk-dates{display:flex;flex-wrap:wrap;gap:10px;margin:2px 0 14px}
+  .dk-date{border:2px solid var(--dk-line);background:#fff;border-radius:14px;padding:12px 18px;font-size:22px;font-weight:800;color:var(--dk-navy);cursor:pointer;min-width:120px}
+  .dk-date.on{background:var(--dk-blue);border-color:var(--dk-blue);color:#fff}
+  .dk-extra{width:100%;font:inherit;font-size:22px;padding:14px 18px;border:2px solid var(--dk-line);border-radius:14px;outline:0}
+  .dk-extra:focus{border-color:var(--dk-blue)}
+  .dk-sum{padding:22px 24px}
+  .dk-sum h3{margin:0 0 14px;font-size:22px;font-weight:900;color:var(--dk-navy)}
+  .dk-sum .r{display:flex;gap:12px;font-size:19px;padding:9px 0;border-top:1px dashed var(--dk-line)}
+  .dk-sum .r:first-of-type{border-top:0}
+  .dk-sum .k{flex:0 0 72px;color:var(--dk-mut);font-weight:700}
+  .dk-sum .v{flex:1;font-weight:700;line-height:1.45}
+  .dk-mutnote{font-size:17px;color:#8b98ae;margin-top:6px}
+  /* 완료 */
+  .dk-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;cursor:pointer}
+  .dk-done .ok{width:150px;height:150px;border-radius:50%;background:var(--dk-ok);color:#fff;display:flex;align-items:center;justify-content:center;font-size:84px;font-weight:900;box-shadow:0 18px 50px rgba(22,163,74,.35);animation:dkPop .5s cubic-bezier(.2,1.6,.4,1)}
+  @keyframes dkPop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+  .dk-done .t{font-size:clamp(38px,5vw,58px);font-weight:900;color:var(--dk-navy);margin-top:30px}
+  .dk-done .m{font-size:clamp(21px,2.5vw,28px);line-height:1.65;margin-top:16px;color:#33425c}
+  .dk-done .m b{color:var(--dk-blue)}
+  .dk-done .cd{margin-top:38px;width:min(420px,70vw);height:8px;border-radius:99px;background:#dfe6f1;overflow:hidden}
+  .dk-done .cd i{display:block;height:100%;background:var(--dk-blue);animation:dkCd 30s linear forwards}
+  @keyframes dkCd{from{width:100%}to{width:0}}
+  .dk-done .s{font-size:17px;color:#8b98ae;margin-top:12px}
+  .dk-exit{position:absolute;top:0;right:0;width:70px;height:70px;z-index:2}
+  .dk-toast{position:fixed;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4100;background:var(--dk-navy,#16325c);color:#fff;font-size:clamp(22px,3vw,34px);font-weight:800;padding:26px 44px;border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}
+  @media (max-width:1000px){.dk-prep,.dk-id,.dk-docs,.dk-per{grid-template-columns:1fr}.dk-st b{display:none}.dk-body{padding:24px 24px 16px}.dk-foot{padding:12px 24px 20px}.dk-top{padding:14px 20px}}
   /* 직원 목록 */
   .drq-row{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
   .drq-row.done{opacity:.55}
@@ -15192,13 +15268,17 @@ boot();
 <script>
 (function(){
   const DOCS_MODE=new URLSearchParams(location.search).has('docs');window.DOCS_MODE=DOCS_MODE;
-  const FREE=[{n:'진료비 영수증 (공통)'},{n:'진료비 세부내역서 (공통)'},{n:'처방전 (질병코드O)'}];
-  const PAID=[{n:'진료 확인서',f:'3,000원'},{n:'초진차트, 차트복사',f:'장당 1,000원'},{n:'차트복사 (5장 이상부터)',f:'장당 100원'},{n:'검사결과지',f:'장당 1,000원'},{n:'DVD복사(CD)',f:'20,000원'},{n:'USB복사',f:'20,000원'}];
+  const FREE=[{n:'진료비 영수증',s:'공통'},{n:'진료비 세부내역서',s:'공통'},{n:'처방전',s:'질병코드 포함'}];
+  const PAID=[{n:'진료 확인서',f:'3,000원'},{n:'초진차트, 차트복사',f:'장당 1,000원'},{n:'차트복사',s:'5장 이상부터',f:'장당 100원'},{n:'검사결과지',f:'장당 1,000원'},{n:'DVD 복사 (CD)',f:'20,000원'},{n:'USB 복사',f:'20,000원'}];
   const SINCE='2026-10-01';   // 동선관리 내원 기록이 있는 때 — 그 전 날짜는 데스크 문의
+  const STEPS=['준비 안내','본인 확인','서류 선택','발급 기간'];
   let S=null,IDLE_T=null,DONE_T=null;
   const col=()=>(typeof cloud!=='undefined'&&cloud.ref)?cloud.ref.collection('docReq'):null;
   const E=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const today=()=>ymd(new Date());
+  const logo=()=>{try{return (typeof WAIT_DEFAULT_LOGO!=='undefined'&&WAIT_DEFAULT_LOGO)||'';}catch(e){return '';}};
+  const itemName=it=>it.n+(it.s?' ('+it.s+')':'');
   function reset(){S={step:0,name:'',birth:'',free:[],paid:[],all:false,pick:false,dates:[],extra:'',err:''};}
   function bump(){clearTimeout(IDLE_T);if(S&&S.step>0&&S.step<5)IDLE_T=setTimeout(()=>{reset();render();},120000);}   // 2분 손대지 않으면 처음으로
   function b6(s){const d=String(s||'').replace(/\D/g,'');return d.length===8?d.slice(2):d.length===6?d:'';}
@@ -15206,72 +15286,103 @@ boot();
     const L=[...((typeof VISITS!=='undefined'&&Array.isArray(VISITS))?VISITS:[]),...((typeof data!=='undefined'&&Array.isArray(data))?data:[])];
     const set=new Set();
     L.forEach(v=>{if(!v||String(v.name||'').replace(/\s+/g,'')!==nk||b6(v.birth)!==bk)return;
-      const d=v.dischargedAt||v.arrivedAt||v.enteredAt;if(!d)return;const t=new Date(d);if(isNaN(t))return;
-      const k=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');if(k>=SINCE)set.add(k);});
+      const d=v.dischargedAt||v.arrivedAt||v.enteredAt;if(!d)return;const t=new Date(d);if(isNaN(t))return;const k=ymd(t);if(k>=SINCE)set.add(k);});
     return [...set].sort().reverse();}
   function matchMrn(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);const m=new Set();
     [...((typeof VISITS!=='undefined'&&VISITS)||[]),...((typeof data!=='undefined'&&data)||[])].forEach(v=>{if(v&&v.mrn&&String(v.name||'').replace(/\s+/g,'')===nk&&b6(v.birth)===bk)m.add(String(v.mrn).trim());});
     return m.size===1?[...m][0]:'';}
-  const foot=(prev,next,nextLbl,dis)=>`<div class="dk-foot">${prev?`<button class="dk-btn ghost" onclick="dkGo(${prev})">이전</button>`:''}<button class="dk-btn ghost" onclick="dkHome()">처음으로</button>
-    ${next!=null?`<button class="dk-btn" onclick="${next}" ${dis?'disabled':''}>${nextLbl||'다음'}</button>`:''}<button class="dk-btn dk-call" onclick="dkCall()">🔔 직원 호출</button></div>`;
-  function render(){const el=document.getElementById('docKiosk');if(!el)return;bump();
-    const ex='<div class="dk-exit" onpointerdown="dkExitDown()" onpointerup="dkExitUp()" onpointerleave="dkExitUp()"></div>';
-    if(S.step===0){el.innerHTML=ex+`<div class="dk-start" onclick="dkGo(1)"><div class="t1">서류 발급<br>전용 태블릿</div><div class="t2">화면을 살짝 터치해주세요.</div>
-      <div class="t3">* 원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에 이용해 주세요.</div></div>`;return;}
-    if(S.step===1){el.innerHTML=ex+`<div class="dk-body"><h1>수령 전 준비 부탁드려요</h1>
-      <div class="dk-sec"><div class="h">본인 수령 시 :</div><div class="l">① 본인 신분증 준비</div></div>
-      <div class="dk-sec"><div class="h">가족 대리 발급 시 :</div><div class="l">① 3개월 이내 발급 된 가족관계증명서 또는 등본<br>② 환자 신분증 &amp; 대리인 신분증 총 2개 (미성년자 제외)</div></div>
-      <div class="dk-sec"><div class="h">대리 발급 시 (가족이 아닌 경우) :</div><div class="l">① 환자 신분증 &amp; 대리인 신분증 총 2개<br>② 진료기록의 열람·사본 발급, 전송·송부 동의서<br>③ 진료기록 열람 및 사본발급 위임장</div></div>
-      <div class="dk-warn">캡쳐·촬영·저장된 파일 X — 실물로 준비 부탁드립니다.</div></div>${foot(0,'dkGo(2)')}`;return;}
-    if(S.step===2){el.innerHTML=ex+`<div class="dk-body"><h1>서류 뗄 사람 (당사자) 신분 확인</h1>
-      <div class="dk-field"><label>• 성함 :</label><input id="dkName" value="${E(S.name)}" autocomplete="off" placeholder="예: 홍길동" oninput="dkSet('name',this.value)"></div>
-      <div class="dk-field"><label>• 생년월일 :</label><input id="dkBirth" value="${E(S.birth)}" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="예: 900101" oninput="this.value=this.value.replace(/\\D/g,'');dkSet('birth',this.value)"></div>
-      <div class="dk-err">${E(S.err)}</div>
-      <div class="dk-note">영수증과 세부내역서 외 <b>필요 서류는 병원 측에서 확인 해드릴 수 없습니다.</b><br>필요 서류는 해당 보험사에 문의 부탁드립니다.<br><b>진단서, 소견서, 진료 의뢰서의 경우 진료 후 발급 가능합니다.</b></div></div>${foot(1,'dkIdNext()')}`;
-      setTimeout(()=>{const i=document.getElementById(S.name?'dkBirth':'dkName');if(i)i.focus();},50);return;}
-    if(S.step===3){const row=(it,i,k)=>{const on=S[k].includes(i);return `<tr class="${on?'on':''}" onclick="dkTog('${k}',${i})"><td>${E(it.n)}</td>${it.f?`<td class="fee">${E(it.f)}</td>`:''}<td class="ck">${on?'✔':'☐'}</td></tr>`;};
-      el.innerHTML=ex+`<div class="dk-body"><h1>발급할 서류 선택</h1><div class="dk-two">
-        <table class="dk-tbl free"><caption>무료 발급</caption>${FREE.map((it,i)=>row(it,i,'free')).join('')}</table>
-        <table class="dk-tbl paid"><caption>유료 발급</caption>${PAID.map((it,i)=>row(it,i,'paid')).join('')}</table></div>
-        <div class="dk-err">${E(S.err)}</div><div class="dk-note">누르면 체크됩니다. 여러 개 고를 수 있어요.</div></div>${foot(2,'dkDocsNext()')}`;return;}
-    if(S.step===4){const D=myVisits();
-      el.innerHTML=ex+`<div class="dk-body"><h1>발급 기간 선택</h1>
-        <div class="dk-opt ${S.all?'on':''}" onclick="dkPer('all')"><span class="bx">${S.all?'✔':''}</span>내원이력 전체</div>
-        <div class="dk-opt ${S.pick?'on':''}" onclick="dkPer('pick')"><span class="bx">${S.pick?'✔':''}</span>내원이력 선택</div>
-        ${S.pick?(D.length?`<div class="dk-dates">${D.map(d=>`<button class="dk-date ${S.dates.includes(d)?'on':''}" onclick="dkDate('${d}')">${d.slice(2).replace(/-/g,'.')}</button>`).join('')}</div>`
-          :`<div class="dk-note" style="margin:0 0 1vh 4vw">10월 이후 내원 기록을 찾지 못했습니다 — 날짜를 직접 적어 주세요.</div>`)
-          +`<div class="dk-field" style="margin-left:4vw"><label style="min-width:0;font-size:clamp(18px,2.4vw,28px)">직접 입력</label><input id="dkExtra" value="${E(S.extra)}" placeholder="예: 10월 3일, 10월 10일" oninput="dkSet('extra',this.value)" style="font-size:clamp(18px,2.4vw,28px)"></div>`:''}
-        <div class="dk-note" style="color:#888">10월 이전 날짜는 데스크에 문의해주세요.</div><div class="dk-err">${E(S.err)}</div></div>${foot(3,'dkSubmit()','신청')}`;return;}
-    if(S.step===5){el.innerHTML=ex+`<div class="dk-done">신청이 완료되었습니다.<br><br>모든 서류는 확인 절차를 거친 후<br>발급까지 약 15분 소요 되며<br>시간이 지체 될 시 직원이 재안내 드리겠습니다.<br><br>자리에 앉아계시면 호명 해드리겠습니다 ☺
-      <div class="s">잠시 후 처음 화면으로 돌아갑니다</div></div>`;clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},30000);
-      el.onclick=()=>{if(S.step===5){clearTimeout(DONE_T);reset();render();}};return;}}
-  window.dkGo=n=>{S.step=n;S.err='';const el=document.getElementById('docKiosk');if(el)el.onclick=null;render();};
-  window.dkHome=()=>{reset();render();};
-  window.dkSet=(k,v)=>{S[k]=v;bump();};
+  const dateLbl=d=>{const t=new Date(d+'T00:00:00');return (t.getMonth()+1)+'월 '+t.getDate()+'일 ('+'일월화수목금토'[t.getDay()]+')';};
+  const birthLbl=b=>{const d=String(b||'');if(!d)return '';return d.length<=6?d.replace(/^(\d{2})(\d{0,2})(\d{0,2}).*$/,(m,a,b2,c)=>[a,b2,c].filter(Boolean).join('.')):d.replace(/^(\d{4})(\d{0,2})(\d{0,2}).*$/,(m,a,b2,c)=>[a,b2,c].filter(Boolean).join('.'));};
+  /* 공통 틀 */
+  const ex='<div class="dk-exit" onpointerdown="dkExitDown()" onpointerup="dkExitUp()" onpointerleave="dkExitUp()"></div>';
+  function top(){const lg=logo();return `<div class="dk-top">${ex}<div class="dk-brand">${lg?`<img src="${E(lg)}" alt="">`:''}반듯한정형외과 <span>서류 발급</span></div>
+    <div class="dk-steps">${STEPS.map((t,i)=>{const n=i+1;const c=S.step===n?'on':S.step>n?'done':'';return `<div class="dk-st ${c}"><i>${S.step>n?'✓':n}</i><b>${t}</b></div>`;}).join('')}</div>
+    <button class="dk-callbtn" onclick="dkCall()">🔔 직원 호출</button></div>`;}
+  function foot(prev,nextFn,nextLbl,ready){return `<div class="dk-foot">${prev?`<button class="dk-b prev" onclick="dkGo(${prev})">‹ 이전</button>`:''}<button class="dk-b home" onclick="dkHome()">처음으로</button>
+    <button class="dk-b next ${ready?'':'dis'}" onclick="${nextFn}">${nextLbl||'다음'} ›</button></div>`;}
+  function render(){const el=document.getElementById('docKiosk');if(!el)return;bump();el.onclick=null;
+    if(S.step===0){const lg=logo();
+      el.innerHTML=`<div class="dk-start" onclick="dkGo(1)">${ex}${lg?`<img class="logo" src="${E(lg)}" alt="">`:''}<div class="clinic">365일 진료하는 반듯한정형외과</div>
+        <div class="t1">서류 발급<br>전용 태블릿</div><div class="touch">👆 화면을 살짝 터치해주세요</div>
+        <div class="note">* 원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에 이용해 주세요.</div></div>`;return;}
+    if(S.step===1){el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">수령 전 준비 부탁드려요</h1><p class="dk-sub">받으시는 분에 따라 필요한 서류가 다릅니다.</p>
+      <div class="dk-prep">
+        <div class="dk-card"><div class="ic" style="background:#e8f0ff">🪪</div><div class="t">본인 수령</div><ol><li>본인 신분증</li></ol></div>
+        <div class="dk-card"><div class="ic" style="background:#e9f8ef">👨‍👩‍👧</div><div class="t">가족 대리 발급</div><ol><li>3개월 이내 발급된 가족관계증명서 또는 등본</li><li>환자 신분증 + 대리인 신분증 (총 2개, 미성년자 제외)</li></ol></div>
+        <div class="dk-card"><div class="ic" style="background:#fff3df">📝</div><div class="t">대리 발급 (가족 아님)</div><ol><li>환자 신분증 + 대리인 신분증 (총 2개)</li><li>진료기록의 열람·사본 발급, 전송·송부 동의서</li><li>진료기록 열람 및 사본발급 위임장</li></ol></div>
+      </div>
+      <div class="dk-alert">⚠️ 캡쳐·촬영·저장된 파일은 안 됩니다. <u>실물</u>로 준비 부탁드립니다.</div></div>${foot(0,'dkGo(2)','준비됐어요',true)}`;return;}
+    if(S.step===2){const ok=String(S.name||'').trim()&&(S.birth.length===6||S.birth.length===8);
+      el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">서류 받으실 분(당사자) 확인</h1><p class="dk-sub">진료받으신 분의 성함과 생년월일을 입력해 주세요.</p>
+      <div class="dk-id"><div>
+        <label class="dk-fl" for="dkName">성함</label><input class="dk-in" id="dkName" value="${E(S.name)}" autocomplete="off" placeholder="예: 홍길동" oninput="dkSet('name',this.value)" onfocus="dkPadFor('name')">
+        <label class="dk-fl" style="margin-top:22px">생년월일 <span style="font-weight:500;color:#8b98ae;font-size:17px">— 오른쪽 숫자판으로</span></label>
+        <div class="dk-in birth ${S.birth?'':'ph'} act" id="dkBirth" onclick="dkPadFor('birth')">${S.birth?E(birthLbl(S.birth)):'예: 90.01.01'}</div>
+        <div class="dk-err">${E(S.err)}</div>
+      </div><div>
+        <div class="dk-card dk-pad"><div class="dk-pad-h">생년월일 6자리 (예: 900101)</div>
+          ${[1,2,3,4,5,6,7,8,9].map(n=>`<button onclick="dkKey('${n}')">${n}</button>`).join('')}<button class="fn" onclick="dkKey('clr')">전체 지움</button><button onclick="dkKey('0')">0</button><button class="fn" onclick="dkKey('bs')">⌫ 지움</button></div>
+      </div></div>
+      <div class="dk-card dk-info">영수증과 세부내역서 외 <b>필요 서류는 병원에서 확인해 드릴 수 없습니다.</b> 해당 보험사에 문의 부탁드립니다.<br><b>진단서, 소견서, 진료 의뢰서는 진료 후 발급 가능합니다.</b></div></div>${foot(1,'dkIdNext()','다음',ok)}`;
+      if(!S.name)setTimeout(()=>{const i=document.getElementById('dkName');if(i)i.focus();},60);return;}
+    if(S.step===3){const n=S.free.length+S.paid.length;
+      const it=(x,i,k)=>{const on=S[k].includes(i);return `<button class="dk-it ${on?'on':''}" onclick="dkTog('${k}',${i})"><span class="ck">${on?'✓':''}</span><span class="nm">${E(x.n)}${x.s?`<br><span style="font-size:16px;font-weight:600;color:#7a889e">${E(x.s)}</span>`:''}</span>${x.f?`<span class="fee">${E(x.f)}</span>`:''}</button>`;};
+      el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급할 서류를 골라 주세요</h1><p class="dk-sub">누르면 체크됩니다. 여러 개 고를 수 있어요.</p>
+      <div class="dk-docs"><div class="dk-card dk-grp"><div class="dk-grp-h">무료 서류 <span class="dk-tag free">무료</span></div>${FREE.map((x,i)=>it(x,i,'free')).join('')}</div>
+        <div class="dk-card dk-grp"><div class="dk-grp-h">유료 서류 <span class="dk-tag paid">유료</span></div>${PAID.map((x,i)=>it(x,i,'paid')).join('')}</div></div>
+      <div class="dk-err">${E(S.err)}</div></div>`+foot(2,'dkDocsNext()','다음',n>0).replace('<button class="dk-b next',`${n?`<span class="dk-count">${n}개 선택</span>`:''}<button class="dk-b next`);return;}
+    if(S.step===4){const D=myVisits();const ready=S.all||(S.pick&&(S.dates.length||String(S.extra||'').trim()));
+      const docs=[...S.free.slice().sort().map(i=>itemName(FREE[i])),...S.paid.slice().sort().map(i=>itemName(PAID[i])+' · '+PAID[i].f)];
+      el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급 기간을 골라 주세요</h1><p class="dk-sub">진료받으신 날짜의 서류를 발급해 드립니다.</p>
+      <div class="dk-per"><div>
+        <button class="dk-opt ${S.all?'on':''}" onclick="dkPer('all')"><span class="rd"></span><span><div class="t">내원이력 전체</div><div class="d">지금까지 진료받으신 날짜 모두</div></span></button>
+        <button class="dk-opt ${S.pick?'on':''}" onclick="dkPer('pick')"><span class="rd"></span><span><div class="t">날짜 골라서</div><div class="d">필요한 날짜만</div></span></button>
+        ${S.pick?`<div class="dk-card" style="padding:18px 20px">${D.length?`<div class="dk-fl" style="margin-top:0">내원하신 날짜 (누르면 선택)</div><div class="dk-dates">${D.map(d=>`<button class="dk-date ${S.dates.includes(d)?'on':''}" onclick="dkDate('${d}')">${dateLbl(d)}</button>`).join('')}</div>`
+            :`<div class="dk-mutnote" style="margin:0 0 12px">10월 이후 내원 기록을 찾지 못했습니다 — 아래에 날짜를 적어 주세요.</div>`}
+          <input class="dk-extra" id="dkExtra" value="${E(S.extra)}" placeholder="날짜 직접 입력 (예: 10월 3일, 10월 10일)" oninput="dkSet('extra',this.value)">
+          <div class="dk-mutnote">10월 이전 날짜는 데스크에 문의해 주세요.</div></div>`:''}
+        <div class="dk-err">${E(S.err)}</div></div>
+      <div class="dk-card dk-sum"><h3>신청 내용</h3>
+        <div class="r"><span class="k">성함</span><span class="v">${E(S.name)}</span></div>
+        <div class="r"><span class="k">생년월일</span><span class="v">${E(birthLbl(S.birth))}</span></div>
+        <div class="r"><span class="k">서류</span><span class="v">${docs.map(E).join('<br>')}</span></div>
+        <div class="r"><span class="k">기간</span><span class="v">${S.all?'내원이력 전체':S.pick?(([...S.dates].sort().map(dateLbl).concat(String(S.extra||'').trim()?[E(S.extra)]:[])).join(', ')||'<span style="color:#b3bfd1">날짜를 골라 주세요</span>'):'<span style="color:#b3bfd1">위에서 골라 주세요</span>'}</span></div>
+      </div></div></div>${foot(3,'dkSubmit()','신청하기',ready)}`;return;}
+    if(S.step===5){el.innerHTML=`<div class="dk-done" onclick="dkHome()">${ex}<div class="ok">✓</div><div class="t">신청이 완료되었습니다</div>
+      <div class="m">모든 서류는 확인 절차를 거친 후 발급까지 <b>약 15분</b> 소요되며<br>시간이 지체될 시 직원이 다시 안내해 드리겠습니다.<br><br><b>자리에 앉아 계시면 호명해 드리겠습니다</b> ☺</div>
+      <div class="cd"><i></i></div><div class="s">잠시 후 처음 화면으로 돌아갑니다 · 화면을 누르면 바로 돌아가요</div></div>`;
+      clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},30000);return;}}
+  window.dkGo=n=>{S.step=n;S.err='';render();};
+  window.dkHome=()=>{clearTimeout(DONE_T);reset();render();};
+  window.dkSet=(k,v)=>{S[k]=v;bump();if(k==='name'||k==='extra'){const nx=document.querySelector('#docKiosk .dk-b.next');if(nx){const ok=k==='name'?(String(S.name).trim()&&(S.birth.length===6||S.birth.length===8)):(S.all||(S.pick&&(S.dates.length||String(S.extra).trim())));nx.classList.toggle('dis',!ok);}}};
+  window.dkPadFor=()=>{};
+  window.dkKey=k=>{let b=String(S.birth||'');if(k==='bs')b=b.slice(0,-1);else if(k==='clr')b='';else if(b.length<8)b+=k;S.birth=b;S.err='';
+    const el=document.getElementById('dkBirth');if(el){el.textContent=b?birthLbl(b):'예: 90.01.01';el.classList.toggle('ph',!b);}
+    const nx=document.querySelector('#docKiosk .dk-b.next');if(nx)nx.classList.toggle('dis',!(String(S.name).trim()&&(b.length===6||b.length===8)));bump();};
   window.dkIdNext=()=>{const nm=String(S.name||'').trim(),b=String(S.birth||'');
     if(!nm){S.err='성함을 입력해 주세요.';render();return;}
-    if(!(b.length===6||b.length===8)){S.err='생년월일을 6자리(예: 900101)로 입력해 주세요.';render();return;}
+    if(!(b.length===6||b.length===8)){S.err='생년월일 6자리를 눌러 주세요 (예: 900101).';render();return;}
     dkGo(3);};
   window.dkTog=(k,i)=>{const L=S[k];const j=L.indexOf(i);if(j>=0)L.splice(j,1);else L.push(i);S.err='';render();};
   window.dkDocsNext=()=>{if(!S.free.length&&!S.paid.length){S.err='발급할 서류를 하나 이상 골라 주세요.';render();return;}dkGo(4);};
-  window.dkPer=k=>{if(k==='all'){S.all=!S.all;if(S.all)S.pick=false;}else{S.pick=!S.pick;if(S.pick)S.all=false;}S.err='';render();};
+  window.dkPer=k=>{if(k==='all'){S.all=true;S.pick=false;}else{S.pick=true;S.all=false;}S.err='';render();};
   window.dkDate=d=>{const j=S.dates.indexOf(d);if(j>=0)S.dates.splice(j,1);else S.dates.push(d);render();};
   window.dkSubmit=async()=>{
     if(!S.all&&!S.pick){S.err='발급 기간을 골라 주세요.';render();return;}
     if(S.pick&&!S.dates.length&&!String(S.extra||'').trim()){S.err='날짜를 하나 이상 고르거나 직접 적어 주세요.';render();return;}
-    const c=col();if(!c){S.err='지금 신청을 보낼 수 없습니다 — 직원을 불러 주세요.';render();return;}
+    const c=col();if(!c){S.err='지금 신청을 보낼 수 없습니다 — 직원 호출을 눌러 주세요.';render();return;}
     const id='dr'+Date.now();
     const rec={id,type:'docs',at:new Date().toISOString(),date:today(),name:String(S.name).trim(),birth:String(S.birth),mrn:matchMrn(),
-      items:[...S.free.sort().map(i=>({name:FREE[i].n,fee:'무료'})),...S.paid.sort().map(i=>({name:PAID[i].n,fee:PAID[i].f}))],
-      period:S.all?'내원이력 전체':('선택: '+[...S.dates.sort(),String(S.extra||'').trim()].filter(Boolean).join(', ')),status:'대기',device:navigator.userAgent.slice(0,80)};
-    try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 직원을 불러 주세요.';render();return;}
+      items:[...S.free.slice().sort().map(i=>({name:itemName(FREE[i]),fee:'무료'})),...S.paid.slice().sort().map(i=>({name:itemName(PAID[i]),fee:PAID[i].f}))],
+      period:S.all?'내원이력 전체':('선택: '+[...S.dates.slice().sort(),String(S.extra||'').trim()].filter(Boolean).join(', ')),status:'대기',device:navigator.userAgent.slice(0,80)};
+    try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 직원 호출을 눌러 주세요.';render();return;}
     dkGo(5);};
   let CALL_AT=0;
-  window.dkCall=async()=>{if(Date.now()-CALL_AT<30000){alertKiosk('직원을 불렀습니다. 잠시만 기다려 주세요.');return;}CALL_AT=Date.now();
-    const c=col();try{if(c){const id='dc'+Date.now();await c.doc(id).set({id,type:'call',at:new Date().toISOString(),date:today(),name:String(S.name||'').trim(),birth:String(S.birth||''),status:'대기',step:S.step});}}catch(e){}
-    alertKiosk('직원을 불렀습니다. 잠시만 기다려 주세요.');};
-  function alertKiosk(m){let b=document.getElementById('dkMsg');if(!b){b=document.createElement('div');b.id='dkMsg';b.style.cssText='position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:4100;background:#1f3b73;color:#fff;font-size:clamp(22px,3vw,36px);font-weight:800;padding:3vh 4vw;border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.3)';document.body.appendChild(b);}
-    b.textContent=m;b.style.display='';clearTimeout(b._t);b._t=setTimeout(()=>{b.style.display='none';},4000);}
+  window.dkCall=async()=>{if(Date.now()-CALL_AT<30000){kToast('직원을 불렀습니다.<br>잠시만 기다려 주세요.');return;}CALL_AT=Date.now();
+    const c=col();try{if(c){const id='dc'+Date.now();await c.doc(id).set({id,type:'call',at:new Date().toISOString(),date:today(),name:String((S&&S.name)||'').trim(),birth:String((S&&S.birth)||''),status:'대기',step:S?S.step:0});}}catch(e){}
+    kToast('🔔 직원을 불렀습니다.<br>잠시만 기다려 주세요.');};
+  function kToast(m){let b=document.getElementById('dkMsg');if(!b){b=document.createElement('div');b.id='dkMsg';b.className='dk-toast';document.body.appendChild(b);}
+    b.innerHTML=m;b.style.display='';clearTimeout(b._t);b._t=setTimeout(()=>{b.style.display='none';},3500);}
   /* 나가기: 오른쪽 위 모서리를 3초 누르기 */
   let EX_T=null;window.dkExitDown=()=>{clearTimeout(EX_T);EX_T=setTimeout(()=>{if(confirm('서류 발급 화면을 닫고 동선관리로 돌아갈까요? (직원용)')){location.href=location.pathname;}},3000);};
   window.dkExitUp=()=>clearTimeout(EX_T);
@@ -15281,7 +15392,7 @@ boot();
     /* 환자용 화면 — 동선관리 알림·팝업이 뜨지 않게 */
     try{window.notify=function(){};}catch(e){}try{notify=function(){};}catch(e){}
     try{warnToast=function(){};}catch(e){}
-    const _al=window.alert;window.alert=function(m){console.warn('[서류발급 태블릿] 알림 숨김:',m);};
+    window.alert=function(m){console.warn('[서류발급 태블릿] 알림 숨김:',m);};
     reset();
     setInterval(()=>{const el=document.getElementById('docKiosk');if(!el)return;const on=!!(typeof currentUser!=='undefined'&&currentUser);
       if(on&&!el.classList.contains('show')){el.classList.add('show');render();}
@@ -15291,7 +15402,7 @@ boot();
   /* ── 직원 화면: 신청 목록 ── */
   let REQS=[],REQ_UNSUB=null,REQ_SEEN=null;
   function subReqs(){if(DOCS_MODE||REQ_UNSUB)return;const c=col();if(!c||typeof currentUser==='undefined'||!currentUser)return;
-    REQ_UNSUB=c.where('date','>=',(()=>{const d=new Date(Date.now()-2*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()).onSnapshot(s=>{
+    REQ_UNSUB=c.where('date','>=',ymd(new Date(Date.now()-2*864e5))).onSnapshot(s=>{
       REQS=s.docs.map(d=>d.data()).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
       const pend=REQS.filter(r=>r.status==='대기');const cnt=document.getElementById('docReqCnt');if(cnt)cnt.textContent=pend.length?String(pend.length):'';
       if(REQ_SEEN){pend.filter(r=>!REQ_SEEN.has(r.id)).forEach(r=>{try{notify(r.type==='call'?'bell':'file-text',r.type==='call'?'서류발급 태블릿 — 직원 호출':'서류 발급 신청',E((r.name||'(이름 없음)')+(r.birth?' '+r.birth:'')+(r.type==='call'?'':' · '+(r.items||[]).map(x=>x.name).join(', '))));}catch(e){}});}
