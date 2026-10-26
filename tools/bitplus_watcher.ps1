@@ -369,6 +369,18 @@ $script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보�
 $script:DocByMrn = @{}         # 차트번호 → 오늘 문서 id (원외처방 특이사항을 패널과 무관하게 바로 보충할 때)
 $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:RxLast = ''; $script:RxCount = 0   # 원외처방 특이사항 전송 상태
 $script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteRev = @{}   # ③ 진료실 처방 목록 전송 상태 (차트번호 → 보낸 목록 / 갱신 횟수)
+# v3.7 (2026-10-26: 박상하·조현진 슬립에 같은 차팅) — 환자를 바꿀 때 비트는 차트번호를 먼저 바꾸고 증상 칸은 조금 늦게 바꾼다.
+#   그 사이(1초 넘게) 읽으면 '새 차트번호 + 앞 환자 차팅'이 2번 연속 같아 그대로 보내졌고, 새 환자 칸이 비어 있으면 끝까지 덮이지 않았다.
+#   ① 차트번호가 바뀌고 3초 동안은 보내지 않는다 ② 3번 연속 같아야 보낸다 ③ 읽기 앞뒤의 차트번호가 다르면 버린다
+#   ④ 이 PC에서 다른 환자로 읽힌 차팅·특이사항과 똑같으면 보내지 않는다(앞 환자 내용이 남은 것) ⑤ 보낸 뒤 그 환자 칸이 10초 넘게 비어 있으면 문서도 비운다
+$script:NoteMrn = ''; $script:NoteMrnAt = Get-Date; $script:NoteSeen = @{}; $script:NoteStaleLog = ''; $script:NoteEmptyAt = $null
+function NoteStaleOf($mrn, $chart, $memo, $raw) {   # 다른 차트번호에서 읽힌 같은 내용이 있으면 그 차트번호, 없으면 ''
+  foreach ($k in @($script:NoteSeen.Keys)) { if ($k -eq $mrn) { continue }; $s = $script:NoteSeen[$k]
+    if (((Get-Date) - $s.at).TotalMinutes -gt 120) { $script:NoteSeen.Remove($k); continue }
+    if ($chart -and $chart.Length -ge 8 -and $s.chart -eq $chart) { return $k }
+    if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k }
+    if ($memo -and $memo.Length -ge 6 -and $s.memo -eq $memo) { return $k } }
+  return '' }
 $script:LookupSent = @{}       # 차트번호 → bitLookup 으로 보낸 인적정보 해시 (조회 내용이 바뀔 때만 다시 씀)
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 $LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
@@ -507,7 +519,7 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.6'; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.7'; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
@@ -518,15 +530,37 @@ while ($true) {
         try {
           $dr = ReadDoctor $dw
           if ($dr -and -not $dr.found -and -not $noteWarned) { Log "외래진료실 창은 찾았지만 증상 칸을 못 찾음"; $noteWarned = $true }
-          if ($dr -and $dr.mrn) {
+          # v3.7 ③ 읽는 동안 환자가 바뀌었으면(앞뒤 차트번호가 다름) 이번 읽기는 버린다
+          if ($dr -and $dr.mrn -and $script:DocCache -and [BitW.U32]::IsWindow($script:DocCache.mrn)) {
+            $mrn2 = (([BitW.U32]::Text($script:DocCache.mrn)) -replace '\D', ''); if ($mrn2 -ne $dr.mrn) { $dr = $null } }
+          if ($dr -and $dr.mrn -ne $script:NoteMrn) { $script:NoteMrn = $dr.mrn; $script:NoteMrnAt = Get-Date; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteEmptyAt = $null }
+          if ($dr -and $dr.mrn -and ((Get-Date) - $script:NoteMrnAt).TotalSeconds -ge 3) {   # v3.7 ① 환자를 바꾸고 3초 뒤부터
             $ex = if ($dr.note.Trim()) { ExtractRx $dr.note } else { @{ lines = @(); marker = $false } }
             $rxText = ($ex.lines -join "`n")
             $chartText = if ($dr.note.Trim()) { ExtractChart $dr.note } else { '' }
             $memo = CleanMemo $dr.memo
-            if ($rxText -or $memo -or $chartText) {
+            $rawNote = ($dr.note -replace '\s+', ' ').Trim()
+            # v3.7 ⑤ 보낸 뒤 칸이 10초 넘게 비어 있으면(지웠거나 앞 환자 내용이 잘못 갔던 것) 문서도 비운다
+            if (-not ($rxText -or $memo -or $chartText)) {
+              if ($script:NoteSent[$dr.mrn] -and $script:NoteSent[$dr.mrn] -ne '||') {
+                if (-not $script:NoteEmptyAt) { $script:NoteEmptyAt = Get-Date }
+                elseif (((Get-Date) - $script:NoteEmptyAt).TotalSeconds -ge 10) {
+                  FsPatch "bitNote/$(Today)_$($dr.mrn)" @{ rx = ''; rxMarker = $false; rxLines = 0; memo = ''; chart = ''; clearedAt = (NowIso); pc = $Pc; updatedAt = (NowIso) }
+                  $script:NoteSent[$dr.mrn] = '||'; $script:NoteSeen.Remove($dr.mrn); $script:NoteEmptyAt = $null
+                  Log "처방 비움: 차트번호 $($dr.mrn) — 진료실 칸이 비어 있어 문서 내용을 지움" }
+              }
+            } else { $script:NoteEmptyAt = $null }
+            # v3.7 ④ 다른 환자에서 읽힌 내용과 같으면 보내지 않는다
+            $staleOf = if ($rxText -or $memo -or $chartText) { NoteStaleOf $dr.mrn $chartText $memo $rawNote } else { '' }
+            if ($staleOf) {
+              if ($script:NoteStaleLog -ne "$($dr.mrn)|$staleOf") { $script:NoteStaleLog = "$($dr.mrn)|$staleOf"; Log "보내지 않음: 차트번호 $($dr.mrn) 칸 내용이 앞 환자(차트번호 $staleOf)와 같음 — 비트가 아직 앞 환자 내용을 보여 주는 중" }
+              $script:NoteLast = ''; $script:NoteCount = 0
+            }
+            elseif ($rxText -or $memo -or $chartText) {
               $nk = "$($dr.mrn)|$rxText|$memo|$chartText"
               if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
-              if ($script:NoteCount -eq 2 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo|$chartText") {   # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용
+              if ($script:NoteCount -ge 3) { $script:NoteSeen[$dr.mrn] = @{ chart = $chartText; memo = $memo; raw = $rawNote; at = (Get-Date) } }   # 이 환자 것으로 확인된 내용
+              if ($script:NoteCount -eq 3 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo|$chartText") {   # 3번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용 (v3.7: 2번 → 3번)
                 # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
                 $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
                 $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; chart = $chartText; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso) }

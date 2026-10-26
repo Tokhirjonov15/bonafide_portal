@@ -6,7 +6,7 @@ if not exist "%~dp0bitplus_watcher.ps1" (echo. & echo  [STOP] bitplus_watcher.ps
 if not exist "%~dp0slip_capture.ps1" (echo. & echo  [STOP] slip_capture.ps1 is not in this folder: %~dp0 & echo  Open the USB drive - bitplus folder and double-click this file there. & echo. & pause & exit /b 1)
 cd /d "%~dp0"
 echo.
-echo  Clinic room PC install (watcher v3.6 + capture bar)
+echo  Clinic room PC install (watcher v3.7 + capture bar)
 echo  Run with the DOCTOR Windows account. Do NOT use Run as administrator.
 echo.
 set /p N=Clinic room number (1-4): 

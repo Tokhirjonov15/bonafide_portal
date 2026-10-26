@@ -3898,6 +3898,19 @@ function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOT
    접수에서 그 환자를 한 번이라도 조회했으면 이름·주민앞 7자리가 여기 남아 있다(2026-09-14: 진료실 PC 처방 문서에 이름·주민앞자리가 비어 오던 문제의 보완) */
 function bitLookupByMrn(mrn){mrn=String(mrn||'').trim();if(!mrn)return null;
   const c=BIT_LOOKUP.filter(l=>String(l.mrn||'').trim()===mrn).sort((a,b)=>new Date(b.at||0)-new Date(a.at||0));return c[0]||null;}
+/* 다른 환자와 같은 차팅 (2026-10-26: 박상하·조현진 슬립에 똑같은 차팅) — 진료실 PC 감시 프로그램이 환자를 바꾸는 순간 앞 환자 칸 내용을
+   새 차트번호로 보낸 것. 오늘 처방 문서 중 차트번호가 다른데 차팅(med 위, 8자 이상)이 똑같은 것이 있으면 {other, later}.
+   later = 이 문서가 나중에 처음 온 쪽(잘못 간 쪽일 가능성) → 처방 줄을 가리고 인쇄를 막는다. 비트에서 확인하고 [이 환자 것 맞음]을 누르면 풀린다(dupOk) */
+function slipChartKey(n){const c=String((n&&n.chart)||'').replace(/\s+/g,' ').trim();return c.length>=8?c:'';}
+function slipDupOf(n){const k=slipChartKey(n);if(!k)return null;const m=normMrn(n.mrn);
+  const o=(BIT_NOTES||[]).filter(x=>x!==n&&normMrn(x.mrn)&&normMrn(x.mrn)!==m&&slipChartKey(x)===k);if(!o.length)return null;
+  const t=x=>new Date(x.firstAt||x.updatedAt||0).getTime()||0;
+  return {other:o[0],others:o,later:o.every(x=>t(n)>=t(x))};}
+function slipDupBlocked(n){const d=slipDupOf(n);return !!(d&&d.later&&!n.dupOk);}
+window.slipDupOk=function(docId){const n=BIT_NOTES.find(x=>x.docId===docId);if(!n)return;const d=slipDupOf(n);
+  if(!confirm('비트에서 '+(n.name||n.mrn)+' 님 차트를 직접 열어 이 차팅·처방이 이 환자 것이 맞는지 확인하셨나요?\n\n(같은 내용: '+((d&&d.other&&(d.other.name||d.other.mrn))||'다른 환자')+')'))return;
+  saveSlipMark(docId,{dupOk:true,dupOkBy:(currentUser&&currentUser.name)||'',dupOkAt:Date.now()});n.dupOk=true;
+  try{audit('슬립 차팅 중복 확인',(n.name||'')+' ('+(n.mrn||'')+')');}catch(e){}renderSlipScreen();};
 function slipItems(){
   const room=SLIP_ROOM;
   return BIT_NOTES.map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
@@ -3905,7 +3918,7 @@ function slipItems(){
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
       const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
       const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const _td=localYMD(new Date());const shots=(Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&x.kind!=='pt'&&!hid.includes(x.id)&&(!x.at||localYMD(new Date(x.at))===_td));   // 진료실 캡처 (2026-10-06) — 오늘 찍은 것만(밤새 켜 둔 화면에도 어제 캡처가 남지 않게). PT 캡처는 슬립이 아니라 4층으로 (2026-10-13)
-      return {id:n.docId,mrn,note:n,p,pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
+      return {id:n.docId,mrn,note:n,p,dup:slipDupOf(n),dupBlock:slipDupBlocked(n),pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
     .filter(it=>it.mrn&&((it.valid&&it.lines.length)||it.shots.length)&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
 }
@@ -4005,7 +4018,8 @@ function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록�
   return `<div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
     ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
     <div class="sd-meta">${meta}</div>${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
-    <div class="sd-body${it.shots&&it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,true)}</div>`;}
+    ${it.dup?`<div class="sd-meta" style="color:#dc2626;font-weight:800">⚠ 다른 환자(${it.dup.others.map(o=>esc(o.name||o.mrn||'')).join(', ')})와 차팅이 똑같습니다 — 비트에서 확인해 주세요</div>`:''}
+    <div class="sd-body${it.shots&&it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.dupBlock?'<li>(확인 전 — 처방 줄을 가렸습니다)</li>':it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,true)}</div>`;}
 function slipPopRender(){if(!SLIP_POP||SLIP_POP.closed||!SLIP_POP_MRN)return;
   try{const it=slipItems().find(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const d=SLIP_POP.document;
     const html=slipPopHtml(it);if(d.body.dataset.h!==html){d.body.dataset.h=html;d.body.innerHTML=html;}slipShotsLoad(d);
@@ -4217,7 +4231,7 @@ function renderSlipScreen(){
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
   const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
-      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div>${slipProcHtml(it)}</div>`;}).join('')
+      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.dup?` · <b style="color:#dc2626">⚠ 차팅 중복${it.dupBlock?' — 확인 필요':''}</b>`:''}${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div>${slipProcHtml(it)}</div>`;}).join('')
     :(qq?`<div class="slip-empty">'${esc(SLIP_Q)}' — 오늘 처방 목록에 없는 환자입니다${slipMissWhy(qq,qm)}</div>`:'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>');
   if(box.dataset.h!==listHtml){box.dataset.h=listHtml;box.innerHTML=listHtml;}
   const it=items.find(x=>x.mrn===slipSel);
@@ -4230,9 +4244,13 @@ function renderSlipScreen(){
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
       ${posChipsHtml(it)}
     </div>
-    ${SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:''}
-    <div class="sd-body"><ol class="sd-lines">${it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol><div class="sd-shot-slot"></div></div>
-    <div class="sd-btns"><button class="btn" onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
+    ${it.dup?`<div style="margin:8px 0;padding:12px 14px;border:2px solid #dc2626;background:#fef2f2;border-radius:10px;color:#991b1b;font-size:14px;line-height:1.5">
+      <b>⚠ 이 차팅이 다른 환자 ${it.dup.others.map(o=>esc((o.name||'')+' ('+(o.mrn||'')+')')).join(', ')} 와 똑같습니다.</b><br>
+      진료실 PC가 환자를 바꾸는 순간 앞 환자 내용을 잘못 보냈을 수 있습니다. <b>비트에서 이 환자 차트를 직접 열어 확인</b>해 주세요.
+      ${it.dupBlock?`<br><span style="font-size:13px">확인 전에는 처방 줄을 가리고 인쇄(자동 인쇄 포함)를 막습니다.</span><div style="margin-top:8px"><button class="btn" style="border-color:#dc2626;color:#dc2626" onclick="slipDupOk('${esc(it.id)}')">비트에서 확인함 — 이 환자 것 맞음</button></div>`:it.note.dupOk?`<br><span style="font-size:13px">✔ ${esc(it.note.dupOkBy||'')} 확인함</span>`:'<br><span style="font-size:13px">이 환자 것이 먼저 왔습니다 — 다른 환자 쪽 슬립이 가려져 있습니다.</span>'}</div>`:''}
+    ${it.dupBlock?'':(SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:'')}
+    <div class="sd-body"><ol class="sd-lines">${it.dupBlock?'<li class="hint">(확인 전 — 처방 줄을 가렸습니다)</li>':it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol><div class="sd-shot-slot"></div></div>
+    <div class="sd-btns"><button class="btn" ${it.dupBlock?'disabled':''} onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
       <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button></div>`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
@@ -4288,7 +4306,8 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     <div class="ft">발행일자: ${localYMD(now)}</div>
     <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
   </body></html>`;}
-function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it)return;   // 숨김 iframe 인쇄(라벨과 같은 방식) — 태블릿에서는 브라우저 인쇄 대화상자
+function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it)return;
+  if(it.dupBlock){alert('이 슬립은 다른 환자와 차팅이 똑같아 인쇄를 막아 두었습니다.\n비트에서 차트를 확인한 뒤 슬립 화면의 [비트에서 확인함]을 눌러 주세요.');return;}   // 숨김 iframe 인쇄(라벨과 같은 방식) — 태블릿에서는 브라우저 인쇄 대화상자
   try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
     document.body.appendChild(ifr);const cw=ifr.contentWindow;cw.onafterprint=function(){setTimeout(()=>{if(ifr.parentNode)ifr.remove();},300);};
     const d=cw.document;d.open();d.write(slipHTML(it));d.close();setTimeout(()=>{if(ifr.parentNode)ifr.remove();},20000);}catch(e){console.error('slip',e);}
@@ -4315,7 +4334,7 @@ function slipApSave(){try{localStorage.setItem('dsSlipApDone',JSON.stringify({d:
 function slipApReady(it){return Date.now()-(it.t||0)>30000;}
 function slipAutoCheck(){if(!slipAutoOn()||!currentUser){SLIP_AP_SEEDED=false;return;}
   let ch=false;
-  slipItems().forEach(it=>{if(!it.valid||!it.lines.length)return;const key=it.id+'#'+((it.note&&it.note.rev)|0);
+  slipItems().forEach(it=>{if(!it.valid||!it.lines.length||it.dupBlock)return;const key=it.id+'#'+((it.note&&it.note.rev)|0);   // 차팅 중복 확인 전에는 자동 인쇄 안 함 (2026-10-26)
     if(SLIP_AP_DONE.has(key)||!slipApReady(it))return;
     SLIP_AP_DONE.add(key);ch=true;
     const pr=slipPrinted(it.note);if(!SLIP_AP_SEEDED||(pr.on&&!pr.stale))return;   // 이미 이 처방으로 인쇄됨
@@ -4349,7 +4368,8 @@ let F4C_DONE=(()=>{try{const o=JSON.parse(localStorage.getItem('ds4fChartDone')|
 function f4cSave(){try{localStorage.setItem('ds4fChartDone',JSON.stringify({d:localYMD(new Date()),k:[...F4C_DONE].slice(-500)}));}catch(e){}}
 function chart4HTML(p){const n=bitNoteFor(p);const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const now=new Date();
   const items=(rx&&Array.isArray(rx.items))?rx.items.map(x=>({n:String(x.nam||x.cod||'').trim(),t:String(x.tms||'').trim()})).filter(x=>x.n):[];   // 처방명칭 · 횟수만 (2026-10-14 요청)
-  const chart=String((n&&n.chart)||'').trim(),med=String((n&&n.rx)||'').trim();
+  const blk=n&&slipDupBlocked(n);   // 다른 환자와 같은 차팅(확인 전)은 4층 인쇄에도 싣지 않는다 (2026-10-26)
+  const chart=blk?'(다른 환자와 같은 차팅 — 비트에서 확인 필요)':String((n&&n.chart)||'').trim(),med=blk?'':String((n&&n.rx)||'').trim();
   const y=Number(String(p.birth||'').slice(0,4)),sd=p.sex==='남'?(y>=2000?3:1):p.sex==='여'?(y>=2000?4:2):'';   // 주민번호 뒷자리 첫 숫자(슬립과 같은 표기)
   const bm=slipBirthMasked(p.birth||'',String(sd));
   return `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -5780,6 +5800,13 @@ async function runSelfTest(){
      {const _n=BIT_NOTES;BIT_NOTES=[{docId:'x',mrn:'555',name:'이름연결',rx:'med\nneuropathic pain z',updatedAt:new Date().toISOString()}];
       const pc={id:'c9',name:'이름연결',mrn:'',route:['3층 대기실'],step:0,status:'대기',notes:{}};data.push(pc);
       ok('bitNoteFor: 차트번호 없는 카드도 오늘 그 이름이 하나뿐이면 처방 문서 연결', bitNoteFor(pc)&&bitNoteFor(pc).mrn==='555');data.pop();BIT_NOTES=_n;}
+     {const _n=BIT_NOTES;const t0=Date.now()-600000;   // 차팅 중복 (2026-10-26 박상하·조현진)
+      BIT_NOTES=[{docId:'d1',mrn:'101',name:'앞환자',chart:'Lt. knee pain 3 days',rx:'med\nneuropathic pain\nc-mbb',firstAt:new Date(t0).toISOString(),updatedAt:new Date(t0).toISOString()},
+        {docId:'d2',mrn:'202',name:'뒤환자',chart:'Lt.  knee pain 3 days',rx:'med\nneuropathic pain\nc-mbb',firstAt:new Date(t0+5000).toISOString(),updatedAt:new Date(t0+5000).toISOString()},
+        {docId:'d3',mrn:'303',name:'짧은',chart:'pain',rx:'med\nneuropathic pain\nx',firstAt:new Date(t0+9000).toISOString()},{docId:'d4',mrn:'404',name:'짧은2',chart:'pain',rx:'med\nneuropathic pain\nx',firstAt:new Date(t0+9900).toISOString()}];
+      const I=slipItems(),a=I.find(x=>x.mrn==='101'),b=I.find(x=>x.mrn==='202'),c=I.find(x=>x.mrn==='404');
+      const blocked=b&&b.dupBlock&&a&&a.dup&&!a.dupBlock&&c&&!c.dup;BIT_NOTES[1].dupOk=true;
+      ok('슬립 차팅 중복: 다른 차트번호와 차팅이 같으면 나중 것만 가림·인쇄 막음, 먼저 온 쪽은 경고만, 짧은 차팅은 무시, 확인하면 풀림', blocked&&!slipDupBlocked(BIT_NOTES[1]));BIT_NOTES=_n;}
      SLIP_ROOM='물리치료'; eq('slipItems: 방 필터 — 동선에 그 방이 있는 카드만', slipItems().map(it=>it.mrn), ['297']); SLIP_ROOM='';
      const html=slipHTML(items[0]);
      eq('slipBirthMasked: 앞 6자리만, 뒷자리 *******', [slipBirthMasked('1990-01-01'),slipBirthMasked('19900101'),slipBirthMasked(''),slipBirthMasked('1990')], ['900101-*******','900101-*******','','']);
@@ -14250,7 +14277,8 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     <button type="button" class="btn sm" style="margin-left:6px" onclick="closeConsentDesk();openEdit('${esc(p.id)}')">환자 정보 창</button></div>`;
   const n=bitNoteFor(p);
   const chart=`<div class="cd-sect"><div class="cd-h"><i data-lucide="stethoscope"></i> 원장님 차팅${n&&n.updatedAt?` <span class="hint">${esc(hhmm(n.updatedAt))}${n.pc?' · '+esc(n.pc):''}</span>`:''}</div>
-    ${n&&String(n.chart||'').trim()?`<pre class="cd-pre">${esc(n.chart)}</pre>`:`<div class="hint">차팅이 아직 없습니다${n?' — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 다음 환자부터 올라옵니다':' (진료실 처방 목록이 아직 오지 않았습니다)'}.</div>`}
+    ${n&&slipDupOf(n)?`<div style="color:#dc2626;font-weight:800;margin-bottom:6px">⚠ 다른 환자(${slipDupOf(n).others.map(o=>esc(o.name||o.mrn||'')).join(', ')})와 차팅이 똑같습니다 — 비트에서 이 환자 차트를 확인해 주세요</div>`:''}
+    ${n&&slipDupBlocked(n)?'<div class="hint">(확인 전 — 차팅을 가렸습니다. 슬립 화면에서 [비트에서 확인함]을 누르면 보입니다)</div>':n&&String(n.chart||'').trim()?`<pre class="cd-pre">${esc(n.chart)}</pre>`:`<div class="hint">차팅이 아직 없습니다${n?' — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 다음 환자부터 올라옵니다':' (진료실 처방 목록이 아직 오지 않았습니다)'}.</div>`}
     ${n&&String(n.rx||'').trim()?`<pre class="cd-pre cd-med">${esc(n.rx)}</pre>`:''}</div>`;
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;let rxh='<div class="hint">비트 처방이 아직 없습니다.</div>';
   if(rx&&Array.isArray(rx.items)&&rx.items.length){const payOf=rxPayLookup(rx);
