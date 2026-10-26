@@ -176,6 +176,8 @@
   .wait-controls .btn.sm{background:#fff;border:1px solid #cdd7e3;color:#374559}
   .wait-gear{position:absolute;bottom:16px;right:18px;z-index:5;width:42px;height:42px;border-radius:50%;border:none;background:rgba(255,255,255,.55);color:#46566b;font-size:19px;cursor:pointer;box-shadow:0 4px 16px rgba(20,40,80,.16);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);transition:background .15s,opacity .15s;opacity:.75}
   .wait-gear:hover{background:#fff;opacity:1}
+  /* 2026-10-26: 설정 줄을 숨기면 나갈 방법이 안 보였다 — ⚙ 는 배너·안내 띠 위에도 늘 보이게, 크게 */
+  .wait-screen .wait-gear{z-index:60;width:52px;height:52px;font-size:22px;bottom:84px;background:rgba(255,255,255,.85)}
   .wait-stage{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:0;overflow:hidden;min-height:0}
   .wait-header{display:flex;align-items:flex-end;justify-content:space-between;gap:26px;padding:30px 46px 20px}
   .wait-brand{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -1867,6 +1869,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
+    <button class="btn" id="docReqBtn" onclick="openDocReqs()" title="서류 발급 태블릿 신청 목록 — 신청이 오면 숫자·알림. 태블릿은 주소 끝에 ?docs"><i data-lucide="file-text"></i> 서류발급<span id="docReqCnt"></span></button>
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="이벤트 관리 — 주사를 맞은 지 3일 안(주사 날 포함)에 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 이벤트 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
@@ -2235,7 +2238,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
     <button class="btn sm" onclick="toggleWaitControls()"><i data-lucide="eye-off"></i> 컨트롤 숨기기</button>
     <button class="btn sm" onclick="closeWaitScreen()">✕ 닫기</button>
   </div>
-  <button class="wait-gear" id="waitGear" onclick="toggleWaitControls()" title="설정 표시/숨기기"><i data-lucide="settings"></i></button>
+  <button class="wait-gear" id="waitGear" onclick="toggleWaitControls()" title="설정 표시/숨기기 · 나가기(✕ 닫기) — Esc 키나 화면을 두 번 눌러도 됩니다"><i data-lucide="settings"></i></button>
   <div class="wait-stage">
     <div class="wait-header">
       <div class="wait-brand">
@@ -3337,7 +3340,7 @@ async function establishSession(){
 /* 공용 PC 보안: 일정 시간 무동작 시 자동 로그아웃 — 시간은 콘솔 설정(acl.idleTimeoutMin, 분). 0=사용 안 함 */
 let IDLE_MIN=0, idleTimer=null;   // 기본 꺼짐(사용자 요청 2026-08-29) — 콘솔에서 board 전용값을 주면 그때만 켜짐
 function resetIdle(){if(idleTimer){clearTimeout(idleTimer);idleTimer=null;}
-  if(!hostedMode||!currentUser||!(IDLE_MIN>0)||SLIP_MODE||RESV_MODE)return;   // 슬립·예약관리 전용 창은 표시용이므로 유휴 로그아웃 제외
+  if(!hostedMode||!currentUser||!(IDLE_MIN>0)||SLIP_MODE||RESV_MODE||window.DOCS_MODE)return;   // 슬립·예약관리 전용 창은 표시용이므로 유휴 로그아웃 제외
   if(typeof PRINT_ROOMS!=='undefined'&&PRINT_ROOMS.length)return; // 도착 라벨 자동 인쇄 담당 기기 = 무인 운영 → 자동 로그아웃 제외
   idleTimer=setTimeout(()=>{if(currentUser){try{audit('자동로그아웃');}catch(e){}alert('보안을 위해 '+IDLE_MIN+'분간 사용이 없어 자동 로그아웃되었습니다.\n다시 로그인해 주세요.');logout();}},IDLE_MIN*60*1000);}
 ['mousedown','keydown','touchstart','wheel'].forEach(ev=>window.addEventListener(ev,resetIdle,{passive:true,capture:true}));
@@ -3959,7 +3962,7 @@ function openSlipScreen(mrn){slipOpen=true;if(mrn)slipSel=String(mrn);const el=d
 let SLIP_RELOAD_WAIT='';   // 슬립 때문에 미룬 새로고침 이유('새 버전'·'오래된 화면'·'메모리')
 /* 자동 새로고침을 하지 않는 때 (2026-10-15 요청): 진료실 녹음 중 · 슬립 화면이 열려 있을 때(보이든 안 보이든, ?slip 전용 창 포함).
    새 버전·오래된 화면·메모리 새로고침 모두 — 녹음은 끝나면(3분 뒤 다시 확인), 슬립은 [지금 새로고침]이나 슬립을 닫을 때 */
-function autoReloadBlock(){if(typeof window.recActive==='function'&&window.recActive())return 'rec';if(slipOpen||SLIP_MODE)return 'slip';return '';}
+function autoReloadBlock(){if(typeof window.recActive==='function'&&window.recActive())return 'rec';if(typeof window.docKioskBusy==='function'&&window.docKioskBusy())return 'kiosk';if(slipOpen||SLIP_MODE)return 'slip';return '';}
 function slipReloadWait(why){SLIP_RELOAD_WAIT=SLIP_RELOAD_WAIT||why;const b=document.getElementById('slipUpd');if(b)b.style.display='';}
 function slipReloadNow(){try{audit('새로고침(슬립 닫힘)',SLIP_RELOAD_WAIT);}catch(e){}try{flushBigLocal();}catch(e){}setTimeout(()=>location.reload(),300);}
 document.addEventListener('visibilitychange',()=>{if(SLIP_RELOAD_WAIT&&document.visibilityState==='hidden'&&!autoReloadBlock())slipReloadNow();});   // 안 보일 때 미뤘던 새로고침 (슬립이 열려 있거나 녹음 중이면 안 함, 2026-10-15)
@@ -6281,6 +6284,9 @@ async function runSelfTest(){
      {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'방사선사':['조선형'],'간호사':['곽민솔']});
       const a=[docStatStaff('C-Arm','조선형',''),docStatStaff('C-Arm','','곽민솔'),docStatStaff('C-Arm','곽민솔',''),docStatStaff('Sono','','곽민솔')];STAFF_ROSTER=_sr;
       ok('C-Arm 직원별: 방사선사만(간호 담당·간호사 이름은 방사선사 미지정)', a.join(',')==='조선형,(방사선사 미지정),(방사선사 미지정),곽민솔',a.join(','));}
+     {const _v=VISITS,_d=data;VISITS=[{name:'홍 길동',birth:'1990-01-01',mrn:'555',dischargedAt:'2026-10-03T10:00:00'},{name:'홍길동',birth:'1990-01-01',mrn:'555',dischargedAt:'2026-10-20T10:00:00'},{name:'홍길동',birth:'1990-01-01',mrn:'555',dischargedAt:'2026-09-20T10:00:00'},{name:'홍길동',birth:'1985-05-05',mrn:'777',dischargedAt:'2026-10-21T10:00:00'}];data=[];
+      let a=[],m='';try{_dk.reset();_dk.setS({name:'홍길동',birth:'900101'});a=_dk.myVisits();m=_dk.matchMrn();}finally{VISITS=_v;data=_d;}
+      ok('서류발급 태블릿: 이름·생년월일로 10월 이후 내원일만, 차트번호 하나로 맞춤', JSON.stringify(a)==='["2026-10-20","2026-10-03"]'&&m==='555'&&_dk.b6('19900101')==='900101',JSON.stringify(a)+' '+m);}
      {const _bi=BIT_INTAKE,_v=VISITS,_rg=REGISTRY;REGISTRY=[{mrn:'8802',name:'권예전',birth:'1990-01-01',sex:'여'}];BIT_INTAKE=[{mrn:'8802',name:'권루아',rrn7:'900101-2'}];VISITS=[];
       let L=[];try{fillRegOpts('권루아');L=[...document.querySelectorAll('#regOpts option')].map(o=>o.value);}finally{BIT_INTAKE=_bi;VISITS=_v;REGISTRY=_rg;}
       ok('재진 불러오기: 개명한 새 이름(비트)으로도 찾음', L.includes('권루아 8802'),JSON.stringify(L));}
@@ -8166,6 +8172,9 @@ async function onWaitIdleBg(ev){const files=Array.from((ev.target&&ev.target.fil
 function clearWaitIdleBg(){if(!isAdmin()){alert("빈 화면 배경은 관리자만 바꿀 수 있습니다.");return;}
   waitIdleBg="";waitIdleBgs=[];waitIdleIdx=0;waitPresets[waitCur].idleBg="";delete waitPresets[waitCur].idleBgs;saveWaitPresets();idbSet('waitIdleBgs_'+waitCur,[]);
   if(waitOpen)renderWaitScreen();else applyWaitBg();}
+/* 대기화면 설정 줄 다시 보기: ⚙ 버튼 · Esc 키 · 화면 두 번 누르기 (2026-10-26) */
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&typeof waitOpen!=='undefined'&&waitOpen&&waitHideControls){toggleWaitControls();}});
+document.addEventListener('dblclick',e=>{if(typeof waitOpen!=='undefined'&&waitOpen&&e.target&&e.target.closest&&e.target.closest('#waitScreen')&&!e.target.closest('#waitControls'))toggleWaitControls();});
 function toggleWaitControls(){waitHideControls=!waitHideControls;localStorage.setItem("patientBoard_waithide",waitHideControls?"1":"0");applyWaitControls();}
 function applyWaitControls(){const c=document.getElementById("waitControls");if(c)c.classList.toggle("hidden",waitHideControls);
   document.querySelectorAll(".wait-admin-only").forEach(el=>{el.style.display=isAdmin()?"":"none";});   // 빈 화면 배경(올리기·지우기)은 관리자만 (2026-09-24)const inp=document.getElementById("waitMsgInput");if(inp)inp.value=waitMsg;
@@ -15121,6 +15130,191 @@ boot();
   /* 켤 때: 저장해 둔 폴더 불러오기 */
   (async()=>{try{if(!room())return badge();DIR=await kvGet('dir')||null;
       if(DIR&&!(await perm(false))){const el=document.getElementById('recBadge');if(el)el.dataset.noperm='1';}}catch(e){console.warn('rec init',e);}badge();})();
+})();
+</script>
+<!-- ═════ 서류 발급 전용 태블릿 (2026-10-26 요청 — 럭스꼬 '서류발급태블릿 계획') ═════
+   주소 끝에 ?docs 를 붙여 연 태블릿은 로그인하면 이 화면이 가득 찬다(환자용 — 동선관리 알림·팝업·자동 로그아웃 없음).
+   시작 → 준비 안내 → 성함·생년월일 → 서류 선택(무료·유료) → 발급 기간(동선관리 내원 기록) → 완료(30초 뒤 처음으로). 2분 동안 손대지 않으면 처음으로.
+   신청은 docReq 문서로 저장 → 직원 화면 맨 위 [📄 서류발급]에 숫자·알림, 목록에서 [발급 완료]. [직원 호출]도 같은 목록에 '호출'로.
+   태블릿에서 나가기: 오른쪽 위 모서리를 3초 누르기 → 확인 -->
+<style>
+  .dk{position:fixed;inset:0;z-index:4000;background:#fff;color:#111;display:none;flex-direction:column;font-family:'Noto Sans KR','Malgun Gothic',sans-serif;user-select:none;-webkit-user-select:none}
+  .dk.show{display:flex}
+  .dk-body{flex:1;min-height:0;overflow:auto;padding:5vh 6vw 3vh;display:flex;flex-direction:column}
+  .dk h1{font-size:clamp(34px,6vw,72px);font-weight:900;margin:0 0 3vh;letter-spacing:-1px}
+  .dk-start{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;cursor:pointer}
+  .dk-start .t1{font-size:clamp(48px,10vw,120px);font-weight:900;line-height:1.1;letter-spacing:-2px}
+  .dk-start .t2{font-size:clamp(28px,5vw,60px);margin-top:6vh}
+  .dk-start .t3{color:#dc2626;font-weight:800;font-size:clamp(18px,2.6vw,32px);margin-top:8vh;line-height:1.6}
+  .dk-start .t3 b{font-size:1.9em;vertical-align:-.15em}
+  .dk-sec{margin:0 0 2.4vh}
+  .dk-sec .h{font-size:clamp(20px,2.8vw,32px);font-weight:900}
+  .dk-sec .l{font-size:clamp(17px,2.3vw,28px);margin-top:.4vh;line-height:1.45}
+  .dk-warn{font-size:clamp(18px,2.4vw,28px);font-weight:900;margin-top:1vh}
+  .dk-foot{display:flex;align-items:center;gap:14px;padding:2vh 6vw 3vh}
+  .dk-btn{font:inherit;font-size:clamp(20px,2.6vw,30px);font-weight:800;border:0;border-radius:14px;padding:1.4vh 3.4vw;background:#3b6fd4;color:#fff;cursor:pointer;min-width:150px}
+  .dk-btn.ghost{background:#e5ebf5;color:#1f3b73}
+  .dk-btn:disabled{opacity:.4}
+  .dk-call{margin-left:auto;font-size:clamp(15px,1.8vw,20px);padding:1vh 2vw;background:#fff;color:#b91c1c;border:2px solid #fca5a5;min-width:0}
+  .dk-field{display:flex;align-items:center;gap:2vw;margin:2.4vh 0}
+  .dk-field label{font-size:clamp(26px,4vw,48px);font-weight:900;min-width:7em}
+  .dk-field input{flex:1;max-width:620px;font:inherit;font-size:clamp(26px,3.6vw,44px);padding:1.2vh 1.4vw;border:3px solid #c7d2e3;border-radius:14px;outline:0}
+  .dk-field input:focus{border-color:#3b6fd4}
+  .dk-note{font-size:clamp(16px,2.1vw,26px);line-height:1.7;margin-top:2vh}
+  .dk-err{color:#dc2626;font-weight:800;font-size:clamp(16px,2vw,24px);min-height:1.5em;margin-top:1vh}
+  .dk-two{display:flex;gap:4vw;flex-wrap:wrap;align-items:flex-start}
+  .dk-tbl{flex:1;min-width:300px;border-collapse:separate;border-spacing:0 6px;font-size:clamp(17px,2.2vw,26px)}
+  .dk-tbl caption{font-weight:900;padding:1vh;color:#fff;border-radius:10px 10px 0 0;font-size:clamp(18px,2.3vw,28px)}
+  .dk-tbl.free caption{background:#ea7a2e}.dk-tbl.paid caption{background:#f4b400;color:#222}
+  .dk-tbl td{padding:1.1vh 1vw;background:#fdf1ea}.dk-tbl.paid td{background:#fff6dd}
+  .dk-tbl tr{cursor:pointer}
+  .dk-tbl tr.on td{background:#dbeafe !important;font-weight:800}
+  .dk-tbl td.ck{width:2.4em;text-align:center;font-size:1.3em}
+  .dk-tbl td.fee{text-align:right;white-space:nowrap;color:#555}
+  .dk-opt{display:flex;align-items:center;gap:1.4vw;font-size:clamp(24px,3.6vw,44px);margin:2.6vh 0;cursor:pointer}
+  .dk-opt .bx{width:1.1em;height:1.1em;border:3px solid #333;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.8em}
+  .dk-opt.on .bx{background:#3b6fd4;border-color:#3b6fd4;color:#fff}
+  .dk-dates{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 1vh 4vw}
+  .dk-date{font:inherit;font-size:clamp(18px,2.3vw,28px);padding:1vh 1.6vw;border:2px solid #c7d2e3;border-radius:12px;background:#fff;cursor:pointer}
+  .dk-date.on{background:#dbeafe;border-color:#3b6fd4;font-weight:800}
+  .dk-done{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-size:clamp(24px,3.8vw,46px);font-weight:900;line-height:1.5}
+  .dk-done .s{font-size:.5em;color:#999;font-weight:500;margin-top:5vh}
+  .dk-exit{position:absolute;top:0;right:0;width:70px;height:70px}
+  /* 직원 목록 */
+  .drq-row{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+  .drq-row.done{opacity:.55}
+  .drq-row.call{border-color:#fca5a5;background:#fef2f2}
+  #docReqCnt:not(:empty){display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;line-height:18px;text-align:center}
+</style>
+<div class="dk" id="docKiosk" aria-live="polite"></div>
+<script>
+(function(){
+  const DOCS_MODE=new URLSearchParams(location.search).has('docs');window.DOCS_MODE=DOCS_MODE;
+  const FREE=[{n:'진료비 영수증 (공통)'},{n:'진료비 세부내역서 (공통)'},{n:'처방전 (질병코드O)'}];
+  const PAID=[{n:'진료 확인서',f:'3,000원'},{n:'초진차트, 차트복사',f:'장당 1,000원'},{n:'차트복사 (5장 이상부터)',f:'장당 100원'},{n:'검사결과지',f:'장당 1,000원'},{n:'DVD복사(CD)',f:'20,000원'},{n:'USB복사',f:'20,000원'}];
+  const SINCE='2026-10-01';   // 동선관리 내원 기록이 있는 때 — 그 전 날짜는 데스크 문의
+  let S=null,IDLE_T=null,DONE_T=null;
+  const col=()=>(typeof cloud!=='undefined'&&cloud.ref)?cloud.ref.collection('docReq'):null;
+  const E=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+  function reset(){S={step:0,name:'',birth:'',free:[],paid:[],all:false,pick:false,dates:[],extra:'',err:''};}
+  function bump(){clearTimeout(IDLE_T);if(S&&S.step>0&&S.step<5)IDLE_T=setTimeout(()=>{reset();render();},120000);}   // 2분 손대지 않으면 처음으로
+  function b6(s){const d=String(s||'').replace(/\D/g,'');return d.length===8?d.slice(2):d.length===6?d:'';}
+  function myVisits(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);if(!nk||!bk)return [];
+    const L=[...((typeof VISITS!=='undefined'&&Array.isArray(VISITS))?VISITS:[]),...((typeof data!=='undefined'&&Array.isArray(data))?data:[])];
+    const set=new Set();
+    L.forEach(v=>{if(!v||String(v.name||'').replace(/\s+/g,'')!==nk||b6(v.birth)!==bk)return;
+      const d=v.dischargedAt||v.arrivedAt||v.enteredAt;if(!d)return;const t=new Date(d);if(isNaN(t))return;
+      const k=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');if(k>=SINCE)set.add(k);});
+    return [...set].sort().reverse();}
+  function matchMrn(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);const m=new Set();
+    [...((typeof VISITS!=='undefined'&&VISITS)||[]),...((typeof data!=='undefined'&&data)||[])].forEach(v=>{if(v&&v.mrn&&String(v.name||'').replace(/\s+/g,'')===nk&&b6(v.birth)===bk)m.add(String(v.mrn).trim());});
+    return m.size===1?[...m][0]:'';}
+  const foot=(prev,next,nextLbl,dis)=>`<div class="dk-foot">${prev?`<button class="dk-btn ghost" onclick="dkGo(${prev})">이전</button>`:''}<button class="dk-btn ghost" onclick="dkHome()">처음으로</button>
+    ${next!=null?`<button class="dk-btn" onclick="${next}" ${dis?'disabled':''}>${nextLbl||'다음'}</button>`:''}<button class="dk-btn dk-call" onclick="dkCall()">🔔 직원 호출</button></div>`;
+  function render(){const el=document.getElementById('docKiosk');if(!el)return;bump();
+    const ex='<div class="dk-exit" onpointerdown="dkExitDown()" onpointerup="dkExitUp()" onpointerleave="dkExitUp()"></div>';
+    if(S.step===0){el.innerHTML=ex+`<div class="dk-start" onclick="dkGo(1)"><div class="t1">서류 발급<br>전용 태블릿</div><div class="t2">화면을 살짝 터치해주세요.</div>
+      <div class="t3">* 원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에 이용해 주세요.</div></div>`;return;}
+    if(S.step===1){el.innerHTML=ex+`<div class="dk-body"><h1>수령 전 준비 부탁드려요</h1>
+      <div class="dk-sec"><div class="h">본인 수령 시 :</div><div class="l">① 본인 신분증 준비</div></div>
+      <div class="dk-sec"><div class="h">가족 대리 발급 시 :</div><div class="l">① 3개월 이내 발급 된 가족관계증명서 또는 등본<br>② 환자 신분증 &amp; 대리인 신분증 총 2개 (미성년자 제외)</div></div>
+      <div class="dk-sec"><div class="h">대리 발급 시 (가족이 아닌 경우) :</div><div class="l">① 환자 신분증 &amp; 대리인 신분증 총 2개<br>② 진료기록의 열람·사본 발급, 전송·송부 동의서<br>③ 진료기록 열람 및 사본발급 위임장</div></div>
+      <div class="dk-warn">캡쳐·촬영·저장된 파일 X — 실물로 준비 부탁드립니다.</div></div>${foot(0,'dkGo(2)')}`;return;}
+    if(S.step===2){el.innerHTML=ex+`<div class="dk-body"><h1>서류 뗄 사람 (당사자) 신분 확인</h1>
+      <div class="dk-field"><label>• 성함 :</label><input id="dkName" value="${E(S.name)}" autocomplete="off" placeholder="예: 홍길동" oninput="dkSet('name',this.value)"></div>
+      <div class="dk-field"><label>• 생년월일 :</label><input id="dkBirth" value="${E(S.birth)}" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="예: 900101" oninput="this.value=this.value.replace(/\\D/g,'');dkSet('birth',this.value)"></div>
+      <div class="dk-err">${E(S.err)}</div>
+      <div class="dk-note">영수증과 세부내역서 외 <b>필요 서류는 병원 측에서 확인 해드릴 수 없습니다.</b><br>필요 서류는 해당 보험사에 문의 부탁드립니다.<br><b>진단서, 소견서, 진료 의뢰서의 경우 진료 후 발급 가능합니다.</b></div></div>${foot(1,'dkIdNext()')}`;
+      setTimeout(()=>{const i=document.getElementById(S.name?'dkBirth':'dkName');if(i)i.focus();},50);return;}
+    if(S.step===3){const row=(it,i,k)=>{const on=S[k].includes(i);return `<tr class="${on?'on':''}" onclick="dkTog('${k}',${i})"><td>${E(it.n)}</td>${it.f?`<td class="fee">${E(it.f)}</td>`:''}<td class="ck">${on?'✔':'☐'}</td></tr>`;};
+      el.innerHTML=ex+`<div class="dk-body"><h1>발급할 서류 선택</h1><div class="dk-two">
+        <table class="dk-tbl free"><caption>무료 발급</caption>${FREE.map((it,i)=>row(it,i,'free')).join('')}</table>
+        <table class="dk-tbl paid"><caption>유료 발급</caption>${PAID.map((it,i)=>row(it,i,'paid')).join('')}</table></div>
+        <div class="dk-err">${E(S.err)}</div><div class="dk-note">누르면 체크됩니다. 여러 개 고를 수 있어요.</div></div>${foot(2,'dkDocsNext()')}`;return;}
+    if(S.step===4){const D=myVisits();
+      el.innerHTML=ex+`<div class="dk-body"><h1>발급 기간 선택</h1>
+        <div class="dk-opt ${S.all?'on':''}" onclick="dkPer('all')"><span class="bx">${S.all?'✔':''}</span>내원이력 전체</div>
+        <div class="dk-opt ${S.pick?'on':''}" onclick="dkPer('pick')"><span class="bx">${S.pick?'✔':''}</span>내원이력 선택</div>
+        ${S.pick?(D.length?`<div class="dk-dates">${D.map(d=>`<button class="dk-date ${S.dates.includes(d)?'on':''}" onclick="dkDate('${d}')">${d.slice(2).replace(/-/g,'.')}</button>`).join('')}</div>`
+          :`<div class="dk-note" style="margin:0 0 1vh 4vw">10월 이후 내원 기록을 찾지 못했습니다 — 날짜를 직접 적어 주세요.</div>`)
+          +`<div class="dk-field" style="margin-left:4vw"><label style="min-width:0;font-size:clamp(18px,2.4vw,28px)">직접 입력</label><input id="dkExtra" value="${E(S.extra)}" placeholder="예: 10월 3일, 10월 10일" oninput="dkSet('extra',this.value)" style="font-size:clamp(18px,2.4vw,28px)"></div>`:''}
+        <div class="dk-note" style="color:#888">10월 이전 날짜는 데스크에 문의해주세요.</div><div class="dk-err">${E(S.err)}</div></div>${foot(3,'dkSubmit()','신청')}`;return;}
+    if(S.step===5){el.innerHTML=ex+`<div class="dk-done">신청이 완료되었습니다.<br><br>모든 서류는 확인 절차를 거친 후<br>발급까지 약 15분 소요 되며<br>시간이 지체 될 시 직원이 재안내 드리겠습니다.<br><br>자리에 앉아계시면 호명 해드리겠습니다 ☺
+      <div class="s">잠시 후 처음 화면으로 돌아갑니다</div></div>`;clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},30000);
+      el.onclick=()=>{if(S.step===5){clearTimeout(DONE_T);reset();render();}};return;}}
+  window.dkGo=n=>{S.step=n;S.err='';const el=document.getElementById('docKiosk');if(el)el.onclick=null;render();};
+  window.dkHome=()=>{reset();render();};
+  window.dkSet=(k,v)=>{S[k]=v;bump();};
+  window.dkIdNext=()=>{const nm=String(S.name||'').trim(),b=String(S.birth||'');
+    if(!nm){S.err='성함을 입력해 주세요.';render();return;}
+    if(!(b.length===6||b.length===8)){S.err='생년월일을 6자리(예: 900101)로 입력해 주세요.';render();return;}
+    dkGo(3);};
+  window.dkTog=(k,i)=>{const L=S[k];const j=L.indexOf(i);if(j>=0)L.splice(j,1);else L.push(i);S.err='';render();};
+  window.dkDocsNext=()=>{if(!S.free.length&&!S.paid.length){S.err='발급할 서류를 하나 이상 골라 주세요.';render();return;}dkGo(4);};
+  window.dkPer=k=>{if(k==='all'){S.all=!S.all;if(S.all)S.pick=false;}else{S.pick=!S.pick;if(S.pick)S.all=false;}S.err='';render();};
+  window.dkDate=d=>{const j=S.dates.indexOf(d);if(j>=0)S.dates.splice(j,1);else S.dates.push(d);render();};
+  window.dkSubmit=async()=>{
+    if(!S.all&&!S.pick){S.err='발급 기간을 골라 주세요.';render();return;}
+    if(S.pick&&!S.dates.length&&!String(S.extra||'').trim()){S.err='날짜를 하나 이상 고르거나 직접 적어 주세요.';render();return;}
+    const c=col();if(!c){S.err='지금 신청을 보낼 수 없습니다 — 직원을 불러 주세요.';render();return;}
+    const id='dr'+Date.now();
+    const rec={id,type:'docs',at:new Date().toISOString(),date:today(),name:String(S.name).trim(),birth:String(S.birth),mrn:matchMrn(),
+      items:[...S.free.sort().map(i=>({name:FREE[i].n,fee:'무료'})),...S.paid.sort().map(i=>({name:PAID[i].n,fee:PAID[i].f}))],
+      period:S.all?'내원이력 전체':('선택: '+[...S.dates.sort(),String(S.extra||'').trim()].filter(Boolean).join(', ')),status:'대기',device:navigator.userAgent.slice(0,80)};
+    try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 직원을 불러 주세요.';render();return;}
+    dkGo(5);};
+  let CALL_AT=0;
+  window.dkCall=async()=>{if(Date.now()-CALL_AT<30000){alertKiosk('직원을 불렀습니다. 잠시만 기다려 주세요.');return;}CALL_AT=Date.now();
+    const c=col();try{if(c){const id='dc'+Date.now();await c.doc(id).set({id,type:'call',at:new Date().toISOString(),date:today(),name:String(S.name||'').trim(),birth:String(S.birth||''),status:'대기',step:S.step});}}catch(e){}
+    alertKiosk('직원을 불렀습니다. 잠시만 기다려 주세요.');};
+  function alertKiosk(m){let b=document.getElementById('dkMsg');if(!b){b=document.createElement('div');b.id='dkMsg';b.style.cssText='position:fixed;left:50%;top:40%;transform:translate(-50%,-50%);z-index:4100;background:#1f3b73;color:#fff;font-size:clamp(22px,3vw,36px);font-weight:800;padding:3vh 4vw;border-radius:18px;box-shadow:0 10px 40px rgba(0,0,0,.3)';document.body.appendChild(b);}
+    b.textContent=m;b.style.display='';clearTimeout(b._t);b._t=setTimeout(()=>{b.style.display='none';},4000);}
+  /* 나가기: 오른쪽 위 모서리를 3초 누르기 */
+  let EX_T=null;window.dkExitDown=()=>{clearTimeout(EX_T);EX_T=setTimeout(()=>{if(confirm('서류 발급 화면을 닫고 동선관리로 돌아갈까요? (직원용)')){location.href=location.pathname;}},3000);};
+  window.dkExitUp=()=>clearTimeout(EX_T);
+  window.docKioskBusy=()=>!!(DOCS_MODE&&S&&S.step>0);   // 신청 중이면 새 버전 자동 새로고침을 미룬다
+  if(DOCS_MODE){
+    document.body.classList.add('docs-kiosk');
+    /* 환자용 화면 — 동선관리 알림·팝업이 뜨지 않게 */
+    try{window.notify=function(){};}catch(e){}try{notify=function(){};}catch(e){}
+    try{warnToast=function(){};}catch(e){}
+    const _al=window.alert;window.alert=function(m){console.warn('[서류발급 태블릿] 알림 숨김:',m);};
+    reset();
+    setInterval(()=>{const el=document.getElementById('docKiosk');if(!el)return;const on=!!(typeof currentUser!=='undefined'&&currentUser);
+      if(on&&!el.classList.contains('show')){el.classList.add('show');render();}
+      if(!on&&el.classList.contains('show'))el.classList.remove('show');   // 로그인이 풀리면 로그인 창이 보이게
+    },1000);
+  }
+  /* ── 직원 화면: 신청 목록 ── */
+  let REQS=[],REQ_UNSUB=null,REQ_SEEN=null;
+  function subReqs(){if(DOCS_MODE||REQ_UNSUB)return;const c=col();if(!c||typeof currentUser==='undefined'||!currentUser)return;
+    REQ_UNSUB=c.where('date','>=',(()=>{const d=new Date(Date.now()-2*864e5);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()).onSnapshot(s=>{
+      REQS=s.docs.map(d=>d.data()).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+      const pend=REQS.filter(r=>r.status==='대기');const cnt=document.getElementById('docReqCnt');if(cnt)cnt.textContent=pend.length?String(pend.length):'';
+      if(REQ_SEEN){pend.filter(r=>!REQ_SEEN.has(r.id)).forEach(r=>{try{notify(r.type==='call'?'bell':'file-text',r.type==='call'?'서류발급 태블릿 — 직원 호출':'서류 발급 신청',E((r.name||'(이름 없음)')+(r.birth?' '+r.birth:'')+(r.type==='call'?'':' · '+(r.items||[]).map(x=>x.name).join(', '))));}catch(e){}});}
+      REQ_SEEN=new Set(REQS.map(r=>r.id));
+      if(document.getElementById('docReqOv'))renderReqs();
+    },e=>console.warn('docReq',e));}
+  setInterval(subReqs,3000);
+  window.openDocReqs=()=>{subReqs();renderReqs(true);};
+  function renderReqs(open){let ov=document.getElementById('docReqOv');if(!ov&&!open)return;
+    if(!ov){ov=document.createElement('div');ov.id='docReqOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
+    const rows=REQS.map(r=>{const t=new Date(r.at);const hm=isNaN(t)?'':String(t.getMonth()+1)+'/'+t.getDate()+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
+      const done=r.status!=='대기';
+      return `<div class="drq-row ${done?'done':''} ${r.type==='call'?'call':''}"><div style="flex:1;min-width:220px">
+        <b>${r.type==='call'?'🔔 직원 호출':'📄 '+E(r.name||'')}</b> <span class="hint">${E(r.birth||'')}${r.mrn?' · '+E(r.mrn):''} · ${hm}</span>
+        ${r.type==='call'?`<div class="hint">${r.name?E(r.name)+' 입력 중 · ':''}태블릿에서 직원을 불렀습니다</div>`:`<div style="margin-top:3px">${(r.items||[]).map(x=>E(x.name)+(x.fee&&x.fee!=='무료'?' <span class="hint">('+E(x.fee)+')</span>':'')).join(' · ')}</div><div class="hint">기간: ${E(r.period||'')}</div>`}
+        ${done?`<div class="hint">완료 ${E(r.doneBy||'')} ${E(String(r.doneAt||'').slice(11,16))}</div>`:''}</div>
+        <button class="btn sm ${done?'':'primary'}" onclick="docReqDone('${E(r.id)}',${done?'false':'true'})">${done?'되돌리기':(r.type==='call'?'확인':'발급 완료')}</button></div>`;}).join('');
+    ov.innerHTML=`<div class="modal" style="width:640px"><h3>📄 서류 발급 신청 <span class="hint">최근 3일</span></h3>
+      <div class="body" style="display:flex;flex-direction:column;gap:8px;max-height:62vh;overflow:auto">${rows||'<div class="hint" style="padding:10px">신청이 없습니다.</div>'}</div>
+      <div class="foot"><a class="btn" href="?docs" target="_blank" title="이 주소를 서류 발급 태블릿에서 열어 두세요 (로그인 한 번)" style="margin-right:auto">태블릿 화면 열기 (?docs)</a><button class="btn primary" onclick="document.getElementById('docReqOv').remove()">닫기</button></div></div>`;}
+  window.docReqDone=async(id,done)=>{const c=col();if(!c)return;
+    try{await c.doc(id).set(done?{status:'완료',doneBy:(currentUser&&currentUser.name)||'',doneAt:new Date().toISOString()}:{status:'대기',doneBy:'',doneAt:''},{merge:true});
+      try{audit(done?'서류 발급 완료':'서류 발급 되돌림',id);}catch(e){}}catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
+  /* 테스트용 */
+  window._dk={reset:()=>reset(),S:()=>S,setS:o=>Object.assign(S,o),myVisits:()=>myVisits(),matchMrn:()=>matchMrn(),b6};
 })();
 </script>
 </body>
