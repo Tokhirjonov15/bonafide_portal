@@ -74,5 +74,6 @@ Write-Host ''
 Write-Host '설치 끝!' -ForegroundColor Green
 Write-Host '· 화면 오른쪽 아래 알림 영역(^ 를 누르면 보임)에 동그라미 아이콘: 회색 = 대기, 빨강 = 녹음 중'
 Write-Host '· 외래진료실에서 환자를 불러 3초 뒤 녹음이 시작되고, 다른 환자를 부르면 앞 환자 녹음이 저장됩니다'
+Write-Host '· 동선관리에서 그 환자 카드가 이 진료실에 있을 때만 녹음합니다 (다른 방 환자 차트를 열어 보는 것은 녹음하지 않음)'
 Write-Host "· 기록: $env:LOCALAPPDATA\bitplus_watcher\clinic_rec.log"
 if (-not $micOk) { Write-Host '· 마이크 시험이 통과하지 않았습니다 — 위 안내대로 마이크를 확인해 주세요' -ForegroundColor Yellow }

@@ -2,6 +2,7 @@
 #  진료 녹음 (원장님 진료실 PC) — 2026-10-25 요청
 #  비트 외래진료실 창에 지금 불러온 환자(차트번호·이름)를 1.5초마다 읽어, 환자가 바뀌면(진료대기·진료보류에서 다른 환자를 더블클릭)
 #  앞 환자 녹음을 끊어 외장하드에 저장하고 새 환자 녹음을 시작한다. 동선관리 화면이 없어도 된다.
+#   · 2026-10-26: 동선관리에서 그 환자 카드가 이 진료실에 있을 때만 녹음한다(다른 방 환자 차트를 열어 보는 것은 녹음 안 함). 카드가 진료실을 나가면 끊는다
 #   · 파일: '녹음 2026-10-25 홍길동 900101 진료실1 09시15분03초~09시20분10초.wav'  (16kHz 모노 — 1분 약 1.9MB)
 #   · 녹음 중에는 이 PC 의 임시 폴더에 쌓고, 끊을 때 외장하드로 옮긴다. 외장하드가 빠져 있으면 C:\bitplus\녹음_임시 에 두었다가 꽂히면 옮긴다
 #   · 받아쓰기: 같은 폴더를 보는 rec_transcribe.py(rec_install.bat 로 설치)가 옆에 .txt 를 만들면 동선관리 '녹음기록'(recText)에 올린다
@@ -260,6 +261,29 @@ function SttDone($x) {   # 대기 목록에서 빼도 되는가: OpenAI 를 쓰�
   return $false
 }
 
+# ── 동선관리에서 이 환자가 지금 이 진료실에 있는가 (2026-10-26) ──
+#  비트 창만 보면 원장님이 다른 방 환자(Sono·처치실·엑스레이 결과)의 차트를 열어도 그 환자로 녹음했다(10-25~26 녹음 27건 중 16건).
+#  동선관리 카드의 지금 방(route[step])이 이 진료실일 때만 녹음한다. 확인할 수 없으면(로그인·네트워크) 예전처럼 비트 창만 따른다.
+#  돌려주는 값: 방 이름 · '' (동선에 없음) · $null (확인 못 함). 같은 환자는 5초 동안 다시 묻지 않는다
+$script:BoardAt = @{}; $script:BoardRoom = @{}; $script:BoardErrAt = [DateTime]::MinValue
+function BoardRoomOf($mrn) {
+  if (-not $mrn -or -not $Room) { return $null }
+  if ($script:BoardAt.ContainsKey($mrn) -and ((Get-Date) - $script:BoardAt[$mrn]).TotalSeconds -lt 5) { return $script:BoardRoom[$mrn] }
+  if (((Get-Date) - $script:BoardErrAt).TotalSeconds -lt 60) { return $null }   # 방금 실패 — 1분 동안은 묻지 않는다
+  try {
+    $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'patients' }); where = @{ fieldFilter = @{ field = @{ fieldPath = 'mrn' }; op = 'EQUAL'; value = @{ stringValue = [string]$mrn } } }; limit = 5 } } | ConvertTo-Json -Depth 10 -Compress
+    $u = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$($BoardDoc):runQuery"
+    $wr = Invoke-WebRequest -UseBasicParsing -TimeoutSec 5 -Method Post -Uri $u -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+    $res = [Text.Encoding]::UTF8.GetString($wr.RawContentStream.ToArray()) | ConvertFrom-Json
+    $rm = ''
+    foreach ($x in @($res)) { if (-not $x.document) { continue }; $f = $x.document.fields
+      $route = @(@($f.route.arrayValue.values) | ForEach-Object { [string]$_.stringValue }); $st = [int]$f.step.integerValue
+      if ($route.Count -gt $st) { $rm = $route[$st]; if ($rm -eq $Room) { break } } }
+    $script:BoardAt[$mrn] = Get-Date; $script:BoardRoom[$mrn] = $rm; return $rm
+  } catch { $script:BoardErrAt = Get-Date; Log "동선 확인 실패(비트 창만 따름): $($_.Exception.Message)"; return $null }
+}
+function InRoomOnBoard($mrn) { $r = BoardRoomOf $mrn; return ($null -eq $r -or $r -eq $Room) }
+
 # ── 녹음 ──
 $script:Cur = $null         # 녹음 중: @{ mrn; name; rrn7; start(DateTime); tmp }
 $script:StopKey = ''         # 이 차트번호는 (최대 시간·직접 멈춤으로) 다시 녹음하지 않는다 — 다른 환자로 바뀌면 풀림
@@ -355,6 +379,7 @@ $tray.ContextMenuStrip = $menu
 # ── 1.5초마다: 지금 환자 확인 → 바뀌었으면 끊고 새로 ──
 #  흔들림 막기: 새 환자는 2번 연속(3초), '환자 없음'은 4번 연속(6초) 같은 값이어야 따른다
 $script:Cand = ''; $script:CandN = 0; $script:CandP = $null; $script:Tick = 0
+$script:WaitLog = ''; $script:OutN = 0   # 동선에서 이 진료실이 아니라 녹음을 기다리는 차트번호(기록 한 번만) · 녹음 중 동선에서 나간 횟수
 function Poll() {
   $script:Tick++
   $p = $null; try { $p = CurrentPatient } catch { Log "창 읽기 오류: $($_.Exception.Message)"; return }
@@ -370,8 +395,16 @@ function Poll() {
     $curKey = if ($script:Cur) { $script:Cur.mrn } else { '' }
     if ($key -ne $curKey) {
       if ($script:Cur) { StopRec $(if ($key) { "환자 바뀜 → $($p.name) ($key)" } else { '외래진료실 환자 없음' }) }
-      if ($key -and $key -ne $script:StopKey) { StartRec $p }
+      if ($key -and $key -ne $script:StopKey) {
+        if (InRoomOnBoard $key) { $script:WaitLog = ''; $script:OutN = 0; StartRec $p }
+        elseif ($script:WaitLog -ne $key) { $script:WaitLog = $key; Log "녹음 안 함: $($p.name) ($key) — 동선관리에서 지금 $Room 이 아님($($script:BoardRoom[$key])). 카드가 $Room 로 오면 시작" }
+      }
     }
+  }
+  # 녹음 중 동선관리에서 이 진료실을 나갔으면(10초 간격 2번 연속) 끊는다 — 비트 창에 차트가 남아 있어도
+  if ($script:Cur -and $script:Tick % 7 -eq 0) {
+    if (InRoomOnBoard $script:Cur.mrn) { $script:OutN = 0 }
+    elseif (++$script:OutN -ge 2) { $script:OutN = 0; $script:WaitLog = $script:Cur.mrn; StopRec "동선관리에서 $Room 을 나감($($script:BoardRoom[$script:Cur.mrn]))" }
   }
   if ($script:Cur -and ((Get-Date) - $script:Cur.start).TotalMinutes -ge $MaxMin) { $script:StopKey = $script:Cur.mrn; StopRec "최대 ${MaxMin}분" }
   if ($script:Tick % 4 -eq 0) { SetIcon }
