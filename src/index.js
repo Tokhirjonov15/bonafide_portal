@@ -519,6 +519,19 @@ async function handleRoomCmd(env, chatId, name, text) {
    · openai: Secrets OPENAI_API_KEY (선택 OPENAI_STT_MODEL, 기본 gpt-4o-transcribe)
    · clova : 네이버 클라우드 CLOVA Speech — Secrets CLOVA_INVOKE_URL(도메인의 Invoke URL), CLOVA_SECRET(Secret Key) */
 const STT_PROMPT = "정형외과 진료실 대화입니다. 무릎, 어깨, 허리, 목, 발목, 손목, 통증, 주사, 물리치료, 도수치료, 체외충격파, 엑스레이, MRI, 처방, 약.";
+/* 2026-10-26: 소리가 거의 없는 녹음을 보내면 OpenAI 가 프롬프트를 그대로 돌려주거나('정형외과 진료실 대화입니다.', '무릎, 어깨, 허리…', '주사')
+   '안녕하세요.' 같은 말을 지어낸다 — 그런 글은 버리고 '소리 없음' 안내로 바꿔 돌려준다(녹음기록에 그대로 남아 마이크 문제를 알 수 있게) */
+const STT_SILENT_TEXT = "(소리가 거의 없어 받아쓰지 못했습니다 — 진료실 마이크를 확인해 주세요)";
+const STT_FILLERS = ["안녕하세요", "감사합니다", "고맙습니다", "시청해주셔서감사합니다", "구독과좋아요", "네", "예", "아", "음", "어"];
+function sttLooksSilent(text) {
+  const norm = t => String(t || "").replace(/[\s.,?!·…~'"()\-]/g, "");
+  let rest = norm(text);
+  if (!rest) return false;   // 빈 글은 원래대로('받아쓴 말이 없습니다')
+  if (STT_FILLERS.includes(rest)) return true;
+  rest = rest.replace(/정형외과/g, "").replace(/진료실/g, "").replace(/대화입니다/g, "");
+  for (const w of STT_PROMPT.replace(/^[^.]*\./, "").split(/[,.]/).map(norm).filter(Boolean).sort((x, y) => y.length - x.length)) rest = rest.split(w).join("");
+  return rest.length <= 1;
+}
 async function dongseonStt(request, env) {
   const provider = (request.headers.get("x-provider") || "").toLowerCase();
   const audio = await request.arrayBuffer();
@@ -539,7 +552,9 @@ async function dongseonStt(request, env) {
     const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { authorization: "Bearer " + env.OPENAI_API_KEY }, body: fd });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
-    return json({ text: String(j.text || "").trim(), provider });
+    const text = String(j.text || "").trim();
+    if (sttLooksSilent(text)) return json({ text: STT_SILENT_TEXT, silent: true, raw: text, provider });
+    return json({ text, provider });
   }
   if (provider === "clova") {
     if (!env.CLOVA_INVOKE_URL || !env.CLOVA_SECRET) return json({ error: "CLOVA_INVOKE_URL · CLOVA_SECRET 이 설정되지 않았습니다." }, 501);
