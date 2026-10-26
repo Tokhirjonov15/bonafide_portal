@@ -14888,7 +14888,10 @@ boot();
   const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('dsRec',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
   const kvGet=async k=>{const db=await idb();return new Promise(res=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(null);});};
   const kvSet=async(k,v)=>{const db=await idb();return new Promise(res=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=()=>res();t.onerror=()=>res();});};
-  const room=()=>{try{return localStorage.getItem(LS_ROOM)||'';}catch(e){return '';}};
+  /* 2026-10-26: 진료실1·2 는 진료실 PC 의 녹음 프로그램(tools/clinic_rec.ps1)이 녹음한다 — 보드 녹음은 그 방에서 쓰지 않는다
+     (마이크 없는 PC 에서 진료실1 을 골라 '녹음: 마이크 없음'이 뜨고, 같은 방을 두 번 녹음하려 했다). 저장돼 있던 설정도 지운다 */
+  const PS_REC_ROOMS=['진료실1','진료실2'];
+  const room=()=>{try{const r=localStorage.getItem(LS_ROOM)||'';if(PS_REC_ROOMS.includes(r)){localStorage.removeItem(LS_ROOM);return '';}return r;}catch(e){return '';}};
   const pad=n=>String(n).padStart(2,'0');
   const fileName=(p,r,d)=>{const b=String(p.birth||'').replace(/\D/g,'');const b6=b.length>=8?b.slice(2,8):b;
     const nm=String(p.name||'이름없음').replace(/[\\/:*?"<>|]/g,'').trim();
@@ -15092,8 +15095,9 @@ boot();
       sel.innerHTML='<option value="">기본 마이크</option>'+L.filter(d=>d.deviceId&&d.deviceId!=='default').map(d=>`<option value="${esc(d.deviceId)}" ${d.deviceId===cur?'selected':''}>${esc(d.label||'마이크')}</option>`).join('');}
     catch(e){sel.innerHTML='<option value="">기본 마이크 (마이크 권한을 허용해 주세요)</option>';}};
   window.openRecDlg=async()=>{if(!window.showDirectoryPicker){alert('이 브라우저는 폴더 저장을 지원하지 않습니다. 크롬이나 엣지에서 열어 주세요.');return;}
-    const sel=document.getElementById('recRoomSel');const rooms=(typeof ROOMS!=='undefined'?ROOMS:[]).filter(r=>/진료실/.test(r));
-    sel.innerHTML=rooms.map(r=>`<option ${r===(room()||'진료실1')?'selected':''}>${esc(r)}</option>`).join('');
+    const sel=document.getElementById('recRoomSel');const rooms=(typeof ROOMS!=='undefined'?ROOMS:[]).filter(r=>/진료실/.test(r)&&!PS_REC_ROOMS.includes(r));
+    if(!rooms.length){alert(PS_REC_ROOMS.join('·')+' 녹음은 진료실 PC 의 녹음 프로그램이 합니다 — 보드에서 따로 켤 필요가 없습니다.');return;}
+    sel.innerHTML=rooms.map(r=>`<option ${r===room()?'selected':''}>${esc(r)}</option>`).join('');
     document.getElementById('recDirName').textContent=DIR?DIR.name:'(아직 안 고름)';document.getElementById('recTestMsg').textContent='';
     {const M=sttModes();document.querySelectorAll('#recDlg .rec-stt input').forEach(c=>{c.checked=M.has(c.value);});}
     recListMics(false);document.getElementById('recDlg').style.display='flex';};
