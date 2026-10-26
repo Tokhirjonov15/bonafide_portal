@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.8'   # 1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.9'   # 1.9: 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -242,7 +242,7 @@ function Send($docId, $fields, $what) {
   if ($DryRun) { Log "DRY 전송: $docId $what"; return }
   if (-not $script:IsLeader) { Log "대기 중 — 생략(전송 담당: $($script:LeaderInfo)): $docId $what"; return }   # 상태는 보낸 것으로 기록 → 담당이 되는 순간부터 새 변화만 보낸다
   FsPatch "bitIntake/$docId" $fields
-  if ($docId -match '_ocm(\d+)$') { $script:Conf[$Matches[1]] = 1 }   # 실제로 썼음(확인됨)
+  if ($docId -match '_ocm(\w+)$') { $script:Conf[$Matches[1]] = 1 }   # 실제로 썼음(확인됨)
   Log "전송: $docId $what"
 }
 
@@ -266,7 +266,7 @@ function RegFields($r, $base, $cmd, $hm, $today8, $k, $late) {
 # ── 빠진 접수 보충 (db1.7, 2026-10-25) ──
 #  '보낸 것으로' 기록됐지만 이 에이전트가 직접 쓰지 않은 접수(시작 스냅샷, 대기 PC 일 때 넘긴 것)를 담당일 때 한 번 확인한다:
 #  Firestore 에 그 문서가 있으면 확인 완료, 없으면 지금 보낸다. 문서마다 하루 한 번만 읽는다(batchGet, 100건씩)
-$script:Conf = @{}; $script:RecFailAt = [DateTime]::MinValue
+$script:Conf = @{}; $script:RecFailAt = [DateTime]::MinValue; $script:TwinLogged = @{}
 function Reconcile($chk, $base, $today8) {
   if (-not $chk.Count -or ((Get-Date) - $script:RecFailAt).TotalSeconds -lt 120) { return }
   $root = "projects/$ProjectId/databases/(default)/documents/bitIntake/"
@@ -278,7 +278,7 @@ function Reconcile($chk, $base, $today8) {
       $res = Invoke-RestMethod -TimeoutSec 30 -Method Post -Uri "$DocBase`:batchGet" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
       foreach ($x in @($res)) {
         $nm = if ($x.found) { [string]$x.found.name } elseif ($x.missing) { [string]$x.missing } else { '' }
-        if ($nm -notmatch '_ocm(\d+)$') { continue }; $kk = $Matches[1]
+        if ($nm -notmatch '_ocm(\w+)$') { continue }; $kk = $Matches[1]
         if ($x.found) { $script:Conf[$kk] = 1 } else { $miss += $kk } }
     }
   } catch { $script:RecFailAt = Get-Date; Log "빠진 접수 확인 실패(2분 뒤 다시): $($_.Exception.Message)"; return }
@@ -294,8 +294,16 @@ function Poll($st, $first) {
   $rows = SqlRows ($QUERY -f $today8)
   $now = Get-Date; $nowMin = $now.Hour * 60 + $now.Minute
   $done = @{}; $n = 0; $chk = New-Object System.Collections.ArrayList
+  # db1.9: 같은 접수번호의 보험별 행 — 가장 작은 보험 코드 행이 접수번호 그대로, 다른 보험 행은 '접수번호i보험코드'(예 182357i31) 로 따로 보낸다.
+  #        보험 코드가 같은 행은 조인(예약·특이사항) 중복이라 하나만. 순서가 바뀌어도 같은 행이 같은 번호를 받도록 먼저 접수번호별 최소 보험 코드를 구한다
+  $minIns = @{}
+  foreach ($r in $rows.Rows) { $k0 = ([string]$r.k -replace '\D', ''); if (-not $k0) { continue }; $ic = ([string]$r.ins).Trim()
+    if (-not $minIns.ContainsKey($k0) -or ($ic -and (-not $minIns[$k0] -or [string]::CompareOrdinal($ic, $minIns[$k0]) -lt 0))) { $minIns[$k0] = $ic } }
   foreach ($r in $rows.Rows) {
-    $k = ([string]$r.k -replace '\D', ''); if (-not $k -or $done.ContainsKey($k)) { continue }; $done[$k] = 1; $n++   # OcmNum 은 char(10) 앞 공백 패딩('    182357') → 숫자만. 캐스트 채널(bitplus_watcher)과 같은 문서 id 가 된다. RsvInf 조인으로 같은 접수가 두 줄이면 첫 줄만
+    $k0 = ([string]$r.k -replace '\D', ''); if (-not $k0) { continue }
+    $ic = ([string]$r.ins).Trim(); $k = if (-not $ic -or $ic -eq $minIns[$k0]) { $k0 } else { "${k0}i$ic" }
+    if ($done.ContainsKey($k)) { continue }; $done[$k] = 1; $n++
+    if ($k -ne $k0 -and -not $script:TwinLogged.ContainsKey($k)) { $script:TwinLogged[$k] = 1; Log "보험 2번째 행: 접수번호 $k0 에 보험 $($minIns[$k0]) 외 $ic — ocm$k 로 따로 보냄" }   # OcmNum 은 char(10) 앞 공백 패딩('    182357') → 숫자만. 캐스트 채널(bitplus_watcher)과 같은 문서 id 가 된다. RsvInf 조인으로 같은 접수가 두 줄이면 첫 줄만
     $stt = [string]$r.stt; $prev = $st.seen[$k]
     $isActive = ($ACTIVE -contains $stt)
     if (-not $isActive -and -not ($CANCEL -contains $stt) -and -not ($SKIP -contains $stt) -and $stt -notmatch '^[OV]' -and -not $script:UnknownStt.ContainsKey($stt)) {

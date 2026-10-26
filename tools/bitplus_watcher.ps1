@@ -201,17 +201,22 @@ function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 
     if ((([BitW.U32]::Text($h)) -replace '\s', '') -like '외래진료실*') { return $h } }
   return $null
 }
+function InsText($t) {   # 보험유형 칸 글자 → 보험 이름(공백 제거). 보험 이름이 아니면 ''
+  $s = ([string]$t -replace '\s', ''); if ($s.Length -gt 20) { return '' }
+  if ($s -match '^(일반|국민|건강|건보|자보|자동차|공상|산재|보호|의료급여|행여|보훈)') { return $s }; return '' }
 function Rrn7($t) { $m = [regex]::Match([string]$t, '^\s*(\d{6})-?(\d)'); if ($m.Success) { return $m.Groups[1].Value + '-' + $m.Groups[2].Value } else { return '' } }
 function SexOf($t) { if ([string]$t -match '^\s*\(M/') { return '남' } elseif ([string]$t -match '^\s*\(F/') { return '여' } else { return '' } }
 $script:DocCache = $null   # 외래진료실 컨트롤 핸들 캐시: @{ hwnd; mrn; name; note; memo } — 한 번 찾은 뒤에는 4개 칸만 읽는다 (수백 개 컨트롤을 매번 읽으면 비트가 바쁠 때 주기가 10초 넘게 늘어남)
 function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) · 특이사항(증상 오른쪽 RichEdit) — 읽기 전용
   $c = $script:DocCache
   $okH = { param($h) ($null -eq $h) -or [BitW.U32]::IsWindow($h) }   # 없는 칸($null)은 통과, 있던 칸은 아직 살아 있어야
-  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and [BitW.U32]::IsWindow($c.note) -and (& $okH $c.memo) -and (& $okH $c.name) -and (& $okH $c.rrn) -and (& $okH $c.sex)) {
+  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and [BitW.U32]::IsWindow($c.note) -and (& $okH $c.memo) -and (& $okH $c.name) -and (& $okH $c.rrn) -and (& $okH $c.sex) -and (& $okH $c.ins)) {
     # 빈 창(환자 없음)일 때 만든 캐시라 이름·성별·주민·특이사항 칸을 못 찾았으면, 환자가 올라온 뒤 몇 번 더 찾아본다(그래도 없으면 이 창 구성에는 그 칸이 없는 것)
     $missing = ($null -eq $c.name) -or ($null -eq $c.rrn) -or ($null -eq $c.sex) -or ($null -eq $c.memo)
-    if ($missing -and $script:DocRetry -lt 5 -and ((([BitW.U32]::Text($c.mrn)) -replace '\D', '') -ne '')) { $script:DocRetry++; $script:DocCache = $null }
-    else { return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); name = $(if ($null -ne $c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
+    $hasPt = ((([BitW.U32]::Text($c.mrn)) -replace '\D', '') -ne '')
+    if ($missing -and $script:DocRetry -lt 5 -and $hasPt) { $script:DocRetry++; $script:DocCache = $null }
+    elseif ($null -eq $c.ins -and $script:InsRetry -lt 3 -and $hasPt) { $script:InsRetry++; $script:DocCache = $null }   # 보험유형 칸(v3.7)은 따로 3번까지
+    else { return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); ins = $(if ($null -ne $c.ins) { InsText ([BitW.U32]::Text($c.ins)) } else { '' }); name = $(if ($null -ne $c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
               note = [BitW.U32]::Text($c.note); memo = $(if ($null -ne $c.memo) { [BitW.U32]::Text($c.memo) } else { '' })
               rrn7 = (Rrn7 $(if ($null -ne $c.rrn) { [BitW.U32]::Text($c.rrn) } else { '' })); sex = (SexOf $(if ($null -ne $c.sex) { [BitW.U32]::Text($c.sex) } else { '' })); found = $true } }
   }
@@ -219,7 +224,7 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   $els = @()
   foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
     # WinForms 클래스명은 'WindowsForms10.<종류>.app…' 꼴 → 종류만 본다 (라벨=Window/STATIC, 차트번호=EDIT, 증상=RichEdit20W). 숨은 탭·패널의 컨트롤은 제외
-    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch '\.(Window|STATIC|EDIT|RichEdit\w*|RICHEDIT\w*)\.') { continue }
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch '\.(Window|STATIC|EDIT|COMBOBOX|RichEdit\w*|RICHEDIT\w*)\.') { continue }   # COMBOBOX: 보험유형 (v3.7)
     if (-not [BitW.U32]::IsWindowVisible($h)) { continue }
     $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
     if (($r.R - $r.L) -le 0) { continue }
@@ -251,12 +256,19 @@ function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진�
   # 특이사항 칸: 증상 칸 오른쪽(증상 오른 끝 근처부터 시작)에서 증상 칸 세로 범위 안에 있는 RichEdit (환자에게 따라다니는 메모 — 진료 뒤에 적힘)
   $memoEl = $null
   if ($noteEl) { $memoEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_ -ne $noteEl -and $_.w -ge 150 -and $_.h -ge 60 -and $_.x -ge ($noteEl.x + $noteEl.w - 20) -and $_.y -ge $noteEl.y -and $_.y -le ($noteEl.y + $noteEl.h + 120) } | Sort-Object x, y | Select-Object -First 1 }
+  # 보험유형 (v3.7, 2026-10-26: 일반·건강보험 두 접수의 슬립을 나누려고): 차트번호 줄의 '보험유형' 라벨 오른쪽 칸, 없으면 차트번호 줄 근처에서 보험 이름 글자인 칸
+  $insEl = $null
+  $lblIns = $els | Where-Object { (($_.name -replace '\s', '') -eq '보험유형') -and $_.w -lt 120 -and [Math]::Abs($_.y - $lblMrn.y) -le 40 } | Select-Object -First 1
+  if ($lblIns) { $insEl = $els | Where-Object { $_.hw -ne $lblIns.hw -and [Math]::Abs($_.y - $lblIns.y) -le 10 -and $_.x -ge ($lblIns.x + $lblIns.w - 8) -and $_.x -le ($lblIns.x + $lblIns.w + 40) -and $_.cls -notmatch 'RichEdit|RICHEDIT' } | Sort-Object x | Select-Object -First 1
+    if ($insEl -and $insEl.name.Trim() -and -not (InsText $insEl.name)) { $insEl = $null } }
+  if (-not $insEl) { $insEl = $els | Where-Object { $_.y -ge ($lblMrn.y - 12) -and $_.y -le ($lblMrn.y + 60) -and $_.cls -notmatch 'RichEdit|RICHEDIT' -and $_.name.Trim().Length -le 20 -and (InsText $_.name) } | Sort-Object y, x | Select-Object -First 1 }
+  if ($insEl) { $script:InsRetry = 0 }
   $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
   if ($mrnEl -and $noteEl) {   # 다음 주기부터는 이 핸들들만 읽는다 (비트가 화면을 다시 만들면 IsWindow 가 false → 다시 탐색)
-    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; note = $noteEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { $null }); memo = $(if ($memoEl) { $memoEl.hw } else { $null }); rrn = $(if ($rrnEl) { $rrnEl.hw } else { $null }); sex = $(if ($sexEl) { $sexEl.hw } else { $null }) }
+    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; note = $noteEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { $null }); memo = $(if ($memoEl) { $memoEl.hw } else { $null }); rrn = $(if ($rrnEl) { $rrnEl.hw } else { $null }); sex = $(if ($sexEl) { $sexEl.hw } else { $null }); ins = $(if ($insEl) { $insEl.hw } else { $null }) }
     if ($nameEl -and $rrnEl -and $sexEl -and $memoEl) { $script:DocRetry = 0 }
   }
-  return @{ mrn = $mrn; name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); rrn7 = (Rrn7 $(if ($rrnEl) { $rrnEl.name } else { '' })); sex = (SexOf $(if ($sexEl) { $sexEl.name } else { '' })); found = ($null -ne $noteEl) }
+  return @{ mrn = $mrn; ins = $(if ($insEl) { InsText $insEl.name } else { '' }); name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); rrn7 = (Rrn7 $(if ($rrnEl) { $rrnEl.name } else { '' })); sex = (SexOf $(if ($sexEl) { $sexEl.name } else { '' })); found = ($null -ne $noteEl) }
 }
 function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+', '-', '.')과 빈 줄을 빼고 나머지 줄만 (없으면 '')
   $out = @(); foreach ($l in (($text -replace "`r`n", "`n") -split "[`r`n]")) { $t = $l.Trim(); if ($t -and $t -notmatch '^[\s+\-_.·ㆍ,~*]*$') { $out += ($t -replace '\s{2,}', ' ') } }
@@ -374,9 +386,11 @@ $script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0; $script:No
 #   ① 차트번호가 바뀌고 3초 동안은 보내지 않는다 ② 3번 연속 같아야 보낸다 ③ 읽기 앞뒤의 차트번호가 다르면 버린다
 #   ④ 이 PC에서 다른 환자로 읽힌 차팅·특이사항과 똑같으면 보내지 않는다(앞 환자 내용이 남은 것) ⑤ 보낸 뒤 그 환자 칸이 10초 넘게 비어 있으면 문서도 비운다
 $script:NoteMrn = ''; $script:NoteMrnAt = Get-Date; $script:NoteSeen = @{}; $script:NoteStaleLog = ''; $script:NoteEmptyAt = $null
-function NoteStaleOf($mrn, $chart, $memo, $raw) {   # 다른 차트번호에서 읽힌 같은 내용이 있으면 그 차트번호, 없으면 ''
-  foreach ($k in @($script:NoteSeen.Keys)) { if ($k -eq $mrn) { continue }; $s = $script:NoteSeen[$k]
+$script:NoteTopIns = @{}; $script:NoteFirst = @{}; $script:InsLogged = ''; $script:InsRetry = 0   # 보험별 슬립 (v3.7)
+function NoteStaleOf($key, $mrn, $chart, $memo, $raw) {   # 다른 접수(차트번호|보험)에서 읽힌 같은 내용이 있으면 그 키, 없으면 ''
+  foreach ($k in @($script:NoteSeen.Keys)) { if ($k -eq $key) { continue }; $s = $script:NoteSeen[$k]
     if (((Get-Date) - $s.at).TotalMinutes -gt 120) { $script:NoteSeen.Remove($k); continue }
+    if ($s.mrn -eq $mrn) { if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k }; continue }   # 같은 환자의 다른 보험 접수: 차팅·특이사항은 같을 수 있어 칸 전체가 같을 때만
     if ($chart -and $chart.Length -ge 8 -and $s.chart -eq $chart) { return $k }
     if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k }
     if ($memo -and $memo.Length -ge 6 -and $s.memo -eq $memo) { return $k } }
@@ -492,7 +506,7 @@ $sentDay = (Today)
 while ($true) {
   $cycStart = Get-Date
   try {
-    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $script:LookupSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $script:NoteTopIns = @{}; $script:NoteFirst = @{}; $script:LookupSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
     # ── ② 캐스트 수신 (0.5초 간격) ──
     if ($listener) {
       foreach ($raw in (CastDrain $listener)) {
@@ -533,8 +547,12 @@ while ($true) {
           # v3.7 ③ 읽는 동안 환자가 바뀌었으면(앞뒤 차트번호가 다름) 이번 읽기는 버린다
           if ($dr -and $dr.mrn -and $script:DocCache -and [BitW.U32]::IsWindow($script:DocCache.mrn)) {
             $mrn2 = (([BitW.U32]::Text($script:DocCache.mrn)) -replace '\D', ''); if ($mrn2 -ne $dr.mrn) { $dr = $null } }
-          if ($dr -and $dr.mrn -ne $script:NoteMrn) { $script:NoteMrn = $dr.mrn; $script:NoteMrnAt = Get-Date; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteEmptyAt = $null }
-          if ($dr -and $dr.mrn -and ((Get-Date) - $script:NoteMrnAt).TotalSeconds -ge 3) {   # v3.7 ① 환자를 바꾸고 3초 뒤부터
+          # v3.7 보험별 (2026-10-26: 일반·건강보험 두 접수인데 슬립이 하나) — 같은 환자도 보험이 다르면 다른 접수로 따로 센다(nkey). 보험유형을 못 읽으면 예전처럼 차트번호 하나
+          $insK = if ($dr) { ([string]$dr.ins -replace '\s', '') } else { '' }
+          $nkey = if ($dr) { "$($dr.mrn)|$insK" } else { '' }
+          if ($dr -and $nkey -ne $script:NoteMrn) { $script:NoteMrn = $nkey; $script:NoteMrnAt = Get-Date; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteEmptyAt = $null
+            if ($insK -and $script:InsLogged -ne $nkey) { $script:InsLogged = $nkey; Log "보험유형 읽음: 차트번호 $($dr.mrn) · $insK" } }
+          if ($dr -and $dr.mrn -and ((Get-Date) - $script:NoteMrnAt).TotalSeconds -ge 3) {   # v3.7 ① 환자(또는 보험)를 바꾸고 3초 뒤부터
             $ex = if ($dr.note.Trim()) { ExtractRx $dr.note } else { @{ lines = @(); marker = $false } }
             $rxText = ($ex.lines -join "`n")
             $chartText = if ($dr.note.Trim()) { ExtractChart $dr.note } else { '' }
@@ -542,32 +560,40 @@ while ($true) {
             $rawNote = ($dr.note -replace '\s+', ' ').Trim()
             # v3.7 ⑤ 보낸 뒤 칸이 10초 넘게 비어 있으면(지웠거나 앞 환자 내용이 잘못 갔던 것) 문서도 비운다
             if (-not ($rxText -or $memo -or $chartText)) {
-              if ($script:NoteSent[$dr.mrn] -and $script:NoteSent[$dr.mrn] -ne '||') {
+              if ($script:NoteSent[$nkey] -and $script:NoteSent[$nkey] -ne '||') {
                 if (-not $script:NoteEmptyAt) { $script:NoteEmptyAt = Get-Date }
                 elseif (((Get-Date) - $script:NoteEmptyAt).TotalSeconds -ge 10) {
-                  FsPatch "bitNote/$(Today)_$($dr.mrn)" @{ rx = ''; rxMarker = $false; rxLines = 0; memo = ''; chart = ''; clearedAt = (NowIso); pc = $Pc; updatedAt = (NowIso) }
-                  $script:NoteSent[$dr.mrn] = '||'; $script:NoteSeen.Remove($dr.mrn); $script:NoteEmptyAt = $null
-                  Log "처방 비움: 차트번호 $($dr.mrn) — 진료실 칸이 비어 있어 문서 내용을 지움" }
+                  $clr = @{ rx = ''; rxMarker = $false; rxLines = 0; chart = ''; clearedAt = (NowIso); pc = $Pc; updatedAt = (NowIso) }
+                  if ($insK) { FsPatchNested "bitNote/$(Today)_$($dr.mrn)" "v_$insK" ($clr + @{ ins = $insK }) }
+                  if (-not $insK -or $script:NoteTopIns[$dr.mrn] -eq $insK) { FsPatch "bitNote/$(Today)_$($dr.mrn)" ($clr + @{ memo = '' }) }   # 맨 위 칸은 그 보험이 마지막으로 쓴 것일 때만
+                  $script:NoteSent[$nkey] = '||'; $script:NoteSeen.Remove($nkey); $script:NoteEmptyAt = $null
+                  Log "처방 비움: 차트번호 $($dr.mrn)$(if ($insK) { " · $insK" }) — 진료실 칸이 비어 있어 문서 내용을 지움" }
               }
             } else { $script:NoteEmptyAt = $null }
-            # v3.7 ④ 다른 환자에서 읽힌 내용과 같으면 보내지 않는다
-            $staleOf = if ($rxText -or $memo -or $chartText) { NoteStaleOf $dr.mrn $chartText $memo $rawNote } else { '' }
+            # v3.7 ④ 다른 환자(또는 같은 환자의 다른 보험 접수)에서 읽힌 내용과 같으면 보내지 않는다
+            $staleOf = if ($rxText -or $memo -or $chartText) { NoteStaleOf $nkey $dr.mrn $chartText $memo $rawNote } else { '' }
             if ($staleOf) {
-              if ($script:NoteStaleLog -ne "$($dr.mrn)|$staleOf") { $script:NoteStaleLog = "$($dr.mrn)|$staleOf"; Log "보내지 않음: 차트번호 $($dr.mrn) 칸 내용이 앞 환자(차트번호 $staleOf)와 같음 — 비트가 아직 앞 환자 내용을 보여 주는 중" }
+              if ($script:NoteStaleLog -ne "$nkey>$staleOf") { $script:NoteStaleLog = "$nkey>$staleOf"; Log "보내지 않음: $nkey 칸 내용이 앞 접수($staleOf)와 같음 — 비트가 아직 앞 환자 내용을 보여 주는 중" }
               $script:NoteLast = ''; $script:NoteCount = 0
             }
             elseif ($rxText -or $memo -or $chartText) {
-              $nk = "$($dr.mrn)|$rxText|$memo|$chartText"
+              $nk = "$nkey|$rxText|$memo|$chartText"
               if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
-              if ($script:NoteCount -ge 3) { $script:NoteSeen[$dr.mrn] = @{ chart = $chartText; memo = $memo; raw = $rawNote; at = (Get-Date) } }   # 이 환자 것으로 확인된 내용
-              if ($script:NoteCount -eq 3 -and $script:NoteSent[$dr.mrn] -ne "$rxText|$memo|$chartText") {   # 3번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용 (v3.7: 2번 → 3번)
+              if ($script:NoteCount -ge 3) { $script:NoteSeen[$nkey] = @{ mrn = $dr.mrn; chart = $chartText; memo = $memo; raw = $rawNote; at = (Get-Date) } }   # 이 접수 것으로 확인된 내용
+              if ($script:NoteCount -eq 3 -and $script:NoteSent[$nkey] -ne "$rxText|$memo|$chartText") {   # 3번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용 (v3.7: 2번 → 3번)
                 # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
                 $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
-                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; chart = $chartText; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso) }
+                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; chart = $chartText; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso); ins = $insK }
                 if ($rev -eq 1) { $nf.firstAt = (NowIso) }
                 FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
-                $script:NoteSent[$dr.mrn] = "$rxText|$memo|$chartText"
-                Log "처방 전송: 차트번호 $($dr.mrn) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
+                if ($insK) {   # 보험별 칸 — 동선관리는 보험이 둘 이상 쌓이면 슬립을 보험마다 따로 만든다
+                  $srev = [int]$script:NoteRev[$nkey] + 1; $script:NoteRev[$nkey] = $srev
+                  $sf = @{ ins = $insK; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chartText; rev = $srev; updatedAt = (NowIso); pc = $Pc }
+                  if (-not $script:NoteFirst[$nkey]) { $script:NoteFirst[$nkey] = (NowIso) }; $sf.firstAt = $script:NoteFirst[$nkey]
+                  FsPatchNested "bitNote/$(Today)_$($dr.mrn)" "v_$insK" $sf
+                  $script:NoteTopIns[$dr.mrn] = $insK }
+                $script:NoteSent[$nkey] = "$rxText|$memo|$chartText"
+                Log "처방 전송: 차트번호 $($dr.mrn)$(if ($insK) { " · $insK" }) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
               }
             }
           }

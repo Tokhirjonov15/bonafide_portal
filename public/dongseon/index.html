@@ -3410,7 +3410,7 @@ let BIT_RX={}, BIT_RX_MRN={};   // 비트 처방내역(오늘) — 접수번호�
 let BIT_RX_DOCS=null,BIT_RX_CXSIG='';   // 처방 문서 원본(오늘) · 접수취소된 접수번호 모음(바뀌면 다시 묶음)
 /* 처방 문서 → 접수번호별·병록번호별로 묶기. 2026-10-14 요청 '비트대로만': 비트에서 접수취소된 접수(bitIntake cancelled)의 처방은 뺀다
    (접수 PC 에이전트 db1.5 부터는 취소·전부 삭제된 접수의 처방을 비워 보내지만, 옛 에이전트·이미 올라온 문서도 화면에서 바로 빠지게) */
-function bitRxCancelled(){const s=new Set();(BIT_INTAKE||[]).forEach(x=>{if(x&&x.cancelled===true){const o=String(x.ocmNum||'').replace(/\D/g,'')||String(x.docId||'').replace(/^.*_ocm/,'').replace(/\D/g,'');if(o)s.add(o);}});return s;}
+function bitRxCancelled(){const s=new Set();(BIT_INTAKE||[]).forEach(x=>{if(x&&x.cancelled===true){const o=String(x.ocmNum||'').replace(/i\d+$/,'').replace(/\D/g,'')||String(x.docId||'').replace(/^.*_ocm/,'').replace(/\D/g,'');if(o)s.add(o);}});return s;}
 function bitRxRebuild(){if(!BIT_RX_DOCS)return;const cx=bitRxCancelled();BIT_RX_CXSIG=[...cx].sort().join(',');
   BIT_RX={};BIT_RX_MRN={};
   BIT_RX_DOCS.forEach(v=>{const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
@@ -3434,14 +3434,14 @@ let RX_MK_SRC=null,RX_MK={};
 function rxByMk(k){if(RX_MK_SRC!==BIT_RX_MRN){RX_MK={};Object.keys(BIT_RX_MRN||{}).forEach(m=>{const kk=rxMrnKey(m);if(kk&&!RX_MK[kk])RX_MK[kk]=BIT_RX_MRN[m];});RX_MK_SRC=BIT_RX_MRN;}return k?RX_MK[k]||null:null;}
 function bitRxFor(p){ if(!p)return null;
   const mrn=String(p.mrn||'').trim();
-  {const o=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,'');if(o&&BIT_RX[o]&&mrnTwins(p))return BIT_RX[o];}   // 같은 환자 카드가 둘(보험별 접수)이면 이 카드의 접수 처방만
+  {const o=String((p.bit&&p.bit.ocmNum)||'').replace(/i\d+$/,'').replace(/\D/g,'');if(o&&BIT_RX[o]&&mrnTwins(p))return BIT_RX[o];}   // 같은 환자 카드가 둘(보험별 접수)이면 이 카드의 접수 처방만
   if(mrn&&BIT_RX_MRN[mrn])return BIT_RX_MRN[mrn];
   const mk=rxMrnKey(mrn);{const r=rxByMk(mk);if(r)return r;}
-  const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,''); if(ocm&&BIT_RX[ocm])return BIT_RX[ocm];
+  const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/i\d+$/,'').replace(/\D/g,''); if(ocm&&BIT_RX[ocm])return BIT_RX[ocm];
   try{const nm=String(p.name||'').replace(/\s+/g,'');
     const L=(BIT_INTAKE||[]).filter(d=>d&&!(d.status==='취소'||d.cancelled)&&(mk?rxMrnKey(d.mrn)===mk:(nm&&String(d.name||'').replace(/\s+/g,'')===nm)));
     if(!mk&&new Set(L.map(d=>rxMrnKey(d.mrn)||d.ocmNum)).size>1)return null;   // 차트번호 없는 카드인데 같은 이름 접수가 둘 이상 — 고르지 않는다
-    for(const d of L){const o=String(d.ocmNum||'').replace(/\D/g,'');if(o&&BIT_RX[o])return BIT_RX[o];const r=rxByMk(rxMrnKey(d.mrn));if(r)return r;}}catch(e){}
+    for(const d of L){const o=String(d.ocmNum||'').replace(/i\d+$/,'').replace(/\D/g,'');if(o&&BIT_RX[o])return BIT_RX[o];const r=rxByMk(rxMrnKey(d.mrn));if(r)return r;}}catch(e){}
   return null; }
 let BIT_RESV={}, BIT_RESV_SUM={}, BIT_RESV_DATE='';
 const SHOW_RESV=true;   // 4층 비급여 치료(시트 예약·통계·다음 예약) 표시 여부 — 2026-09-21 회의로 잠시 숨겼다가 2026-09-23 다시 켬. false 로 바꾸면 버튼·다음 예약 블록이 숨겨진다
@@ -3892,7 +3892,9 @@ window.saveSlipWords=function(){if(!currentUser)return;const t=document.getEleme
   document.getElementById('slipWordsPop').classList.remove('show');
   try{renderSlipScreen();slipPopRender();}catch(e){}};
 /* 카드 ↔ 처방 문서 연결: 차트번호 우선, 카드에 차트번호가 없으면(캐스트만으로 생긴 카드) 오늘 그 이름이 하나뿐일 때 이름으로 */
-function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m)return BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
+function bitNoteFor(p){const m=String((p&&p.mrn)||'').trim();if(m){const n=BIT_NOTES.find(n=>String(n.mrn||'').trim()===m)||null;
+    if(n){const L=slipNoteSplit(n);if(L.length>1){const ci=insNorm(bitInsOf(p));return (ci&&L.find(x=>insNorm(x.ins)===ci))||n;}}   // 보험별 슬립: 카드 보험의 것 (2026-10-26)
+    return n;}
   const nm=String((p&&p.name)||'').trim();if(!nm)return null;const c=BIT_NOTES.filter(n=>String(n.name||'').trim()===nm);return c.length===1?c[0]:null;}
 /* 접수 창 조회 기록(bitLookup)에서 차트번호로 찾기 — 카드가 없거나(접수 전·이미 내보냄) 진료실 창에서 이름·주민앞자리를 못 읽었을 때 슬립 머리글을 채운다.
    접수에서 그 환자를 한 번이라도 조회했으면 이름·주민앞 7자리가 여기 남아 있다(2026-09-14: 진료실 PC 처방 문서에 이름·주민앞자리가 비어 오던 문제의 보완) */
@@ -3907,18 +3909,37 @@ function slipDupOf(n){const k=slipChartKey(n);if(!k)return null;const m=normMrn(
   const t=x=>new Date(x.firstAt||x.updatedAt||0).getTime()||0;
   return {other:o[0],others:o,later:o.every(x=>t(n)>=t(x))};}
 function slipDupBlocked(n){const d=slipDupOf(n);return !!(d&&d.later&&!n.dupOk);}
-window.slipDupOk=function(docId){const n=BIT_NOTES.find(x=>x.docId===docId);if(!n)return;const d=slipDupOf(n);
+window.slipDupOk=function(docId){const n=slipNoteById(docId);if(!n)return;const d=slipDupOf(n);
   if(!confirm('비트에서 '+(n.name||n.mrn)+' 님 차트를 직접 열어 이 차팅·처방이 이 환자 것이 맞는지 확인하셨나요?\n\n(같은 내용: '+((d&&d.other&&(d.other.name||d.other.mrn))||'다른 환자')+')'))return;
   saveSlipMark(docId,{dupOk:true,dupOkBy:(currentUser&&currentUser.name)||'',dupOkAt:Date.now()});n.dupOk=true;
   try{audit('슬립 차팅 중복 확인',(n.name||'')+' ('+(n.mrn||'')+')');}catch(e){}renderSlipScreen();};
+/* 보험이 다른 접수 = 슬립 2장 (2026-10-26: 일반·건강보험 두 접수인데 슬립이 하나만 떠 주사를 못 할 뻔).
+   진료실 감시 v3.7 은 외래진료실 화면의 보험유형을 읽어 같은 문서 안에 보험별로 v_보험 맵을 남긴다(맨 위 칸은 마지막에 본 보험).
+   v_ 가 둘 이상이면 보험마다 슬립을 따로 만든다 — 인쇄·확인 표시도 보험별(문서id__보험) */
+const SLIP_MARK_KEYS=['printed','printedAt','printedBy','printedRev','ack','ackBy','ackAt','dupOk','dupOkBy','dupOkAt'];
+var SLIP_SUBS={};
+function insNorm(s){s=String(s||'').replace(/\s+/g,'');if(!s)return '';if(/건강|건보|국민/.test(s))return '건보';if(/자보|자동차/.test(s))return '자보';if(/산재/.test(s))return '산재';if(/보호|의료급여/.test(s))return '보호';if(/일반/.test(s))return '일반';return s;}
+function slipNoteSplit(n){const ks=Object.keys(n||{}).filter(k=>/^v_/.test(k)&&n[k]&&typeof n[k]==='object'&&(n[k].rx||n[k].chart));
+  if(ks.length<2)return [n];
+  const base={};Object.keys(n).forEach(k=>{if(!/^v_/.test(k)&&!SLIP_MARK_KEYS.includes(k))base[k]=n[k];});
+  return ks.map(k=>{const sub=n[k],mid=n.docId+'__'+k.slice(2);const o=Object.assign({},base,sub,{markId:mid,insKey:k.slice(2),ins:sub.ins||k.slice(2),_base:n},SLIP_MARKS[mid]||{});SLIP_SUBS[mid]=o;return o;})
+    .sort((a,b)=>new Date(a.firstAt||a.updatedAt||0)-new Date(b.firstAt||b.updatedAt||0));}
+function slipNoteById(id){return (BIT_NOTES||[]).find(x=>x.docId===id)||SLIP_SUBS[id]||null;}
+/* 오늘 이 환자의 비트 접수가 보험이 다른 2건 이상인데 슬립이 보험별로 나뉘지 않음(옛 감시 프로그램·보험유형을 못 읽음) → 경고 */
+function slipTwinWarn(it){if(!it||it.insKey)return '';const m=normMrn(it.mrn);if(!m)return '';
+  const L=(BIT_INTAKE||[]).filter(d=>d&&normMrn(d.mrn)===m&&!d.cancelled&&d.status!=='취소'&&d.registered!==false);
+  const ins=[...new Set(L.map(d=>insNorm(d.ins)).filter(Boolean))];
+  const cards=(data||[]).filter(x=>!x.discharged&&normMrn(x.mrn)===m).length;
+  return (ins.length>=2||cards>=2)?(ins.length>=2?ins.join(' · '):'접수 '+cards+'건'):'';}
 function slipItems(){
   const room=SLIP_ROOM;
-  return BIT_NOTES.map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
-      let p=data.find(x=>!x.discharged&&String(x.mrn||'').trim()===mrn)||null;
+  return BIT_NOTES.flatMap(slipNoteSplit).map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
+      const cand=data.filter(x=>!x.discharged&&String(x.mrn||'').trim()===mrn);
+      let p=(n.insKey&&cand.find(x=>insNorm(bitInsOf(x))===insNorm(n.ins)))||cand[0]||null;   // 보험별 슬립은 보험이 같은 카드에
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
       const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
       const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const _td=localYMD(new Date());const shots=(Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&x.kind!=='pt'&&!hid.includes(x.id)&&(!x.at||localYMD(new Date(x.at))===_td));   // 진료실 캡처 (2026-10-06) — 오늘 찍은 것만(밤새 켜 둔 화면에도 어제 캡처가 남지 않게). PT 캡처는 슬립이 아니라 4층으로 (2026-10-13)
-      return {id:n.docId,mrn,note:n,p,dup:slipDupOf(n),dupBlock:slipDupBlocked(n),pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
+      return {id:n.markId||n.docId,shotDoc:n.docId,key:n.insKey?mrn+'|'+n.insKey:mrn,insKey:n.insKey||'',ins:n.insKey?n.ins:'',mrn,note:n,p,dup:slipDupOf(n),dupBlock:slipDupBlocked(n),pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
     .filter(it=>it.mrn&&((it.valid&&it.lines.length)||it.shots.length)&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
 }
@@ -4021,8 +4042,8 @@ function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록�
     ${it.dup?`<div class="sd-meta" style="color:#dc2626;font-weight:800">⚠ 다른 환자(${it.dup.others.map(o=>esc(o.name||o.mrn||'')).join(', ')})와 차팅이 똑같습니다 — 비트에서 확인해 주세요</div>`:''}
     <div class="sd-body${it.shots&&it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.dupBlock?'<li>(확인 전 — 처방 줄을 가렸습니다)</li>':it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,true)}</div>`;}
 function slipPopRender(){if(!SLIP_POP||SLIP_POP.closed||!SLIP_POP_MRN)return;
-  try{const it=slipItems().find(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const d=SLIP_POP.document;
-    const html=slipPopHtml(it);if(d.body.dataset.h!==html){d.body.dataset.h=html;d.body.innerHTML=html;}slipShotsLoad(d);
+  try{const L=slipItems().filter(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const it=L[0];const d=SLIP_POP.document;
+    const html=L.length>1?L.map(x=>`<div class="sd-meta" style="font-size:20px;font-weight:900;color:#1d4ed8;margin-top:14px">▶ ${esc(x.ins||'접수')} 슬립</div>`+slipPopHtml(x)).join('<hr style="margin:18px 0;border:0;border-top:3px dashed #9ca3af">'):slipPopHtml(it);   // 보험별 슬립 2장이면 둘 다 (2026-10-26)if(d.body.dataset.h!==html){d.body.dataset.h=html;d.body.innerHTML=html;}slipShotsLoad(d);
     d.title=(it?String(it.name||''):'')+' — 처방';}catch(e){console.warn('slip pop',e);}}
 function popSlipSolo(mrn){
   const w=window.open('','slipSolo','popup,width=820,height=720');if(!w){warnToast('팝업이 막혀 있습니다 — 주소창 오른쪽의 팝업 차단을 풀어 주세요.');return;}
@@ -4053,7 +4074,7 @@ function slipShotsHtml(it,pop,noX){if(!it||!it.shots||!it.shots.length)return ''
   return '<div class="sd-shots">'+it.shots.map(x=>{const u=SLIP_SHOT_URL[x.path]||'';const t=x.at?hhmm(x.at):'';
     return '<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="'+(pop?'if(this.src)window.open(this.src)':'slipShotZoom(this)')+'" title="누르면 크게 보기">'
       +'<span>📷 '+esc(t)+(x.pc?' · '+esc(x.pc):'')+(x.w&&x.h?' · '+esc(x.w)+'×'+esc(x.h):'')+'</span>'
-      +(pop||noX?'':'<button type="button" class="sd-shot-x" data-doc="'+esc(it.id)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 숨기기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button>')+'</div>';}).join('')+'</div>';}
+      +(pop||noX?'':'<button type="button" class="sd-shot-x" data-doc="'+esc(it.shotDoc||it.id)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 숨기기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button>')+'</div>';}).join('')+'</div>';}
 /* 크게 보기 — 새 탭이 아니라 이 화면 위에 꽉 차게(태블릿에서 손가락으로 누르면 바로, 다시 누르면 닫힘). 작은 사진도 화면에 맞춰 키운다 */
 function slipShotZoom(im){if(!im||!im.src)return;
   let ov=document.getElementById('shotZoom');
@@ -4223,18 +4244,18 @@ function renderSlipScreen(){
   try{sessionStorage.setItem('slipKeep',JSON.stringify({sel:slipSel,full:[...SLIP_FULL]}));}catch(e){}   // 새로고침(새 버전·메모리) 뒤 같은 환자 슬립으로 되돌리기 (2026-10-10: 원장님 주사 중 보드로 넘어갔다)
   const box=document.getElementById('slipList'),det=document.getElementById('slipDetail');if(!box||!det)return;
   const all=SLIP_SOLO?slipItems().filter(it=>normMrn(it.mrn)===normMrn(SLIP_SOLO)):slipItems();
-  if(SLIP_SOLO&&all[0])slipSel=all[0].mrn;
+  if(SLIP_SOLO&&all[0]&&!all.some(it=>it.key===slipSel))slipSel=all[0].key;
   const qq=SLIP_Q.replace(/\s+/g,''), qm=normMrn(SLIP_Q);
   const items=qq?all.filter(it=>String(it.name||'').replace(/\s+/g,'').includes(qq)||(qm&&String(it.mrn||'').includes(qm))):all;
   const newest=all[0];if(newest&&newest.t>slipLastSeen)slipLastSeen=newest.t;   // 2026-10-03 요청: 새 처방이 와도 보고 있던 환자에서 넘어가지 않는다 — 직접 누를 때만 바뀐다
-  if(items.length&&!items.some(it=>it.mrn===slipSel))slipSel=items[0].mrn;   // 목록이 아직 비었으면(새로고침 직후) 고른 환자를 지우지 않는다
+  if(items.length&&!items.some(it=>it.key===slipSel)){const m=items.find(it=>it.mrn===slipSel);slipSel=(m||items[0]).key;}   // 차트번호로 열었으면(보험별 슬립) 그 환자의 첫 슬립   // 목록이 아직 비었으면(새로고침 직후) 고른 환자를 지우지 않는다
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
-  const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.mrn===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.mrn)}';renderSlipScreen()">
+  const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.key===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.key)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
-      <div class="si-sub">${esc(it.mrn)}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.dup?` · <b style="color:#dc2626">⚠ 차팅 중복${it.dupBlock?' — 확인 필요':''}</b>`:''}${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div>${slipProcHtml(it)}</div>`;}).join('')
+      <div class="si-sub">${esc(it.mrn)}${it.insKey?' · <b style="color:#1d4ed8">'+esc(it.ins)+'</b>':''}${slipTwinWarn(it)?' · <b style="color:#dc2626">⚠ 보험 2건</b>':''}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.dup?` · <b style="color:#dc2626">⚠ 차팅 중복${it.dupBlock?' — 확인 필요':''}</b>`:''}${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div>${slipProcHtml(it)}</div>`;}).join('')
     :(qq?`<div class="slip-empty">'${esc(SLIP_Q)}' — 오늘 처방 목록에 없는 환자입니다${slipMissWhy(qq,qm)}</div>`:'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>');
   if(box.dataset.h!==listHtml){box.dataset.h=listHtml;box.innerHTML=listHtml;}
-  const it=items.find(x=>x.mrn===slipSel);
+  const it=items.find(x=>x.key===slipSel);
   if(!it){const e='<div class="slip-empty">목록에서 환자를 선택하세요</div>';if(det.dataset.h!==e){det.dataset.h=e;det.innerHTML=e;}return;}
   const h=slipHeaderInfo(it);
   let detHtml=`<div class="sd-head">
@@ -4244,13 +4265,15 @@ function renderSlipScreen(){
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
       ${posChipsHtml(it)}
     </div>
+    ${(()=>{const sib=items.filter(x=>x.mrn===it.mrn);return sib.length>1?`<div style="margin:8px 0;padding:10px 12px;border:2px solid #2563eb;background:#eff6ff;border-radius:10px;font-size:15px"><b>이 환자 슬립 ${sib.length}장 (보험별 접수)</b> ${sib.map(x=>`<button class="btn ${x.key===it.key?'on':''}" style="margin-left:6px" onclick="slipSel='${esc(x.key)}';renderSlipScreen()">${esc(x.ins||'접수')}</button>`).join('')}</div>`:'';})()}
+    ${slipTwinWarn(it)?`<div style="margin:8px 0;padding:12px 14px;border:2px solid #dc2626;background:#fef2f2;border-radius:10px;color:#991b1b;font-size:14px;line-height:1.5"><b>⚠ 이 환자는 오늘 보험이 다른 접수가 있습니다 (${esc(slipTwinWarn(it))}).</b><br>슬립이 하나로 합쳐졌을 수 있습니다 — <b>비트에서 두 접수의 처방을 모두 확인</b>해 주세요. (진료실 PC 감시 v3.7 을 설치하면 보험별로 슬립이 따로 나옵니다)</div>`:''}
     ${it.dup?`<div style="margin:8px 0;padding:12px 14px;border:2px solid #dc2626;background:#fef2f2;border-radius:10px;color:#991b1b;font-size:14px;line-height:1.5">
       <b>⚠ 이 차팅이 다른 환자 ${it.dup.others.map(o=>esc((o.name||'')+' ('+(o.mrn||'')+')')).join(', ')} 와 똑같습니다.</b><br>
       진료실 PC가 환자를 바꾸는 순간 앞 환자 내용을 잘못 보냈을 수 있습니다. <b>비트에서 이 환자 차트를 직접 열어 확인</b>해 주세요.
       ${it.dupBlock?`<br><span style="font-size:13px">확인 전에는 처방 줄을 가리고 인쇄(자동 인쇄 포함)를 막습니다.</span><div style="margin-top:8px"><button class="btn" style="border-color:#dc2626;color:#dc2626" onclick="slipDupOk('${esc(it.id)}')">비트에서 확인함 — 이 환자 것 맞음</button></div>`:it.note.dupOk?`<br><span style="font-size:13px">✔ ${esc(it.note.dupOkBy||'')} 확인함</span>`:'<br><span style="font-size:13px">이 환자 것이 먼저 왔습니다 — 다른 환자 쪽 슬립이 가려져 있습니다.</span>'}</div>`:''}
     ${it.dupBlock?'':(SLIP_FULL.has(it.id)?`<div class="sd-chart"><div class="sd-chart-h">차팅 (마지막 med 위)</div>${it.note.chart||it.pre.length?`<pre>${esc([it.note.chart||'',...it.pre].filter(Boolean).join('\n'))}</pre>`:'<div class="hint">차팅이 아직 없습니다 — 진료실 PC 감시 프로그램을 v3.6 으로 다시 설치하면 이 환자를 다음에 열 때부터 올라옵니다.</div>'}</div>`:'')}
     <div class="sd-body"><ol class="sd-lines">${it.dupBlock?'<li class="hint">(확인 전 — 처방 줄을 가렸습니다)</li>':it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol><div class="sd-shot-slot"></div></div>
-    <div class="sd-btns"><button class="btn" ${it.dupBlock?'disabled':''} onclick="printSlip('${esc(it.mrn)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
+    <div class="sd-btns"><button class="btn" ${it.dupBlock?'disabled':''} onclick="printSlip('${esc(it.key)}')"><i data-lucide="printer"></i> ${slipPrinted(it.note).on?'다시 인쇄':'슬립 인쇄'}</button>${slipPrintedTag(it.note,true)}
       <button class="btn ${SLIP_FULL.has(it.id)?'on':''}" onclick="toggleSlipFull('${esc(it.id)}')" title="med 위의 차팅(증상·소견)까지 함께 봅니다"><i data-lucide="file-text"></i> ${SLIP_FULL.has(it.id)?'차팅 접기':'전체보기'}</button></div>`;
   if(SLIP_SOLO)detHtml=detHtml.replace('<div class="sd-meta"> · ','<div class="sd-meta">').replace(/<div class="sd-meta warn">[^<]*<\/div>/,'');   // 앞 점 · '보드에 카드 없음' 안내는 빼기   // 차트번호를 뺀 자리의 앞 점
   if(det.dataset.h!==detHtml){det.dataset.h=detHtml;det.innerHTML=detHtml;}
@@ -4269,7 +4292,7 @@ function saveSlipMark(docId,rec){
     .catch(e=>{console.warn('slipMark',e);try{warnToast('인쇄·확인 표시를 저장하지 못했습니다. 인터넷 연결을 확인해 주세요.');}catch(_){}});}
 function ackSlip(docId,on){   // 처치실에서 봤음 표시 — 모든 화면에 공유
   saveSlipMark(docId,{ack:!!on,ackBy:(currentUser&&currentUser.name)||'',ackAt:Date.now()});
-  const n=BIT_NOTES.find(x=>x.docId===docId);if(n){n.ack=!!on;renderSlipScreen();}}
+  const n=slipNoteById(docId);if(n){n.ack=!!on;renderSlipScreen();}}
 /* 생년월일 → 슬립 표기: 앞 6자리(YYMMDD) + 뒷자리 첫 숫자(성별), 나머지는 가림. 1990-01-01 남 → 900101-1****** (2026-10-01) */
 function slipBirthMasked(birth,sx){const d=String(birth||'').replace(/\D/g,'');if(d.length<8)return '';return d.slice(2,8)+'-'+(/^\d$/.test(String(sx||''))?sx+'******':'*******');}   // 뒷자리 첫 숫자는 보인다 (2026-10-01 요청)
 /* 슬립 인쇄 양식(원내 슬립지 기준): 위 = 차트번호 · 수진자명 · 생년월일(가림), 가운데 = 처방 목록(neuropathic pain 부터), 맨 아래 = 발행일자(오늘) */
@@ -4297,6 +4320,7 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     <table class="hd">
       <tr><th>차트번호</th><td>${esc(it.mrn)}</td></tr>
       <tr><th>수진자명</th><td>${esc(it.name)}</td></tr>
+      ${it.insKey?`<tr><th>보험</th><td>${esc(it.ins)}</td></tr>`:''}
       <tr><th>생년월일</th><td>${esc(bm||'-')}</td></tr>
       ${tRows}
     </table>
@@ -4306,7 +4330,7 @@ function slipHTML(it){const h=slipHeaderInfo(it);const now=new Date();const bm=s
     <div class="ft">발행일자: ${localYMD(now)}</div>
     <script>window.onload=function(){try{window.focus();window.print();}catch(e){}};<\/script>
   </body></html>`;}
-function printSlip(mrn){const it=slipItems().find(x=>x.mrn===String(mrn));if(!it)return;
+function printSlip(k){const L=slipItems();const it=L.find(x=>x.key===String(k))||L.find(x=>x.mrn===String(k));if(!it)return;
   if(it.dupBlock){alert('이 슬립은 다른 환자와 차팅이 똑같아 인쇄를 막아 두었습니다.\n비트에서 차트를 확인한 뒤 슬립 화면의 [비트에서 확인함]을 눌러 주세요.');return;}   // 숨김 iframe 인쇄(라벨과 같은 방식) — 태블릿에서는 브라우저 인쇄 대화상자
   try{const ifr=document.createElement('iframe');ifr.setAttribute('aria-hidden','true');ifr.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
     document.body.appendChild(ifr);const cw=ifr.contentWindow;cw.onafterprint=function(){setTimeout(()=>{if(ifr.parentNode)ifr.remove();},300);};
@@ -4338,7 +4362,7 @@ function slipAutoCheck(){if(!slipAutoOn()||!currentUser){SLIP_AP_SEEDED=false;re
     if(SLIP_AP_DONE.has(key)||!slipApReady(it))return;
     SLIP_AP_DONE.add(key);ch=true;
     const pr=slipPrinted(it.note);if(!SLIP_AP_SEEDED||(pr.on&&!pr.stale))return;   // 이미 이 처방으로 인쇄됨
-    printSlip(it.mrn);
+    printSlip(it.key);
     try{audit('슬립 자동 인쇄'+(pr.stale?'(처방 바뀜)':''),(it.name||'')+' ('+it.mrn+')');}catch(e){}
     try{toast('🖨 슬립 자동 인쇄'+(pr.stale?' (처방이 바뀌어 다시)':'')+' — '+dispName(it.name||it.mrn));}catch(e){}});
   SLIP_AP_SEEDED=true;if(ch)slipApSave();}
@@ -4653,9 +4677,13 @@ function bitHealStuck(){if(!cloud.intakeCol||!cloud.db||!currentUser||Date.now()
         t.update(ref,{status:'',healedAt:new Date().toISOString(),healedBy:currentUser.name||''});return true;}))
       .then(ok=>{if(ok){r.status='';try{audit('멈춘 자동 접수 되살림',(r.name||'')+(r.mrn?' ('+r.mrn+')':'')+' ocm'+(r.ocmNum||''));}catch(e){}setTimeout(()=>{try{bitAutoProcess();}catch(e){}},500);}})
       .catch(e=>console.warn('bitHeal',e));});}
-function bitLateSeen(mrn){const today=localYMD(new Date()),m=normMrn(mrn);if(!m)return false;
-  if((data||[]).some(p=>normMrn(p.mrn)===m&&localYMD(new Date(p.arrivedAt||0))===today))return true;
-  return (Array.isArray(VISITS)?VISITS:[]).some(v=>normMrn(v.mrn)===m&&localYMD(new Date(v.dischargedAt||v.arrivedAt||0))===today);}
+/* 2026-10-26: 보험이 다른 접수(일반 + 건강보험 — 카드 2장)는 '이미 카드 있음'으로 보지 않는다. 같은 접수로 보는 것은
+   보험이 같거나 한쪽이 비었고, 카드 쪽 접수번호가 없거나(손으로 만든 카드) 같은 접수번호인 카드·내원뿐 */
+function bitLateSeen(mrn,r){const today=localYMD(new Date()),m=normMrn(mrn);if(!m)return false;
+  const ro=String((r&&r.ocmNum)||'').trim(),ri=r&&r.ins;
+  const same=x=>bitInsOk(bitInsOf(x),ri)&&(!ro||!String((x.bit&&x.bit.ocmNum)||'').trim()||String(x.bit.ocmNum).trim()===ro);
+  if((data||[]).some(p=>normMrn(p.mrn)===m&&localYMD(new Date(p.arrivedAt||0))===today&&same(p)))return true;
+  return (Array.isArray(VISITS)?VISITS:[]).some(v=>normMrn(v.mrn)===m&&localYMD(new Date(v.dischargedAt||v.arrivedAt||0))===today&&same(v));}
 function bitArrivalMin(r){if(typeof r.hourMin==='number'&&r.hourMin>=0)return r.hourMin;const t=new Date(r.seenAt||0);return isNaN(t)?9999:t.getHours()*60+t.getMinutes();}
 async function bitAutoProcess(){
   if(!BIT_AUTO||!currentUser||!cloud.ready.pts||!cloud.intakeCol)return;
@@ -4674,7 +4702,7 @@ async function bitAutoProcess(){
       }
       /* 에이전트가 뒤늦게 보충한 접수(late — 재시작·담당 PC 교대 사이에 빠졌던 것, db1.7): 오늘 이미 카드가 있었거나 다녀간 환자면 만들지 않는다
          (직원이 손으로 카드를 만들어 진료를 끝냈을 수 있다) — 2026-10-25 권루아 */
-      if(r.late&&mrn&&bitLateSeen(mrn)){
+      if(r.late&&mrn&&bitLateSeen(mrn,r)){
         try{cloud.intakeCol.doc(r.docId).set({status:'무시',handledBy:'자동(늦게 온 접수 — 오늘 이미 카드 있음)',handledAt:new Date().toISOString()},{merge:true});}catch(e){}
         r.status='무시';continue;}
       const reg=mrn?regFind(mrn):null;
@@ -4759,7 +4787,7 @@ async function shiftSeqAfter(seq){
   const jobs=[];
   live.forEach(p=>{p.seq=p.seq-1;if(cloud.patientsCol)jobs.push(cloud.patientsCol.doc(p.id).update({seq:p.seq}).catch(e=>console.warn('seq shift card',p.id,e&&e.code)));
     /* 접수 문서에 적어 둔 번호도 같이 당긴다 — 나중에 이 환자가 취소될 때 카드가 없어도 맞는 번호로 당기도록 (문서 id = 날짜_ocm접수번호) */
-    const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/\D/g,'');
+    const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/[^\di]/g,'');
     if(ocm&&cloud.intakeCol)jobs.push(cloud.intakeCol.doc(today+'_ocm'+ocm).update({seq:p.seq}).catch(()=>{}));});
   vis.forEach(v=>{v.seq=v.seq-1;if(cloud.visitsCol&&v.id)jobs.push(cloud.visitsCol.doc(v.id).update({seq:v.seq}).catch(e=>console.warn('seq shift visit',v.id,e&&e.code)));});
   await Promise.all(jobs);
@@ -4798,7 +4826,7 @@ async function healSeqGaps(){
     const [ps,vs]=await Promise.all([cloud.patientsCol.get(),cloud.visitsCol.where('dischargedAt','>=',d0.toISOString()).get()]);
     const rows=[];
     ps.docs.forEach(d=>{const x=d.data()||{};if(x.discharged||!(typeof x.seq==='number'&&x.seq>0))return;
-      if(localYMD(new Date(x.arrivedAt||x.enteredAt||0))!==t)return;rows.push({kind:'p',id:d.id,seq:x.seq,ocm:String((x.bit&&x.bit.ocmNum)||'').replace(/\D/g,'')});});
+      if(localYMD(new Date(x.arrivedAt||x.enteredAt||0))!==t)return;rows.push({kind:'p',id:d.id,seq:x.seq,ocm:String((x.bit&&x.bit.ocmNum)||'').replace(/[^\di]/g,'')});});
     vs.docs.forEach(d=>{const x=d.data()||{};if(!(typeof x.seq==='number'&&x.seq>0))return;
       if(localYMD(new Date(x.dischargedAt||0))!==t)return;rows.push({kind:'v',id:d.id,seq:x.seq});});
     const distinct=[...new Set(rows.map(r=>r.seq))].sort((a,b)=>a-b);
@@ -5807,6 +5835,17 @@ async function runSelfTest(){
       const I=slipItems(),a=I.find(x=>x.mrn==='101'),b=I.find(x=>x.mrn==='202'),c=I.find(x=>x.mrn==='404');
       const blocked=b&&b.dupBlock&&a&&a.dup&&!a.dupBlock&&c&&!c.dup;BIT_NOTES[1].dupOk=true;
       ok('슬립 차팅 중복: 다른 차트번호와 차팅이 같으면 나중 것만 가림·인쇄 막음, 먼저 온 쪽은 경고만, 짧은 차팅은 무시, 확인하면 풀림', blocked&&!slipDupBlocked(BIT_NOTES[1]));BIT_NOTES=_n;}
+     {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE;const t0=Date.now()-600000,iso=x=>new Date(t0+x).toISOString();   // 보험별 슬립 (2026-10-26 일반·건강보험)
+      data=[{id:'k1',name:'보험둘',mrn:'777',ins:'국민건강보험',bit:{ocmNum:'500',ins:'국민건강보험'},route:['3층 대기실'],step:0,status:'대기',notes:{}},{id:'k2',name:'보험둘',mrn:'777',ins:'일반',bit:{ocmNum:'500i11',ins:'일반'},route:['3층 대기실'],step:0,status:'대기',notes:{}}];
+      BIT_NOTES=[{docId:'d777',mrn:'777',name:'보험둘',rx:'med\nneuropathic pain\n도수',chart:'',rev:3,printed:true,updatedAt:iso(9000),
+        v_국민건강보험:{ins:'국민건강보험',rx:'med\nneuropathic pain\nc-mbb rt 3,5',rev:1,firstAt:iso(1000),updatedAt:iso(1000)},v_일반:{ins:'일반',rx:'med\nneuropathic pain\n도수',rev:1,firstAt:iso(5000),updatedAt:iso(5000)}}];
+      const I=slipItems().filter(x=>x.mrn==='777');const a=I.find(x=>x.ins==='국민건강보험'),b=I.find(x=>x.ins==='일반');const bn=bitNoteFor(data[1]);
+      const one=(()=>{BIT_NOTES=[{docId:'d8',mrn:'888',name:'하나',rx:'med\nneuropathic pain\nx',updatedAt:iso(0)}];BIT_INTAKE=[{mrn:'888',ins:'일반',registered:true},{mrn:'888',ins:'국민건강보험',registered:true}];const L=slipItems();return L.length===1&&!!slipTwinWarn(L[0]);})();
+      ok('보험별 슬립: 보험이 둘이면 슬립 2장(각자 처방·카드·인쇄 표시 따로), 하나로 합쳐진 슬립은 보험 2건 경고',
+        I.length===2&&a&&b&&a.lines.some(l=>/c-mbb/.test(l))&&b.lines.some(l=>/도수/.test(l))&&a.p&&a.p.id==='k1'&&b.p&&b.p.id==='k2'&&a.key!==b.key&&!a.note.printed&&bn&&bn.ins==='일반'&&one,JSON.stringify(I.map(x=>[x.key,x.lines])));
+      data=[{id:'k3',name:'늦게',mrn:'9100',ins:'국민건강보험',arrivedAt:new Date().toISOString(),bit:{ocmNum:'600',ins:'국민건강보험'}}];
+      ok('늦게 온 접수: 보험이 다른 두 번째 접수는 오늘 카드가 있어도 만든다', !bitLateSeen('9100',{ocmNum:'600i11',ins:'일반',mrn:'9100'})&&bitLateSeen('9100',{ocmNum:'600',ins:'국민건강보험'}));
+      BIT_NOTES=_n;data=_d;BIT_INTAKE=_i;}
      SLIP_ROOM='물리치료'; eq('slipItems: 방 필터 — 동선에 그 방이 있는 카드만', slipItems().map(it=>it.mrn), ['297']); SLIP_ROOM='';
      const html=slipHTML(items[0]);
      eq('slipBirthMasked: 앞 6자리만, 뒷자리 *******', [slipBirthMasked('1990-01-01'),slipBirthMasked('19900101'),slipBirthMasked(''),slipBirthMasked('1990')], ['900101-*******','900101-*******','','']);
@@ -12495,7 +12534,7 @@ function fillRxBox(p){
   const box=document.getElementById('rxBox');if(!box)return;
   const rx=bitRxFor(p);
   if(!rx||!rx.items.length){   /* 못 찾았을 때 이유를 한 줄로 — 처방이 있는데 안 보이면 이 줄을 캡처해 알려 주세요 (2026-10-11) */
-    const o=String((p&&p.bit&&p.bit.ocmNum)||'').replace(/\D/g,'');
+    const o=String((p&&p.bit&&p.bit.ocmNum)||'').replace(/i\d+$/,'').replace(/\D/g,'');
     box.innerHTML=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="pill"></i> 처방내역 <span class="hint">비트에서 오늘 처방을 아직 못 받았습니다 · 차트 ${esc(String((p&&p.mrn)||'-'))} · 접수 ${esc(o||'-')} · 오늘 받은 처방 ${Object.keys(BIT_RX||{}).length}건</span></div>`;
     box.style.display='';if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
   const times=rx.items.map(x=>String(x.t||'').trim()).filter(Boolean).sort();
