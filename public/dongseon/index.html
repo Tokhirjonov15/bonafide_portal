@@ -15298,7 +15298,7 @@ boot();
   .dk-done .m{font-size:clamp(21px,2.5vw,28px);line-height:1.65;margin-top:16px;color:#33425c}
   .dk-done .m b{color:var(--dk-blue)}
   .dk-done .cd{margin-top:38px;width:min(420px,70vw);height:8px;border-radius:99px;background:#dfe6f1;overflow:hidden}
-  .dk-done .cd i{display:block;height:100%;background:var(--dk-blue);animation:dkCd 30s linear forwards}
+  .dk-done .cd i{display:block;height:100%;background:var(--dk-blue);animation:dkCd 60s linear forwards}
   @keyframes dkCd{from{width:100%}to{width:0}}
   .dk-done .s{font-size:17px;color:#8b98ae;margin-top:12px}
   .dk-exit{position:absolute;top:0;right:0;width:70px;height:70px;z-index:2}
@@ -15341,7 +15341,7 @@ boot();
   function matchMrn(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);const m=new Set();
     [...((typeof VISITS!=='undefined'&&VISITS)||[]),...((typeof data!=='undefined'&&data)||[])].forEach(v=>{if(v&&v.mrn&&String(v.name||'').replace(/\s+/g,'')===nk&&b6(v.birth)===bk)m.add(String(v.mrn).trim());});
     return m.size===1?[...m][0]:'';}
-  const dateLbl=d=>{const t=new Date(d+'T00:00:00');return (t.getMonth()+1)+'월 '+t.getDate()+'일 ('+'일월화수목금토'[t.getDay()]+')';};
+  const dateLbl=d=>{const t=new Date(d+'T00:00:00');return (t.getFullYear()!==new Date().getFullYear()?t.getFullYear()+'년 ':'')+(t.getMonth()+1)+'월 '+t.getDate()+'일 ('+'일월화수목금토'[t.getDay()]+')';};
   const birthLbl=b=>{const d=String(b||'');if(!d)return '';return d.length<=6?d.replace(/^(\d{2})(\d{0,2})(\d{0,2}).*$/,(m,a,b2,c)=>[a,b2,c].filter(Boolean).join('.')):d.replace(/^(\d{4})(\d{0,2})(\d{0,2}).*$/,(m,a,b2,c)=>[a,b2,c].filter(Boolean).join('.'));};
   /* 공통 틀 */
   const ex='<div class="dk-exit" onpointerdown="dkExitDown()" onpointerup="dkExitUp()" onpointerleave="dkExitUp()"></div>';
@@ -15399,29 +15399,29 @@ boot();
     if(S.step===5){el.innerHTML=`<div class="dk-done" onclick="dkHome()">${ex}<div class="ok">✓</div><div class="t">신청이 완료되었습니다</div>
       <div class="m">모든 서류는 확인 절차를 거친 후 발급까지 <b>약 15분</b> 소요되며<br>시간이 지체될 시 직원이 다시 안내해 드리겠습니다.<br><br><b>자리에 앉아 계시면 호명해 드리겠습니다</b> ☺</div>
       <div class="cd"><i></i></div><div class="s">잠시 후 처음 화면으로 돌아갑니다 · 화면을 누르면 바로 돌아가요</div></div>`;
-      clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},30000);return;}}
+      clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},60000);return;}}   // 완료 화면 1분 뒤 시작 화면으로 (2026-10-26 요청)
   /* 기간 달력 (2026-10-26 요청: '날짜 선택' — 달력에서 며칠부터 며칠까지). 시작일 → 끝일 차례로 누른다(같은 날 한 번만 누르면 그날 하루).
-     고를 수 있는 날 = 10월 1일 ~ 오늘. 내원하신 날은 점으로 표시 */
+     고를 수 있는 날 = 지난 날짜 전체 ~ 오늘(2026-10-26 요청: 10월 이전도). « » 는 1년씩. 내원하신 날(10월 이후 기록)은 점으로 표시 */
+  const CAL_MIN='2010-01-01';
   function rangeLbl(){if(!S.from)return '';const a=dateLbl(S.from);return (!S.to||S.to===S.from)?a:a+' ~ '+dateLbl(S.to);}
   function calHtml(D){const t=today();const vis=new Set(D);
     const cm=S.cm||(S.from||D[0]||t).slice(0,7);const [y,m]=cm.split('-').map(Number);
     const first=new Date(y,m-1,1),days=new Date(y,m,0).getDate(),lead=first.getDay();
-    const minM=SINCE.slice(0,7),maxM=t.slice(0,7);
+    const minM=CAL_MIN.slice(0,7),maxM=t.slice(0,7);
     const cells=[];for(let i=0;i<lead;i++)cells.push('<span></span>');
-    for(let d=1;d<=days;d++){const k=y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');const dis=k<SINCE||k>t;
+    for(let d=1;d<=days;d++){const k=y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');const dis=k<CAL_MIN||k>t;
       const to=S.to||S.from;const inR=S.from&&k>=S.from&&k<=to;const edge=k===S.from||k===to;const dow=(lead+d-1)%7;
       cells.push(`<button class="dk-day ${dis?'dis':''} ${inR?'in':''} ${edge&&S.from?'edge':''} ${vis.has(k)?'vis':''} ${dow===0?'sun':dow===6?'sat':''} ${k===t?'tod':''}" ${dis?'disabled':`onclick="dkCal('${k}')"`}>${d}</button>`);}
-    return `<div class="dk-card dk-cal"><div class="dk-cal-h"><button class="dk-cal-nav" ${cm<=minM?'disabled':''} onclick="dkCalMove(-1)">‹</button><b>${y}년 ${m}월</b><button class="dk-cal-nav" ${cm>=maxM?'disabled':''} onclick="dkCalMove(1)">›</button></div>
+    return `<div class="dk-card dk-cal"><div class="dk-cal-h"><span><button class="dk-cal-nav" ${cm<=minM?'disabled':''} onclick="dkCalMove(-12)">«</button> <button class="dk-cal-nav" ${cm<=minM?'disabled':''} onclick="dkCalMove(-1)">‹</button></span><b>${y}년 ${m}월</b><span><button class="dk-cal-nav" ${cm>=maxM?'disabled':''} onclick="dkCalMove(1)">›</button> <button class="dk-cal-nav" ${cm>=maxM?'disabled':''} onclick="dkCalMove(12)">»</button></span></div>
       <div class="dk-cal-w">${'일월화수목금토'.split('').map((w,i)=>`<span class="${i===0?'sun':i===6?'sat':''}">${w}</span>`).join('')}</div>
       <div class="dk-cal-g">${cells.join('')}</div>
-      <div class="dk-cal-f">${S.from?`<b>${E(rangeLbl())}</b> <button class="dk-cal-clr" onclick="dkCalClr()">다시 고르기</button>`:'<span>① 시작일 → ② 끝일을 차례로 눌러 주세요</span>'}<span class="lg"><i></i>내원하신 날</span></div>
-      <div class="dk-mutnote">10월 이전 날짜는 데스크에 문의해 주세요.</div></div>`;}
+      <div class="dk-cal-f">${S.from?`<b>${E(rangeLbl())}</b> <button class="dk-cal-clr" onclick="dkCalClr()">다시 고르기</button>`:'<span>① 시작일 → ② 끝일을 차례로 눌러 주세요</span>'}<span class="lg"><i></i>내원하신 날</span></div></div>`;}
   window.dkCal=k=>{   // 처음(또는 범위를 다 고른 뒤) 누르면 시작일, 그다음 누르면 끝일(시작보다 앞이면 시작일을 바꿈)
     if(!S.from||S.to){S.from=k;S.to='';}
     else if(k<S.from)S.from=k;
     else S.to=k;
     S.cm=k.slice(0,7);S.err='';render();};
-  window.dkCalMove=d=>{const cm=S.cm||(S.from||today()).slice(0,7);const [y,m]=cm.split('-').map(Number);const t=new Date(y,m-1+d,1);S.cm=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0');render();};
+  window.dkCalMove=d=>{const cm=S.cm||(S.from||today()).slice(0,7);const [y,m]=cm.split('-').map(Number);const t=new Date(y,m-1+d,1);let k=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0');const mx=today().slice(0,7),mn=CAL_MIN.slice(0,7);S.cm=k>mx?mx:k<mn?mn:k;render();};
   window.dkCalClr=()=>{S.from='';S.to='';render();};
   /* 기기 뒤로가기(안드로이드 뒤로 버튼·스와이프, 브라우저 ←) = 이전 단계 (2026-10-26 요청). 단계를 옮길 때마다 기록을 하나 쌓아 두고,
      뒤로가기가 오면 화면 밖으로 나가지 않고 한 단계 앞으로 — 처음 화면에서도 그대로 머문다 */
