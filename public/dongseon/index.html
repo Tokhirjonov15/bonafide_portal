@@ -15185,6 +15185,7 @@ boot();
   @keyframes dkPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,255,255,.35)}50%{transform:scale(1.04);box-shadow:0 0 0 18px rgba(255,255,255,0)}}
   .dk-start .note{margin-top:56px;background:#fff;color:var(--dk-red);font-weight:800;font-size:clamp(18px,2.2vw,26px);line-height:1.55;padding:18px 34px;border-radius:18px;position:relative;z-index:1;box-shadow:0 10px 30px rgba(0,0,0,.2)}
   .dk-start .note b{font-size:1.6em;vertical-align:-.12em}
+  .dk-staffexit{position:absolute;left:22px;bottom:18px;z-index:2;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);font-size:15px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer}
   /* ① 준비 안내 */
   .dk-prep{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   .dk-prep .dk-card{padding:24px 24px 20px}
@@ -15347,7 +15348,8 @@ boot();
     if(S.step===0){const lg=logo();
       el.innerHTML=`<div class="dk-start" onclick="dkGo(1)">${ex}${lg?`<img class="logo" src="${E(lg)}" alt="">`:''}<div class="clinic">365일 진료하는 반듯한정형외과</div>
         <div class="t1">서류 발급<br>전용 태블릿</div><div class="touch">👆 화면을 살짝 터치해주세요</div>
-        <div class="note">* 원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에 이용해 주세요.</div></div>`;return;}
+        <div class="note">* 원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에 이용해 주세요.</div>
+        <button class="dk-staffexit" onclick="event.stopPropagation();dkExitAsk()">직원용 · 나가기</button></div>`;return;}
     if(S.step===1){const w=WHO[S.who];
       el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급 대상을 확인하겠습니다</h1><p class="dk-sub">서류를 받으시는 분을 골라 주세요. 누르면 준비하실 서류가 아래에 나옵니다.</p>
       <div class="dk-who">${Object.entries(WHO).map(([k,v],i)=>`<button class="dk-whob ${S.who===k?'on':''}" onclick="dkWho('${k}')"><span class="n">${i+1}</span><span class="ic" style="background:${v.bg}">${v.ic}</span><span class="t">${v.t}</span><span class="ar">${S.who===k?'▲':'▼'}</span></button>`).join('')}</div>
@@ -15414,7 +15416,15 @@ boot();
     S.cm=k.slice(0,7);S.err='';render();};
   window.dkCalMove=d=>{const cm=S.cm||(S.from||today()).slice(0,7);const [y,m]=cm.split('-').map(Number);const t=new Date(y,m-1+d,1);S.cm=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0');render();};
   window.dkCalClr=()=>{S.from='';S.to='';render();};
-  window.dkGo=n=>{S.step=n;S.err='';render();};
+  /* 기기 뒤로가기(안드로이드 뒤로 버튼·스와이프, 브라우저 ←) = 이전 단계 (2026-10-26 요청). 단계를 옮길 때마다 기록을 하나 쌓아 두고,
+     뒤로가기가 오면 화면 밖으로 나가지 않고 한 단계 앞으로 — 처음 화면에서도 그대로 머문다 */
+  let HIST_ON=false;
+  function histPush(){if(!DOCS_MODE)return;try{history.pushState({dk:S.step},'',location.href);HIST_ON=true;}catch(e){}}
+  window.addEventListener('popstate',()=>{if(!DOCS_MODE||!S)return;
+    if(S.step===5){reset();}else if(S.step>0){S.step=S.step-1;S.err='';}
+    render();histPush();});
+  window.dkExitAsk=()=>{if(confirm('서류 발급 화면을 닫고 동선관리로 돌아갈까요? (직원용)'))location.href=location.pathname;};
+  window.dkGo=n=>{S.step=n;S.err='';render();if(!HIST_ON)histPush();};
   window.dkHome=()=>{clearTimeout(DONE_T);reset();render();};
   window.dkWho=k=>{S.who=k;S.err='';render();};
   window.dkWhoNext=()=>{if(!S.who){kToast('발급 대상을 먼저 골라 주세요.');return;}dkGo(2);};
@@ -15439,7 +15449,7 @@ boot();
       items:[...S.free.slice().sort().map(i=>({name:itemName(FREE[i]),fee:'무료'})),...S.paid.slice().sort().map(i=>({name:itemName(PAID[i]),fee:PAID[i].f}))],
       period:S.all?'내원이력 전체':rangeLbl(),from:S.all?'':S.from,to:S.all?'':(S.to||S.from),status:'대기',device:navigator.userAgent.slice(0,80)};
     try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 직원 호출을 눌러 주세요.';render();return;}
-    try{if(typeof roomNotify==='function')roomNotify({name:rec.name,mrn:rec.mrn},'__docs__','docs',{who:rec.who,birth:rec.birth,items:rec.items.map(x=>x.name+(x.fee&&x.fee!=='무료'?' ('+x.fee+')':'')).join(', '),period:rec.period});}catch(e){}   // 텔레그램 '서류발급' (2026-10-26)
+    try{if(typeof roomNotify==='function')roomNotify({name:rec.name,mrn:rec.mrn},'__docs__','docs',{who:rec.who,birth:birthLbl(rec.birth),items:rec.items.map(x=>x.name+(x.fee&&x.fee!=='무료'?' ('+x.fee+')':'')).join(', '),period:rec.period});}catch(e){}   // 텔레그램 '서류발급' (2026-10-26)
     dkGo(5);};
   let CALL_AT=0;
   window.dkCall=async()=>{if(Date.now()-CALL_AT<30000){kToast('직원을 불렀습니다.<br>잠시만 기다려 주세요.');return;}CALL_AT=Date.now();
@@ -15448,7 +15458,7 @@ boot();
   function kToast(m){let b=document.getElementById('dkMsg');if(!b){b=document.createElement('div');b.id='dkMsg';b.className='dk-toast';document.body.appendChild(b);}
     b.innerHTML=m;b.style.display='';clearTimeout(b._t);b._t=setTimeout(()=>{b.style.display='none';},3500);}
   /* 나가기: 오른쪽 위 모서리를 3초 누르기 */
-  let EX_T=null;window.dkExitDown=()=>{clearTimeout(EX_T);EX_T=setTimeout(()=>{if(confirm('서류 발급 화면을 닫고 동선관리로 돌아갈까요? (직원용)')){location.href=location.pathname;}},3000);};
+  let EX_T=null;window.dkExitDown=()=>{clearTimeout(EX_T);EX_T=setTimeout(()=>dkExitAsk(),3000);};
   window.dkExitUp=()=>clearTimeout(EX_T);
   window.docKioskBusy=()=>!!(DOCS_MODE&&S&&S.step>0);   // 신청 중이면 새 버전 자동 새로고침을 미룬다
   if(DOCS_MODE){
@@ -15459,7 +15469,7 @@ boot();
     window.alert=function(m){console.warn('[서류발급 태블릿] 알림 숨김:',m);};
     reset();
     setInterval(()=>{const el=document.getElementById('docKiosk');if(!el)return;const on=!!(typeof currentUser!=='undefined'&&currentUser);
-      if(on&&!el.classList.contains('show')){el.classList.add('show');render();}
+      if(on&&!el.classList.contains('show')){el.classList.add('show');render();if(!HIST_ON)histPush();}
       if(!on&&el.classList.contains('show'))el.classList.remove('show');   // 로그인이 풀리면 로그인 창이 보이게
     },1000);
   }
