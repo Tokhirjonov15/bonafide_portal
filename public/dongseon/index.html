@@ -8061,7 +8061,7 @@ function wtFrame(ts){
 const WB_LIST_SEC=50, WB_BAN_SEC=10;
 /* 원장님 사진·전공 (2026-10-26 받은 사진). 사진을 바꾸면 img/doc/ 파일만 바꾼다. 새 원장님은 여기에 한 줄 — 없으면 이름 첫 글자 + '정형외과 전문의' */
 const DOC_PHOTO={'김현우':{f:'kimhw.jpg',pos:'64% 30%',spec:'정형외과 전문의'},'정상민':{f:'jungsm.jpg',pos:'74% 25%',spec:'마취통증의학과 전문의'},
-  '백민철':{f:'baekmc.jpg',pos:'84% 25%',spec:'재활의학과 전문의'},'박초롱':{f:'parkcr.jpg',pos:'82% 28%',spec:'신경외과 전문의'}};
+  '백민철':{f:'baekmc.jpg',pos:'78% 22%',spec:'재활의학과 전문의'},'박초롱':{f:'parkcr.jpg',pos:'72% 25%',spec:'신경외과 전문의'}};
 let WB_DOCS=null,WB_DOCS_AT=0,WB_PHASE='list',WB_AT=0;
 function waitBannerOn(){try{return localStorage.getItem('dsWaitBanner')!=='0';}catch(e){return true;}}
 window.setWaitBanner=on=>{try{localStorage.setItem('dsWaitBanner',on?'1':'0');}catch(e){}if(!on)wbShow(false);WB_PHASE='list';WB_AT=Date.now();};
