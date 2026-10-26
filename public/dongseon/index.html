@@ -15183,8 +15183,10 @@ boot();
   .dk-start .t1{font-size:clamp(56px,9vw,112px);font-weight:900;line-height:1.08;letter-spacing:-3px;margin-top:14px;position:relative;z-index:1}
   .dk-start .touch{margin-top:44px;display:inline-flex;align-items:center;gap:14px;font-size:clamp(26px,3.4vw,40px);font-weight:800;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.35);padding:18px 38px;border-radius:999px;position:relative;z-index:1;animation:dkPulse 2.2s ease-in-out infinite}
   @keyframes dkPulse{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,255,255,.35)}50%{transform:scale(1.04);box-shadow:0 0 0 18px rgba(255,255,255,0)}}
-  .dk-start .note{margin-top:56px;background:#fff;color:var(--dk-red);font-weight:800;font-size:clamp(18px,2.2vw,26px);line-height:1.55;padding:18px 34px;border-radius:18px;position:relative;z-index:1;box-shadow:0 10px 30px rgba(0,0,0,.2)}
-  .dk-start .note b{font-size:1.6em;vertical-align:-.12em}
+  /* 2026-10-26: 흰 상자에 빨간 글씨 → 어두운 배경에 맞춘 반투명 띠 + '꼭'만 따뜻한 노랑 */
+  .dk-start .note{margin-top:56px;display:flex;align-items:center;gap:16px;text-align:left;color:rgba(255,255,255,.92);font-weight:600;font-size:clamp(18px,2.2vw,24px);line-height:1.6;padding:18px 28px;border-radius:18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);position:relative;z-index:1;max-width:min(760px,88vw)}
+  .dk-start .note .ic{flex:0 0 auto;width:44px;height:44px;border-radius:50%;background:rgba(255,209,102,.16);color:#ffd166;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900}
+  .dk-start .note b{color:#ffd166;font-weight:900;font-size:1.25em;margin:0 2px}
   .dk-staffexit{position:absolute;left:22px;bottom:18px;z-index:2;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);font-size:15px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer}
   /* ① 준비 안내 */
   .dk-prep{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
@@ -15348,8 +15350,8 @@ boot();
   function render(){const el=document.getElementById('docKiosk');if(!el)return;bump();el.onclick=null;
     if(S.step===0){const lg=logo();
       el.innerHTML=`<div class="dk-start" onclick="dkGo(1)">${ex}${lg?`<img class="logo" src="${E(lg)}" alt="">`:''}<div class="clinic">365일 진료하는 반듯한정형외과</div>
-        <div class="t1">서류 발급<br>전용 태블릿</div><div class="touch">👆 화면을 살짝 터치해주세요</div>
-        <div class="note">* 원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에 이용해 주세요.</div>
+        <div class="t1">서류 발급 안내</div><div class="touch">👆 화면을 살짝 터치해주세요</div>
+        <div class="note"><span class="ic">!</span><span>원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에만 이용해 주세요.</span></div>
         <button class="dk-staffexit" onclick="event.stopPropagation();dkExitAsk()">직원용 · 나가기</button></div>`;return;}
     if(S.step===1){const w=WHO[S.who];
       el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급 대상을 확인하겠습니다</h1><p class="dk-sub">서류를 받으시는 분을 골라 주세요. 누르면 준비하실 서류가 아래에 나옵니다.</p>
