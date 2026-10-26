@@ -15159,6 +15159,8 @@ boot();
   .dk-st+.dk-st::before{content:"";width:34px;height:2px;background:#d6deea;margin-right:6px}
   .dk-callbtn{border:2px solid #f5b3b3;background:#fff5f5;color:var(--dk-red);font-weight:800;font-size:17px;padding:10px 18px;border-radius:999px;cursor:pointer;white-space:nowrap}
   .dk-callbtn:active{transform:scale(.97)}
+  .dk-homebtn{border:2px solid #c8d6ef;background:#eef4ff;color:var(--dk-blue);font-weight:800;font-size:17px;padding:10px 18px;border-radius:999px;cursor:pointer;white-space:nowrap}
+  .dk-homebtn:active{transform:scale(.97)}
   /* 본문 */
   .dk-body{flex:1;min-height:0;overflow:auto;padding:26px 48px 12px;display:flex;flex-direction:column}
   .dk-h{font-size:clamp(32px,4vw,50px);font-weight:900;color:var(--dk-navy);margin:0 0 4px;letter-spacing:-1.2px}
@@ -15345,7 +15347,7 @@ boot();
   const ex='<div class="dk-exit" onpointerdown="dkExitDown()" onpointerup="dkExitUp()" onpointerleave="dkExitUp()"></div>';
   function top(){const lg=logo();return `<div class="dk-top">${ex}<div class="dk-brand">${lg?`<img src="${E(lg)}" alt="">`:''}반듯한정형외과 <span>서류 발급</span></div>
     <div class="dk-steps">${STEPS.map((t,i)=>{const n=i+1;const c=S.step===n?'on':S.step>n?'done':'';return `<div class="dk-st ${c}"><i>${S.step>n?'✓':n}</i><b>${t}</b></div>`;}).join('')}</div>
-    <button class="dk-callbtn" onclick="dkCall()">🔔 직원 호출</button></div>`;}
+    <button class="dk-homebtn" onclick="dkHome()">⟲ 처음으로</button></div>`;}   /* 2026-10-26 요청: 오른쪽 위 [직원 호출] 대신 [처음으로] — 시작(파란) 화면으로 */
   function foot(prev,nextFn,nextLbl,ready){return `<div class="dk-foot">${prev?`<button class="dk-b prev" onclick="dkGo(${prev})">‹ 이전</button>`:''}<button class="dk-b home" onclick="dkHome()">처음으로</button>
     <button class="dk-b next ${ready?'':'dis'}" onclick="${nextFn}">${nextLbl||'다음'} ›</button></div>`;}
   function render(){const el=document.getElementById('docKiosk');if(!el)return;bump();el.onclick=null;
@@ -15448,12 +15450,12 @@ boot();
   window.dkSubmit=async()=>{
     if(!S.all&&!S.pick){S.err='발급 기간을 골라 주세요.';render();return;}
     if(S.pick&&!S.from){S.err='달력에서 날짜를 골라 주세요.';render();return;}
-    const c=col();if(!c){S.err='지금 신청을 보낼 수 없습니다 — 직원 호출을 눌러 주세요.';render();return;}
+    const c=col();if(!c){S.err='지금 신청을 보낼 수 없습니다 — 데스크에 말씀해 주세요.';render();return;}
     const id='dr'+Date.now();
     const rec={id,type:'docs',at:new Date().toISOString(),date:today(),who:(WHO[S.who]||{}).t||'',name:String(S.name).trim(),birth:String(S.birth),mrn:matchMrn(),
       items:[...S.free.slice().sort().map(i=>({name:itemName(FREE[i]),fee:'무료'})),...S.paid.slice().sort().map(i=>({name:itemName(PAID[i]),fee:PAID[i].f}))],
       period:S.all?'내원이력 전체':rangeLbl(),from:S.all?'':S.from,to:S.all?'':(S.to||S.from),status:'대기',device:navigator.userAgent.slice(0,80)};
-    try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 직원 호출을 눌러 주세요.';render();return;}
+    try{await c.doc(id).set(rec);}catch(e){S.err='신청을 보내지 못했습니다 — 데스크에 말씀해 주세요.';render();return;}
     try{if(typeof roomNotify==='function')roomNotify({name:rec.name,mrn:rec.mrn},'__docs__','docs',{who:rec.who,birth:birthLbl(rec.birth),items:rec.items.map(x=>x.name+(x.fee&&x.fee!=='무료'?' ('+x.fee+')':'')).join(', '),period:rec.period});}catch(e){}   // 텔레그램 '서류발급' (2026-10-26)
     dkGo(5);};
   let CALL_AT=0;

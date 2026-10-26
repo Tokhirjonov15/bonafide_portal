@@ -809,8 +809,9 @@ async function dongseonNotify(request, env) {
         (s(b.to) ? `\n\n→ ${s(b.to).slice(0, 300)}` : "")
       : "";
     const dcRooms = s(b.rooms) || room;
-    /* 2026-10-26 요청: 이름 · 생년월일 · 기간 · 서류 순서로 한 줄씩 */
+    /* 2026-10-26 요청: 발급 대상(본인 수령/가족 대리/가족 아닌 대리) · 이름 · 생년월일 · 기간 · 서류 순서로 한 줄씩 */
     const text = kind === "docs" ? `📄 서류발급 신청 · ${hm}
+발급 대상: ${s(b.who) || "-"}
 이름: ${s(b.name)}
 생년월일: ${s(b.birth)}
 기간: ${s(b.period).slice(0, 80)}
