@@ -809,13 +809,15 @@ async function dongseonNotify(request, env) {
         (s(b.to) ? `\n\n→ ${s(b.to).slice(0, 300)}` : "")
       : "";
     const dcRooms = s(b.rooms) || room;
-    /* 2026-10-26 요청: 발급 대상(본인 수령/가족 대리/가족 아닌 대리) · 이름 · 생년월일 · 기간 · 서류 순서로 한 줄씩 */
+    /* 2026-10-26 요청: 태블릿 '신청 내용' 카드와 같은 순서·문구 — 발급 대상 · 성함 · 생년월일 · 서류 · 기간 */
     const text = kind === "docs" ? `📄 서류발급 신청 · ${hm}
+
+[신청 내용]
 발급 대상: ${s(b.who) || "-"}
-이름: ${s(b.name)}
+성함: ${s(b.name)}
 생년월일: ${s(b.birth)}
-기간: ${s(b.period).slice(0, 80)}
-서류: ${s(b.items).slice(0, 300)}`
+서류: ${s(b.items).slice(0, 300)}
+기간: ${s(b.period).slice(0, 80)}`
       : kind === "cmp" ? `⚠️ ${s(b.birth)} 접수되었습니다${s(b.clinic) ? " · " + s(b.clinic) : ""} · ${hm}`
       : kind === "consult" ? `🙅 ${(s(b.mrn) ? s(b.mrn) + "." : "") + s(b.name)}님 상담진행X ${s(b.reason).slice(0, 60)}${s(b.consultRoom) ? " · " + s(b.consultRoom) : ""}${s(b.by) ? " · " + s(b.by) : ""}`   /* 상담 시행 안 함 + 사유 (2026-10-03) */
       : kind === "route" ? routeTxt
