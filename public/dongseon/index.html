@@ -998,6 +998,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #waitPop .wp-room{min-width:0;overflow:hidden;text-overflow:ellipsis}   /* 좁으면 방 이름만 줄이고 이름·분은 늘 보이게 */
   #waitPop .wp-a{display:flex;gap:6px;flex:0 0 auto}#waitPop select{width:128px;padding:5px 8px;border:2px solid #d1d5db;border-radius:8px;font-size:15px;background:#fff}
   #waitPop button{padding:5px 14px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:15px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
+  body.docs-kiosk #waitPop,body.docs-kiosk .toasts{display:none!important}   /* 서류 발급 태블릿: 알림창·토스트 숨김 */
   body:has(.modal-bg.show,.cdesk.show,.cst-info-pop.show,.cst-screen.show,.pt4-ov.show,.resv-screen.show,#pbScreen.show,.photo-lightbox.show,#shotZoom.show) #waitPop{display:none}   /* 첫 화면(보드)에서만 (2026-10-13) */
   @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-row{flex-wrap:wrap}#waitPop .wp-t{font-size:15px;white-space:normal}}
   #modal.view-only button[onclick="savePatient()"],#modal.view-only #delBtn,#modal.view-only #editStatusRow,#modal.view-only #modalRail{display:none !important}   /* 보기 전용 — 저장·삭제·상태 단추 숨김 */
@@ -12183,6 +12184,7 @@ function waitPopList(){if(!currentUser||waitPopHidden()||(typeof waitOpen!=='und
     const ack=p.waitAck&&p.waitAck[waitPopKey(p)];   // 확인한 뒤에도 계속 대기면 10분마다 다시 (2026-10-03 요청)
     return !ack||min>=(Number(ack.min)||0)+WAIT_CARD_MIN;});}
 function renderWaitPop(){
+  if(window.DOCS_MODE){const b0=document.getElementById('waitPop');if(b0)b0.remove();document.body.classList.remove('wp-on');return;}   // 서류 발급 태블릿(환자용)에는 '대기 10분 넘음' 알림창을 띄우지 않는다 (2026-10-26)
   let box=document.getElementById('waitPop');const L=waitPopList();
   if(!L.length){if(box)box.remove();document.body.classList.remove('wp-on');return;}
   if(!box){box=document.createElement('div');box.id='waitPop';document.body.appendChild(box);}
