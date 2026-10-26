@@ -15187,7 +15187,8 @@ boot();
   .dk-start .note{margin-top:56px;display:flex;align-items:center;gap:16px;text-align:left;color:rgba(255,255,255,.92);font-weight:600;font-size:clamp(18px,2.2vw,24px);line-height:1.6;padding:18px 28px;border-radius:18px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);position:relative;z-index:1;max-width:min(760px,88vw)}
   .dk-start .note .ic{flex:0 0 auto;width:44px;height:44px;border-radius:50%;background:rgba(255,209,102,.16);color:#ffd166;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900}
   .dk-start .note b{color:#ffd166;font-weight:900;font-size:1.25em;margin:0 2px}
-  .dk-staffexit{position:absolute;left:22px;bottom:18px;z-index:2;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);font-size:15px;font-weight:700;padding:8px 14px;border-radius:10px;cursor:pointer}
+  .dk-staffexit{position:absolute;right:22px;bottom:22px;z-index:2;width:52px;height:52px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}   /* 대기화면 ⚙ 처럼 — 직원만 아는 나가기 (2026-10-26) */
+  .dk-staffexit:active{background:rgba(255,255,255,.18);color:#fff}
   /* ① 준비 안내 */
   .dk-prep{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   .dk-prep .dk-card{padding:24px 24px 20px}
@@ -15352,7 +15353,7 @@ boot();
       el.innerHTML=`<div class="dk-start" onclick="dkGo(1)">${ex}${lg?`<img class="logo" src="${E(lg)}" alt="">`:''}<div class="clinic">365일 진료하는 반듯한정형외과</div>
         <div class="t1">서류 발급 안내</div><div class="touch">👆 화면을 살짝 터치해주세요</div>
         <div class="note"><span class="ic">!</span><span>원활한 서류 발급을 위하여<br>직원 호출은 도움이 <b>꼭</b> 필요한 경우에만 이용해 주세요.</span></div>
-        <button class="dk-staffexit" onclick="event.stopPropagation();dkExitAsk()">직원용 · 나가기</button></div>`;return;}
+        <button class="dk-staffexit" title="설정 · 나가기 (직원용)" aria-label="설정" onclick="event.stopPropagation();dkExitAsk()"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button></div>`;return;}
     if(S.step===1){const w=WHO[S.who];
       el.innerHTML=top()+`<div class="dk-body"><h1 class="dk-h">발급 대상을 확인하겠습니다</h1><p class="dk-sub">서류를 받으시는 분을 골라 주세요. 누르면 준비하실 서류가 아래에 나옵니다.</p>
       <div class="dk-who">${Object.entries(WHO).map(([k,v],i)=>{const on=S.who===k;return `<div class="dk-whoi ${on?'on':''}"><button class="dk-whob" onclick="dkWho('${k}')"><span class="n">${i+1}</span><span class="ic" style="background:${v.bg}">${v.ic}</span><span class="t">${v.t}</span><span class="ar">${on?'▲':'▼'}</span></button>
