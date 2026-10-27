@@ -92,7 +92,21 @@ const DDL = [
      at    TEXT
    )`,
   `CREATE INDEX IF NOT EXISTS kb_chat_email ON kb_chat(email, at)`,
-  `CREATE TABLE IF NOT EXISTS kb_meta (k TEXT PRIMARY KEY, v TEXT)`
+  `CREATE TABLE IF NOT EXISTS kb_meta (k TEXT PRIMARY KEY, v TEXT)`,
+  /* 고시 업데이트 감시 (2026-10-28) — 심평원 보험인정기준·법제처 행정규칙에서 새로 본 것. status: new(반영 대기)·applied(반영함)·book(책자 고시 개정 알림만)·seen(처음 돌 때 이미 있던 것) */
+  `CREATE TABLE IF NOT EXISTS kb_watch (
+     id     INTEGER PRIMARY KEY AUTOINCREMENT,
+     key    TEXT UNIQUE,
+     src    TEXT,
+     title  TEXT,
+     date   TEXT,
+     url    TEXT,
+     body   TEXT,
+     status TEXT,
+     at     TEXT,
+     file   TEXT,
+     by     TEXT
+   )`
 ];
 
 /* 이미 만들어진 표에 새 열을 붙인다(이미 있으면 오류가 나므로 조용히 넘어감) */
@@ -600,6 +614,7 @@ file_search 로 찾은 자료(심평원·보건복지부 고시·지침 책자)�
 - 숫자·코드·횟수·기간·고시 번호는 자료 그대로 쓴다.
 - 답 끝에 근거를 '근거: 문서이름 p.쪽' 형식으로 적는다. 자료 본문의 [p.123] 표시가 그 내용의 쪽이다.
 - 자료끼리 다르면(예: 2026년 1월판과 7월판) 둘 다 밝히고 시행일이 늦은 쪽을 우선한다고 적는다.
+- 파일 이름이 '고시_' 로 시작하는 자료는 책자 뒤에 새로 나온 개별 고시(심평원 보험인정기준)다. 책자와 다르고 시행일이 더 늦으면 개별 고시를 따르고, 책자 내용이 바뀌었다고 밝힌다.
 - 짧고 실무적으로: 결론 먼저, 그다음 조건·예외. 표가 필요하면 짧은 목록으로.
 - 기준은 질문의 대상(약제 성분·제품, 행위, 질환, 보험 종류)과 정확히 맞는 것만 쓴다. 비슷한 다른 약제·행위의 기준을 끌어다 쓰지 않는다 (예: 관절강내 스테로이드 주사 기준을 히알루론산 주사에 쓰지 않는다).
 - 약·주사제의 인정 횟수·간격·대상은 '요양급여 적용기준 세부사항 약제' 자료에서 먼저 찾고, 행위·처치는 '세부사항과 심사지침', 의료급여는 의료급여 자료, 교통사고는 자동차보험 자료에서 찾는다. 첫 검색에서 맞는 기준이 안 보이면 성분명·제품명·코드 등 다른 말로 다시 찾는다.
@@ -635,6 +650,12 @@ async function dongseonKb(request, env, url, email) {
     else if (b.id) await env.DB.prepare(`DELETE FROM kb_chat WHERE id=? AND email=?`).bind(String(b.id), email).run();
     else return json({ error: "id 또는 all" }, 400);
     return json({ ok: true });
+  }
+  if (path === "watch") {   // 고시 업데이트 감시 — GET 기록 / POST {run:true} 지금 확인
+    if (request.method === "POST") return json(await kbWatchRun(env));
+    const { results } = await env.DB.prepare(`SELECT id, src, title, date, url, status, at, by FROM kb_watch WHERE status<>'seen' ORDER BY id DESC LIMIT 100`).all();
+    const last = await env.DB.prepare(`SELECT v FROM kb_meta WHERE k='watch_last'`).first();
+    return json({ items: results || [], last: last ? JSON.parse(last.v) : null });
   }
   if (path === "ask" && request.method === "POST") {
     if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 가 설정되지 않았습니다." }, 501);
@@ -711,6 +732,19 @@ async function dongseonKb(request, env, url, email) {
   }
   return json({ error: "없는 주소" }, 404);
 }
+/* 텍스트 1개를 OpenAI 파일로 올리고 벡터 저장소에 붙인다 → { file, status } */
+async function kbUploadText(env, name, body) {
+  const vs = await kbVectorStore(env);
+  if (!vs) throw new Error("벡터 저장소가 없습니다 (tools/kb_upload.mjs 먼저)");
+  const oa = (path, init) => fetch("https://api.openai.com/v1/" + path, Object.assign({}, init, { headers: Object.assign({ authorization: "Bearer " + env.OPENAI_API_KEY }, init.headers || {}) }))
+    .then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || ("OpenAI " + r.status)); return j; });
+  const fd = new FormData();
+  fd.append("purpose", "assistants");
+  fd.append("file", new Blob([body], { type: "text/plain" }), name);
+  const f = await oa("files", { method: "POST", body: fd });
+  const v = await oa(`vector_stores/${vs}/files`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file_id: f.id }) });
+  return { file: f.id, status: v.status };
+}
 /* 자료 올리기(관리자 전용, 헤더 x-kb-key = Secrets KB_ADMIN_KEY): action=create(저장소 만들기) · upload(텍스트 1개, x-name 파일 이름) · status · reset(새 저장소) */
 async function dongseonKbAdmin(request, env, url) {
   if (!env.KB_ADMIN_KEY || request.headers.get("x-kb-key") !== env.KB_ADMIN_KEY) return json({ error: "권한 없음" }, 403);
@@ -730,12 +764,8 @@ async function dongseonKbAdmin(request, env, url) {
     if (!vs) return json({ error: "먼저 action=create" }, 400);
     if (action === "upload" && request.method === "POST") {
       const name = decodeURIComponent(request.headers.get("x-name") || "doc.txt");
-      const fd = new FormData();
-      fd.append("purpose", "assistants");
-      fd.append("file", new Blob([await request.arrayBuffer()], { type: "text/plain" }), name);
-      const f = await oa("files", { method: "POST", body: fd });
-      const v = await oa(`vector_stores/${vs}/files`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file_id: f.id }) });
-      return json({ ok: true, file: f.id, name, status: v.status });
+      const u = await kbUploadText(env, name, await request.arrayBuffer());
+      return json({ ok: true, file: u.file, name, status: u.status });
     }
     if (action === "status") {
       const j = await oa(`vector_stores/${vs}/files?limit=100`);
@@ -744,6 +774,126 @@ async function dongseonKbAdmin(request, env, url) {
     }
     return json({ error: "action=create|upload|status|reset" }, 400);
   } catch (e) { return json({ error: String(e.message || e) }, 502); }
+}
+/* ============================================================
+   고시 업데이트 감시 (2026-10-28 요청: "업데이트 신호 읽으면 텔레그램 알림 받아서 업로드")
+   · 매일 오전 9시(KST, 크론 0 0 * * *) — 로그인 직원이 POST /api/dongseon/kb/watch 로 바로 돌릴 수도 있다
+   · 심평원 보험인정기준 목록(로그인 없이 열림) → 새 고시는 상세 팝업의 본문(HTML 글)까지 받아 둔다 (첨부 HWP 는 안 씀)
+   · 법제처 행정규칙(Secrets LAW_OC) → 책자로 넣어 둔 큰 고시가 개정되면 알림만 (책자 새 판은 사람이 확인해 바꿈)
+   · 알림: 방 알림 봇에서 '고시 업데이트' 를 켠 채팅에 — 개별 고시는 [반영] 단추, 누르면 고시 체크 자료에 올라감
+   ============================================================ */
+const HIRA = "https://www.hira.or.kr";
+const KB_BOT_CH = "고시 업데이트";
+const LAW_WATCH = ["요양급여의 적용기준 및 방법에 관한 세부사항", "건강보험 행위 급여", "약제 급여 목록", "자동차보험진료수가", "의료급여수가의 기준"];
+function htmlText(h) {
+  return String(h || "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|tr)>/gi, "\n").replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .replace(/\r/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+async function kbFetchText(u, extra) {
+  const r = await fetch(u, { headers: Object.assign({ "user-agent": "Mozilla/5.0 (bonafide-portal gosi-watch)" }, extra || {}) });
+  if (!r.ok) throw new Error(u.slice(0, 60) + " → " + r.status);
+  return await r.text();
+}
+/* 심평원 보험인정기준 첫 쪽(최근 10건) */
+async function kbHiraList() {
+  const h = await kbFetchText(HIRA + "/rc/insu/insuadtcrtr/InsuAdtCrtrList.do?pgmid=HIRAA030069000000");
+  const i = h.indexOf("<tbody"), j = h.indexOf("</tbody>", i);
+  const out = [];
+  for (const tr of (i < 0 ? "" : h.slice(i, j)).split(/<tr[\s>]/).slice(1)) {
+    const m = tr.match(/viewInsuAdtCrtr\(\s*\d+\s*,\s*'(\d{8})'\s*,\s*'(\w+)'\s*,\s*'(\w+)'/);
+    if (!m) continue;
+    const q = `mtgHmeDd=${m[1]}&sno=${m[2]}&mtgMtrRegSno=${m[3]}`;
+    out.push({ key: `hira:${m[1]}-${m[2]}-${m[3]}`, url: HIRA + "/rc/insu/insuadtcrtr/InsuAdtCrtrPopup.do?" + q, date: (tr.match(/\d{4}-\d{2}-\d{2}/) || [""])[0] });
+  }
+  return out;
+}
+async function kbHiraDetail(u) {
+  const h = await kbFetchText(u);
+  const pick = (re) => { const m = h.match(re); return m ? htmlText(m[1]) : ""; };
+  const title = pick(/<div class="title">([\s\S]*?)<\/div>/);
+  const basis = pick(/<span>관련근거<\/span>([\s\S]*?)<\/li>/);
+  const posted = pick(/<span>게시일<\/span>([\s\S]*?)<\/li>/);
+  const body = pick(/<div class="view">([\s\S]*?)<\/div>\s*<\/div>/);
+  return { title, basis, posted, body };
+}
+/* 법제처 행정규칙 검색 — 지켜보는 고시의 현행 판 */
+async function kbLawList(env) {
+  if (!env.LAW_OC) return [];
+  const out = [], seen = new Set();
+  for (const q of LAW_WATCH) {
+    const x = await kbFetchText(`https://www.law.go.kr/DRF/lawSearch.do?OC=${encodeURIComponent(env.LAW_OC)}&target=admrul&type=XML&display=20&query=${encodeURIComponent(q)}`,
+      { referer: "https://bonafide-portal.seoulgijibae.workers.dev/" });   // 법제처는 신청할 때 등록한 도메인으로 호출자를 확인한다
+    if (!x.includes("<AdmRulSearch")) throw new Error("응답 이상(OC 승인 확인): " + htmlText(x).slice(0, 80));   // 승인 안 된 OC 는 목록 대신 안내 글이 온다
+    for (const blk of x.split("<admrul ").slice(1)) {
+      const g = (t) => { const m = blk.match(new RegExp(`<${t}>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${t}>`)); return m ? m[1].trim() : ""; };
+      if (g("현행연혁구분") !== "현행" || !g("행정규칙명").includes(q.split(" ")[0])) continue;
+      const sn = g("행정규칙일련번호");
+      if (seen.has(sn)) continue;   // 여러 검색어에 같은 고시가 걸림
+      seen.add(sn);
+      const ymd =(d) => d.replace(/^(\d{4})(\d{2})(\d{2})$/, "$1-$2-$3");
+      out.push({ key: "law:" + sn, title: `${g("소관부처명")} 고시 제${g("발령번호")}호 「${g("행정규칙명")}」 ${g("제개정구분명")}`,
+        date: ymd(g("발령일자")), body: "시행 " + ymd(g("시행일자")), url: `https://www.law.go.kr/DRF/lawService.do?OC=${encodeURIComponent(env.LAW_OC)}&target=admrul&ID=${sn}&type=HTML` });
+    }
+  }
+  return out;
+}
+async function kbTgSubs(env) {
+  if (!env.ROOM_BOT_TOKEN) return [];
+  return ((await env.DB.prepare(`SELECT chat_id FROM room_subs WHERE room=?`).bind(KB_BOT_CH).all()).results || []).map(r => r.chat_id);
+}
+/* 감시 1회: 새로 본 것을 kb_watch 에 넣고 텔레그램으로 알린다 → { hira, law, notified, errors } */
+async function kbWatchRun(env) {
+  await ensureSchema(env);
+  const first = !(await env.DB.prepare(`SELECT 1 AS x FROM kb_watch LIMIT 1`).first());   // 처음 돌 때: 법제처 것은 '이미 있던 것'으로만 기록(알림 폭탄 방지)
+  const now = new Date().toISOString(), errors = [], fresh = [];
+  const has = async (k) => !!(await env.DB.prepare(`SELECT 1 AS x FROM kb_watch WHERE key=?`).bind(k).first());
+  try {
+    for (const it of await kbHiraList()) {
+      if (await has(it.key)) continue;
+      const d = await kbHiraDetail(it.url);
+      if (!d.body) { errors.push("본문 없음: " + it.url); continue; }
+      const r = await env.DB.prepare(`INSERT INTO kb_watch (key, src, title, date, url, body, status, at) VALUES (?,?,?,?,?,?,?,?)`)
+        .bind(it.key, "hira", `${d.basis} ${d.title}`.trim(), d.posted || it.date, it.url, d.body, "new", now).run();
+      fresh.push({ id: r.meta && r.meta.last_row_id, src: "hira", title: `${d.basis} ${d.title}`.trim(), date: d.posted || it.date });
+    }
+  } catch (e) { errors.push("심평원: " + (e.message || e)); }
+  try {
+    for (const it of await kbLawList(env)) {
+      if (await has(it.key)) continue;
+      await env.DB.prepare(`INSERT INTO kb_watch (key, src, title, date, url, body, status, at) VALUES (?,?,?,?,?,?,?,?)`)
+        .bind(it.key, "law", it.title, it.date, it.url, it.body, first ? "seen" : "book", now).run();
+      if (!first) fresh.push({ src: "law", title: it.title, date: it.date, body: it.body });
+    }
+  } catch (e) { errors.push("법제처: " + (e.message || e)); }
+  let notified = 0;
+  if (fresh.length) {
+    const hira = fresh.filter(x => x.src === "hira"), law = fresh.filter(x => x.src === "law");
+    let text = `[고시 업데이트] ${now.slice(0, 10)}`;
+    if (hira.length) text += `\n\n심평원 보험인정기준 새 고시 ${hira.length}건 — [반영]을 누르면 고시 체크 자료에 올라갑니다.\n` + hira.map((x, i) => `${i + 1}. ${x.title} (${x.date})`).join("\n");
+    if (law.length) text += `\n\n법제처 — 책자로 넣어 둔 고시가 개정됨 (책자 새 판은 담당자가 확인해 교체)\n` + law.map(x => `- ${x.title} (${x.date}, ${x.body})`).join("\n");
+    const kb = [];
+    for (let i = 0; i < hira.length; i += 4) kb.push(hira.slice(i, i + 4).map((x, k) => ({ text: `반영 ${i + k + 1}`, callback_data: "g|" + x.id })));
+    if (hira.length > 1) kb.push([{ text: "모두 반영", callback_data: "g|all" }]);
+    for (const chat of await kbTgSubs(env)) {
+      const r = await tgRoomApi(env, "sendMessage", Object.assign({ chat_id: chat, text: text.slice(0, 4000) }, kb.length ? { reply_markup: { inline_keyboard: kb } } : {}));
+      if (r && r.ok) notified++;
+    }
+  }
+  await env.DB.prepare(`INSERT OR REPLACE INTO kb_meta (k, v) VALUES ('watch_last', ?)`).bind(JSON.stringify({ at: now, fresh: fresh.length, errors })).run();
+  return { hira: fresh.filter(x => x.src === "hira").length, law: fresh.filter(x => x.src === "law").length, notified, errors };
+}
+/* 개별 고시 1건 반영 → 고시 체크 자료(벡터 저장소)에 텍스트로 올림 */
+async function kbWatchApply(env, id, by) {
+  const row = await env.DB.prepare(`SELECT * FROM kb_watch WHERE id=?`).bind(id).first();
+  if (!row) return { ok: false, msg: "없는 항목" };
+  if (row.status === "applied") return { ok: true, msg: "이미 반영됨", title: row.title };
+  if (row.status !== "new") return { ok: false, msg: "반영할 수 없는 항목(책자 고시)" };
+  const name = ("고시_" + row.date + "_" + row.title).replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 120) + ".txt";
+  const text = `[개별 고시 — 심평원 보험인정기준]\n${row.title}\n게시일: ${row.date}\n출처: ${row.url}\n\n${row.body}\n`;
+  const u = await kbUploadText(env, name, text);
+  await env.DB.prepare(`UPDATE kb_watch SET status='applied', file=?, by=?, at=? WHERE id=?`).bind(u.file, by || "", new Date().toISOString(), id).run();
+  return { ok: true, msg: "반영 완료", title: row.title };
 }
 async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebase ID 토큰> → 이메일 (Google 이 검증)
   const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
@@ -782,6 +932,8 @@ const BOT_CHANNELS = [
   { key: "컴플레인 접수", match: (room, kind) => kind === "cmp" },
   /* 2026-10-26 요청: 서류 발급 태블릿(?docs)에서 신청이 완료되면 */
   { key: "서류발급", match: (room, kind) => kind === "docs" },
+  /* 2026-10-28 요청: 심평원·법제처에 새 고시가 올라오면 — [반영] 단추로 고시 체크 자료에 올림 (kbWatchRun 이 보냄) */
+  { key: KB_BOT_CH, match: () => false },
 ];
 async function roomBotRooms(env) { return BOT_CHANNELS.map((c) => c.key); }
 async function roomBotRoomsOld(env) {
@@ -813,6 +965,20 @@ async function roomBotUpdate(env, u) {
   if (u.callback_query) {
     const q = u.callback_query, chatId = String(q.message && q.message.chat && q.message.chat.id || "");
     const data = String(q.data || "");
+    if (chatId && data.startsWith("g|")) {   // 고시 업데이트 [반영]
+      if (!(await roomBotAuthorized(env, chatId))) { await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id, text: "권한 없음" }); return; }
+      await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id, text: "반영 중… (몇 초)" });
+      const who = ((q.from && (q.from.first_name || "")) + " " + (q.from && q.from.last_name || "")).trim();
+      const v = data.slice(2);
+      const ids = v === "all" ? ((await env.DB.prepare(`SELECT id FROM kb_watch WHERE status='new' ORDER BY id`).all()).results || []).map(r => r.id) : [Number(v)];
+      const lines = [];
+      for (const id of ids) {
+        try { const r = await kbWatchApply(env, id, who); lines.push(`${r.ok ? "✅" : "⚠️"} ${r.msg}: ${r.title || id}`); }
+        catch (e) { lines.push(`❌ 실패: ${id} — ${e.message || e}`); }
+      }
+      await tgRoomApi(env, "sendMessage", { chat_id: chatId, text: (lines.join("\n") || "반영할 새 고시가 없습니다.") + (who ? `\n(누른 사람: ${who})` : "") });
+      return;
+    }
     if (!chatId || !data.startsWith("r|")) { await tgRoomApi(env, "answerCallbackQuery", { callback_query_id: q.id }); return; }
     const v = data.slice(2);
     let toast = "";
@@ -972,6 +1138,9 @@ async function dongseonNotify(request, env) {
     /* 처방 D/C(중지) 알림 (2026-10-01): "최다솜 5860 C-ARM D/C" — 처방내역에서 체크한 항목 */
     const dcWho = s(b.name) + (s(b.mrn) ? " " + s(b.mrn) : "");
     const dcItem = s(b.item).slice(0, 80);
+    /* 비트 처방 자동 D/C 는 환자 한 명의 여러 처방을 한 알림으로 (2026-10-27: 처방을 고치면 한 환자에 십여 건씩 왔다) — b.list = 처방 이름들 */
+    const dcList = Array.isArray(b.list) ? b.list.map(s).filter(Boolean).slice(0, 30) : null;
+    const dcHead = dcList ? `${dcList.length}건` : dcItem, dcTail = dcList ? "\n" + dcList.map(x => "- " + x.slice(0, 60)).join("\n") : "";
     /* 3층↔4층 이동 (2026-10-01): "최다솜 5860 기본물리치료 → C-Arm 순서변동" — room = '3층 이동 알림' / '4층 이동 알림' 채널 */
     /* 대기 30분 넘음 (2026-10-01): 진행을 안 눌러 대기가 몇 시간씩 쌓이는 것을 막으려고 — 그 방 구독자에게 */
     /* 동선 변경 (2026-10-01): 누가 무엇을 바꿨는지 + 바뀐 동선 전체 */
@@ -996,8 +1165,8 @@ async function dongseonNotify(request, env) {
       : kind === "route" ? routeTxt
       : kind === "wait" ? `⏰ ${room} 대기 ${Number(b.min) || 30}분 넘음 · ${who} · 진행을 눌러 주세요`
       : kind === "floor" ? `🔀 ${dcWho} ${s(b.from)} → ${s(b.to)} 순서변동 · ${hm}`
-      : kind === "dc" ? `⛔ ${dcWho} ${dcItem} D/C · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}${s(b.reason) ? "\n사유: " + s(b.reason).slice(0, 80) : ""}`
-      : kind === "dcundo" ? `↩️ ${dcWho} ${dcItem} D/C 취소 · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}`
+      : kind === "dc" ? `⛔ ${dcWho} ${dcHead} D/C · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}${s(b.reason) ? "\n사유: " + s(b.reason).slice(0, 80) : ""}${dcTail}`
+      : kind === "dcundo" ? `↩️ ${dcWho} ${dcHead} D/C 취소 · ${dcRooms} · ${hm}${s(b.by) ? " · " + s(b.by) : ""}${dcTail}`
       /* x-ray실 (2026-10-03 요청): "1234 홍길동님 x-ray촬영 있습니다" / 종결·이동으로 나가면 "1234 홍길동님 x-ray 나왔습니다" */
       : (/x-?ray/i.test(room) && kind === "in") ? `📷 ${(s(b.mrn) ? s(b.mrn) + " " : "") + s(b.name)}님 x-ray촬영 있습니다 · ${hm}`
       /* 2026-10-14 요청: 진료실도 — "22942 박경희님 x-ray 나왔습니다 - 1진료실" (진료실1 → 1진료실) */
@@ -2062,6 +2231,7 @@ export default {
       ctx.waitUntil(sendOrderEmail(env).catch(() => {})); */
     } else if (event.cron === "0 0 * * *") {
       ctx.waitUntil(sendExpiryAlerts(env).catch(() => {}));
+      ctx.waitUntil(kbWatchRun(env).catch((e) => console.log("kbwatch", e && e.message)));   // 고시 업데이트 감시 (2026-10-28)
     } else {
       ctx.waitUntil(pollTelegram(env).catch(() => {}));
     }
