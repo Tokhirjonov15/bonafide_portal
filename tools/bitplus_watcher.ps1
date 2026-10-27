@@ -28,6 +28,7 @@
 param(
   [string]$Pc = $env:COMPUTERNAME,   # 동선관리에 표시될 이 PC 이름 (예: 접수1)
   [int]$CastPort = 9000,             # BITCast PORT_NUM (BITCast.dll 고정값)
+  [switch]$NoNote,                   # v3.7 (2026-10-27): 처방을 내지 않는 PC(진료실4 — 간호 선생님들이 비트 열람용으로 씀)는 외래진료실 처방 칸을 보내지 않는다(슬립 섞임·열람만 슬립·덮어쓰기 방지)
   [int]$PollSec = 2,                 # 인적정보 화면 읽기 주기(초)
   [int]$HeartbeatSec = 300           # 하트비트 주기(초) — 2026-09-14 읽기 한도 사고 뒤 60→300: 하트비트 1건은 듣고 있는 화면 수만큼 읽기로 계산된다(6대×1,440×10화면=86,000/일). 동선관리 BIT_STALE_SEC=750 과 짝
 )
@@ -493,7 +494,7 @@ function HandleCast($m, $force = $false) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.5: PC=$Pc  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3.7: PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
@@ -533,14 +534,14 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.7'; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.7'; noteOff = [bool]$NoNote; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
         catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
       }
       # ── ③ 외래진료실 증상 칸 맨 아래 처방 목록 (진료실 PC) ──
-      if ($docOpen) {
+      if ($docOpen -and -not $NoNote) {   # -NoNote: 처방을 내지 않는 PC는 보내지 않음 (v3.7)
         try {
           $dr = ReadDoctor $dw
           if ($dr -and -not $dr.found -and -not $noteWarned) { Log "외래진료실 창은 찾았지만 증상 칸을 못 찾음"; $noteWarned = $true }
