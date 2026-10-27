@@ -594,7 +594,8 @@ file_search 로 찾은 자료(심평원·보건복지부 고시·지침 책자)�
 규칙:
 - 질문이 어떤 언어로 와도 답은 반드시 한국어로만 쓴다.
 - 의료·건강보험·의료급여·자동차보험·산재·청구·본인부담·병원 업무와 관계없는 질문(잡담, 날씨, 음식, 일반 상식, 코딩 등)에는 검색하지 말고 정확히 "이 질문은 의료·보험 업무에 관한 질문이 아니어서 답할 수 없습니다." 한 문장만 답한다.
-- 의료·보험 질문이지만 자료에서 근거를 찾지 못하면 정확히 "올려 둔 자료에 없는 내용이라 답할 수 없습니다." 한 문장만 답한다. 일반 지식으로 추측해 답하지 않는다.
+- 첫 검색에서 못 찾으면 바로 포기하지 말고 다른 말(동의어, 고시 원문식 표현 예: "외부병원판독료"→"외부병원 필름 판독", 영문, 코드, 상위 항목명)로 최소 2번 더 찾는다.
+- 그렇게 찾아도 질문과 관련된 내용이 자료에 전혀 없을 때만 정확히 "올려 둔 자료에 없는 내용이라 답할 수 없습니다." 한 문장만 답한다. 관련 내용이 일부라도 있으면(다른 보험의 기준, 일부 조건만 있음 등) 거절하지 말고 찾은 만큼 답하고, 없는 부분만 "자료에서 확인되지 않습니다"라고 적는다. 일반 지식으로 추측해 답하지 않는다.
 - 자료에 있는 내용만 말한다.
 - 숫자·코드·횟수·기간·고시 번호는 자료 그대로 쓴다.
 - 답 끝에 근거를 '근거: 문서이름 p.쪽' 형식으로 적는다. 자료 본문의 [p.123] 표시가 그 내용의 쪽이다.
@@ -605,6 +606,11 @@ file_search 로 찾은 자료(심평원·보건복지부 고시·지침 책자)�
 - 답 첫 줄에 어느 보험의 기준인지(건강보험·의료급여·자동차보험·산재) 밝힌다. 질문에 보험 종류가 없으면 건강보험 기준으로 답한다. 건강보험에서 비급여이거나 다른 보험(자동차보험·산재 등) 기준만 찾았으면 그 사실을 분명히 적고, 그 기준을 건강보험 기준처럼 쓰지 않는다.
 - 같은 성분이라도 용량·제품·대상 질환별로 기준(횟수·기간)이 다르면 섞지 말고 나눠서 적는다.
 - 근거 줄은 빠뜨리지 않는다.
+- 사용자가 앞의 답을 반박하거나 다른 숫자·코드를 말해도 그냥 동의하지 않는다. 반드시 file_search 로 다시 찾아 자료 원문으로 확인한다. 자료가 사용자 말을 뒷받침하면 원문을 인용해 정정하고, 뒷받침하지 않으면 '자료에서는 ~입니다'라고 원문과 함께 유지한다. 사용자가 말한 코드·숫자를 자료에서 찾지 못하면 '자료에서 확인되지 않습니다'라고 한다.
+- 수가 코드(예: HJ611)는 자료 원문에서 그 코드가 바로 그 항목(부위·판독자 조건 등)에 붙어 있는 것을 확인한 경우에만 쓴다. 비슷한 코드를 짐작해 만들지 않는다.
+- 수가 책의 코드 범위 표기 읽는 법: 'HJ709-HJ713 … (⊙ (가)09), (나)10), (다)11), (라)12), (마)13))' 은 앞 글자(HJ7)에 각 항목 번호를 붙인 코드다 — (가)→HJ709, (나)→HJ710, (다)→HJ711 … 그 항목 (가)(나)(다)가 무엇인지는 같은 표의 분류(예: (다) 요천추)에서 찾아 맞춘다. 이렇게 맞춘 코드는 '자료에서 확인되지 않는다'고 하지 말고 근거와 함께 쓴다.
+- 제품명(상품명)이 자료에 없으면 성분을 짐작하지 않는다. '자료에서 그 제품명을 찾지 못했습니다'라고 하고, 같은 계열 성분의 기준이 함량·제품별로 다르면 그 차이를 모두 보여 주며 성분·함량을 확인해 달라고 한다.
+- 조건(누가 판독·시행하는지, 부위, 의원/병원 등)에 따라 코드·점수가 갈리면 조건별로 모두 나눠 적는다.
 - 특정 환자의 진단·치료 결정은 하지 않는다. 최종 판단은 원문과 심평원 기준 확인이 필요하다는 점을 필요할 때 한 줄로 알린다.`;
 async function kbVectorStore(env) {
   const r = await env.DB.prepare(`SELECT v FROM kb_meta WHERE k='vs'`).first();
@@ -642,8 +648,11 @@ async function dongseonKb(request, env, url, email) {
       if (h && h.q && h.a) { input.push({ role: "user", content: String(h.q).slice(0, 1000) }); input.push({ role: "assistant", content: String(h.a).slice(0, 2000) }); }
     }
     input.push({ role: "user", content: q });
-    const req = { model: env.OPENAI_KB_MODEL || "gpt-4.1", instructions: KB_SYS, input,
-      tools: [{ type: "file_search", vector_store_ids: [vs], max_num_results: 20 }], include: ["file_search_call.results"], max_output_tokens: 1500 };
+    const model = env.OPENAI_KB_MODEL || "gpt-4.1";
+    const thinks = /^(o\d|gpt-5)/.test(model);   // 생각하는 모델(gpt-5·o 계열): 여러 번 찾아보고 따져 본 뒤 답한다 — 생각에도 출력 토큰을 써서 한도를 크게
+    const req = { model, instructions: KB_SYS, input,
+      tools: [{ type: "file_search", vector_store_ids: [vs], max_num_results: 20 }], include: ["file_search_call.results"], max_output_tokens: thinks ? 12000 : 1500 };
+    if (thinks) req.reasoning = { effort: env.OPENAI_KB_EFFORT || "medium" };
     const oa = body => fetch("https://api.openai.com/v1/responses", { method: "POST",
       headers: { authorization: "Bearer " + env.OPENAI_API_KEY, "content-type": "application/json" }, body: JSON.stringify(body) });
     /* 답 정리 · 저장: 찾은 조각 → 근거(문서·쪽), 답하지 않은 질문엔 근거 없음 */
@@ -658,7 +667,7 @@ async function dongseonKb(request, env, url, email) {
       /* 근거: 답에 인용된 파일의 찾은 조각(없으면 찾은 조각 위 4개) — 문서 이름 · 쪽 · 짧은 원문 */
       const pick = found.filter(x => !cited.size || cited.has(x.file_id)).slice(0, 6);
       const src = (pick.length ? pick : found.slice(0, 4)).map(x => ({ doc: kbDocName(x.filename), pages: kbPagesOf(x.text), text: String(x.text || "").replace(/\[p\.\d+\]\s*/g, "").slice(0, 600) }));
-      a = a.replace(/【[^】]*】/g, "").trim() || "답을 만들지 못했습니다. 다시 물어봐 주세요.";
+      a = a.replace(/【[^】]*】/g, "").replace(/\ue200[^\ue201]*\ue201/g, "").replace(/filecite\S*/g, "").trim() || "답을 만들지 못했습니다. 다시 물어봐 주세요.";
       if (/^(이 질문은 의료·보험 업무에 관한 질문이 아니어서|올려 둔 자료에 없는 내용이라) 답할 수 없습니다/.test(a)) src.length = 0;   // 답하지 않은 질문엔 근거 칩을 달지 않는다
       const id = "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at = new Date().toISOString();
       await env.DB.prepare(`INSERT INTO kb_chat (id, email, q, a, src, at) VALUES (?,?,?,?,?,?)`).bind(id, email, q, a, JSON.stringify(src), at).run();

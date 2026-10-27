@@ -15783,7 +15783,7 @@ boot();
   /* 답이 오는 중: 글자 전엔 점 세 개, 글자가 오면 지금까지 보인 만큼 + 깜박이는 커서 */
   function pendHtml(){const P=K.pend;if(!P)return '';if(P.err)return esc(P.err);
     if(!P.shown)return '<span class="kb-wait">자료에서 찾는 중 <i></i><i></i><i></i></span>';
-    return fmt(P.full.slice(0,P.shown).replace(/【[^】]*】?/g,''))+'<span class="kb-cur"></span>';}
+    return fmt(P.full.slice(0,P.shown).replace(/【[^】]*】?/g,'').replace(/\ue200[^\ue201]*\ue201?/g,'').replace(/filecite\S*/g,''))+'<span class="kb-cur"></span>';}
   function paintPend(){const e=document.getElementById('kbPendA'),el=document.getElementById('kbList');if(!e)return;
     const atEnd=el&&el.scrollHeight-el.scrollTop-el.clientHeight<60;e.innerHTML=pendHtml();if(atEnd)el.scrollTop=el.scrollHeight;}
   function render(){const el=document.getElementById('kbList');if(!el)return;
