@@ -1000,6 +1000,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #waitPop .wp-room{min-width:0;overflow:hidden;text-overflow:ellipsis}   /* 좁으면 방 이름만 줄이고 이름·분은 늘 보이게 */
   #waitPop .wp-a{display:flex;gap:6px;flex:0 0 auto}#waitPop select{width:128px;padding:5px 8px;border:2px solid #d1d5db;border-radius:8px;font-size:15px;background:#fff}
   #waitPop button{padding:5px 14px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:15px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
+  body.kb-open #waitPop{right:calc(min(480px,100vw) + 16px)}   /* 어시 체크 창이 열려 있으면 알림창은 그 왼쪽까지만 — 질문 입력칸을 가리지 않게 */
   body.docs-kiosk #waitPop,body.docs-kiosk .toasts{display:none!important}   /* 서류 발급 태블릿: 알림창·토스트 숨김 */
   body:has(.modal-bg.show,.cdesk.show,.cst-info-pop.show,.cst-screen.show,.pt4-ov.show,.resv-screen.show,#pbScreen.show,.photo-lightbox.show,#shotZoom.show) #waitPop{display:none}   /* 첫 화면(보드)에서만 (2026-10-13) */
   @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-row{flex-wrap:wrap}#waitPop .wp-t{font-size:15px;white-space:normal}}
@@ -15796,8 +15797,8 @@ boot();
   async function load(){try{const j=await api('list');K.items=(j.items||[]).slice().reverse();}catch(e){toast('어시 체크 기록을 불러오지 못했습니다: '+(e.message||e));}K.loaded=true;render();}
   window.openKb=()=>{const em=(window.firebase&&firebase.auth&&firebase.auth().currentUser&&firebase.auth().currentUser.email)||'';
     if(em!==K.email){K.email=em;K.items=[];K.loaded=false;K.pend=null;}   // 같은 PC 에서 다른 직원이 로그인하면 앞사람 기록을 보이지 않게
-    document.getElementById('kbPanel').style.display='flex';render();if(!K.loaded)load();setTimeout(()=>{const q=document.getElementById('kbQ');if(q)q.focus();},50);};
-  window.closeKb=()=>{document.getElementById('kbPanel').style.display='none';};
+    document.getElementById('kbPanel').style.display='flex';document.body.classList.add('kb-open');render();if(!K.loaded)load();setTimeout(()=>{const q=document.getElementById('kbQ');if(q)q.focus();},50);};
+  window.closeKb=()=>{document.getElementById('kbPanel').style.display='none';document.body.classList.remove('kb-open');};
   window.kbSnip=(id,i)=>{const e=document.getElementById('kbs_'+id+'_'+i);if(e)e.classList.toggle('show');};
   window.kbAsk=async()=>{const ta=document.getElementById('kbQ');const q=(ta.value||'').trim();if(!q||K.busy)return;
     K.busy=true;K.pend={q};ta.value='';document.getElementById('kbSend').disabled=true;render();
