@@ -15419,13 +15419,15 @@ boot();
   .dk-day{position:relative;height:35px;border:0;border-radius:10px;background:transparent;font-size:19px;font-weight:700;color:var(--dk-ink);cursor:pointer}
   .dk-day.dis{color:#cdd5e1 !important;cursor:default}
   .dk-day.tod{box-shadow:inset 0 0 0 2px #c8d6ef}
-  .dk-day.vis::after{content:"";position:absolute;left:50%;bottom:4px;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:#f59e0b}
+  .dk-day.vis::after{content:"";position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:3px solid #f59e0b;box-sizing:border-box;pointer-events:none}   /* 내원하신 날 = 주황 동그라미 (2026-10-27 요청: 점이 너무 작음) */
+  .dk-day.vis{color:#b45309}
+  .dk-day.edge.vis::after{border-color:#fff}
   .dk-day.in{background:#dbe7ff;border-radius:0}
   .dk-day.edge{background:var(--dk-blue);color:#fff !important;border-radius:10px}
   .dk-cal-f{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:18px;color:var(--dk-mut);font-weight:700}
   .dk-cal-f b{color:var(--dk-blue);font-size:20px}
   .dk-cal-f .lg{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:15px}
-  .dk-cal-f .lg i{width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block}
+  .dk-cal-f .lg i{width:16px;height:16px;border-radius:50%;border:3px solid #f59e0b;box-sizing:border-box;display:inline-block}
   .dk-cal-clr{border:2px solid var(--dk-line);background:#fff;border-radius:10px;padding:4px 12px;font-size:16px;font-weight:800;color:var(--dk-navy);cursor:pointer}
   .dk-sum{padding:22px 24px}
   .dk-sum h3{margin:0 0 14px;font-size:22px;font-weight:900;color:var(--dk-navy)}
