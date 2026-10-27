@@ -82,7 +82,7 @@ const DDL = [
      ts     INTEGER,
      bytes  TEXT
    )`,
-  /* 어시 체크 (2026-10-27) — 직원별 질문·답 기록(본인만 보고 지움) · 설정값(벡터 저장소 id) */
+  /* 고시 체크 (2026-10-27) — 직원별 질문·답 기록(본인만 보고 지움) · 설정값(벡터 저장소 id) */
   `CREATE TABLE IF NOT EXISTS kb_chat (
      id    TEXT PRIMARY KEY,
      email TEXT NOT NULL,
@@ -584,12 +584,12 @@ async function dongseonStt(request, env) {
   return json({ error: "x-provider 는 openai 또는 clova" }, 400);
 }
 /* ============================================================
-   어시 체크 (2026-10-27) — 직원이 보험·청구 기준을 물으면 심평원·복지부 자료 14개(텍스트로 올려 둔 OpenAI 벡터 저장소)에서
+   고시 체크 (2026-10-27) — 직원이 보험·청구 기준을 물으면 심평원·복지부 자료 14개(텍스트로 올려 둔 OpenAI 벡터 저장소)에서
    찾아 근거(문서·쪽)와 함께 답한다. 질문·답은 D1 kb_chat 에 직원(로그인 이메일)별로 — 본인만 보고 지운다.
    · 자료 올리기: tools/kb_upload.mjs (Secrets KB_ADMIN_KEY 필요) → /api/dongseon/kb/admin
    · 모델: Secrets/vars OPENAI_KB_MODEL (기본 gpt-4.1 — mini 는 비슷한 다른 기준을 섞어 답해서 바꿈)
    ============================================================ */
-const KB_SYS = `너는 반듯한정형외과(의원) 직원용 '어시 체크' 도우미다. 건강보험·의료급여·자동차보험 급여기준, 청구, 본인부담에 대한 질문에
+const KB_SYS = `너는 반듯한정형외과(의원) 직원용 '고시 체크' 도우미다. 건강보험·의료급여·자동차보험 급여기준, 청구, 본인부담에 대한 질문에
 file_search 로 찾은 자료(심평원·보건복지부 고시·지침 책자)만 근거로 한국어로 답한다.
 규칙:
 - 질문이 어떤 언어로 와도 답은 반드시 한국어로만 쓴다.
@@ -714,7 +714,7 @@ async function dongseonKbAdmin(request, env, url) {
     const vs = await kbVectorStore(env);
     if (action === "create" || action === "reset") {
       if (vs && action === "create") return json({ ok: true, vs, note: "이미 있음" });
-      const j = await oa("vector_stores", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "반듯 어시 체크 자료" }) });
+      const j = await oa("vector_stores", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "반듯 고시 체크 자료" }) });
       await env.DB.prepare(`INSERT OR REPLACE INTO kb_meta (k, v) VALUES ('vs', ?)`).bind(j.id).run();
       return json({ ok: true, vs: j.id, old: vs || "" });
     }
@@ -1983,8 +1983,8 @@ export default {
         .bind(JSON.stringify(rooms)).run();
       return json({ ok: true, n: rooms.length });
     }
-    if (url.pathname === "/api/dongseon/kb/admin") return dongseonKbAdmin(request, env, url);   // 어시 체크 자료 올리기 (2026-10-27)
-    if (url.pathname.startsWith("/api/dongseon/kb/")) {   // 어시 체크 — 로그인한 직원 본인 기록만
+    if (url.pathname === "/api/dongseon/kb/admin") return dongseonKbAdmin(request, env, url);   // 고시 체크 자료 올리기 (2026-10-27)
+    if (url.pathname.startsWith("/api/dongseon/kb/")) {   // 고시 체크 — 로그인한 직원 본인 기록만
       const email = await fbEmailFromRequest(request);
       if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
       return dongseonKb(request, env, url, email);

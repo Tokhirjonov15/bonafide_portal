@@ -1000,7 +1000,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #waitPop .wp-room{min-width:0;overflow:hidden;text-overflow:ellipsis}   /* 좁으면 방 이름만 줄이고 이름·분은 늘 보이게 */
   #waitPop .wp-a{display:flex;gap:6px;flex:0 0 auto}#waitPop select{width:128px;padding:5px 8px;border:2px solid #d1d5db;border-radius:8px;font-size:15px;background:#fff}
   #waitPop button{padding:5px 14px;border:0;border-radius:8px;background:#dc2626;color:#fff;font-size:15px;font-weight:900;cursor:pointer}#waitPop button[disabled]{opacity:.4;cursor:not-allowed}
-  body.kb-open #waitPop{right:calc(min(480px,100vw) + 16px)}   /* 어시 체크 창이 열려 있으면 알림창은 그 왼쪽까지만 — 질문 입력칸을 가리지 않게 */
+  body.kb-open #waitPop{right:calc(min(480px,100vw) + 16px)}   /* 고시 체크 창이 열려 있으면 알림창은 그 왼쪽까지만 — 질문 입력칸을 가리지 않게 */
   body.docs-kiosk #waitPop,body.docs-kiosk .toasts{display:none!important}   /* 서류 발급 태블릿: 알림창·토스트 숨김 */
   body:has(.modal-bg.show,.cdesk.show,.cst-info-pop.show,.cst-screen.show,.pt4-ov.show,.resv-screen.show,#pbScreen.show,.photo-lightbox.show,#shotZoom.show) #waitPop{display:none}   /* 첫 화면(보드)에서만 (2026-10-13) */
   @media (max-width:520px){#waitPop .wp-list{grid-template-columns:1fr}#waitPop .wp-row{flex-wrap:wrap}#waitPop .wp-t{font-size:15px;white-space:normal}}
@@ -1885,7 +1885,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="role-tag" id="userRole">직원</span>
   </div>
   <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃"><i data-lucide="log-out"></i> 로그아웃</button>
-  <button class="btn" id="kbBtn" style="display:none" onclick="openKb()" title="어시 체크 — 보험·청구 기준을 물으면 심평원·복지부 자료에서 찾아 근거(문서·쪽)와 함께 답합니다"><i data-lucide="message-circle-question"></i> 어시 체크</button>
+  <button class="btn" id="kbBtn" style="display:none" onclick="openKb()" title="고시 체크 — 보험·청구 기준을 물으면 심평원·복지부 자료에서 찾아 근거(문서·쪽)와 함께 답합니다"><i data-lucide="message-circle-question"></i> 고시 체크</button>
   <button class="btn tb-hide-btn" onclick="toggleTopbar(true)" title="상단 바 숨기기 (보드를 넓게) — 다시 열려면 맨 위 가운데 [▾ 메뉴]"><i data-lucide="chevron-up"></i></button>
 </div>
 <!-- 상단 바 숨김 (2026-10-09 요청) — 숨기면 맨 위 가운데 작은 손잡이만. 이 기기에 기억 -->
@@ -15732,12 +15732,11 @@ boot();
   window._dk={reset:()=>reset(),S:()=>S,setS:o=>Object.assign(S,o),myVisits:()=>myVisits(),matchMrn:()=>matchMrn(),b6};
 })();
 </script>
-<!-- 어시 체크 (2026-10-27) — 보험·청구 기준 질문 → 서버(/api/dongseon/kb)가 심평원·복지부 자료 14개에서 찾아 근거와 함께 답. 질문·답은 직원(로그인)별로 서버에 저장, 본인만 보고 지운다 -->
+<!-- 고시 체크 (2026-10-27) — 보험·청구 기준 질문 → 서버(/api/dongseon/kb)가 심평원·복지부 자료 14개에서 찾아 근거와 함께 답. 질문·답은 직원(로그인)별로 서버에 저장, 본인만 보고 지운다 -->
 <div id="kbPanel" class="kb-panel" style="display:none">
-  <div class="kb-head"><b>어시 체크</b><span class="hint">보험·청구 기준 자료 14개에서 찾아 답합니다</span><span style="flex:1"></span>
+  <div class="kb-head"><b>고시 체크</b><span style="flex:1"></span>
     <button type="button" class="btn sm" onclick="kbDelAll()" title="내 질문 기록 모두 지우기">전체 삭제</button>
     <button type="button" class="btn sm" onclick="closeKb()" title="닫기">✕</button></div>
-  <div class="kb-warn">환자 이름·차트번호·주민번호는 쓰지 마세요 (질문은 OpenAI 로 보내집니다). 답은 참고용 — 최종 판단은 근거 원문 확인.</div>
   <div id="kbList" class="kb-list"></div>
   <div class="kb-input"><textarea id="kbQ" rows="2" placeholder="예) 무릎 히알루론산 주사 보험 인정 횟수와 간격은?  (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
     <button type="button" class="btn primary" id="kbSend" onclick="kbAsk()">보내기</button></div>
@@ -15794,7 +15793,7 @@ boot();
     if(K.pend)h+=`<div class="kb-item"><div class="kb-q">${esc(K.pend.q)}</div><div class="kb-a ${K.pend.err?'err':''}" id="kbPendA">${pendHtml()}</div></div>`;
     if(!h)h=`<div class="kb-empty">${K.loaded?'보험·청구 기준을 물어보세요.<br>예) 도수치료 관리급여 조건은? · 의료급여 1종 의원 외래 본인부담은? · 교통사고 경상환자 진단서 제출 기한은?':'불러오는 중…'}</div>`;
     el.innerHTML=h;el.scrollTop=el.scrollHeight;}
-  async function load(){try{const j=await api('list');K.items=(j.items||[]).slice().reverse();}catch(e){toast('어시 체크 기록을 불러오지 못했습니다: '+(e.message||e));}K.loaded=true;render();}
+  async function load(){try{const j=await api('list');K.items=(j.items||[]).slice().reverse();}catch(e){toast('고시 체크 기록을 불러오지 못했습니다: '+(e.message||e));}K.loaded=true;render();}
   window.openKb=()=>{const em=(window.firebase&&firebase.auth&&firebase.auth().currentUser&&firebase.auth().currentUser.email)||'';
     if(em!==K.email){K.email=em;K.items=[];K.loaded=false;K.pend=null;}   // 같은 PC 에서 다른 직원이 로그인하면 앞사람 기록을 보이지 않게
     document.getElementById('kbPanel').style.display='flex';document.body.classList.add('kb-open');render();if(!K.loaded)load();setTimeout(()=>{const q=document.getElementById('kbQ');if(q)q.focus();},50);};
@@ -15826,7 +15825,7 @@ boot();
     K.busy=false;document.getElementById('kbSend').disabled=false;render();};
   window.kbDel=async id=>{if(!confirm('이 질문과 답을 지울까요?'))return;
     try{await api('del',{id});K.items=K.items.filter(x=>x.id!==id);render();}catch(e){alert('지우지 못했습니다: '+(e.message||e));}};
-  window.kbDelAll=async()=>{if(!K.items.length)return;if(!confirm('내 어시 체크 기록 '+K.items.length+'개를 모두 지울까요?'))return;
+  window.kbDelAll=async()=>{if(!K.items.length)return;if(!confirm('내 고시 체크 기록 '+K.items.length+'개를 모두 지울까요?'))return;
     try{await api('del',{all:true});K.items=[];K.pend=null;render();}catch(e){alert('지우지 못했습니다: '+(e.message||e));}};
   document.addEventListener('keydown',e=>{if(e.target&&e.target.id==='kbQ'&&e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();kbAsk();}
     if(e.key==='Escape'){const p=document.getElementById('kbPanel');if(p&&p.style.display!=='none')closeKb();}});
