@@ -3940,7 +3940,16 @@ function slipNoCardWhy(it){const m=normMrn(it&&it.mrn).replace(/^0+/,''),today=l
   if(c)return `<b>같은 이름 카드${typeof c.seq==='number'?' #'+c.seq:''}의 차트번호가 '${esc(c.mrn||'(비어 있음)')}'로 슬립(${esc(it.mrn)})과 다릅니다</b> — 그 카드 [수정]에서 차트번호를 확인해 주세요`;
   const r=(BIT_INTAKE||[]).filter(x=>x&&normMrn(x.mrn).replace(/^0+/,'')===m).sort((a,b)=>String(b.seenAt||'').localeCompare(String(a.seenAt||'')))[0];
   if(r){let w='';try{w=bitWhy(r).txt;}catch(e){}return `오늘 비트 접수 기록: ${esc(w||r.status||'확인 필요')} — 환자 관리 [🔍 비트 접수 찾기]에서 바로 카드를 만들 수 있습니다`;}
+  if(slipAgentAlive())return '<b>오늘 비트 접수가 없습니다</b> — 원장님이 오늘 안 오신 분의 차트를 열람만 해서 지난 진료 내용이 올라온 것일 수 있습니다. 실제로 오신 분이면 비트 접수를 확인해 주세요';
   return '<b>오늘 비트 접수 기록이 동선관리에 없습니다</b> — 접수 PC 에이전트가 보내지 못한 것(접수PC_에이전트업데이트.bat 필요). 급하면 보드 [＋ 접수]로 넣어 주세요';}
+/* 오늘 접수 없이 차트만 열람 (2026-10-27: 이선아님 — 오늘 안 왔는데 슬립에 뜸). 원장님이 외래진료실에서 차트를 열면 비트가 지난 진료 내용을 채워 두고 감시 프로그램이 그것을 보낸다.
+   카드도, 오늘 내원(내보냄) 기록도, 오늘 비트 접수 문서도 없으면 '차트 열람만'으로 목록 아래 접힌 칸에 두고 자동 인쇄하지 않는다.
+   단 접수 PC 에이전트 문서가 오늘 하나도 없으면(에이전트 멈춤 — 진짜 환자도 접수 문서가 없다) 판단하지 않고 보통 슬립으로 둔다 */
+function slipAgentAlive(){return (BIT_INTAKE||[]).some(d=>d&&d.src==='db');}
+function slipNoVisit(mrn,p){if(p)return false;const m=normMrn(mrn).replace(/^0+/,'');if(!m||!slipAgentAlive())return false;const today=localYMD(new Date());
+  if((Array.isArray(VISITS)?VISITS:[]).some(x=>x&&normMrn(x.mrn).replace(/^0+/,'')===m&&localYMD(new Date(x.dischargedAt||0))===today))return false;
+  return !(BIT_INTAKE||[]).some(d=>d&&normMrn(d.mrn).replace(/^0+/,'')===m);}
+let SLIP_IDLE_OPEN=false;
 function slipItems(){
   const room=SLIP_ROOM;
   return BIT_NOTES.flatMap(slipNoteSplit).map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
@@ -3950,7 +3959,7 @@ function slipItems(){
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
       const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
       const hid=Array.isArray(n.shotHidden)?n.shotHidden:[];const _td=localYMD(new Date());const shots=(Array.isArray(n.shots)?n.shots:[]).filter(x=>x&&x.path&&x.kind!=='pt'&&!hid.includes(x.id)&&(!x.at||localYMD(new Date(x.at))===_td));   // 진료실 캡처 (2026-10-06) — 오늘 찍은 것만(밤새 켜 둔 화면에도 어제 캡처가 남지 않게). PT 캡처는 슬립이 아니라 4층으로 (2026-10-13)
-      return {id:n.markId||n.docId,shotDoc:n.docId,key:n.insKey?mrn+'|'+n.insKey:mrn,insKey:n.insKey||'',ins:n.insKey?n.ins:'',mrn,note:n,p,dup:slipDupOf(n),dupBlock:slipDupBlocked(n),pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
+      return {noVisit:slipNoVisit(mrn,p),id:n.markId||n.docId,shotDoc:n.docId,key:n.insKey?mrn+'|'+n.insKey:mrn,insKey:n.insKey||'',ins:n.insKey?n.ins:'',mrn,note:n,p,dup:slipDupOf(n),dupBlock:slipDupBlocked(n),pre:rp.valid&&rp.pre?rp.pre:[],lines:rp.valid?rp.lines:[],badges:rp.valid?rp.badges:[],valid:rp.valid,shots,name:(p&&p.name)||n.name||n.shotName||(lk&&lk.name)||'',t:Math.max(new Date(n.updatedAt||0).getTime()||0,new Date(n.shotAt||0).getTime()||0)};})
     .filter(it=>it.mrn&&((it.valid&&it.lines.length)||it.shots.length)&&(!room||(it.p&&Array.isArray(it.p.route)&&it.p.route.includes(room))))
     .sort((a,b)=>b.t-a.t);
 }
@@ -4262,11 +4271,13 @@ function renderSlipScreen(){
   const all=SLIP_SOLO?slipItems().filter(it=>normMrn(it.mrn)===normMrn(SLIP_SOLO)):slipItems();
   if(SLIP_SOLO&&all[0]&&!all.some(it=>it.key===slipSel))slipSel=all[0].key;
   const qq=SLIP_Q.replace(/\s+/g,''), qm=normMrn(SLIP_Q);
-  const items=qq?all.filter(it=>String(it.name||'').replace(/\s+/g,'').includes(qq)||(qm&&String(it.mrn||'').includes(qm))):all;
+  const items0=qq?all.filter(it=>String(it.name||'').replace(/\s+/g,'').includes(qq)||(qm&&String(it.mrn||'').includes(qm))):all;
+  const idle=items0.filter(it=>it.noVisit),items=items0.filter(it=>!it.noVisit).concat(idle);   // 차트 열람만(오늘 접수 없음)은 맨 아래 접힌 칸 (2026-10-27)
   const newest=all[0];if(newest&&newest.t>slipLastSeen)slipLastSeen=newest.t;   // 2026-10-03 요청: 새 처방이 와도 보고 있던 환자에서 넘어가지 않는다 — 직접 누를 때만 바뀐다
   if(items.length&&!items.some(it=>it.key===slipSel)){const m=items.find(it=>it.mrn===slipSel);slipSel=(m||items[0]).key;}   // 차트번호로 열었으면(보험별 슬립) 그 환자의 첫 슬립   // 목록이 아직 비었으면(새로고침 직후) 고른 환자를 지우지 않는다
   const lbl=document.getElementById('slipRoomLbl');if(lbl)lbl.textContent=SLIP_ROOM?('→ '+SLIP_ROOM):'전체';
-  const listHtml=items.length?items.map(it=>{const h=slipHeaderInfo(it);return `<div class="slip-item${it.key===slipSel?' sel':''}${it.note.ack?' ack':''}" onclick="slipSel='${esc(it.key)}';renderSlipScreen()">
+  const idleHead=idle.length?`<div class="slip-idle-h" onclick="SLIP_IDLE_OPEN=!SLIP_IDLE_OPEN;renderSlipScreen()" style="margin:10px 0 4px;padding:8px 10px;border-radius:8px;background:#f1f5f9;color:#475569;font-weight:800;font-size:13px;cursor:pointer">${SLIP_IDLE_OPEN||qq?'▾':'▸'} 차트 열람만 · 오늘 접수 없음 ${idle.length}명 <span style="font-weight:600">(지난 진료 내용 — 자동 인쇄 안 함)</span></div>`:'';
+  const listHtml=items.length?items.map(it=>{if(it.noVisit&&!SLIP_IDLE_OPEN&&!qq&&it.key!==slipSel)return it===idle[0]?idleHead:'';const h=slipHeaderInfo(it);return `${it===idle[0]?idleHead:''}<div class="slip-item${it.key===slipSel?' sel':''}${it.note.ack?' ack':''}${it.noVisit?' idle':''}"${it.noVisit?' style="opacity:.6"':''} onclick="slipSel='${esc(it.key)}';renderSlipScreen()">
       <div class="si-top"><b>${esc(dispName(it.name))}</b><span class="si-t">${h.hm}</span></div>
       <div class="si-sub">${esc(it.mrn)}${it.insKey?' · <b style="color:#1d4ed8">'+esc(it.ins)+'</b>':''}${slipTwinWarn(it)?' · <b style="color:#dc2626">⚠ 보험 2건</b>':''}${h.cur?' · '+esc(h.cur):''} · ${it.lines.length}줄${it.dup?` · <b style="color:#dc2626">⚠ 차팅 중복${it.dupBlock?' — 확인 필요':''}</b>`:''}${it.shots.length?' · 📷 '+it.shots.length:''}${it.note.ack?' · ✔ 확인':''}${slipPrintedTag(it.note)}</div>${slipProcHtml(it)}</div>`;}).join('')
     :(qq?`<div class="slip-empty">'${esc(SLIP_Q)}' — 오늘 처방 목록에 없는 환자입니다${slipMissWhy(qq,qm)}</div>`:'<div class="slip-empty">오늘 진료실에서 온 처방 목록이 없습니다</div>');
@@ -4374,7 +4385,7 @@ function slipApSave(){try{localStorage.setItem('dsSlipApDone',JSON.stringify({d:
 function slipApReady(it){return Date.now()-(it.t||0)>30000;}
 function slipAutoCheck(){if(!slipAutoOn()||!currentUser){SLIP_AP_SEEDED=false;return;}
   let ch=false;
-  slipItems().forEach(it=>{if(!it.valid||!it.lines.length||it.dupBlock)return;const key=it.id+'#'+((it.note&&it.note.rev)|0);   // 차팅 중복 확인 전에는 자동 인쇄 안 함 (2026-10-26)
+  slipItems().forEach(it=>{if(!it.valid||!it.lines.length||it.dupBlock||it.noVisit)return;   // 차트 열람만(오늘 접수 없음)은 자동 인쇄 안 함 — 나중에 접수되면 그때 (2026-10-27)const key=it.id+'#'+((it.note&&it.note.rev)|0);   // 차팅 중복 확인 전에는 자동 인쇄 안 함 (2026-10-26)
     if(SLIP_AP_DONE.has(key)||!slipApReady(it))return;
     SLIP_AP_DONE.add(key);ch=true;
     const pr=slipPrinted(it.note);if(!SLIP_AP_SEEDED||(pr.on&&!pr.stale))return;   // 이미 이 처방으로 인쇄됨
@@ -5859,6 +5870,12 @@ async function runSelfTest(){
       ok('슬립: 지난 주사 캡처를 날짜 상관없이 클릭 없이 전부(지난 캡처 표시, PT 캡처 제외), 오늘 것이 있으면 오늘 것 먼저 + 지난 것',
         h1.includes('x/old.jpg')&&h1.includes('x/older.jpg')&&h1.includes('지난 캡처')&&!h1.includes('x/pt.jpg')&&!/<select/.test(h1)&&h3.indexOf('x/today.jpg')>=0&&h3.indexOf('x/today.jpg')<h3.indexOf('x/old.jpg'));
       if(_p)SLIP_PAST[m]=_p;else delete SLIP_PAST[m];}
+     {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE,_v=VISITS;   // 차트 열람만 (2026-10-27 이선아)
+      BIT_NOTES=[{docId:'n1',mrn:'7301',name:'열람만',rx:'med\nneuropathic pain\nx',updatedAt:new Date().toISOString()},{docId:'n2',mrn:'7302',name:'접수됨',rx:'med\nneuropathic pain\ny',updatedAt:new Date().toISOString()}];
+      data=[];VISITS=[];BIT_INTAKE=[{docId:'i1',src:'db',mrn:'7302',registered:true}];const L=slipItems();const a=L.find(x=>x.mrn==='7301'),b=L.find(x=>x.mrn==='7302');
+      BIT_INTAKE=[];const c=slipItems().find(x=>x.mrn==='7301');
+      ok('슬립: 오늘 접수·카드·내원 없는 차트 열람만은 따로(자동 인쇄 안 함), 접수된 환자는 보통, 에이전트 문서가 하나도 없으면 판단 안 함', a&&a.noVisit&&b&&!b.noVisit&&c&&!c.noVisit);
+      BIT_NOTES=_n;data=_d;BIT_INTAKE=_i;VISITS=_v;}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE;const t0=Date.now()-600000,iso=x=>new Date(t0+x).toISOString();   // 보험별 슬립 (2026-10-26 일반·건강보험)
       data=[{id:'k1',name:'보험둘',mrn:'777',ins:'국민건강보험',bit:{ocmNum:'500',ins:'국민건강보험'},route:['3층 대기실'],step:0,status:'대기',notes:{}},{id:'k2',name:'보험둘',mrn:'777',ins:'일반',bit:{ocmNum:'500i11',ins:'일반'},route:['3층 대기실'],step:0,status:'대기',notes:{}}];
       BIT_NOTES=[{docId:'d777',mrn:'777',name:'보험둘',rx:'med\nneuropathic pain\n도수',chart:'',rev:3,printed:true,updatedAt:iso(9000),
