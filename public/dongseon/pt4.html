@@ -501,6 +501,9 @@ function aud(ctx,action,entity,entityId,before,after){const x={action,entity,ent
   /* 2026-10-27: 내원·표시·메모·색만 바꾼 기록에도 어느 예약(환자·시간·치료사)인지 남긴다 — 변경 기록 화면에서 글로 보이게 */
   if(entity==='bookings'){const b=(ctx.d.bookings||[]).find(o=>String(o.id)===String(entityId))||before;
     if(b&&typeof b==='object')x.ref={patientName:b.patientName||'',mrn:b.mrn||'',startMin:b.startMin??null,durationMin:b.durationMin??null,therapistId:b.therapistId??null,code:b.code||''};}
+  /* 환자로 찾기(이름·차트번호) — 날짜 상관없이 그 환자의 기록 (2026-10-27) */
+  {const v=x.ref||(after&&typeof after==='object'?after:null)||(before&&typeof before==='object'?before:null)||{};
+   x.pname=String(v.patientName||'').replace(/\s+/g,'');x.pmrn=String(v.mrn||'').replace(/\D/g,'');}
   ctx.audits.push(x);}
 /* ═════ 되돌리기 (Ctrl+Z, 2026-10-07 요청) ═════
    이 화면에서 내가 한 저장마다 '바꾸기 전 하루 문서'를 기억해 두었다가(최근 50개) Ctrl+Z 로 하나씩 되돌린다.

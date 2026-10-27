@@ -668,7 +668,8 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <button type="button" class="ghost" onclick="openEd({kind:'off',therapistId:${e.therapistId},startMin:${e.startMin}})">비근무 (회색)</button>
       <button type="button" class="ghost" onclick="openEd({kind:'memo',therapistId:${e.therapistId},startMin:${e.startMin}})">메모 / 차단 (색+글자)</button>
       ${CLIP&&CLIP.items.length?`<button type="button" class="ghost" style="border-color:var(--accent);color:var(--accent)" onclick="pasteClip({tid:${e.therapistId},min:${e.startMin}})">여기에 붙여넣기 (${CLIP.items.length}건)</button>`:''}
-      <span class="who small">점심시간처럼 전원에게 칠하려면 비근무를 고른 뒤 전원 적용에 체크</span></div>`;}
+      <span class="who small">점심시간처럼 전원에게 칠하려면 비근무를 고른 뒤 전원 적용에 체크</span></div>
+      ${slotAuditHtml(R.q.date,e.therapistId,e.startMin)}`;}
   else if(['new','booking','restore','copyin'].includes(e.kind)){const d=e.draft;const isEdit=e.kind==='booking';
     const title=e.kind==='restore'?'취소/변경에서 스케줄로 되돌리기':e.kind==='copyin'?`${esc(e.source.date)} 기록을 이 날로 가져오기`:isEdit?'예약 수정':'새 예약';
     h=head(`${title} · ${esc(thName(d.therapistId))} · ${hm(d.startMin)}`)+`<div class="form-grid" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))edSaveBooking()">
@@ -699,7 +700,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
         ${isEdit?`<button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCancelMove('cancel')">취소로 옮기기</button><button type="button" class="ghost" ${BUSY?'disabled':''} onclick="edCancelMove('change')">변경 기록 남기기</button>
           <button type="button" class="ghost danger" ${BUSY?'disabled':''} onclick="edDelete()">삭제</button>`:''}
         <span class="who small">Ctrl+Enter 저장 · Esc 닫기</span></div>
-      ${isEdit?bookingAuditHtml(R.q.date,e.booking.id):''}`;}
+      ${isEdit?bookingAuditHtml(R.q.date,e.booking.id)+slotAuditHtml(R.q.date,e.booking.therapistId,e.booking.startMin):''}`;}
   else if(['off','memo','block','band'].includes(e.kind)){const d=e.draft;const band=e.kind==='band';
     h=head(band?'전원 공통 구간 (점심 등)':`비근무 / 차단 · ${esc(thName(d.therapistId))}`)+`<div class="form-grid">
       <label>종류<select onchange="dset('kind',this.value,1)">${opt('off',d.kind,'비근무 (회색)')}${opt('memo',d.kind,'메모/차단 (색+글자)')}</select></label>
@@ -984,13 +985,35 @@ function audText(r){const b=r.before,a=r.after;
   return `${e} ${ACTION_L[r.action]||r.action||''}${x.length?' · '+x.join(' → '):''}`;}
 let AUD_F={date:'',q:''};
 window.audSet=(k,v)=>{AUD_F[k]=v;if(k==='date')AUDIT={at:0,rows:null,loading:false};safeRender();};
+/* 환자로 찾기 (2026-10-27 요청: '김지은님 예약 수정사항') — 날짜 상관없이. 10/27 부터의 기록은 이름·차트번호 칸(pname·pmrn)으로 바로 찾고,
+   그 전 기록은 [예전 기록도 찾기]로 최근 2,000건을 훑어 글에 이름·차트번호가 들어 있는 것을 찾는다 */
+let AUDP={q:'',rows:null,loading:false,old:false};
+window.audPatient=async(q,old)=>{q=String(q||'').trim();if(!q){AUDP={q:'',rows:null,loading:false,old:false};safeRender();return;}
+  const isNo=/^\d+$/.test(q),key=isNo?q.replace(/\D/g,''):q.replace(/\s+/g,'');
+  AUDP={q,rows:AUDP.q===q?AUDP.rows:null,loading:true,old:!!old};safeRender();
+  try{const s=await C.audit.where(isNo?'pmrn':'pname','==',key).get();let rows=s.docs.map(d=>d.data());
+    if(old){const s2=await C.audit.orderBy('at','desc').limit(2000).get();const seen=new Set(rows.map(r=>r.at+'|'+r.entityId+'|'+r.action));
+      s2.docs.map(d=>d.data()).forEach(r=>{if(seen.has(r.at+'|'+r.entityId+'|'+r.action))return;const t=(audText(r)+' '+JSON.stringify(r.before||'')+' '+JSON.stringify(r.after||'')).replace(/\s+/g,'');if(t.includes(key))rows.push(r);});}
+    rows.sort((x,y)=>String(y.at).localeCompare(String(x.at)));AUDP={q,rows,loading:false,old:!!old};}
+  catch(e){console.warn('audPatient',e);AUDP={q,rows:[],loading:false,old:!!old,err:true};}
+  safeRender();};
+function auditTable(rows){return `<div class="scroll"><table><thead><tr><th>바꾼 시각</th><th>바꾼 사람</th><th>예약 날짜</th><th>내용</th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td class="nowrap">${esc(audAt(r.at))}</td><td class="nowrap">${esc(r.user||r.email||'')}${r.src?` <span class="who small">${esc(r.src)}</span>`:''}</td>
+      <td class="nowrap">${r.date?`<a href="${href('schedule',{date:r.date})}">${esc(audDay(r.date))}</a>`:''}</td><td>${esc(audText(r))}</td></tr>`).join('')}</tbody></table></div>`;}
 function renderAuditPage(){
+  const pq=`<div class="row wrap" style="gap:8px;margin-bottom:10px;padding:10px;border:1px solid var(--line,#e5e7eb);border-radius:10px">
+      <b>환자로 찾기</b><input id="audPq" type="search" placeholder="이름 또는 차트번호 (날짜 상관없이)" value="${A(AUDP.q)}" onkeydown="if(event.key==='Enter')audPatient(this.value)" style="min-width:220px">
+      <button type="button" onclick="audPatient(document.getElementById('audPq').value)">찾기</button>
+      ${AUDP.q?`<button type="button" class="ghost" onclick="audPatient(document.getElementById('audPq').value,true)" title="10/27 전 기록은 최근 2,000건을 훑어 찾습니다">예전 기록도 찾기</button><button type="button" class="ghost" onclick="audPatient('')">닫기</button>`:''}</div>`;
+  if(AUDP.q){const h=`<h1>변경 기록 — ${esc(AUDP.q)}</h1><p class="sub">이 환자의 예약 변경 기록 (날짜 상관없이)${AUDP.old?' · 예전 기록 포함':' · 10/27 전 기록은 [예전 기록도 찾기]'}</p>`+pq;
+    if(AUDP.loading&&!AUDP.rows)return h+LOADING;
+    return h+(AUDP.rows&&AUDP.rows.length?auditTable(AUDP.rows):`<p class="who">${AUDP.err?'기록을 불러오지 못했습니다.':'기록이 없습니다.'}</p>`);}
   const key=AUD_F.date||'';
   if((!AUDIT.rows||AUDIT.key!==key||Date.now()-AUDIT.at>30000)&&!AUDIT.loading){AUDIT.loading=true;
     const q=key?C.audit.where('date','==',key).get():C.audit.orderBy('at','desc').limit(500).get();
     q.then(s=>{AUDIT={at:Date.now(),key,rows:s.docs.map(d=>d.data()).sort((x,y)=>String(y.at).localeCompare(String(x.at))),loading:false};safeRender();})
      .catch(e=>{AUDIT={at:Date.now(),key,rows:[],loading:false,err:true};console.warn(e);safeRender();});}
-  let h=`<h1>변경 기록</h1><p class="sub">누가 언제(분까지) 어떤 예약을 어떻게 바꿨는지 남습니다. ${key?audDay(key)+' 예약의 기록 전부':'최근 500건'}.</p>
+  let h=`<h1>변경 기록</h1><p class="sub">누가 언제(분까지) 어떤 예약을 어떻게 바꿨는지 남습니다. ${key?audDay(key)+' 예약의 기록 전부':'최근 500건'}. 스케줄에서 칸을 누르면 그 칸의 기록도 보입니다.</p>${pq}
     <div class="row wrap" style="gap:8px;margin-bottom:10px"><label class="who small">예약 날짜 <input type="date" value="${A(key)}" onchange="audSet('date',this.value)"></label>
       ${key?`<button type="button" class="ghost" onclick="audSet('date','')">전체(최근)</button>`:''}
       <input type="search" placeholder="이름 · 차트번호 · 직원으로 찾기" value="${A(AUD_F.q)}" oninput="AUD_F.q=this.value;clearTimeout(window._audT);window._audT=setTimeout(safeRender,250)" style="min-width:220px"></div>`;
@@ -998,18 +1021,29 @@ function renderAuditPage(){
   const qq=String(AUD_F.q||'').replace(/\s+/g,'').toLowerCase();
   const rows=AUDIT.rows.map(r=>({r,txt:audText(r)})).filter(o=>!qq||(o.txt+' '+(o.r.user||'')+' '+(o.r.email||'')).replace(/\s+/g,'').toLowerCase().includes(qq));
   if(!rows.length)return h+`<p class="who">${AUDIT.err?'기록을 불러오지 못했습니다.':'기록이 없습니다.'}</p>`;
-  return h+`<div class="scroll"><table><thead><tr><th>바꾼 시각</th><th>바꾼 사람</th><th>예약 날짜</th><th>내용</th></tr></thead><tbody>
-    ${rows.map(({r,txt})=>`<tr><td class="nowrap">${esc(audAt(r.at))}</td><td class="nowrap">${esc(r.user||r.email||'')}${r.src?` <span class="who small">${esc(r.src)}</span>`:''}</td>
-      <td class="nowrap">${r.date?`<a href="${href('schedule',{date:r.date})}">${esc(audDay(r.date))}</a>`:''}</td><td>${esc(txt)}</td></tr>`).join('')}</tbody></table></div>`;}
+  return h+auditTable(rows.map(o=>o.r));}
 /* 예약 수정 창 아래: 이 예약의 변경 기록 */
 const AUD_BY_DAY={};
-function bookingAuditHtml(date,id){if(!date||id==null)return '';const c=AUD_BY_DAY[date];
-  /* 불러온 뒤에는 기록 칸만 다시 그린다 — 수정 창 전체를 다시 그리면 메모를 쓰던 중 커서가 날아간다 */
-  const fill=()=>{const el=document.getElementById('bkHist');if(el&&el.dataset.k===date+'|'+id)el.innerHTML=bookingAuditInner(date,id);};
+/* 그 날 기록을 한 번 읽어(20초 보관) 상자를 채운다. 불러온 뒤에는 상자만 다시 그린다 — 수정 창 전체를 다시 그리면 메모를 쓰던 중 커서가 날아간다 */
+function audDayBox(elId,date,key,inner){const c=AUD_BY_DAY[date];
+  const fill=()=>{const el=document.getElementById(elId);if(el&&el.dataset.k===key)el.innerHTML=inner();};
   if(!c||Date.now()-c.at>20000){if(!(c&&c.loading)){AUD_BY_DAY[date]={at:Date.now(),rows:c?c.rows:null,loading:true};
-    C.audit.where('date','==',date).get().then(s=>{AUD_BY_DAY[date]={at:Date.now(),rows:s.docs.map(d=>d.data()),loading:false};fill();})
+    C.audit.where('date','==',date).get().then(s=>{AUD_BY_DAY[date]={at:Date.now(),rows:s.docs.map(d=>d.data()),loading:false};fill();
+        ['bkHist','slotHist'].forEach(i=>{const el=document.getElementById(i);if(el&&el!==document.getElementById(elId)&&el._fill)el._fill();});})
       .catch(()=>{AUD_BY_DAY[date]={at:Date.now(),rows:[],loading:false};fill();});}}
-  return `<div id="bkHist" data-k="${A(date+'|'+id)}">${bookingAuditInner(date,id)}</div>`;}
+  setTimeout(()=>{const el=document.getElementById(elId);if(el)el._fill=fill;},0);
+  return `<div id="${elId}" data-k="${A(key)}">${inner()}</div>`;}
+function bookingAuditHtml(date,id){if(!date||id==null)return '';return audDayBox('bkHist',date,date+'|'+id,()=>bookingAuditInner(date,id));}
+/* 이 칸(치료사·시각)에 누가 들어왔다 나갔는지 (2026-10-27 요청) — 그 날 기록 중 이 치료사의 이 시각을 덮었던 예약의 추가·수정·옮김·취소·삭제 */
+function slotAuditHtml(date,tid,min){if(!date||tid==null||min==null)return '';return audDayBox('slotHist',date,date+'|'+tid+'|'+min,()=>slotAuditInner(date,Number(tid),Number(min)));}
+function slotHit(v,tid,min,tname){if(!v||typeof v!=='object'||v.startMin==null)return false;const s=Number(v.startMin),e=s+Number(v.durationMin||15);
+  const same=v.therapistId!=null?Number(v.therapistId)===tid:(tname&&v.therapistName===tname);return !!same&&s<=min&&min<e;}
+function slotAuditInner(date,tid,min){const rows0=(AUD_BY_DAY[date]||{}).rows;const tname=audTh(tid);
+  const rows=(rows0||[]).filter(r=>(r.entity==='bookings'||r.entity==='cancels')&&(slotHit(r.before,tid,min,tname)||slotHit(r.after,tid,min,tname)||slotHit(r.ref,tid,min,tname)))
+    .sort((x,y)=>String(y.at).localeCompare(String(x.at)));
+  const names=[...new Set(rows.map(r=>audWho(r.after)||audWho(r.before)||audWho(r.ref)).filter(Boolean))];
+  return `<details class="bk-hist" style="margin-top:10px" ${rows.length?'open':''}><summary class="who small" style="cursor:pointer">이 칸(${esc(tname)} ${hm(min)}) 기록 — 거쳐 간 환자 ${names.length}명 · ${rows.length}건</summary>
+    ${rows0==null?'<div class="who small">불러오는 중…</div>':rows.length?`${names.length?`<div class="small" style="margin:6px 0">${names.map(esc).join(' · ')}</div>`:''}<ul style="margin:6px 0 0;padding-left:18px">${rows.map(r=>`<li class="small"><b>${esc(audAt(r.at))}</b> ${esc(r.user||'')} — ${esc(audText(r))}</li>`).join('')}</ul>`:'<div class="who small">이 칸에 남은 기록이 없습니다.</div>'}</details>`;}
 function bookingAuditInner(date,id){
   const rows=((AUD_BY_DAY[date]||{}).rows||[]).filter(r=>(r.entity==='bookings'&&String(r.entityId)===String(id))||(r.entity==='cancels'&&r.after&&String(r.after.fromBooking)===String(id)))
     .sort((x,y)=>String(y.at).localeCompare(String(x.at)));

@@ -8554,7 +8554,7 @@ async function pt4AutoDropCryo3(){const today=localYMD(new Date());const doc=PT4
       const no=[...new Set([...(d.autoNo||[]),...drop.map(b=>normMrn(b.mrn))])];const nowIso=new Date().toISOString();
       t.set(ref,{bookings:B.filter(b=>!drop.includes(b)),autoNo:no,updatedAt:nowIso,updatedBy:'동선관리 자동 (CRYO3 빼기)'},{merge:true});return drop;});
     gone.forEach(b=>{try{audit('4층 예약표 자동 빼기',(b.patientName||'')+' ('+b.mrn+') · 처방이 CRYO3');}catch(e){}
-      try{cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',action:'delete',entity:'bookings',entityId:String(b.id),date:today,before:b,after:null});}catch(e){}});}
+      try{cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',action:'delete',entity:'bookings',entityId:String(b.id),date:today,before:b,after:null,src:'동선관리 자동',pname:String(b.patientName||'').replace(/\s+/g,''),pmrn:String(b.mrn||'')});}catch(e){}});}
   catch(e){console.warn('pt4 drop cryo3',e);}}
 async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!currentUser)return;
   if(!PT4_AUTO_BUSY){PT4_AUTO_BUSY=true;try{await pt4AutoDropCryo3();}catch(e){}PT4_AUTO_BUSY=false;}
@@ -8582,7 +8582,7 @@ async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!current
         t.set(ref,{bookings:B,nid:id,updatedAt:nowIso,updatedBy:by},{merge:true});return {tid,st};});
       PT4_AUTO_DONE[c.mrn]=today;
       if(ok){try{audit('4층 예약표 자동 추가',(c.p.name||'')+' ('+c.mrn+') · 신장분사 '+(c.code||'')+' '+String(Math.floor(ok.st/60))+':'+String(ok.st%60).padStart(2,'0'));}catch(e){}
-        try{cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',action:'create',entity:'bookings',entityId:'',date:today,before:null,after:{patientName:c.p.name||'',mrn:c.mrn,code:c.code,auto:'신장분사 방'}});}catch(e){}}
+        try{cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',action:'create',entity:'bookings',entityId:'',date:today,src:'동선관리 자동',pname:String(c.p.name||'').replace(/\s+/g,''),pmrn:String(c.mrn||''),before:null,after:{patientName:c.p.name||'',mrn:c.mrn,code:c.code,auto:'신장분사 방',therapistId:ok.tid,startMin:ok.st,durationMin:30}});}catch(e){}}
     }catch(e){console.warn('pt4 auto',e);}
   }
   PT4_AUTO_BUSY=false;}
@@ -8836,13 +8836,13 @@ function bkPickColor(c){c=String(c||'').toLowerCase();const h=document.getElemen
   const l=document.getElementById('bke_colorLbl');if(l)l.textContent=(BK_SWATCHES.find(x=>x[0]===c)||[,c||'없음'])[1];}
 function closeBkEdit(){document.getElementById('bkEditModal').classList.remove('show');BK_EDIT=null;}
 function bkEditsDoc(D){const d=BK_EDITS[D]&&typeof BK_EDITS[D]==='object'?BK_EDITS[D]:{};return {items:Object.assign({},d.items||{}),added:(d.added||[]).slice(),manual:Object.assign({},d.manual||{}),manualAdded:(d.manualAdded||[]).slice(),thFix:Object.assign({},d.thFix||{})};}   // thFix: {차트번호: 치료사} — 도수 표에서 치료사가 빈 줄(카드·내원 기록·시트 공란)에 직원이 지정한 치료사(2026-09-20)
-function bkEditsSave(D,doc,what){
+function bkEditsSave(D,doc,what,pt){   // pt = {name, mrn} — 4층 변경 기록에서 환자로 찾게 (2026-10-27)
   BK_EDITS[D]=doc;try{bkChangedRedraw();}catch(e){}   // 카드의 4층 뱃지(도착 빨강 등)도 바로
   try{if(cloud.bookingEditsCol&&cloud.active)cloud.bookingEditsCol.doc(D).set(Object.assign({},doc,{date:D,updatedAt:new Date().toISOString(),by:(currentUser&&currentUser.name)||''}));}catch(e){console.warn('bookingEdits set',e);}
   try{audit('예약 수정',what);}catch(e){}
   /* 4층 예약 스케줄의 [변경 기록]에도 (2026-10-27 요청) — 동선관리 예약 수정 창에서 고친 것도 한곳에서 보이게 */
   try{if(cloud.db&&cloud.active)cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',src:'동선관리',
-    action:'update',entity:'bookings',entityId:'',date:D,before:null,after:{text:String(what||'예약 수정').slice(0,300)}}).catch(e=>console.warn('pt4Audit',e));}catch(e){}
+    action:'update',entity:'bookings',entityId:'',date:D,before:null,after:{text:String(what||'예약 수정').slice(0,300)},pname:String((pt&&pt.name)||'').replace(/\s+/g,''),pmrn:String((pt&&pt.mrn)||'').replace(/\D/g,'')}).catch(e=>console.warn('pt4Audit',e));}catch(e){}
   renderResvScreen();
 }
 /* 4층 예약 도착 체크 (2026-10-03 요청): 시트에서 '.' 찍고 연노랑(내원)으로 칠하던 것. 누른 시각·사람을 남기고 칸을 내원 색으로. 다시 누르면 취소 */
@@ -8906,7 +8906,7 @@ function bkCancelCandidate(){
   const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
   const f={th:g('bke_th'),t:g('bke_t'),dur:parseInt(g('bke_dur'),10)||30,mrn:g('bke_mrn'),name:g('bke_name'),code:g('bke_code'),note:g('bke_note'),fromBit:BK_EDIT.fromBit,virtualCxl:true,cancelled:{by,at}};
   doc.added.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
-  bkEditsSave(D,doc,`비트 예약 후보 취소 ${f.name||f.mrn} ${D} ${f.t}`);closeBkEdit();}
+  bkEditsSave(D,doc,`비트 예약 후보 취소 ${f.name||f.mrn} ${D} ${f.t}`,f);closeBkEdit();}
 function bkFromBitOpen(D,k){const v=bkFromBitResv(D).find(x=>x.fromBit===String(k));if(!v){renderResvScreen();return;}
   openBkEdit(D,null,{th:'',t:v.t,dur:30,mrn:v.mrn,name:v.name,code:v.code,note:v.note,fromBit:v.fromBit});}
 function bkToggleArrived(D,key){
@@ -8917,7 +8917,7 @@ function bkToggleArrived(D,key){
   if(b.added)doc.added=doc.added.map(a=>a.id===key?apply(Object.assign({},a)):a);
   else{const base=doc.items[key]&&!doc.items[key].removed?Object.assign({},doc.items[key]):(()=>{const o=b.orig||b;return {th:o.th,t:o.t,dur:o.dur,mrn:o.mrn,name:o.name,code:o.code,note:o.note,color:o.color||''};})();
     doc.items[key]=Object.assign(apply(base),{by,at});}
-  bkEditsSave(D,doc,`4층 예약 ${on?'도착':'도착 취소'} ${b.name||b.mrn||''} ${D} ${b.th||''} ${b.t||''}`);}
+  bkEditsSave(D,doc,`4층 예약 ${on?'도착':'도착 취소'} ${b.name||b.mrn||''} ${D} ${b.th||''} ${b.t||''}`,b);}
 function bkEditSave(){
   if(!BK_EDIT)return;const {D,key,manual,isNew,cur}=BK_EDIT;const g=id=>{const el=document.getElementById(id);return el?String(el.value||'').trim():'';};
   const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
@@ -8927,7 +8927,7 @@ function bkEditSave(){
     if(isNew)doc.manualAdded.push(Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at}));
     else if(cur.added){doc.manualAdded=doc.manualAdded.map(a=>a.id===key?Object.assign({},a,f,{by,at}):a);}
     else doc.manual[key]=Object.assign({},f,{by,at});
-    bkEditsSave(D,doc,`도수 ${isNew?'추가':'수정'} ${f.name||f.mrn}`);
+    bkEditsSave(D,doc,`도수 ${isNew?'추가':'수정'} ${f.name||f.mrn}`,f);
   }else{
     const f={th:g('bke_th'),t:g('bke_t'),dur:parseInt(g('bke_dur'),10)||30,mrn:g('bke_mrn'),name:g('bke_name'),code:g('bke_code'),note:g('bke_note'),color:g('bke_color')};
     if(cur&&cur.arrivedAt){f.arrivedAt=cur.arrivedAt;f.arrivedBy=cur.arrivedBy||'';if(cur.prevColor)f.prevColor=cur.prevColor;}   // 수정해도 도착 기록 유지
@@ -8943,9 +8943,9 @@ function bkEditSave(){
     /* 잘라내기 → 붙여넣기 저장: 원본 예약을 취소 처리(같은 날이면 같은 문서에, 다른 날이면 그 날 문서에). 복사는 원본을 그대로 두고 클립도 유지 */
     let cutMsg='';const isMove=isNew&&BK_EDIT.pasted&&SHEET_CLIP&&SHEET_CLIP.mode==='cut';
     if(isMove){const c=SHEET_CLIP;const rm=d2=>{if(c.added)d2.added=(d2.added||[]).filter(a=>a.id!==c.key);else d2.items[c.key]={removed:true,by,at};};
-      if(c.D===D2)rm(docT);else{const d2=bkEditsDoc(c.D);rm(d2);bkEditsSave(c.D,d2,`예약 이동(원본 취소) ${c.cur.name||c.cur.mrn||''} ${c.D} ${c.cur.t||''}`);}
+      if(c.D===D2)rm(docT);else{const d2=bkEditsDoc(c.D);rm(d2);bkEditsSave(c.D,d2,`예약 이동(원본 취소) ${c.cur.name||c.cur.mrn||''} ${c.D} ${c.cur.t||''}`,c.cur);}
       cutMsg=` (이동: ${c.D} ${c.cur.t||''} 에서)`;SHEET_CLIP=null;}
-    bkEditsSave(D2,docT,`예약 ${isNew?'추가':'수정'} ${f.name||f.mrn} ${D2} ${f.th} ${f.t}${cutMsg}`);
+    bkEditsSave(D2,docT,`예약 ${isNew?'추가':'수정'} ${f.name||f.mrn} ${D2} ${f.th} ${f.t}${cutMsg}`,f);
     if(isNew&&!isMove&&f.mrn&&!isBlock)bumpVisitAdj(f.mrn,f.name,1);   // 손으로 넣은 예약 = 내원 1회 예정 → 내원기록·4층 횟수 +1 (이동/복사 붙여넣기는 제외)
     if(D2!==D)try{bkLoad(D2);}catch(e){}
   }
@@ -8955,7 +8955,7 @@ function bkEditSave(){
    bkAddBooking: 어느 날짜든 충격파·신장분사 예약을 동선관리 수정본(bookingEdits/{D}.added)에 넣는다(시트에는 반영되지 않음).
    직원이 손으로 예약을 넣으면 그 환자의 내원 횟수(내원기록 N회차·4층)를 1 올리고, 그 예약을 지우면 1 내린다(명단 기록 visitAdj/floorBase) */
 function bkAddBooking(D,f,what){const by=(currentUser&&currentUser.name)||'',at=new Date().toISOString();const doc=bkEditsDoc(D);
-  const rec=Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at});doc.added.push(rec);bkEditsSave(D,doc,what||`예약 추가 ${f.name||f.mrn} ${D} ${f.t}`);return rec;}
+  const rec=Object.assign({id:'add_'+Date.now().toString(36)},f,{by,at});doc.added.push(rec);bkEditsSave(D,doc,what||`예약 추가 ${f.name||f.mrn} ${D} ${f.t}`,f);return rec;}
 /* 2026-10-03 요청: 같은 내원이 두 번 세지지 않게 — 손으로 넣은 예약으로 내원 횟수를 미리 +1 하던 것을 끈다(실제로 거친 방만 센다). 다시 켜려면 VISIT_PRECOUNT=true */
 const VISIT_PRECOUNT=false;
 function bumpVisitAdj(mrn,name,delta){if(!VISIT_PRECOUNT)return;mrn=String(mrn||'').trim();if(!mrn||!delta)return;const cur=PMEMO[mrn]||{};
@@ -9022,7 +9022,7 @@ function bkEditDelete(){
   if(manual){if(cur.added)doc.manualAdded=doc.manualAdded.filter(a=>a.id!==key);else doc.manual[key]={removed:true,by,at};}
   else{if(cur.added){if(cur.kind==='block')doc.added=doc.added.filter(a=>a.id!==key);else doc.added=doc.added.map(a=>a.id===key?Object.assign({},a,{cancelled:{by,at}}):a);}   // 직접 넣은 예약도 지우지 않고 '취소됨'으로 → 오른쪽 취소 열 (2026-10-03)
     else doc.items[key]={removed:true,by,at};}
-  bkEditsSave(D,doc,`예약 취소 ${cur.name||cur.mrn||''}`);closeBkEdit();
+  bkEditsSave(D,doc,`예약 취소 ${cur.name||cur.mrn||''}`,cur);closeBkEdit();
   if(!manual&&cur.added&&String(cur.mrn||'').trim())bumpVisitAdj(cur.mrn,cur.name,-1);   // 손으로 넣었던 예약을 지우면 올렸던 내원 횟수도 되돌림
 }
 function bkEditRevert(){
@@ -9229,7 +9229,7 @@ function rsThHtml(days){
 let RS_UNASSIGNED_OPEN=false;   // 통계 창 (미지정) 줄 펼침 상태
 window.rsFixTh=function(D,mrn,th){mrn=String(mrn||'').trim();if(!D||!mrn)return;const doc=bkEditsDoc(D);
   if(th)doc.thFix[mrn]=th;else delete doc.thFix[mrn];
-  bkEditsSave(D,doc,`도수 치료사 지정 ${D} ${mrn} → ${th||'(해제)'}`);   // 저장 + 4층 화면 다시 그림
+  bkEditsSave(D,doc,`도수 치료사 지정 ${D} ${mrn} → ${th||'(해제)'}`,{mrn});   // 저장 + 4층 화면 다시 그림
   RS_UNASSIGNED_OPEN=true;renderRsStat('th');};
 function rsPeriodText(days){return days.length?`${days[0]} ~ ${days[days.length-1]} · ${days.length}일`:'';}
 async function renderRsStat(sec){
