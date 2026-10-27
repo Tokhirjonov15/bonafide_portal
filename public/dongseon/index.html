@@ -15469,13 +15469,28 @@ boot();
     family:{t:'가족 대리 발급',ic:'👨‍👩‍👧',bg:'#e9f8ef',L:['3개월 이내 발급된 가족관계증명서 또는 등본','환자 신분증 + 대리인 신분증 (총 2개, 미성년자 제외)']},
     proxy:{t:'가족이 아닌 대리 발급',ic:'📝',bg:'#fff3df',L:['환자 신분증 + 대리인 신분증 (총 2개)','진료기록의 열람·사본 발급, 전송·송부 동의서','진료기록 열람 및 사본발급 위임장']}};
   let S=null,IDLE_T=null,DONE_T=null;
+  /* 비트 내원 날짜 (2026-10-27 요청: 동선관리 기록은 10월부터라 그 전 내원일이 안 나옴) — 본인 확인을 마치면 bitIntake/ask_… 문서로 접수 PC 에이전트(db1.9)에 물어보고,
+     에이전트가 비트 DB 에서 그 이름·생년월일 환자의 접수 날짜(전부)를 읽어 답한다. 답을 받으면 문서는 지운다. 40초 안에 답이 없으면 동선관리 기록만 */
+  var ASK=null;
+  function askCol(){try{return (typeof cloud!=='undefined'&&cloud.intakeCol)?cloud.intakeCol:null;}catch(e){return null;}}
+  function askStop(){const a=ASK;ASK=null;if(!a)return;clearTimeout(a.tm);try{a.unsub&&a.unsub();}catch(e){}if(a.id){try{const c=askCol();if(c)c.doc(a.id).delete().catch(()=>{});}catch(e){}}}
+  function dkAsk(){const nm=String((S&&S.name)||'').replace(/\s+/g,''),bk=b6(S&&S.birth);if(!nm||!bk)return;const key=nm+'|'+bk;
+    if(ASK&&ASK.key===key&&ASK.st!=='err'&&ASK.st!=='timeout')return;askStop();const c=askCol();if(!c)return;
+    const id='ask_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);const a=ASK={key,id,st:'wait',dates:[]};
+    const fin=(st,dates)=>{if(ASK!==a)return;a.st=st;a.dates=Array.isArray(dates)?dates.filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)):[];clearTimeout(a.tm);try{a.unsub&&a.unsub();}catch(e){}
+      try{c.doc(id).delete().catch(()=>{});}catch(e){}a.id='';if(S&&S.step===4)render();};
+    a.tm=setTimeout(()=>fin('timeout',[]),40000);
+    c.doc(id).set({kind:'ask',ask:'wait',name:nm,birth:bk,at:new Date().toISOString()})
+      .then(()=>{if(ASK!==a)return;a.unsub=c.doc(id).onSnapshot(s=>{const v=s.data()||{};if(v.ask&&v.ask!=='wait')fin(v.ask,v.dates);},()=>{});})
+      .catch(()=>fin('err',[]));}
+  function askDates(){const nm=String((S&&S.name)||'').replace(/\s+/g,''),bk=b6(S&&S.birth);return (ASK&&ASK.key===nm+'|'+bk&&ASK.st==='done')?ASK.dates:[];}
   const col=()=>(typeof cloud!=='undefined'&&cloud.ref)?cloud.ref.collection('docReq'):null;
   const E=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   const today=()=>ymd(new Date());
   const logo=()=>{try{return (typeof WAIT_DEFAULT_LOGO!=='undefined'&&WAIT_DEFAULT_LOGO)||'';}catch(e){return '';}};
   const itemName=it=>it.n+(it.s?' ('+it.s+')':'');
-  function reset(){S={step:0,who:'',name:'',birth:'',free:[],paid:[],all:false,pick:false,from:'',to:'',cm:'',err:''};}
+  function reset(){try{askStop();}catch(e){}S={step:0,who:'',name:'',birth:'',free:[],paid:[],all:false,pick:false,from:'',to:'',cm:'',err:''};}
   function bump(){clearTimeout(IDLE_T);if(S&&S.step>0&&S.step<5)IDLE_T=setTimeout(()=>{reset();render();},120000);}   // 2분 손대지 않으면 처음으로
   function b6(s){const d=String(s||'').replace(/\D/g,'');return d.length===8?d.slice(2):d.length===6?d:'';}
   function myVisits(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);if(!nk||!bk)return [];
@@ -15483,6 +15498,7 @@ boot();
     const set=new Set();
     L.forEach(v=>{if(!v||String(v.name||'').replace(/\s+/g,'')!==nk||b6(v.birth)!==bk)return;
       const d=v.dischargedAt||v.arrivedAt||v.enteredAt;if(!d)return;const t=new Date(d);if(isNaN(t))return;const k=ymd(t);if(k>=SINCE)set.add(k);});
+    askDates().forEach(k=>{if(k<=today())set.add(k);});   // 비트 접수 날짜(10월 이전 포함, 2026-10-27)
     return [...set].sort().reverse();}
   function matchMrn(){const nk=String(S.name||'').replace(/\s+/g,''),bk=b6(S.birth);const m=new Set();
     [...((typeof VISITS!=='undefined'&&VISITS)||[]),...((typeof data!=='undefined'&&data)||[])].forEach(v=>{if(v&&v.mrn&&String(v.name||'').replace(/\s+/g,'')===nk&&b6(v.birth)===bk)m.add(String(v.mrn).trim());});
@@ -15550,7 +15566,9 @@ boot();
      고를 수 있는 날 = 지난 날짜 전체 ~ 오늘(2026-10-26 요청: 10월 이전도). « » 는 1년씩. 내원하신 날(10월 이후 기록)은 점으로 표시 */
   const CAL_MIN='2010-01-01';
   /* 내원하신 날 (2026-10-26 요청): 동선관리 기록에서 이름·생년월일이 같은 분의 내원일을 최신순으로. 누르면 그날을 달력에서 고른 것과 같다 */
-  function visHtml(D){return `<div class="dk-card dk-vis"><div class="h">📅 내원하신 날 <span>최신순</span></div>${D.length?`<div class="L">${D.map(k=>`<button class="dk-visd ${S.pick&&S.from&&k>=S.from&&k<=(S.to||S.from)?'on':''}" onclick="dkVisPick('${k}')">${E(dateLbl(k))}</button>`).join('')}</div><div class="dk-mutnote">날짜를 누르면 달력에서 고른 것과 같아요</div>`:'<div class="dk-mutnote">확인된 내원 기록이 없어요 — 데스크에서 확인해 드립니다.</div>'}</div>`;}
+  function visHtml(D){const st=ASK&&ASK.key===String(S.name||'').replace(/\s+/g,'')+'|'+b6(S.birth)?ASK.st:'';
+    const note=st==='wait'?'<div class="dk-mutnote">⏳ 비트에서 지난 내원 기록을 불러오는 중…</div>':st==='multi'?'<div class="dk-mutnote">같은 성함·생년월일의 환자가 여러 분이라 지난 기록은 데스크에서 확인해 드립니다.</div>':'';
+    return `<div class="dk-card dk-vis"><div class="h">📅 내원하신 날 <span>최신순${D.length?' · '+D.length+'일':''}</span></div>${note}${D.length?`<div class="L">${D.map(k=>`<button class="dk-visd ${S.pick&&S.from&&k>=S.from&&k<=(S.to||S.from)?'on':''}" onclick="dkVisPick('${k}')">${E(dateLbl(k))}</button>`).join('')}</div><div class="dk-mutnote">날짜를 누르면 달력에서 고른 것과 같아요</div>`:(st==='wait'?'':'<div class="dk-mutnote">확인된 내원 기록이 없어요 — 데스크에서 확인해 드립니다.</div>')}</div>`;}
   window.dkVisPick=k=>{if(!S.pick){S.pick=true;S.all=false;S.from='';S.to='';}dkCal(k);};
   function rangeLbl(){if(!S.from)return '';const a=dateLbl(S.from);return (!S.to||S.to===S.from)?a:a+' ~ '+dateLbl(S.to);}
   function calHtml(D){const t=today();const vis=new Set(D);
@@ -15592,7 +15610,7 @@ boot();
   window.dkIdNext=()=>{const nm=String(S.name||'').trim(),b=String(S.birth||'');
     if(!nm){S.err='성함을 입력해 주세요.';render();return;}
     if(!(b.length===6||b.length===8)){S.err='생년월일 6자리를 눌러 주세요 (예: 900101).';render();return;}
-    dkGo(3);};
+    dkAsk();dkGo(3);};   // 서류를 고르는 동안 비트 내원 날짜를 미리 물어 둔다
   window.dkTog=(k,i)=>{const L=S[k];const j=L.indexOf(i);if(j>=0)L.splice(j,1);else L.push(i);S.err='';render();};
   window.dkDocsNext=()=>{if(!S.free.length&&!S.paid.length){S.err='발급할 서류를 하나 이상 골라 주세요.';render();return;}dkGo(4);};
   window.dkPer=k=>{if(k==='all'){S.all=true;S.pick=false;}else{S.pick=true;S.all=false;}S.err='';render();};

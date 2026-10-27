@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.9'   # 1.9: 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db1.9'   # 1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -175,6 +175,43 @@ function VisitStats($mrnRaw, $todayYmd) {
     $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close()
     $row = $t.Rows[0]; return @{ n = [int]$row.n; first = (DateOf $row.f); prev = (DateOf $row.p) }
   } finally { $cn.Close() }
+}
+# ── 서류 발급 태블릿의 '내원하신 날' (db1.9, 2026-10-27) ──
+#  태블릿이 bitIntake/ask_… 문서(ask='wait', name, birth=YYMMDD)를 남기면, 전송 담당 에이전트가 12초마다 찾아
+#  그 이름·생년월일 환자의 접수 계열 날짜를 전부(최신순, 최대 400일) 읽어 dates 로 답한다(ask='done'). 같은 이름·생년월일이 여러 차트면 'multi', 없으면 'none'.
+#  SELECT 한 문장·매개변수만 쓴다. 이름은 로그에 남기지 않는다
+$script:AskAt = [DateTime]::MinValue
+function VisitDates($name, $b6) {
+  $sql = "SELECT DISTINCT LEFT(o.OcmAcpDtm, 8) AS d, RTRIM(o.OcmChtNum) AS m FROM OcmInf o WITH (NOLOCK) JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = o.OcmChtNum WHERE REPLACE(RTRIM(p.PbsPatNam), ' ', '') = @n AND (RIGHT(RTRIM(p.PbsBirDte), 6) = @b OR LEFT(RTRIM(p.PbsResNum), 6) = @b) AND o.OcmComStt IN ('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','WH','TN','FN','TC','FC','TT','PN','PC','PT')"
+  AssertReadonlySql $sql
+  $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$SqlPassword;Connect Timeout=8;ApplicationIntent=ReadOnly")
+  try {
+    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = 15
+    $c.CommandText = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET LOCK_TIMEOUT 3000"; [void]$c.ExecuteNonQuery()
+    $c.CommandText = $sql; [void]$c.Parameters.AddWithValue('@n', [string]$name); [void]$c.Parameters.AddWithValue('@b', [string]$b6)
+    $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close()
+  } finally { $cn.Close() }
+  $ms = @{}; $ds = @{}
+  foreach ($row in $t.Rows) { $ms[[string]$row.m] = 1; $d = DateOf $row.d; if ($d) { $ds[$d] = 1 } }
+  if ($ms.Count -gt 1) { return @{ st = 'multi'; dates = @() } }
+  if (-not $ds.Count) { return @{ st = 'none'; dates = @() } }
+  return @{ st = 'done'; dates = @($ds.Keys | Sort-Object -Descending | Select-Object -First 400) }
+}
+function AnswerAsks() {
+  $hr = (Get-Date).Hour; if ($hr -lt 7 -or $hr -ge 22) { return }   # 진료 시간 근처만(빈 조회도 읽기 1건 — 하루 약 4,500건)
+  if (-not $script:IsLeader -or $DryRun -or ((Get-Date) - $script:AskAt).TotalSeconds -lt 12) { return }
+  $script:AskAt = Get-Date
+  $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'bitIntake' }); where = @{ fieldFilter = @{ field = @{ fieldPath = 'ask' }; op = 'EQUAL'; value = @{ stringValue = 'wait' } } }; limit = 5 } } | ConvertTo-Json -Depth 12 -Compress
+  $res = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "$DocBase`:runQuery" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+  foreach ($x in @($res)) {
+    if (-not $x.document) { continue }
+    $nm = [string]$x.document.name; $id = $nm.Substring($nm.LastIndexOf('/') + 1); if ($id -notlike 'ask_*') { continue }
+    $f = $x.document.fields; $name = ([string]$f.name.stringValue -replace '\s', ''); $b = ([string]$f.birth.stringValue -replace '\D', ''); if ($b.Length -eq 8) { $b = $b.Substring(2) }
+    $out = @{ ask = 'none'; answeredAt = (NowIso); answeredPc = $Pc }
+    try { if ($name -and $b.Length -eq 6) { $vd = VisitDates $name $b; $out.ask = $vd.st; if ($vd.st -eq 'done') { $out.dates = @($vd.dates); $out.n = [int]$vd.dates.Count } } }
+    catch { $out.ask = 'err'; Log "내원 날짜 조회 오류: $($_.Exception.Message)" }
+    try { FsPatch "bitIntake/$id" $out; Log "내원 날짜 조회(서류 발급 태블릿): $id → $($out.ask)$(if ($out.n) { " $($out.n)일" })" } catch { Log "내원 날짜 답 전송 오류: $($_.Exception.Message)" }
+  }
 }
 # 오늘 접수분 전체(하루 수십~수백 행). OcmNum 은 char(10) 앞 공백 패딩 → 숫자만 남김. 예약 환자는 예약 시점에 이미 행이 있고(WR) 도착하면 같은 행이 WN 으로 바뀌며 OcmAcpDtm 이 실제 도착 시각으로 갱신된다.
 $QUERY = @"
@@ -630,6 +667,7 @@ while ($true) {
     if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
     if ($RxEvery -gt 0 -and ($RxEvery -le 1 -or ($cyc % $RxEvery) -eq 0)) { try { PollRx } catch { Log "처방 조회 오류: $($_.Exception.Message)" } }
     try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
+    try { AnswerAsks } catch { Log "내원 날짜 요청 확인 오류: $($_.Exception.Message)" }   # 서류 발급 태블릿 (db1.9)
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st
     if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }
