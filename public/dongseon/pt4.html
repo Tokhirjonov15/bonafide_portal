@@ -497,7 +497,11 @@ const newId=d=>(d.nid=(d.nid||0)+1);
 function ensureTh(ctx){const d=ctx.d;if(d.th.length||!ctx.near||!ctx.near.th.length)return;
   d.th=ctx.near.th.slice();lunchBlocks(d.date,d.th,b=>{d.blocks.push(Object.assign(b,{id:newId(d),updatedBy:'auto'}));return b;});}
 function timeOk(s,e){return Number.isInteger(s)&&Number.isInteger(e)&&s>=DAY_START&&e<=DAY_END&&e>s&&s%SLOT===0&&e%SLOT===0;}
-function aud(ctx,action,entity,entityId,before,after){ctx.audits.push({action,entity,entityId:String(entityId),date:ctx.d.date,before:jclone(before),after:jclone(after)});}
+function aud(ctx,action,entity,entityId,before,after){const x={action,entity,entityId:String(entityId),date:ctx.d.date,before:jclone(before),after:jclone(after)};
+  /* 2026-10-27: 내원·표시·메모·색만 바꾼 기록에도 어느 예약(환자·시간·치료사)인지 남긴다 — 변경 기록 화면에서 글로 보이게 */
+  if(entity==='bookings'){const b=(ctx.d.bookings||[]).find(o=>String(o.id)===String(entityId))||before;
+    if(b&&typeof b==='object')x.ref={patientName:b.patientName||'',mrn:b.mrn||'',startMin:b.startMin??null,durationMin:b.durationMin??null,therapistId:b.therapistId??null,code:b.code||''};}
+  ctx.audits.push(x);}
 /* ═════ 되돌리기 (Ctrl+Z, 2026-10-07 요청) ═════
    이 화면에서 내가 한 저장마다 '바꾸기 전 하루 문서'를 기억해 두었다가(최근 50개) Ctrl+Z 로 하나씩 되돌린다.
    그 사이 다른 PC 가 같은 날을 고쳤으면(문서의 updatedAt 이 내가 쓴 값과 다르면) 그 사람 변경까지 지워지므로 되돌리지 않고 알린다.
@@ -572,13 +576,14 @@ function opBookingSave(input){return ctx=>{const d=ctx.d;
   const now=new Date().toISOString();
   const values={therapistId,startMin,durationMin,mrn,room,patientName,visitNo,rawText:'',code,codeColor,color,visited,mark,note,updatedBy:ME.name,updatedAt:now};
   let row;
+  const beforeCopy=before?jclone(before):null;   // 2026-10-27: 예전에는 Object.assign 으로 바뀐 뒤에 복사해 변경 기록의 '이전'이 '이후'와 같았다
   if(before){row=Object.assign(before,values);}else{row=Object.assign({id:newId(d),createdBy:ME.name,createdAt:now},values);d.bookings.push(row);}
-  aud(ctx,before?'update':'create','bookings',row.id,before?jclone(before):null,row);
+  aud(ctx,before?'update':'create','bookings',row.id,beforeCopy,row);
   if(input.fromCancelId){const i=d.cancels.findIndex(c=>c.id===Number(input.fromCancelId));if(i>=0){const c=d.cancels.splice(i,1)[0];aud(ctx,'delete','cancels',c.id,c,{restoredToBooking:row.id});}}
   return {ok:true,value:row};};}
 function findB(d,id){return d.bookings.find(b=>b.id===id)||null;}
 /* 오늘 지우거나 취소한 환자는 동선관리의 신장분사 방 자동 추가가 다시 넣지 않게 기억 (2026-10-09: 지워도 다른 PC·새로고침에서 다시 들어왔다) */
-const noAuto=(d,b)=>{const m=String(b.mrn||'').replace(/D/g,'');if(m&&!(d.autoNo||[]).includes(m))d.autoNo=[...(d.autoNo||[]),m];};
+const noAuto=(d,b)=>{const m=String(b.mrn||'').replace(/\D/g,'');if(m&&!(d.autoNo||[]).includes(m))d.autoNo=[...(d.autoNo||[]),m];};
 const opBookingDelete=id=>ctx=>{const i=ctx.d.bookings.findIndex(b=>b.id===id);if(i<0)return {ok:false,message:'이미 삭제된 예약입니다.'};const b=ctx.d.bookings.splice(i,1)[0];noAuto(ctx.d,b);aud(ctx,'delete','bookings',id,b,null);return {ok:true};};
 const opBookingVisit=id=>ctx=>{const b=findB(ctx.d,id);if(!b)return {ok:false,message:'예약을 찾지 못했습니다.'};const visited=!b.visited;const was=b.visited;
   Object.assign(b,{visited,mark:visited?'.':'',color:visited?'#ffe599':b.color==='#ffe599'?'':b.color,updatedBy:ME.name,updatedAt:new Date().toISOString()});aud(ctx,'update','bookings',id,{visited:was},{visited});return {ok:true};};
