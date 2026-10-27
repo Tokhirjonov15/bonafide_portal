@@ -6398,6 +6398,11 @@ async function runSelfTest(){
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',seen:'정상민',staff:''},{room:'C-Arm',doctor:'김현우',seen:'김현우',staff:''},{room:'C-Arm',doctor:'김현우',seen:'백민철',staff:''},{room:'C-Arm',doctor:'정상민',seen:'',staff:''},{room:'Sono',doctor:'백민철',seen:'김현우',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
       ok('인센티브: 진료 원장님 ≠ 술기 원장님이면 술기 원장님 건수', JSON.stringify(c.incentive)==='[["김현우",2]]'&&c.incFrom['김현우']['정상민']===1&&c.incNoSeen===1&&procIncentive('김현우','정상민')&&!procIncentive('김현우','김현우')&&!procIncentive('김현우',''),JSON.stringify(c.incentive)+' '+c.incNoSeen);}
+     {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우'].includes(n);   // D/C 한 술기는 통계에서 뺌 (2026-10-27 현미정)
+      window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'',name:'가'},{room:'C-Arm',doctor:'김현우',staff:'',name:'나',dc:true},{room:'진료실1',doctor:'김현우',staff:'',dc:true}];
+      let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
+      const _v=VISITS;let dr=false;try{VISITS=[{name:'다',mrn:'1',dischargedAt:new Date().toISOString(),rxDc:{k:{cod:'C-ARM',nam:'C-ARM'}},rooms:[{room:'C-Arm',doctor:'김현우'}]}];const R=docStatRooms();dr=R.length===1&&(R[0].dc===rxItemRooms({cod:'C-ARM',nam:'C-ARM'}).includes('C-Arm'));}finally{VISITS=_v;}
+      ok('원장님·시술: 처방 D/C 한 술기는 원장님·직원 건수에서 빼고 D/C 건수만(진료는 그대로)', JSON.stringify(c.byDoc)==='[["김현우",1]]'&&c.dcSkip===1&&JSON.stringify(d.clinic)==='[["김현우",1]]'&&dr,JSON.stringify(c.byDoc)+' '+c.dcSkip);}
      {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'방사선사':['조선형'],'간호사':['곽민솔']});
       const a=[docStatStaff('C-Arm','조선형',''),docStatStaff('C-Arm','','곽민솔'),docStatStaff('C-Arm','곽민솔',''),docStatStaff('Sono','','곽민솔')];STAFF_ROSTER=_sr;
       ok('C-Arm 직원별: 방사선사만(간호 담당·간호사 이름은 방사선사 미지정)', a.join(',')==='조선형,(방사선사 미지정),(방사선사 미지정),곽민솔',a.join(','));}
@@ -11372,30 +11377,33 @@ function docStatStaff(room,rad,nurse){rad=String(rad||'').trim();nurse=String(nu
 function docStatRooms(){
   const out=[];
   const day=d=>{try{return d?localYMD(new Date(d)):'';}catch(e){return '';}};
-  statsVis().forEach(v=>(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({room:r.room,doctor:String(r.doctor||'').trim(),seen:String(r.seenDoc||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse),name:v.name||'',mrn:v.mrn||'',date:day(r.leftAt||r.enteredAt||v.dischargedAt)});}));
-  data.filter(p=>p&&!p._viewOnly&&!p.discharged&&!isTestPatient(p)).forEach(p=>(p.visits||[]).forEach(v=>{
+  /* D/C 한 처방이 가는 방 (2026-10-27 요청: 주사 D/C 한 환자가 C-Arm 술기 통계에 잡혀 있었다) — 처방내역에서 D/C 체크한 처방 → 처방→방 규칙의 방 */
+  const dcRooms=x=>{const s=new Set();try{Object.values((x&&x.rxDc)||{}).forEach(d=>{if(d)rxItemRooms(d).forEach(r=>s.add(r));});}catch(e){}return s;};
+  statsVis().forEach(v=>{const dc=dcRooms(v);(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({dc:dc.has(r.room),room:r.room,doctor:String(r.doctor||'').trim(),seen:String(r.seenDoc||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse),name:v.name||'',mrn:v.mrn||'',date:day(r.leftAt||r.enteredAt||v.dischargedAt)});});});
+  data.filter(p=>p&&!p._viewOnly&&!p.discharged&&!isTestPatient(p)).forEach(p=>{const dc=dcRooms(p);(p.visits||[]).forEach(v=>{
     if(!v||!v.room)return;if((statsDate||statsDays)&&!statInRange(v.leftAt||v.enteredAt))return;
-    out.push({room:v.room,doctor:String(docFor(p,v.room)||'').trim(),seen:String((isProcRoom(v.room)?seenDocFor(p,v.room):'')||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room)),name:p.name||'',mrn:p.mrn||'',date:day(v.leftAt||v.enteredAt)});}));
+    out.push({dc:dc.has(v.room),room:v.room,doctor:String(docFor(p,v.room)||'').trim(),seen:String((isProcRoom(v.room)?seenDocFor(p,v.room):'')||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room)),name:p.name||'',mrn:p.mrn||'',date:day(v.leftAt||v.enteredAt)});});});
   return out;}
 function docStatData(){
   /* 2026-10-25 요청: 술기 의사(담당 직원) 조합 말고 원장님 한 분이 한 총 건수, 직원 한 명이 맡은 총 건수도 따로 */
   /* 2026-10-25 요청: 원장님별 진료·원장님별 술기에는 의사만 — 진료실 담당으로 간호사·물리치료사가 찍힌 기록은 원장님 칸에서 빼고 건수만 알린다 */
   const isDoc=docStatIsDoctor();
   const rooms=docStatRooms();const clinic={};const proc={},byDoc={},byStaff={};let clinicSkip=0;const procSkip={};
-  const incv={},incFrom={},incNoSeen={};   // 인센티브: 술기 원장님 ≠ 진료 원장님 → 술기 원장님 건수 (진료 원장님 기록이 없으면 판정 못 함)
+  const incv={},incFrom={},incNoSeen={},dcSkip={};   // 인센티브: 술기 원장님 ≠ 진료 원장님 → 술기 원장님 건수 (진료 원장님 기록이 없으면 판정 못 함)
   const inc=(o,k)=>{o[k]=(o[k]||0)+1;};
   /* 이름을 누르면 그 건의 환자 목록 (2026-10-26 요청: 원장님이 어느 환자분께 주사했는지 — 이름·차트번호) */
   const pats={};const pat=(sec,k,r)=>{(pats[sec+'|'+k]=pats[sec+'|'+k]||[]).push({name:r.name,mrn:r.mrn,date:r.date,seen:r.seen,staff:r.staff});};
   rooms.forEach(r=>{
     if(/^진료실\s*\d/.test(r.room)){if(r.doctor&&!isDoc(r.doctor)){clinicSkip++;return;}inc(clinic,r.doctor||'(미지정)');pat('clinic',r.doctor||'(미지정)',r);}
-    else if(DOC_STAT_PROC.includes(r.room)){const k=(r.doctor||'(미지정)')+(r.staff&&!/미지정/.test(r.staff)?'('+r.staff+')':'');
+    else if(DOC_STAT_PROC.includes(r.room)){if(r.dc){dcSkip[r.room]=(dcSkip[r.room]||0)+1;pat(r.room+'|dc','D/C',r);return;}   // D/C 한 술기는 빼고 건수만 (2026-10-27)
+      const k=(r.doctor||'(미지정)')+(r.staff&&!/미지정/.test(r.staff)?'('+r.staff+')':'');
       inc(proc[r.room]||(proc[r.room]={}),k);
       if(r.doctor&&!isDoc(r.doctor))procSkip[r.room]=(procSkip[r.room]||0)+1;else{inc(byDoc[r.room]||(byDoc[r.room]={}),r.doctor||'(미지정)');pat(r.room+'|doc',r.doctor||'(미지정)',r);}
       inc(byStaff[r.room]||(byStaff[r.room]={}),r.staff||'(미지정)');pat(r.room+'|staff',r.staff||'(미지정)',r);
       if(r.doctor&&isDoc(r.doctor)){if(!r.seen)incNoSeen[r.room]=(incNoSeen[r.room]||0)+1;
         else if(procIncentive(r.doctor,r.seen)){inc(incv[r.room]||(incv[r.room]={}),r.doctor);pat(r.room+'|inc',r.doctor,r);const f=(incFrom[r.room]=incFrom[r.room]||{});inc(f[r.doctor]||(f[r.doctor]={}),r.seen);}}}});
   const sortE=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ko'));
-  return {pats,clinic:sortE(clinic),clinicSkip,proc:DOC_STAT_PROC.map(r=>({room:r,list:sortE(proc[r]||{}),byDoc:sortE(byDoc[r]||{}),byStaff:sortE(byStaff[r]||{}),docSkip:procSkip[r]||0,incentive:sortE(incv[r]||{}),incFrom:incFrom[r]||{},incNoSeen:incNoSeen[r]||0}))};}
+  return {pats,clinic:sortE(clinic),clinicSkip,proc:DOC_STAT_PROC.map(r=>({room:r,list:sortE(proc[r]||{}),byDoc:sortE(byDoc[r]||{}),byStaff:sortE(byStaff[r]||{}),docSkip:procSkip[r]||0,dcSkip:dcSkip[r]||0,incentive:sortE(incv[r]||{}),incFrom:incFrom[r]||{},incNoSeen:incNoSeen[r]||0}))};}
 /* 인센티브 (2026-10-25 요청): 진료 원장님과 술기 원장님이 다르면 술기 원장님만 인센티브 */
 function procIncentive(doc,seen){const k=x=>String(x||'').replace(/\s+/g,'');return !!(k(doc)&&k(seen)&&k(doc)!==k(seen));}
 /* 의사인가: 직원 목록 '의사' 파트 + 원장님 근무표(4층 비급여 화면)에 나온 이름 + 예전 원장님(퇴사해 직원 목록에서 빠진 분). 직원 목록에 다른 파트로 있으면 의사 아님 */
@@ -11417,7 +11425,7 @@ function docStatHtml(){
   return `<div class="hint" style="margin-bottom:8px">진료 = 진료실을 거친 횟수(그 방 담당 진료의 기준) · 시술 = <b>술기 의사(담당 직원)</b>별 건수 — 담당 직원은 그 방의 방사선 담당, 없으면 간호 담당입니다.</div>
     <div class="hint" style="margin:-4px 0 8px">👆 이름을 누르면 그 건의 환자(이름·차트번호·날짜)를 볼 수 있습니다.</div>
     <div class="ds-grid">${block('원장님별 진료',d.clinic,d.clinicSkip?'의사 아닌 담당(간호·물리치료 등) '+d.clinicSkip+'건 제외':'','clinic')}</div>
-    ${d.proc.map(x=>`<div class="ds-sec">${esc(x.room)} 술기 <span class="hint">합계 ${sum(x.list)}건</span></div>
+    ${d.proc.map(x=>`<div class="ds-sec">${esc(x.room)} 술기 <span class="hint">합계 ${sum(x.list)}건${x.dcSkip?` · <a href="javascript:void 0" onclick="dsPatOpen(${DS_KEYS.push({pk:x.room+'|dc|D/C',title:x.room+' · D/C 로 뺀 건'})-1})">D/C ${x.dcSkip}건 제외</a>`:''}</span></div>
       <div class="ds-grid">${block(x.room+' · 원장님별 총',x.byDoc,x.docSkip?'의사 아닌 이름 '+x.docSkip+'건 제외':'',x.room+'|doc')}${block(x.room+' · 직원별 총',x.byStaff,DOC_STAT_RAD_ONLY.includes(x.room)?'방사선사만':'방사선 담당, 없으면 간호 담당',x.room+'|staff')}${incBlock(x)}</div>`).join('')}`;}
 let DS_PATS={},DS_KEYS=[];
 function dsPatOpen(i){const k=DS_KEYS[i];if(!k)return;const L=(DS_PATS[k.pk]||[]).slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(a.name).localeCompare(String(b.name),'ko'));
