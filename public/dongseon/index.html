@@ -3931,10 +3931,21 @@ function slipTwinWarn(it){if(!it||it.insKey)return '';const m=normMrn(it.mrn);if
   const ins=[...new Set(L.map(d=>insNorm(d.ins)).filter(Boolean))];
   const cards=(data||[]).filter(x=>!x.discharged&&normMrn(x.mrn)===m).length;
   return (ins.length>=2||cards>=2)?(ins.length>=2?ins.join(' · '):'접수 '+cards+'건'):'';}
+/* 슬립에 '보드에 카드 없음'일 때 이유를 한 줄로 (2026-10-27: 이선아님 — 접수했는데 안 뜨는지 내보낸 건지 몰랐다) */
+function slipNoCardWhy(it){const m=normMrn(it&&it.mrn).replace(/^0+/,''),today=localYMD(new Date());const hm=t=>{const d=new Date(t);return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+  const v=(Array.isArray(VISITS)?VISITS:[]).filter(x=>x&&normMrn(x.mrn).replace(/^0+/,'')===m&&localYMD(new Date(x.dischargedAt||0))===today).sort((a,b)=>new Date(b.dischargedAt)-new Date(a.dischargedAt))[0];
+  if(v)return `오늘 ${hm(v.dischargedAt)} 에 이미 내보냈습니다${typeof v.seq==='number'?' (#'+v.seq+')':''}`;
+  const nm=String((it&&it.name)||'').replace(/\s+/g,'');
+  const c=nm&&(data||[]).find(x=>!x.discharged&&String(x.name||'').replace(/\s+/g,'')===nm);
+  if(c)return `<b>같은 이름 카드${typeof c.seq==='number'?' #'+c.seq:''}의 차트번호가 '${esc(c.mrn||'(비어 있음)')}'로 슬립(${esc(it.mrn)})과 다릅니다</b> — 그 카드 [수정]에서 차트번호를 확인해 주세요`;
+  const r=(BIT_INTAKE||[]).filter(x=>x&&normMrn(x.mrn).replace(/^0+/,'')===m).sort((a,b)=>String(b.seenAt||'').localeCompare(String(a.seenAt||'')))[0];
+  if(r){let w='';try{w=bitWhy(r).txt;}catch(e){}return `오늘 비트 접수 기록: ${esc(w||r.status||'확인 필요')} — 환자 관리 [🔍 비트 접수 찾기]에서 바로 카드를 만들 수 있습니다`;}
+  return '<b>오늘 비트 접수 기록이 동선관리에 없습니다</b> — 접수 PC 에이전트가 보내지 못한 것(접수PC_에이전트업데이트.bat 필요). 급하면 보드 [＋ 접수]로 넣어 주세요';}
 function slipItems(){
   const room=SLIP_ROOM;
   return BIT_NOTES.flatMap(slipNoteSplit).map(n=>{const mrn=String(n.mrn||'').trim();const rp=rxParse(n.rx);
-      const cand=data.filter(x=>!x.discharged&&String(x.mrn||'').trim()===mrn);
+      const mk=v=>normMrn(v).replace(/^0+/,'');   // 앞자리 0·전각 숫자·공백 차이는 같은 차트번호로 (2026-10-27)
+      const cand=data.filter(x=>!x.discharged&&mk(x.mrn)&&mk(x.mrn)===mk(mrn));
       let p=(n.insKey&&cand.find(x=>insNorm(bitInsOf(x))===insNorm(n.ins)))||cand[0]||null;   // 보험별 슬립은 보험이 같은 카드에
       if(!p&&n.name){const same=data.filter(x=>!x.discharged&&!(x.mrn||'').trim()&&(x.name||'').trim()===String(n.name).trim());if(same.length===1)p=same[0];}   // 차트번호 없는 카드는 이름이 하나뿐일 때만 연결
       const lk=(p&&p.name)||n.name?null:bitLookupByMrn(mrn);   // 카드도 처방 문서도 이름이 없을 때만 접수 조회 기록으로
@@ -4267,7 +4278,7 @@ function renderSlipScreen(){
       <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
       ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
       <div class="sd-meta">${h.birth?esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
-      ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:'<div class="sd-meta warn">보드에 카드 없음 (차트번호·이름으로 카드를 찾지 못함 — 이미 내보냈거나 아직 접수 전)</div>'}
+      ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:`<div class="sd-meta warn">보드에 카드 없음 — ${slipNoCardWhy(it)}</div>`}
       ${posChipsHtml(it)}
     </div>
     ${(()=>{const sib=items.filter(x=>x.mrn===it.mrn);return sib.length>1?`<div style="margin:8px 0;padding:10px 12px;border:2px solid #2563eb;background:#eff6ff;border-radius:10px;font-size:15px"><b>이 환자 슬립 ${sib.length}장 (보험별 접수)</b> ${sib.map(x=>`<button class="btn ${x.key===it.key?'on':''}" style="margin-left:6px" onclick="slipSel='${esc(x.key)}';renderSlipScreen()">${esc(x.ins||'접수')}</button>`).join('')}</div>`:'';})()}
