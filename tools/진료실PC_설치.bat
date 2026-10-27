@@ -13,10 +13,12 @@ set /p N=Clinic room number (1-4):
 echo.
 echo  Does a DOCTOR write prescriptions on this PC?
 echo    Y = yes (send slips from this PC)
+echo    M = only Mounjaro / Wegovy prescriptions (room 4)
 echo    N = no, nurses only view Bit here (do NOT send slips)
 set NN=
-set /p RX=Y or N:
+set /p RX=Y, M or N:
 if /i "%RX%"=="N" set NN=-NoNote
+if /i "%RX%"=="M" set NN=-NoteGlp
 powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%~dp0bitplus_install.ps1' -Pc ([string][char]0xC9C4+[char]0xB8CC+[char]0xC2E4+'%N%') %NN%"
 echo.
 echo  ---- capture bar ----

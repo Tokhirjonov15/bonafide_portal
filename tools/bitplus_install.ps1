@@ -17,6 +17,7 @@
 param([Parameter(Mandatory = $true)][string]$Pc, [string]$Dest = 'C:\bitplus',
       [switch]$ResetPw,          # -ResetPw: 저장된 bitbot 비밀번호를 지우고 다시 입력받는다 (틀리게 넣었을 때)
       [switch]$NoNote,           # -NoNote: 처방을 내지 않는 진료실 PC(열람용) — 외래진료실 처방 칸을 슬립으로 보내지 않음 (2026-10-27)
+      [switch]$NoteGlp,          # -NoteGlp: 마운자로·위고비 처방일 때만 슬립으로 보냄 (진료실4, 2026-10-27)
       [switch]$Agent,            # -Agent: DB 에이전트(bit_db_agent.ps1)도 설치
       [int]$Priority = 1,        # 에이전트 우선순위(큰 수가 전송 담당). 접수1=3, 접수2=2, 접수3=1 처럼
       [string]$Peers = '',       # 다른 에이전트 PC IP (쉼표 구분). 감시 스크립트도 이 목록의 에이전트를 확인한다
@@ -98,8 +99,9 @@ if ($isAdmin) {
 Write-Host "④ 감시 스크립트:"
 KillScript 'bitplus_watcher.ps1' 'BitPlusWatcher'   # 작업 정지 + 이전 프로세스 정리(옛 프로세스가 남으면 새 스크립트·인수가 적용되지 않음)
 $since = Get-Date
-RegisterTask 'BitPlusWatcher' "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bitplus_watcher.ps1`" -Pc $Pc$(if ($NoNote) { ' -NoNote' })" (Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log')
+RegisterTask 'BitPlusWatcher' "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$Dest\bitplus_watcher.ps1`" -Pc $Pc$(if ($NoNote) { ' -NoNote' } elseif ($NoteGlp) { ' -NoteGlp' })" (Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log')
 if ($NoNote) { Write-Host "   이 PC는 처방(슬립)을 보내지 않습니다 — 열람용" -ForegroundColor Yellow }
+elseif ($NoteGlp) { Write-Host "   이 PC는 마운자로·위고비 처방일 때만 슬립을 보냅니다" -ForegroundColor Yellow }
 $null = VerifyStarted (Join-Path $env:LOCALAPPDATA 'bitplus_watcher\watcher.log') $since
 
 # ── ⑤ DB 에이전트 (-Agent) ──
