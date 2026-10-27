@@ -6398,6 +6398,15 @@ async function runSelfTest(){
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',seen:'정상민',staff:''},{room:'C-Arm',doctor:'김현우',seen:'김현우',staff:''},{room:'C-Arm',doctor:'김현우',seen:'백민철',staff:''},{room:'C-Arm',doctor:'정상민',seen:'',staff:''},{room:'Sono',doctor:'백민철',seen:'김현우',staff:''}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
       ok('인센티브: 진료 원장님 ≠ 술기 원장님이면 술기 원장님 건수', JSON.stringify(c.incentive)==='[["김현우",2]]'&&c.incFrom['김현우']['정상민']===1&&c.incNoSeen===1&&procIncentive('김현우','정상민')&&!procIncentive('김현우','김현우')&&!procIncentive('김현우',''),JSON.stringify(c.incentive)+' '+c.incNoSeen);}
+     {const A={cod:'C-ARM',nam:'C-ARM',t:'1'},B={cod:'CRYO10',nam:'신장분사치료10',t:'3'};const yes=()=>true,no=()=>false;   // 비트 처방 삭제 → 자동 D/C (2026-10-27)
+      const d={id:'x'};const p1=rxAutoDcPlan(d,rxCurMap([A,B]),yes);   // 처음: 본 처방만 기억
+      const p2=rxAutoDcPlan(d,rxCurMap([B]),no);                       // 빠졌지만 1분 전 → 그대로
+      const p3=rxAutoDcPlan(d,rxCurMap([B]),yes);const k=rxDcKey(A);    // 1분 넘게 없음 → 자동 D/C
+      const dcOk=!!(d.rxDc&&d.rxDc[k]&&d.rxDc[k].auto&&d.rxDc[k].reason==='비트에서 처방 삭제');
+      const p4=rxAutoDcPlan(d,rxCurMap([A,B]),yes);                    // 다시 생김 → 자동 D/C 풀림
+      const m={id:'y',rxSeen:{'C-ARM':A},rxDc:{[k]:{cod:'C-ARM',nam:'C-ARM',by:'직원'}}};const p5=rxAutoDcPlan(m,rxCurMap([A]),yes);   // 손 D/C 는 그대로
+      ok('비트 처방에서 빠지면 1분 뒤 자동 D/C, 다시 생기면 풀림, 손으로 누른 D/C 는 건드리지 않음',
+        p1&&!p1.gone.length&&d.rxSeen['C-ARM']&&p2===null&&p3&&p3.gone.length===1&&dcOk&&p4&&p4.back.length===1&&!d.rxDc&&p5===null&&m.rxDc[k].by==='직원');}
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우'].includes(n);   // D/C 한 술기는 통계에서 뺌 (2026-10-27 현미정)
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'',name:'가'},{room:'C-Arm',doctor:'김현우',staff:'',name:'나',dc:true},{room:'진료실1',doctor:'김현우',staff:'',dc:true}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
@@ -12773,6 +12782,40 @@ function rxDcCommit(p,pid,k,it,label,targets,on,reason){
   try{fillRxBox(p);}catch(e){}
   render();
 }
+/* ═════ 비트 처방에서 빠지면 자동 D/C (2026-10-27 요청: 동선관리 D/C 버튼 대신 — 원장님·직원은 비트에서 처방을 지우면 끝) ═════
+   카드에 '오늘 비트 처방내역에 한 번이라도 있었던 처방'(p.rxSeen, 처방코드별)을 남기고, 그중 지금 비트에 없는 처방이 1분 넘게 없으면
+   rxDc 에 auto:true 로 D/C(사유 '비트에서 처방 삭제') — 손으로 누른 D/C 와 똑같이 동선·통계·텔레그램 D/C 알림에 반영된다.
+   · 처방이 모두 비면(접수취소·처방을 통째로 다시 내는 중) 판단하지 않는다 · 1분 안에 다시 생기면(처방 고치는 중) 그냥 둔다
+   · 자동 D/C 한 처방이 비트에 다시 생기면 자동 D/C 를 푼다(알림 'D/C 취소') · 손으로 누른 D/C 는 건드리지 않는다
+   · 여러 화면이 같이 돌아도 카드 문서 트랜잭션에서 한 번만 바뀌고, 바꾼 화면만 알린다 */
+const RX_AUTO_DC_MS=60000;
+const RXAD_GONE={};   // 'pid|코드' → 비트에서 처음 없어진 것을 본 시각(이 화면)
+function rxCurMap(items){const cur={};(items||[]).forEach(it=>{const c=String((it&&it.cod)||'').trim();if(c&&!cur[c])cur[c]={cod:c,nam:String(it.nam||'').trim(),t:String(it.t||'').trim()};});return cur;}
+function rxAutoDcPlan(d,cur,ready){   // d = 카드(사본), cur = 지금 비트 처방(코드별), ready(코드) = 1분 넘게 없었나 → {gone,back} 또는 null(바꿀 것 없음)
+  const S2=Object.assign({},d.rxSeen||{}),R=Object.assign({},d.rxDc||{});const dcCods=new Set(Object.values(R).map(x=>String((x&&x.cod)||'').trim()));
+  const out={gone:[],back:[]};let ch=false;
+  Object.keys(cur).forEach(c=>{if(!S2[c]){S2[c]=cur[c];ch=true;}});
+  Object.keys(S2).forEach(c=>{if(!cur[c]&&!dcCods.has(c)&&ready(c)){const s=S2[c];R[rxDcKey(s)]={at:new Date().toISOString(),by:'비트 처방 삭제(자동)',cod:s.cod,nam:s.nam,reason:'비트에서 처방 삭제',auto:true};out.gone.push(s);ch=true;}});
+  Object.keys(R).forEach(k=>{const x=R[k];if(x&&x.auto&&cur[String(x.cod||'').trim()]){out.back.push(x);delete R[k];ch=true;}});
+  if(!ch)return null;d.rxSeen=S2;if(Object.keys(R).length)d.rxDc=R;else delete d.rxDc;return out;}
+function rxAutoDc(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_ROLE!=='staff'||!cloud.patientsCol)return;
+  const today=localYMD(new Date()),now=Date.now();
+  (data||[]).forEach(p=>{if(!p||p.discharged||p._viewOnly||!normMrn(p.mrn))return;if(localYMD(new Date(p.arrivedAt||p.enteredAt||0))!==today)return;
+    const rx=bitRxFor(p);const items=(rx&&Array.isArray(rx.items))?rx.items:[];if(!items.length)return;
+    const cur=rxCurMap(items);
+    Object.keys(p.rxSeen||{}).forEach(c=>{const k=p.id+'|'+c;if(cur[c])delete RXAD_GONE[k];else if(!RXAD_GONE[k])RXAD_GONE[k]=now;});
+    const ready=c=>{const t=RXAD_GONE[p.id+'|'+c];return !!t&&now-t>=RX_AUTO_DC_MS;};
+    if(!rxAutoDcPlan(jclone(p),cur,ready))return;   // 로컬로 먼저 따져 보고 바꿀 게 있을 때만 서버 트랜잭션
+    let res=null;
+    cloudPatientTxn(p.id,d=>{res=rxAutoDcPlan(d,cur,ready);return res?d:false;}).then(r=>{if(r!==true||!res)return;const q=data.find(x=>x.id===p.id)||p;
+      res.gone.forEach(s=>{const label=s.nam||s.cod;const rooms=rxItemRooms(s);if(!rooms.length&&curRoom(q))rooms.push(curRoom(q));
+        try{audit('처방 D/C(비트 삭제 → 자동)',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' '+label);}catch(e){}
+        roomNotify(q,'__all__','dc',{item:label,by:'비트 처방 삭제',rooms:rooms.join(', '),reason:'비트에서 처방 삭제'});
+        try{toast(`${dispName(q.name)} 님 ${label} — 비트에서 처방이 빠져 자동 D/C`);}catch(e){}});
+      res.back.forEach(x=>{const label=x.nam||x.cod;try{audit('처방 D/C 취소(비트 처방 다시 → 자동)',(q.name||'')+' '+label);}catch(e){}
+        roomNotify(q,'__all__','dcundo',{item:label,by:'비트 처방 다시',rooms:rxItemRooms(x).join(', ')});});
+      try{if(typeof editId!=='undefined'&&editId===q.id)fillRxBox(q);}catch(e){}render();});});}
+setInterval(()=>{try{rxAutoDc();}catch(e){console.warn('rxAutoDc',e);}},15000);
 /* 환자 정보 창의 치료 회차 블록 — 회차를 직접 고치고, 누가 고쳤는지 함께 보여 준다 (2026-09-23) */
 function treatGroupsOf(){const seen=[],out=[];
   TREAT_COUNT_ROOMS.forEach(r=>{const k=treatKey(r);if(seen.includes(k))return;seen.push(k);out.push({key:k,rooms:treatRoomsFor(r),main:r});});
