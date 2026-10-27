@@ -1875,6 +1875,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="docReqBtn" onclick="openDocReqs()" title="서류 발급 태블릿 신청 목록 — 신청이 오면 숫자·알림. 태블릿은 주소 끝에 ?docs"><i data-lucide="file-text"></i> 서류발급<span id="docReqCnt"></span></button>
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="이벤트 관리 — 주사를 맞은 지 3일 안(주사 날 포함)에 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 이벤트 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
+    <button class="btn" id="kbBtn" onclick="openKb()" title="어시 체크 — 보험·청구 기준을 물으면 심평원·복지부 자료에서 찾아 근거(문서·쪽)와 함께 답합니다"><i data-lucide="message-circle-question"></i> 어시 체크</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
     <button class="btn" id="cdeskBtn" onclick="openConsentDesk()" title="오늘 비급여 처방이 나온 환자 — 동의서 받기 (처방 금액 자동 · 원장님 차팅 · 처방내역)"><i data-lucide="pen-line"></i> 동의서</button>
     <button class="btn" id="recBtn" onclick="openRecDlg()" title="진료 녹음 — 이 PC 마이크로, 고른 진료실 카드의 [진행]~[종결] 동안 녹음해 외장하드에 저장 (진료실 PC 에서 한 번 설정)"><i data-lucide="mic"></i> 녹음</button>
@@ -15727,6 +15728,75 @@ boot();
       try{audit(done?'서류 발급 완료':'서류 발급 되돌림',id);}catch(e){}}catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
   /* 테스트용 */
   window._dk={reset:()=>reset(),S:()=>S,setS:o=>Object.assign(S,o),myVisits:()=>myVisits(),matchMrn:()=>matchMrn(),b6};
+})();
+</script>
+<!-- 어시 체크 (2026-10-27) — 보험·청구 기준 질문 → 서버(/api/dongseon/kb)가 심평원·복지부 자료 14개에서 찾아 근거와 함께 답. 질문·답은 직원(로그인)별로 서버에 저장, 본인만 보고 지운다 -->
+<div id="kbPanel" class="kb-panel" style="display:none">
+  <div class="kb-head"><b>어시 체크</b><span class="hint">보험·청구 기준 자료 14개에서 찾아 답합니다</span><span style="flex:1"></span>
+    <button type="button" class="btn sm" onclick="kbDelAll()" title="내 질문 기록 모두 지우기">전체 삭제</button>
+    <button type="button" class="btn sm" onclick="closeKb()" title="닫기">✕</button></div>
+  <div class="kb-warn">환자 이름·차트번호·주민번호는 쓰지 마세요 (질문은 OpenAI 로 보내집니다). 답은 참고용 — 최종 판단은 근거 원문 확인.</div>
+  <div id="kbList" class="kb-list"></div>
+  <div class="kb-input"><textarea id="kbQ" rows="2" placeholder="예) 무릎 히알루론산 주사 보험 인정 횟수와 간격은?  (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
+    <button type="button" class="btn primary" id="kbSend" onclick="kbAsk()">보내기</button></div>
+</div>
+<style>
+  .kb-panel{position:fixed;top:0;right:0;bottom:0;width:min(480px,100vw);z-index:990;background:var(--panel);border-left:1px solid var(--line);box-shadow:-6px 0 24px rgba(0,0,0,.18);display:flex;flex-direction:column}
+  .kb-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .kb-head b{font-size:15px}
+  .kb-warn{font-size:11.5px;color:var(--muted);background:var(--amber-bg);padding:6px 14px}
+  .kb-list{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:14px}
+  .kb-item{display:flex;flex-direction:column;gap:6px}
+  .kb-q{align-self:flex-end;max-width:88%;background:var(--blue-bg);border-radius:12px 12px 2px 12px;padding:8px 11px;white-space:pre-wrap;word-break:break-word}
+  .kb-a{max-width:96%;background:var(--panel2);border:1px solid var(--line2);border-radius:12px 12px 12px 2px;padding:9px 12px;line-height:1.55;word-break:break-word}
+  .kb-a.err{color:var(--red)}
+  .kb-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--sub)}
+  .kb-meta button{border:0;background:none;color:var(--sub);cursor:pointer;font-size:11px;padding:0}
+  .kb-meta button:hover{color:var(--red)}
+  .kb-src{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .kb-chip{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:2px 8px;background:var(--panel);cursor:pointer;color:var(--muted)}
+  .kb-chip:hover{border-color:var(--blue);color:var(--blue)}
+  .kb-snip{display:none;margin-top:6px;font-size:11.5px;color:var(--muted);white-space:pre-wrap;border-left:3px solid var(--line);padding:4px 8px;max-height:220px;overflow:auto}
+  .kb-snip.show{display:block}
+  .kb-input{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+  .kb-input textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;background:var(--panel);color:var(--text)}
+  .kb-empty{color:var(--sub);font-size:12.5px;text-align:center;padding:30px 10px;line-height:1.7}
+</style>
+<script>
+(function(){
+  const K={items:[],loaded:false,busy:false,pend:null,email:''};   // items: 오래된 것 → 새 것
+  async function api(path,body){const u=firebase.auth().currentUser;if(!u)throw new Error('로그인이 필요합니다');const tok=await u.getIdToken();
+    const r=await fetch('/api/dongseon/kb/'+path,body?{method:'POST',headers:{authorization:'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)}:{headers:{authorization:'Bearer '+tok}});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('오류 '+r.status));return j;}
+  const fmt=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+  const when=iso=>{const d=new Date(iso);if(isNaN(d))return '';const p=n=>String(n).padStart(2,'0');return `${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;};
+  function srcHtml(it){const L=it.src||[];if(!L.length)return '';
+    return `<div class="kb-src">${L.map((x,i)=>`<span class="kb-chip" onclick="kbSnip('${esc(it.id)}',${i})" title="찾은 원문 보기">${esc(x.doc)}${x.pages&&x.pages.length?' p.'+x.pages.join('·'):''}</span>`).join('')}</div>
+      ${L.map((x,i)=>`<div class="kb-snip" id="kbs_${esc(it.id)}_${i}"><b>${esc(x.doc)}${x.pages&&x.pages.length?' p.'+x.pages.join('·'):''}</b>\n${esc(x.text||'')}</div>`).join('')}`;}
+  function render(){const el=document.getElementById('kbList');if(!el)return;
+    let h=K.items.map(it=>`<div class="kb-item"><div class="kb-q">${esc(it.q)}</div>
+      <div class="kb-a">${fmt(it.a)}${srcHtml(it)}</div>
+      <div class="kb-meta">${when(it.at)}<button type="button" onclick="kbDel('${esc(it.id)}')" title="이 질문 지우기">지우기</button></div></div>`).join('');
+    if(K.pend)h+=`<div class="kb-item"><div class="kb-q">${esc(K.pend.q)}</div><div class="kb-a ${K.pend.err?'err':''}">${K.pend.err?esc(K.pend.err):'자료에서 찾는 중… (10~30초)'}</div></div>`;
+    if(!h)h=`<div class="kb-empty">${K.loaded?'보험·청구 기준을 물어보세요.<br>예) 도수치료 관리급여 조건은? · 의료급여 1종 의원 외래 본인부담은? · 교통사고 경상환자 진단서 제출 기한은?':'불러오는 중…'}</div>`;
+    el.innerHTML=h;el.scrollTop=el.scrollHeight;}
+  async function load(){try{const j=await api('list');K.items=(j.items||[]).slice().reverse();}catch(e){toast('어시 체크 기록을 불러오지 못했습니다: '+(e.message||e));}K.loaded=true;render();}
+  window.openKb=()=>{const em=(window.firebase&&firebase.auth&&firebase.auth().currentUser&&firebase.auth().currentUser.email)||'';
+    if(em!==K.email){K.email=em;K.items=[];K.loaded=false;K.pend=null;}   // 같은 PC 에서 다른 직원이 로그인하면 앞사람 기록을 보이지 않게
+    document.getElementById('kbPanel').style.display='flex';render();if(!K.loaded)load();setTimeout(()=>{const q=document.getElementById('kbQ');if(q)q.focus();},50);};
+  window.closeKb=()=>{document.getElementById('kbPanel').style.display='none';};
+  window.kbSnip=(id,i)=>{const e=document.getElementById('kbs_'+id+'_'+i);if(e)e.classList.toggle('show');};
+  window.kbAsk=async()=>{const ta=document.getElementById('kbQ');const q=(ta.value||'').trim();if(!q||K.busy)return;
+    K.busy=true;K.pend={q};ta.value='';document.getElementById('kbSend').disabled=true;render();
+    try{const hist=K.items.slice(-3).map(x=>({q:x.q,a:x.a}));const it=await api('ask',{q,hist});K.items.push(it);K.pend=null;}
+    catch(e){K.pend={q,err:'답을 받지 못했습니다: '+(e.message||e)};ta.value=q;}
+    K.busy=false;document.getElementById('kbSend').disabled=false;render();};
+  window.kbDel=async id=>{if(!confirm('이 질문과 답을 지울까요?'))return;
+    try{await api('del',{id});K.items=K.items.filter(x=>x.id!==id);render();}catch(e){alert('지우지 못했습니다: '+(e.message||e));}};
+  window.kbDelAll=async()=>{if(!K.items.length)return;if(!confirm('내 어시 체크 기록 '+K.items.length+'개를 모두 지울까요?'))return;
+    try{await api('del',{all:true});K.items=[];K.pend=null;render();}catch(e){alert('지우지 못했습니다: '+(e.message||e));}};
+  document.addEventListener('keydown',e=>{if(e.target&&e.target.id==='kbQ'&&e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();kbAsk();}
+    if(e.key==='Escape'){const p=document.getElementById('kbPanel');if(p&&p.style.display!=='none')closeKb();}});
 })();
 </script>
 </body>

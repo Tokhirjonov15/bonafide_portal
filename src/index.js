@@ -81,7 +81,18 @@ const DDL = [
      fname  TEXT DEFAULT '',
      ts     INTEGER,
      bytes  TEXT
-   )`
+   )`,
+  /* 어시 체크 (2026-10-27) — 직원별 질문·답 기록(본인만 보고 지움) · 설정값(벡터 저장소 id) */
+  `CREATE TABLE IF NOT EXISTS kb_chat (
+     id    TEXT PRIMARY KEY,
+     email TEXT NOT NULL,
+     q     TEXT,
+     a     TEXT,
+     src   TEXT,
+     at    TEXT
+   )`,
+  `CREATE INDEX IF NOT EXISTS kb_chat_email ON kb_chat(email, at)`,
+  `CREATE TABLE IF NOT EXISTS kb_meta (k TEXT PRIMARY KEY, v TEXT)`
 ];
 
 /* 이미 만들어진 표에 새 열을 붙인다(이미 있으면 오류가 나므로 조용히 넘어감) */
@@ -571,6 +582,119 @@ async function dongseonStt(request, env) {
     return json({ text, provider });
   }
   return json({ error: "x-provider 는 openai 또는 clova" }, 400);
+}
+/* ============================================================
+   어시 체크 (2026-10-27) — 직원이 보험·청구 기준을 물으면 심평원·복지부 자료 14개(텍스트로 올려 둔 OpenAI 벡터 저장소)에서
+   찾아 근거(문서·쪽)와 함께 답한다. 질문·답은 D1 kb_chat 에 직원(로그인 이메일)별로 — 본인만 보고 지운다.
+   · 자료 올리기: tools/kb_upload.mjs (Secrets KB_ADMIN_KEY 필요) → /api/dongseon/kb/admin
+   · 모델: Secrets/vars OPENAI_KB_MODEL (기본 gpt-4.1 — mini 는 비슷한 다른 기준을 섞어 답해서 바꿈)
+   ============================================================ */
+const KB_SYS = `너는 반듯한정형외과(의원) 직원용 '어시 체크' 도우미다. 건강보험·의료급여·자동차보험 급여기준, 청구, 본인부담에 대한 질문에
+file_search 로 찾은 자료(심평원·보건복지부 고시·지침 책자)만 근거로 한국어로 답한다.
+규칙:
+- 자료에 있는 내용만 말한다. 자료에서 찾지 못하면 "올려 둔 자료에서 찾지 못했습니다"라고 하고 추측하지 않는다.
+- 숫자·코드·횟수·기간·고시 번호는 자료 그대로 쓴다.
+- 답 끝에 근거를 '근거: 문서이름 p.쪽' 형식으로 적는다. 자료 본문의 [p.123] 표시가 그 내용의 쪽이다.
+- 자료끼리 다르면(예: 2026년 1월판과 7월판) 둘 다 밝히고 시행일이 늦은 쪽을 우선한다고 적는다.
+- 짧고 실무적으로: 결론 먼저, 그다음 조건·예외. 표가 필요하면 짧은 목록으로.
+- 기준은 질문의 대상(약제 성분·제품, 행위, 질환, 보험 종류)과 정확히 맞는 것만 쓴다. 비슷한 다른 약제·행위의 기준을 끌어다 쓰지 않는다 (예: 관절강내 스테로이드 주사 기준을 히알루론산 주사에 쓰지 않는다).
+- 약·주사제의 인정 횟수·간격·대상은 '요양급여 적용기준 세부사항 약제' 자료에서 먼저 찾고, 행위·처치는 '세부사항과 심사지침', 의료급여는 의료급여 자료, 교통사고는 자동차보험 자료에서 찾는다. 첫 검색에서 맞는 기준이 안 보이면 성분명·제품명·코드 등 다른 말로 다시 찾는다.
+- 답 첫 줄에 어느 보험의 기준인지(건강보험·의료급여·자동차보험·산재) 밝힌다. 질문에 보험 종류가 없으면 건강보험 기준으로 답한다. 건강보험에서 비급여이거나 다른 보험(자동차보험·산재 등) 기준만 찾았으면 그 사실을 분명히 적고, 그 기준을 건강보험 기준처럼 쓰지 않는다.
+- 같은 성분이라도 용량·제품·대상 질환별로 기준(횟수·기간)이 다르면 섞지 말고 나눠서 적는다.
+- 근거 줄은 빠뜨리지 않는다.
+- 특정 환자의 진단·치료 결정은 하지 않는다. 최종 판단은 원문과 심평원 기준 확인이 필요하다는 점을 필요할 때 한 줄로 알린다.`;
+async function kbVectorStore(env) {
+  const r = await env.DB.prepare(`SELECT v FROM kb_meta WHERE k='vs'`).first();
+  return r ? r.v : "";
+}
+function kbPagesOf(text) {   // 찾은 조각의 [p.N] 표시 → 쪽 번호들
+  const out = []; const re = /\[p\.(\d+)\]/g; let m;
+  while ((m = re.exec(String(text || "")))) { const n = +m[1]; if (!out.includes(n)) out.push(n); }
+  return out.slice(0, 6);
+}
+function kbDocName(fn) { return String(fn || "").replace(/\.txt$/i, "").replace(/^\d+_/, "").replace(/_/g, " "); }
+async function dongseonKb(request, env, url, email) {
+  await ensureSchema(env);
+  const path = url.pathname.replace(/^\/api\/dongseon\/kb\/?/, "");
+  if (path === "list" && request.method === "GET") {
+    const { results } = await env.DB.prepare(`SELECT id, q, a, src, at FROM kb_chat WHERE email=? ORDER BY at DESC LIMIT 200`).bind(email).all();
+    return json({ items: (results || []).map(x => ({ id: x.id, q: x.q, a: x.a, at: x.at, src: (() => { try { return JSON.parse(x.src || "[]"); } catch (e) { return []; } })() })) });
+  }
+  if (path === "del" && request.method === "POST") {
+    const b = await request.json().catch(() => ({}));
+    if (b.all) await env.DB.prepare(`DELETE FROM kb_chat WHERE email=?`).bind(email).run();
+    else if (b.id) await env.DB.prepare(`DELETE FROM kb_chat WHERE id=? AND email=?`).bind(String(b.id), email).run();
+    else return json({ error: "id 또는 all" }, 400);
+    return json({ ok: true });
+  }
+  if (path === "ask" && request.method === "POST") {
+    if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 가 설정되지 않았습니다." }, 501);
+    const vs = await kbVectorStore(env);
+    if (!vs) return json({ error: "아직 자료가 올라가지 않았습니다 (관리자: tools/kb_upload.mjs)." }, 503);
+    const b = await request.json().catch(() => ({}));
+    const q = String(b.q || "").trim().slice(0, 2000);
+    if (!q) return json({ error: "질문이 비었습니다." }, 400);
+    const input = [];
+    for (const h of (Array.isArray(b.hist) ? b.hist : []).slice(-3)) {   // 이어지는 질문을 알아듣도록 최근 3개
+      if (h && h.q && h.a) { input.push({ role: "user", content: String(h.q).slice(0, 1000) }); input.push({ role: "assistant", content: String(h.a).slice(0, 2000) }); }
+    }
+    input.push({ role: "user", content: q });
+    const r = await fetch("https://api.openai.com/v1/responses", { method: "POST",
+      headers: { authorization: "Bearer " + env.OPENAI_API_KEY, "content-type": "application/json" },
+      body: JSON.stringify({ model: env.OPENAI_KB_MODEL || "gpt-4.1", instructions: KB_SYS, input,
+        tools: [{ type: "file_search", vector_store_ids: [vs], max_num_results: 20 }], include: ["file_search_call.results"], max_output_tokens: 1500 }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
+    let a = ""; const cited = new Set(); const found = [];
+    for (const o of j.output || []) {
+      if (o.type === "file_search_call") for (const x of o.results || []) found.push(x);
+      if (o.type === "message") for (const c of o.content || []) if (c.type === "output_text") {
+        a += c.text || ""; for (const an of c.annotations || []) if (an.file_id) cited.add(an.file_id);
+      }
+    }
+    /* 근거: 답에 인용된 파일의 찾은 조각(없으면 찾은 조각 위 4개) — 문서 이름 · 쪽 · 짧은 원문 */
+    const pick = found.filter(x => !cited.size || cited.has(x.file_id)).slice(0, 6);
+    const src = (pick.length ? pick : found.slice(0, 4)).map(x => ({ doc: kbDocName(x.filename), pages: kbPagesOf(x.text), text: String(x.text || "").replace(/\[p\.\d+\]\s*/g, "").slice(0, 600) }));
+    a = a.replace(/【[^】]*】/g, "").trim() || "답을 만들지 못했습니다. 다시 물어봐 주세요.";
+    const id = "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at = new Date().toISOString();
+    await env.DB.prepare(`INSERT INTO kb_chat (id, email, q, a, src, at) VALUES (?,?,?,?,?,?)`).bind(id, email, q, a, JSON.stringify(src), at).run();
+    return json({ id, q, a, src, at });
+  }
+  return json({ error: "없는 주소" }, 404);
+}
+/* 자료 올리기(관리자 전용, 헤더 x-kb-key = Secrets KB_ADMIN_KEY): action=create(저장소 만들기) · upload(텍스트 1개, x-name 파일 이름) · status · reset(새 저장소) */
+async function dongseonKbAdmin(request, env, url) {
+  if (!env.KB_ADMIN_KEY || request.headers.get("x-kb-key") !== env.KB_ADMIN_KEY) return json({ error: "권한 없음" }, 403);
+  if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 없음" }, 501);
+  await ensureSchema(env);
+  const oa = (path, init = {}) => fetch("https://api.openai.com/v1/" + path, Object.assign({}, init, { headers: Object.assign({ authorization: "Bearer " + env.OPENAI_API_KEY }, init.headers || {}) }))
+    .then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error((j.error && j.error.message) || ("OpenAI " + r.status)); return j; });
+  const action = url.searchParams.get("action") || "";
+  try {
+    const vs = await kbVectorStore(env);
+    if (action === "create" || action === "reset") {
+      if (vs && action === "create") return json({ ok: true, vs, note: "이미 있음" });
+      const j = await oa("vector_stores", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "반듯 어시 체크 자료" }) });
+      await env.DB.prepare(`INSERT OR REPLACE INTO kb_meta (k, v) VALUES ('vs', ?)`).bind(j.id).run();
+      return json({ ok: true, vs: j.id, old: vs || "" });
+    }
+    if (!vs) return json({ error: "먼저 action=create" }, 400);
+    if (action === "upload" && request.method === "POST") {
+      const name = decodeURIComponent(request.headers.get("x-name") || "doc.txt");
+      const fd = new FormData();
+      fd.append("purpose", "assistants");
+      fd.append("file", new Blob([await request.arrayBuffer()], { type: "text/plain" }), name);
+      const f = await oa("files", { method: "POST", body: fd });
+      const v = await oa(`vector_stores/${vs}/files`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ file_id: f.id }) });
+      return json({ ok: true, file: f.id, name, status: v.status });
+    }
+    if (action === "status") {
+      const j = await oa(`vector_stores/${vs}/files?limit=100`);
+      const st = await oa(`vector_stores/${vs}`);
+      return json({ vs, counts: st.file_counts, usage_bytes: st.usage_bytes, files: (j.data || []).map(x => ({ id: x.id, status: x.status, err: x.last_error && x.last_error.message })) });
+    }
+    return json({ error: "action=create|upload|status|reset" }, 400);
+  } catch (e) { return json({ error: String(e.message || e) }, 502); }
 }
 async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebase ID 토큰> → 이메일 (Google 이 검증)
   const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
@@ -1818,6 +1942,12 @@ export default {
       await env.DB.prepare(`INSERT INTO meta (key,value) VALUES ('dongseon_rooms',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
         .bind(JSON.stringify(rooms)).run();
       return json({ ok: true, n: rooms.length });
+    }
+    if (url.pathname === "/api/dongseon/kb/admin") return dongseonKbAdmin(request, env, url);   // 어시 체크 자료 올리기 (2026-10-27)
+    if (url.pathname.startsWith("/api/dongseon/kb/")) {   // 어시 체크 — 로그인한 직원 본인 기록만
+      const email = await fbEmailFromRequest(request);
+      if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+      return dongseonKb(request, env, url, email);
     }
     if (url.pathname === "/api/dongseon/stt" && request.method === "POST") {   // 진료 녹음 → 유료 음성인식 (2026-10-12) — 키는 여기(Secrets)에만
       const email = await fbEmailFromRequest(request);
