@@ -4040,10 +4040,14 @@ function slipPopHtml(it){if(!it)return '<div class="empty">오늘 처방 목록�
     ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
     <div class="sd-meta">${meta}</div>${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:''}
     ${it.dup?`<div class="sd-meta" style="color:#dc2626;font-weight:800">⚠ 다른 환자(${it.dup.others.map(o=>esc(o.name||o.mrn||'')).join(', ')})와 차팅이 똑같습니다 — 비트에서 확인해 주세요</div>`:''}
-    <div class="sd-body${it.shots&&it.shots.length?' has-shots':''}"><ol class="sd-lines">${it.dupBlock?'<li>(확인 전 — 처방 줄을 가렸습니다)</li>':it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${slipShotsHtml(it,true)}</div>`;}
+    ${(()=>{/* 오늘 캡처가 없으면 가장 최근 날의 주사 캡처 (2026-10-27) */let sh=slipShotsHtml(it,true);
+      if(!sh){const mrn=normMrn(it.mrn);if(mrn)slipPastLoad(mrn);const P=(mrn&&slipPastList(it))||[];const d0=P.length?shotDay(P[0]):'';
+        if(d0)sh=`<div><div class="sd-meta" style="margin-top:16px;padding:6px 10px;border-radius:8px;background:#fef3c7;color:#92400e;font-weight:800">📅 지난 캡처 · ${esc(d0)} — 오늘 찍은 사진이 아닙니다</div>${slipShotsHtml({shots:P.filter(x=>shotDay(x)===d0)},true)}</div>`;}
+      return `<div class="sd-body${sh?' has-shots':''}"><ol class="sd-lines">${it.dupBlock?'<li>(확인 전 — 처방 줄을 가렸습니다)</li>':it.lines.map(l=>`<li${slipHot(l)?' class="np"':''}>${slipLineHtml(l)}</li>`).join('')}</ol>${sh}</div>`;})()}`;}
 function slipPopRender(){if(!SLIP_POP||SLIP_POP.closed||!SLIP_POP_MRN)return;
   try{const L=slipItems().filter(x=>normMrn(x.mrn)===normMrn(SLIP_POP_MRN));const it=L[0];const d=SLIP_POP.document;
-    const html=L.length>1?L.map(x=>`<div class="sd-meta" style="font-size:20px;font-weight:900;color:#1d4ed8;margin-top:14px">▶ ${esc(x.ins||'접수')} 슬립</div>`+slipPopHtml(x)).join('<hr style="margin:18px 0;border:0;border-top:3px dashed #9ca3af">'):slipPopHtml(it);   // 보험별 슬립 2장이면 둘 다 (2026-10-26)if(d.body.dataset.h!==html){d.body.dataset.h=html;d.body.innerHTML=html;}slipShotsLoad(d);
+    const html=L.length>1?L.map(x=>`<div class="sd-meta" style="font-size:20px;font-weight:900;color:#1d4ed8;margin-top:14px">▶ ${esc(x.ins||'접수')} 슬립</div>`+slipPopHtml(x)).join('<hr style="margin:18px 0;border:0;border-top:3px dashed #9ca3af">'):slipPopHtml(it);   // 보험별 슬립 2장이면 둘 다 (2026-10-26)
+    if(d.body.dataset.h!==html){d.body.dataset.h=html;d.body.innerHTML=html;}slipShotsLoad(d);
     d.title=(it?String(it.name||''):'')+' — 처방';}catch(e){console.warn('slip pop',e);}}
 function popSlipSolo(mrn){
   const w=window.open('','slipSolo','popup,width=820,height=720');if(!w){warnToast('팝업이 막혀 있습니다 — 주소창 오른쪽의 팝업 차단을 풀어 주세요.');return;}
@@ -4063,12 +4067,15 @@ function slipShotArea(it){const mrn=normMrn(it&&it.mrn);const today=(it&&it.shot
   if(mrn)slipPastLoad(mrn);const past=(mrn&&slipPastList(it))||[];
   const g={};past.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const days=Object.keys(g).sort().reverse();
   if(!today.length&&!days.length)return '';
-  let sel=SLIP_SHOT_DAY[mrn]||'';if(sel&&!g[sel])sel='';
+  /* 2026-10-27 요청: 주사 캡처를 한 번 해 두면 다른 날 또 오셨을 때도 슬립에 — 오늘 찍은 것이 없으면 가장 최근 날의 캡처를 바로 보여 준다(위에 '지난 캡처 · 날짜' 표시).
+     드롭다운에서 '숨기기'를 고르면 안 보인다 */
+  let sel=Object.prototype.hasOwnProperty.call(SLIP_SHOT_DAY,mrn)?SLIP_SHOT_DAY[mrn]:((!today.length&&days.length)?days[0]:'');if(sel&&!g[sel])sel='';
   const wd=['일','월','화','수','목','금','토'];
   const pick=days.length?`<select class="sd-shot-day" onchange="slipShotDay('${esc(mrn)}',this.value)" title="이전 캡처 기록 — 날짜를 고르면 그 날 사진">
-      <option value=""${sel?'':' selected'}>${today.length?'오늘 · '+today.length+'장':'날짜 선택 (이전 캡처 기록 '+past.length+'장)'}</option>
+      <option value=""${sel?'':' selected'}>${today.length?'오늘 · '+today.length+'장':'숨기기 (이전 캡처 기록 '+past.length+'장)'}</option>
       ${days.map(d=>`<option value="${d}"${sel===d?' selected':''}>${d} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</option>`).join('')}</select>`:'';
-  const body=sel?slipShotsHtml({id:it.id,shots:g[sel]},false,true):slipShotsHtml(it,false);
+  const old=sel?`<div class="sd-shot-old" style="margin-top:8px;padding:6px 10px;border-radius:8px;background:#fef3c7;color:#92400e;font-weight:800;font-size:14px">📅 지난 캡처 · ${sel} (${wd[new Date(sel+'T12:00:00').getDay()]}) — 오늘 찍은 사진이 아닙니다</div>`:'';
+  const body=sel?old+slipShotsHtml({id:it.id,shots:g[sel]},false,true):slipShotsHtml(it,false);
   return pick||body?`<div class="sd-shot-area">${pick}${body}</div>`:'';}
 function slipShotsHtml(it,pop,noX){if(!it||!it.shots||!it.shots.length)return '';
   return '<div class="sd-shots">'+it.shots.map(x=>{const u=SLIP_SHOT_URL[x.path]||'';const t=x.at?hhmm(x.at):'';
@@ -5835,6 +5842,13 @@ async function runSelfTest(){
       const I=slipItems(),a=I.find(x=>x.mrn==='101'),b=I.find(x=>x.mrn==='202'),c=I.find(x=>x.mrn==='404');
       const blocked=b&&b.dupBlock&&a&&a.dup&&!a.dupBlock&&c&&!c.dup;BIT_NOTES[1].dupOk=true;
       ok('슬립 차팅 중복: 다른 차트번호와 차팅이 같으면 나중 것만 가림·인쇄 막음, 먼저 온 쪽은 경고만, 짧은 차팅은 무시, 확인하면 풀림', blocked&&!slipDupBlocked(BIT_NOTES[1]));BIT_NOTES=_n;}
+     {const m='51515',y=new Date(Date.now()-3*864e5).toISOString(),_p=SLIP_PAST[m];   // 지난 주사 캡처 자동 표시 (2026-10-27)
+      SLIP_PAST[m]={at:Date.now(),shots:[{id:'s1',path:'x/old.jpg',at:y,kind:'inj'},{id:'s2',path:'x/pt.jpg',at:y,kind:'pt'}],hidden:[]};
+      const it={id:'z',mrn:m,shots:[],note:{}};const h1=slipShotArea(it);SLIP_SHOT_DAY[m]='';const h2=slipShotArea(it);delete SLIP_SHOT_DAY[m];
+      const h3=slipShotArea({id:'z',mrn:m,shots:[{id:'t1',path:'x/today.jpg',at:new Date().toISOString()}],note:{}});
+      ok('슬립: 오늘 캡처가 없으면 지난 주사 캡처를 바로(지난 캡처 표시, PT 캡처 제외), 숨기기 고르면 안 보임, 오늘 것이 있으면 오늘 것',
+        h1.includes('x/old.jpg')&&h1.includes('지난 캡처')&&!h1.includes('x/pt.jpg')&&!h2.includes('x/old.jpg')&&h3.includes('x/today.jpg')&&!h3.includes('x/old.jpg'));
+      if(_p)SLIP_PAST[m]=_p;else delete SLIP_PAST[m];}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE;const t0=Date.now()-600000,iso=x=>new Date(t0+x).toISOString();   // 보험별 슬립 (2026-10-26 일반·건강보험)
       data=[{id:'k1',name:'보험둘',mrn:'777',ins:'국민건강보험',bit:{ocmNum:'500',ins:'국민건강보험'},route:['3층 대기실'],step:0,status:'대기',notes:{}},{id:'k2',name:'보험둘',mrn:'777',ins:'일반',bit:{ocmNum:'500i11',ins:'일반'},route:['3층 대기실'],step:0,status:'대기',notes:{}}];
       BIT_NOTES=[{docId:'d777',mrn:'777',name:'보험둘',rx:'med\nneuropathic pain\n도수',chart:'',rev:3,printed:true,updatedAt:iso(9000),
