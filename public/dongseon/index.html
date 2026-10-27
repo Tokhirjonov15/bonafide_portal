@@ -3905,8 +3905,12 @@ function bitLookupByMrn(mrn){mrn=String(mrn||'').trim();if(!mrn)return null;
    later = 이 문서가 나중에 처음 온 쪽(잘못 간 쪽일 가능성) → 처방 줄을 가리고 인쇄를 막는다. 비트에서 확인하고 [이 환자 것 맞음]을 누르면 풀린다(dupOk) */
 function slipChartKey(n){const c=String((n&&n.chart)||'').replace(/\s+/g,' ').trim();return c.length>=8?c:'';}
 function slipDupOf(n){const k=slipChartKey(n);if(!k)return null;const m=normMrn(n.mrn);
-  const o=(BIT_NOTES||[]).filter(x=>x!==n&&normMrn(x.mrn)&&normMrn(x.mrn)!==m&&slipChartKey(x)===k);if(!o.length)return null;
   const t=x=>new Date(x.firstAt||x.updatedAt||0).getTime()||0;
+  /* 2026-10-27: 원장님이 같은 문구(템플릿)를 여러 환자에게 쓰면 오탐 — 실제 섞임은 같은 진료실 PC에서 앞뒤로 본 환자 사이(20분 안)에만 생긴다 */
+  const near=x=>{const pa=String(n.pc||''),pb=String(x.pc||'');if(pa&&pb&&pa!==pb)return false;
+    const a=t(n),b=t(x),bu=new Date(x.updatedAt||x.firstAt||0).getTime()||b,au=new Date(n.updatedAt||n.firstAt||0).getTime()||a;
+    return !a||!b||Math.min(Math.abs(a-bu),Math.abs(b-au),Math.abs(a-b))<=20*60000;};
+  const o=(BIT_NOTES||[]).filter(x=>x!==n&&normMrn(x.mrn)&&normMrn(x.mrn)!==m&&slipChartKey(x)===k&&near(x));if(!o.length)return null;
   return {other:o[0],others:o,later:o.every(x=>t(n)>=t(x))};}
 function slipDupBlocked(n){const d=slipDupOf(n);return !!(d&&d.later&&!n.dupOk);}
 window.slipDupOk=function(docId){const n=slipNoteById(docId);if(!n)return;const d=slipDupOf(n);
@@ -5861,7 +5865,10 @@ async function runSelfTest(){
         {docId:'d3',mrn:'303',name:'짧은',chart:'pain',rx:'med\nneuropathic pain\nx',firstAt:new Date(t0+9000).toISOString()},{docId:'d4',mrn:'404',name:'짧은2',chart:'pain',rx:'med\nneuropathic pain\nx',firstAt:new Date(t0+9900).toISOString()}];
       const I=slipItems(),a=I.find(x=>x.mrn==='101'),b=I.find(x=>x.mrn==='202'),c=I.find(x=>x.mrn==='404');
       const blocked=b&&b.dupBlock&&a&&a.dup&&!a.dupBlock&&c&&!c.dup;BIT_NOTES[1].dupOk=true;
-      ok('슬립 차팅 중복: 다른 차트번호와 차팅이 같으면 나중 것만 가림·인쇄 막음, 먼저 온 쪽은 경고만, 짧은 차팅은 무시, 확인하면 풀림', blocked&&!slipDupBlocked(BIT_NOTES[1]));BIT_NOTES=_n;}
+      ok('슬립 차팅 중복: 다른 차트번호와 차팅이 같으면 나중 것만 가림·인쇄 막음, 먼저 온 쪽은 경고만, 짧은 차팅은 무시, 확인하면 풀림', blocked&&!slipDupBlocked(BIT_NOTES[1]));
+      BIT_NOTES=[{docId:'e1',mrn:'501',pc:'진료실1',chart:'Lt. knee pain 3 days',firstAt:new Date(t0).toISOString()},{docId:'e2',mrn:'502',pc:'진료실4',chart:'Lt. knee pain 3 days',firstAt:new Date(t0+60000).toISOString()},
+        {docId:'e3',mrn:'503',pc:'진료실1',chart:'Lt. knee pain 3 days',firstAt:new Date(t0+3600000).toISOString(),updatedAt:new Date(t0+3600000).toISOString()}];
+      ok('슬립 차팅 중복: 다른 진료실 PC이거나 20분 넘게 떨어진 같은 문구(템플릿)는 중복으로 보지 않음', !slipDupOf(BIT_NOTES[1])&&!slipDupOf(BIT_NOTES[2]));BIT_NOTES=_n;}
      {const m='51515',y=new Date(Date.now()-3*864e5).toISOString(),_p=SLIP_PAST[m];   // 지난 주사 캡처 자동 표시 (2026-10-27)
       SLIP_PAST[m]={at:Date.now(),shots:[{id:'s1',path:'x/old.jpg',at:y,kind:'inj'},{id:'s2',path:'x/pt.jpg',at:y,kind:'pt'}],hidden:[]};
       SLIP_PAST[m].shots.push({id:'s3',path:'x/older.jpg',at:new Date(Date.now()-9*864e5).toISOString(),kind:'inj'});
