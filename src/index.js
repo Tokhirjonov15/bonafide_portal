@@ -592,7 +592,10 @@ async function dongseonStt(request, env) {
 const KB_SYS = `너는 반듯한정형외과(의원) 직원용 '어시 체크' 도우미다. 건강보험·의료급여·자동차보험 급여기준, 청구, 본인부담에 대한 질문에
 file_search 로 찾은 자료(심평원·보건복지부 고시·지침 책자)만 근거로 한국어로 답한다.
 규칙:
-- 자료에 있는 내용만 말한다. 자료에서 찾지 못하면 "올려 둔 자료에서 찾지 못했습니다"라고 하고 추측하지 않는다.
+- 질문이 어떤 언어로 와도 답은 반드시 한국어로만 쓴다.
+- 의료·건강보험·의료급여·자동차보험·산재·청구·본인부담·병원 업무와 관계없는 질문(잡담, 날씨, 음식, 일반 상식, 코딩 등)에는 검색하지 말고 정확히 "이 질문은 의료·보험 업무에 관한 질문이 아니어서 답할 수 없습니다." 한 문장만 답한다.
+- 의료·보험 질문이지만 자료에서 근거를 찾지 못하면 정확히 "올려 둔 자료에 없는 내용이라 답할 수 없습니다." 한 문장만 답한다. 일반 지식으로 추측해 답하지 않는다.
+- 자료에 있는 내용만 말한다.
 - 숫자·코드·횟수·기간·고시 번호는 자료 그대로 쓴다.
 - 답 끝에 근거를 '근거: 문서이름 p.쪽' 형식으로 적는다. 자료 본문의 [p.123] 표시가 그 내용의 쪽이다.
 - 자료끼리 다르면(예: 2026년 1월판과 7월판) 둘 다 밝히고 시행일이 늦은 쪽을 우선한다고 적는다.
@@ -639,26 +642,63 @@ async function dongseonKb(request, env, url, email) {
       if (h && h.q && h.a) { input.push({ role: "user", content: String(h.q).slice(0, 1000) }); input.push({ role: "assistant", content: String(h.a).slice(0, 2000) }); }
     }
     input.push({ role: "user", content: q });
-    const r = await fetch("https://api.openai.com/v1/responses", { method: "POST",
-      headers: { authorization: "Bearer " + env.OPENAI_API_KEY, "content-type": "application/json" },
-      body: JSON.stringify({ model: env.OPENAI_KB_MODEL || "gpt-4.1", instructions: KB_SYS, input,
-        tools: [{ type: "file_search", vector_store_ids: [vs], max_num_results: 20 }], include: ["file_search_call.results"], max_output_tokens: 1500 }) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
-    let a = ""; const cited = new Set(); const found = [];
-    for (const o of j.output || []) {
-      if (o.type === "file_search_call") for (const x of o.results || []) found.push(x);
-      if (o.type === "message") for (const c of o.content || []) if (c.type === "output_text") {
-        a += c.text || ""; for (const an of c.annotations || []) if (an.file_id) cited.add(an.file_id);
+    const req = { model: env.OPENAI_KB_MODEL || "gpt-4.1", instructions: KB_SYS, input,
+      tools: [{ type: "file_search", vector_store_ids: [vs], max_num_results: 20 }], include: ["file_search_call.results"], max_output_tokens: 1500 };
+    const oa = body => fetch("https://api.openai.com/v1/responses", { method: "POST",
+      headers: { authorization: "Bearer " + env.OPENAI_API_KEY, "content-type": "application/json" }, body: JSON.stringify(body) });
+    /* 답 정리 · 저장: 찾은 조각 → 근거(문서·쪽), 답하지 않은 질문엔 근거 없음 */
+    const finish = async j => {
+      let a = ""; const cited = new Set(); const found = [];
+      for (const o of j.output || []) {
+        if (o.type === "file_search_call") for (const x of o.results || []) found.push(x);
+        if (o.type === "message") for (const c of o.content || []) if (c.type === "output_text") {
+          a += c.text || ""; for (const an of c.annotations || []) if (an.file_id) cited.add(an.file_id);
+        }
       }
+      /* 근거: 답에 인용된 파일의 찾은 조각(없으면 찾은 조각 위 4개) — 문서 이름 · 쪽 · 짧은 원문 */
+      const pick = found.filter(x => !cited.size || cited.has(x.file_id)).slice(0, 6);
+      const src = (pick.length ? pick : found.slice(0, 4)).map(x => ({ doc: kbDocName(x.filename), pages: kbPagesOf(x.text), text: String(x.text || "").replace(/\[p\.\d+\]\s*/g, "").slice(0, 600) }));
+      a = a.replace(/【[^】]*】/g, "").trim() || "답을 만들지 못했습니다. 다시 물어봐 주세요.";
+      if (/^(이 질문은 의료·보험 업무에 관한 질문이 아니어서|올려 둔 자료에 없는 내용이라) 답할 수 없습니다/.test(a)) src.length = 0;   // 답하지 않은 질문엔 근거 칩을 달지 않는다
+      const id = "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at = new Date().toISOString();
+      await env.DB.prepare(`INSERT INTO kb_chat (id, email, q, a, src, at) VALUES (?,?,?,?,?,?)`).bind(id, email, q, a, JSON.stringify(src), at).run();
+      return { id, q, a, src, at };
+    };
+    if (!b.stream) {
+      const r = await oa(req);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
+      return json(await finish(j));
     }
-    /* 근거: 답에 인용된 파일의 찾은 조각(없으면 찾은 조각 위 4개) — 문서 이름 · 쪽 · 짧은 원문 */
-    const pick = found.filter(x => !cited.size || cited.has(x.file_id)).slice(0, 6);
-    const src = (pick.length ? pick : found.slice(0, 4)).map(x => ({ doc: kbDocName(x.filename), pages: kbPagesOf(x.text), text: String(x.text || "").replace(/\[p\.\d+\]\s*/g, "").slice(0, 600) }));
-    a = a.replace(/【[^】]*】/g, "").trim() || "답을 만들지 못했습니다. 다시 물어봐 주세요.";
-    const id = "k" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at = new Date().toISOString();
-    await env.DB.prepare(`INSERT INTO kb_chat (id, email, q, a, src, at) VALUES (?,?,?,?,?,?)`).bind(id, email, q, a, JSON.stringify(src), at).run();
-    return json({ id, q, a, src, at });
+    /* 스트리밍(2026-10-27): 답이 만들어지는 대로 글자를 보낸다 — 한 줄에 JSON 하나 {t:'d',v:글자} … 끝에 {t:'end',item} 또는 {t:'err',e} */
+    const r = await oa(Object.assign({}, req, { stream: true }));
+    if (!r.ok) { const j = await r.json().catch(() => ({})); return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502); }
+    const { readable, writable } = new TransformStream();
+    const w = writable.getWriter(), enc = new TextEncoder();
+    const send = o => w.write(enc.encode(JSON.stringify(o) + "\n"));
+    (async () => {
+      let done = null, buf = "";
+      try {
+        const rd = r.body.pipeThrough(new TextDecoderStream()).getReader();
+        for (;;) {
+          const { value, done: end } = await rd.read();
+          if (end) break;
+          buf += value; let k;
+          while ((k = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, k).trim(); buf = buf.slice(k + 1);
+            if (!line.startsWith("data:")) continue;
+            let ev; try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
+            if (ev.type === "response.output_text.delta" && ev.delta) await send({ t: "d", v: ev.delta });
+            else if (ev.type === "response.completed") done = ev.response;
+            else if (ev.type === "response.failed" || ev.type === "error") throw new Error((ev.response && ev.response.error && ev.response.error.message) || ev.message || "OpenAI 오류");
+          }
+        }
+        if (!done) throw new Error("답이 중간에 끊겼습니다");
+        await send({ t: "end", item: await finish(done) });
+      } catch (e) { try { await send({ t: "err", e: String(e.message || e) }); } catch (x) {} }
+      try { await w.close(); } catch (x) {}
+    })();
+    return new Response(readable, { headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" } });
   }
   return json({ error: "없는 주소" }, 404);
 }

@@ -15751,6 +15751,12 @@ boot();
   .kb-q{align-self:flex-end;max-width:88%;background:var(--blue-bg);border-radius:12px 12px 2px 12px;padding:8px 11px;white-space:pre-wrap;word-break:break-word}
   .kb-a{max-width:96%;background:var(--panel2);border:1px solid var(--line2);border-radius:12px 12px 12px 2px;padding:9px 12px;line-height:1.55;word-break:break-word}
   .kb-a.err{color:var(--red)}
+  .kb-cur{display:inline-block;width:7px;height:1em;margin-left:2px;vertical-align:-2px;background:var(--muted);animation:kbBlink 1s steps(1) infinite}
+  @keyframes kbBlink{50%{opacity:0}}
+  .kb-wait{color:var(--sub)}
+  .kb-wait i{display:inline-block;width:5px;height:5px;margin:0 2px;border-radius:50%;background:var(--sub);animation:kbDot 1.2s infinite ease-in-out}
+  .kb-wait i:nth-child(2){animation-delay:.15s}.kb-wait i:nth-child(3){animation-delay:.3s}
+  @keyframes kbDot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
   .kb-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--sub)}
   .kb-meta button{border:0;background:none;color:var(--sub);cursor:pointer;font-size:11px;padding:0}
   .kb-meta button:hover{color:var(--red)}
@@ -15774,11 +15780,17 @@ boot();
   function srcHtml(it){const L=it.src||[];if(!L.length)return '';
     return `<div class="kb-src">${L.map((x,i)=>`<span class="kb-chip" onclick="kbSnip('${esc(it.id)}',${i})" title="찾은 원문 보기">${esc(x.doc)}${x.pages&&x.pages.length?' p.'+x.pages.join('·'):''}</span>`).join('')}</div>
       ${L.map((x,i)=>`<div class="kb-snip" id="kbs_${esc(it.id)}_${i}"><b>${esc(x.doc)}${x.pages&&x.pages.length?' p.'+x.pages.join('·'):''}</b>\n${esc(x.text||'')}</div>`).join('')}`;}
+  /* 답이 오는 중: 글자 전엔 점 세 개, 글자가 오면 지금까지 보인 만큼 + 깜박이는 커서 */
+  function pendHtml(){const P=K.pend;if(!P)return '';if(P.err)return esc(P.err);
+    if(!P.shown)return '<span class="kb-wait">자료에서 찾는 중 <i></i><i></i><i></i></span>';
+    return fmt(P.full.slice(0,P.shown).replace(/【[^】]*】?/g,''))+'<span class="kb-cur"></span>';}
+  function paintPend(){const e=document.getElementById('kbPendA'),el=document.getElementById('kbList');if(!e)return;
+    const atEnd=el&&el.scrollHeight-el.scrollTop-el.clientHeight<60;e.innerHTML=pendHtml();if(atEnd)el.scrollTop=el.scrollHeight;}
   function render(){const el=document.getElementById('kbList');if(!el)return;
     let h=K.items.map(it=>`<div class="kb-item"><div class="kb-q">${esc(it.q)}</div>
       <div class="kb-a">${fmt(it.a)}${srcHtml(it)}</div>
       <div class="kb-meta">${when(it.at)}<button type="button" onclick="kbDel('${esc(it.id)}')" title="이 질문 지우기">지우기</button></div></div>`).join('');
-    if(K.pend)h+=`<div class="kb-item"><div class="kb-q">${esc(K.pend.q)}</div><div class="kb-a ${K.pend.err?'err':''}">${K.pend.err?esc(K.pend.err):'자료에서 찾는 중… (10~30초)'}</div></div>`;
+    if(K.pend)h+=`<div class="kb-item"><div class="kb-q">${esc(K.pend.q)}</div><div class="kb-a ${K.pend.err?'err':''}" id="kbPendA">${pendHtml()}</div></div>`;
     if(!h)h=`<div class="kb-empty">${K.loaded?'보험·청구 기준을 물어보세요.<br>예) 도수치료 관리급여 조건은? · 의료급여 1종 의원 외래 본인부담은? · 교통사고 경상환자 진단서 제출 기한은?':'불러오는 중…'}</div>`;
     el.innerHTML=h;el.scrollTop=el.scrollHeight;}
   async function load(){try{const j=await api('list');K.items=(j.items||[]).slice().reverse();}catch(e){toast('어시 체크 기록을 불러오지 못했습니다: '+(e.message||e));}K.loaded=true;render();}
@@ -15789,8 +15801,27 @@ boot();
   window.kbSnip=(id,i)=>{const e=document.getElementById('kbs_'+id+'_'+i);if(e)e.classList.toggle('show');};
   window.kbAsk=async()=>{const ta=document.getElementById('kbQ');const q=(ta.value||'').trim();if(!q||K.busy)return;
     K.busy=true;K.pend={q};ta.value='';document.getElementById('kbSend').disabled=true;render();
-    try{const hist=K.items.slice(-3).map(x=>({q:x.q,a:x.a}));const it=await api('ask',{q,hist});K.items.push(it);K.pend=null;}
-    catch(e){K.pend={q,err:'답을 받지 못했습니다: '+(e.message||e)};ta.value=q;}
+    /* 서버가 한 줄씩 보내는 글자 조각을 받아, 화면엔 조금씩 늘려 타자 치듯 보인다 (2026-10-27) */
+    const P=K.pend;P.full='';P.shown=0;let item=null,fin=false,raf=0;
+    const tick=()=>{raf=0;if(K.pend!==P)return;const left=P.full.length-P.shown;
+      if(left>0){P.shown+=Math.max(1,Math.ceil(left/(fin?4:12)));paintPend();}
+      if(P.shown<P.full.length||!fin)raf=requestAnimationFrame(tick);};
+    try{const u=firebase.auth().currentUser;if(!u)throw new Error('로그인이 필요합니다');const tok=await u.getIdToken();
+      const hist=K.items.slice(-3).map(x=>({q:x.q,a:x.a}));
+      const r=await fetch('/api/dongseon/kb/ask',{method:'POST',headers:{authorization:'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({q,hist,stream:true})});
+      if(!r.ok||!r.body){const j=await r.json().catch(()=>({}));throw new Error(j.error||('오류 '+r.status));}
+      const rd=r.body.pipeThrough(new TextDecoderStream()).getReader();let buf='';
+      for(;;){const {value,done}=await rd.read();if(done)break;buf+=value;let k;
+        while((k=buf.indexOf(String.fromCharCode(10)))>=0){const line=buf.slice(0,k);buf=buf.slice(k+1);if(!line.trim())continue;
+          const m=JSON.parse(line);
+          if(m.t==='d'){P.full+=m.v;if(!raf)raf=requestAnimationFrame(tick);}
+          else if(m.t==='end')item=m.item;
+          else if(m.t==='err')throw new Error(m.e);}}
+      if(!item)throw new Error('답이 중간에 끊겼습니다');
+      P.full=item.a;fin=true;if(!raf)raf=requestAnimationFrame(tick);
+      await new Promise(res=>{const w=()=>{if(K.pend!==P||P.shown>=P.full.length)res();else setTimeout(w,30);};w();});
+      if(K.pend===P){K.items.push(item);K.pend=null;}}
+    catch(e){if(raf)cancelAnimationFrame(raf);if(K.pend===P)K.pend={q,err:'답을 받지 못했습니다: '+(e.message||e)};ta.value=q;}
     K.busy=false;document.getElementById('kbSend').disabled=false;render();};
   window.kbDel=async id=>{if(!confirm('이 질문과 답을 지울까요?'))return;
     try{await api('del',{id});K.items=K.items.filter(x=>x.id!==id);render();}catch(e){alert('지우지 못했습니다: '+(e.message||e));}};
