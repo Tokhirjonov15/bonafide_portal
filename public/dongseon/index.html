@@ -1875,7 +1875,6 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="docReqBtn" onclick="openDocReqs()" title="서류 발급 태블릿 신청 목록 — 신청이 오면 숫자·알림. 태블릿은 주소 끝에 ?docs"><i data-lucide="file-text"></i> 서류발급<span id="docReqCnt"></span></button>
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="이벤트 관리 — 주사를 맞은 지 3일 안(주사 날 포함)에 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 이벤트 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
-    <button class="btn" id="kbBtn" onclick="openKb()" title="어시 체크 — 보험·청구 기준을 물으면 심평원·복지부 자료에서 찾아 근거(문서·쪽)와 함께 답합니다"><i data-lucide="message-circle-question"></i> 어시 체크</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
     <button class="btn" id="cdeskBtn" onclick="openConsentDesk()" title="오늘 비급여 처방이 나온 환자 — 동의서 받기 (처방 금액 자동 · 원장님 차팅 · 처방내역)"><i data-lucide="pen-line"></i> 동의서</button>
     <button class="btn" id="recBtn" onclick="openRecDlg()" title="진료 녹음 — 이 PC 마이크로, 고른 진료실 카드의 [진행]~[종결] 동안 녹음해 외장하드에 저장 (진료실 PC 에서 한 번 설정)"><i data-lucide="mic"></i> 녹음</button>
@@ -1885,6 +1884,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <span class="role-tag" id="userRole">직원</span>
   </div>
   <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃"><i data-lucide="log-out"></i> 로그아웃</button>
+  <button class="btn" id="kbBtn" style="display:none" onclick="openKb()" title="어시 체크 — 보험·청구 기준을 물으면 심평원·복지부 자료에서 찾아 근거(문서·쪽)와 함께 답합니다"><i data-lucide="message-circle-question"></i> 어시 체크</button>
   <button class="btn tb-hide-btn" onclick="toggleTopbar(true)" title="상단 바 숨기기 (보드를 넓게) — 다시 열려면 맨 위 가운데 [▾ 메뉴]"><i data-lucide="chevron-up"></i></button>
 </div>
 <!-- 상단 바 숨김 (2026-10-09 요청) — 숨기면 맨 위 가운데 작은 손잡이만. 이 기기에 기억 -->
@@ -5209,6 +5209,7 @@ function updateUserPill(){
   const lb=document.getElementById('logoutBtn');
   const sb=document.getElementById('statsBtn'),rb=document.getElementById('roomsBtn');
   const rtb0=document.getElementById('routinesBtn');
+  const kbb=document.getElementById('kbBtn');if(kbb)kbb.style.display=currentUser?'':'none';
   if(!currentUser){pill.style.display='none';if(lb)lb.style.display='none';if(sb)sb.style.display='none';if(rb)rb.style.display='none';if(rtb0)rtb0.style.display='none';return;}
   if(sb)sb.style.display=canStats()?'':'none';
   if(rb)rb.style.display=isAdmin()?'':'none';
@@ -8822,7 +8823,7 @@ function comboify(inp){
 function comboifyAll(root){(root||document).querySelectorAll('input[list]').forEach(el=>{if(el.id==='f_reload')return;comboify(el);});}   // f_reload 는 검색창(입력으로 거르는 게 목적) → 그대로
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{try{comboifyAll(document);}catch(e){console.warn('combo',e);}});else{try{comboifyAll(document);}catch(e){console.warn('combo',e);}}
 /* 상단 바: 사용자 pill · 로그아웃 단추를 '내원' 탭 옆(첫 줄)으로 옮긴다 — 도구 단추가 많아져 둘째 줄 끝으로 밀려 있었음 (2026-09-17) */
-(function moveUserPill(){const run=()=>{try{const t=document.getElementById('dischTab'),u=document.getElementById('userPill'),l=document.getElementById('logoutBtn');if(t&&u&&l)t.after(u,l);}catch(e){console.warn('userPill move',e);}};
+(function moveUserPill(){const run=()=>{try{const t=document.getElementById('dischTab'),u=document.getElementById('userPill'),l=document.getElementById('logoutBtn'),k=document.getElementById('kbBtn');if(t&&u&&l)t.after(u,l);if(l&&k)l.after(k);}catch(e){console.warn('userPill move',e);}};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();})();
 /* 배경색 선택: 시트 범례색 + 자주 쓰는 색 + 임의색(컬러 피커). 값은 #bke_color 에 */
 const BK_SWATCHES=[['','없음'],['#ffe599','내원'],['#ffff00','임시치료실'],['#ff0000','치료실 없음'],['#00ff00','시트·비트확인'],['#00ffff','실손 청구여부 확인'],['#9900ff','카톡친추 확인'],['#8e7cc3','보라'],['#b7e1cd','연두'],['#f4cccc','연분홍'],['#cfe2f3','연파랑']];
