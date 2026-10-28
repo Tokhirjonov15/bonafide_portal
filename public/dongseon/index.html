@@ -5963,7 +5963,8 @@ async function runSelfTest(){
      {const L=[{amt:'140000',ins:'2'},{amt:'20000',ins:'0'}],L2=[{amt:'10000',ins:'0'}];   // 예상 본인부담액 (2026-10-28)
       ok('예상 본인부담액: 비급여 100% + 급여 30%(100원 절사), 65세 이상 1.5만 이하 1,500원, 자보 급여 0, 일반 100%',
         ownCalc(L,'국민건강보험',40,{})===146000&&ownCalc(L2,'국민건강보험',70,{})===1500&&ownCalc(L,'자보',40,{})===140000&&ownCalc(L,'일반',40,{})===160000&&ownCalc([],'국민건강보험',40,{})===null
-        &&ownCalc([{amt:'30000',ins:'2'},{amt:'10000',ins:'2'},{amt:'10000',ins:'2'},{amt:'97409',ins:'0'},{amt:'13150',ins:'3'}],'국민건강보험',20,{'3':1})===92350);}   // 이은혜 2026-10-28 실제 92,350
+        &&ownCalc([{amt:'30000',ins:'2'},{amt:'10000',ins:'2'},{amt:'10000',ins:'2'},{amt:'97409',ins:'0'},{amt:'13150',ins:'3'}],'국민건강보험',20,{'3':1})===92350
+        &&ownCalc([{amt:'123',ins:'0'},{amt:'36',ins:'0'},{amt:'',ins:'2'},{amt:'28450',ins:'0'},{amt:'220',ins:'0'},{amt:'13370',ins:'0'}],'보호2종',13,{})===1500);}   // 신주아 보호2종 1,500   // 이은혜 2026-10-28 실제 92,350
      {const _docs=BIT_RX_DOCS,_rx=BIT_RX,_rm=BIT_RX_MRN,_in=BIT_INTAKE;   // 환자부담금 = 비트 총 본인부담 (2026-10-28)
       BIT_INTAKE=[];BIT_RX_DOCS=[{ocm:'901',mrn:'4401',items:[{cod:'A'}],own:'193750'},{ocm:'902',mrn:'4401',items:[{cod:'B'}],own:'1500'},{ocm:'903',mrn:'4402',items:[{cod:'C'}]}];
       let a,b,c;try{bitRxRebuild();a=BIT_RX_MRN['4401'].own;b=BIT_RX_MRN['4402'].own;c=BIT_RX['901'].own;}finally{BIT_RX_DOCS=_docs;BIT_RX=_rx;BIT_RX_MRN=_rm;BIT_INTAKE=_in;}
@@ -14547,8 +14548,9 @@ function ownCalc(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':x
   let gOwn;
   if(/일반/.test(k))gOwn=g0;
   else if(/자보|자동차|산재|공상/.test(k))gOwn=0;
-  else if(/보호\s*1|의료급여\s*1|1종/.test(k))gOwn=g0>0?1000:0;
-  else if(/보호\s*2|의료급여\s*2|2종/.test(k))gOwn=g0*0.15;
+  /* 의료급여(보호)는 의원 외래 정액 — 물리치료 등 다른 급여 코드도 정액에 포함(oth 0). 2종 1,500원 (2026-10-28 신주아님으로 확인), 1종 1,000원(아직 확인 전) */
+  else if(/보호\s*1|의료급여\s*1|1종/.test(k)){gOwn=(g0+oth)>0?1000:0;oth=0;}
+  else if(/보호\s*2|의료급여\s*2|2종/.test(k)){gOwn=(g0+oth)>0?1500:0;oth=0;}
   else if(ageN!=null&&ageN>=65){const tot=g0;gOwn=tot<=15000?(tot>0?1500:0):tot<=20000?tot*0.1:tot<=25000?tot*0.2:tot*0.3;}
   else if(ageN!=null&&ageN<6)gOwn=g0*0.21;
   else gOwn=g0*0.3;
