@@ -5015,11 +5015,18 @@ function holdDocMove(p,doc){
   const key=doc+'|'+room, lk=p.id+'|'+key;
   if(p.holdDocMoved===key||HOLD_DOC_DONE[lk])return;
   const cur=curRoom(p);if(cur===room)return;
-  if(!((p.step||0)===0||cur==='3층 대기실'))return;
+  /* 2026-10-28 (카네리코리에 33598: x-ray 찍는 중 31초 만에 진료실1로): 여기서 '아직 대기 중'을 본 뒤 서버 기록·이동 사이에 X-RAY 자동 이동이 끼면
+     x-ray실 카드를 진료실로 끌고 갔다. → ① 아직 안 찍은 X-RAY 처방이 있으면 x-ray 가 먼저(옮기지 않음) ② 서버 카드로 한 번 더 ③ 옮기기 직전에 한 번 더 확인 */
+  const waiting=x=>{const c=curRoom(x);return ((x.step||0)===0||c==='3층 대기실')&&c!=='x-ray실';};
+  const xrayFirst=x=>{try{return rxItemsOf(x).some(it=>rxIsXrayCode(it.cod))&&!visitedRoom(x,'x-ray실');}catch(e){return false;}};
+  if(!waiting(p)||xrayFirst(p))return;
   HOLD_DOC_DONE[lk]=1;
-  cloudPatientTxn(p.id,d=>{if(d.holdDocMoved===key)return false;d.holdDocMoved=key;return d;},{keepLocal:true}).then(ok=>{
-    if(ok!==true)return;   // 다른 화면이 이미 옮김
+  cloudPatientTxn(p.id,d=>{if(d.holdDocMoved===key)return false;
+      const st=Math.max(0,Math.min(d.step||0,(d.route||[]).length-1)),dc=(d.route||[])[st]||'';if(!((d.step||0)===0||dc==='3층 대기실')||dc==='x-ray실')return false;   // 서버 카드는 이미 다른 방
+      d.holdDocMoved=key;return d;},{keepLocal:true}).then(ok=>{
+    if(ok!==true)return;   // 다른 화면이 이미 옮김·이미 다른 방
     const q=data.find(x=>x.id===p.id);if(!q||q.discharged||curRoom(q)===room)return;
+    if(!waiting(q)||xrayFirst(q)){try{audit('접수보류 → 담당의 진료실 (안 옮김)',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · 이미 '+curRoom(q));}catch(e){}return;}
     q.holdDocMoved=key;moveTo(q.id,room);
     try{audit('접수보류 → 담당의 진료실',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+doc+' → '+room);}catch(e){}});}
 function bitApplyHold(){
@@ -5919,6 +5926,11 @@ async function runSelfTest(){
       ok('슬립: 지난 주사 캡처를 날짜 상관없이 클릭 없이 전부(지난 캡처 표시, PT 캡처 제외), 오늘 것이 있으면 오늘 것 먼저 + 지난 것',
         h1.includes('x/old.jpg')&&h1.includes('x/older.jpg')&&h1.includes('지난 캡처')&&!h1.includes('x/pt.jpg')&&!/<select/.test(h1)&&h3.indexOf('x/today.jpg')>=0&&h3.indexOf('x/today.jpg')<h3.indexOf('x/old.jpg'));
       if(_p)SLIP_PAST[m]=_p;else delete SLIP_PAST[m];}
+     {const _dro=window.docRoomOf,_rif=window.rxItemsOf;window.docRoomOf=()=>'진료실1';let xr=false;window.rxItemsOf=()=>xr?[{cod:[...XRAY_CODES][0]||'G0000'}]:[];   // 접수보류 → 진료실 이 x-ray 카드를 끌고 가지 않음 (2026-10-28 카네리코리에)
+      const mk=(id,route,step)=>({id,name:'보류',route,step,visits:[]});const a=mk('h1',['3층 대기실','x-ray실','진료실1'],1),b=mk('h2',['3층 대기실','진료실1'],0),c=mk('h3',['3층 대기실','x-ray실','진료실1'],0);
+      let r1,r2,r3;try{holdDocMove(a,'김현우');r1=!!HOLD_DOC_DONE['h1|김현우|진료실1'];holdDocMove(b,'김현우');r2=!!HOLD_DOC_DONE['h2|김현우|진료실1'];xr=true;holdDocMove(c,'김현우');r3=!!HOLD_DOC_DONE['h3|김현우|진료실1'];}
+      finally{window.docRoomOf=_dro;window.rxItemsOf=_rif;['h1','h2','h3'].forEach(i=>delete HOLD_DOC_DONE[i+'|김현우|진료실1']);}
+      ok('접수보류 → 담당의 진료실: x-ray실에 있는 카드·아직 안 찍은 X-RAY 처방이 있는 카드는 옮기지 않음, 3층 대기 카드만', !r1&&r2&&!r3, [r1,r2,r3].join());}
      {const _r=STAFF_ROSTER,_d=DOCTORS,_rm=ROOMS,_m=ROOM_META['퇴사테스트방'];   // 퇴사한 분 정리 (2026-10-28 채상훈)
       STAFF_ROSTER={'의사':['김현우 (Ethan)','채상훈 (Hun)'],'간호사':['우성복']};DOCTORS=['김현우','채상훈'];ROOMS=_rm.concat(['퇴사테스트방']);ROOM_META['퇴사테스트방']={doctors:['채상훈','김현우'],owners:[{name:'채상훈'}]};
       let ch=false,ch2=true,opts=[];try{ch=dropFormerStaff();ch2=dropFormerStaff();opts=staffOpts('',['채상훈','김현우'],'의사');}finally{}
