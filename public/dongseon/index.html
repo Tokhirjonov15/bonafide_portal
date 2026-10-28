@@ -3832,7 +3832,7 @@ function openBitStatus(){let ov=document.getElementById('bitStOv');
         return `<div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:13px"><b>환자부담금</b> — 오늘 처방 접수 ${D.length}건 중 <b>${withOwn.length}건</b> 들어옴${lastAt?' · 마지막 '+esc(hm(new Date(lastAt))):''}
           · 전송 담당: ${lead.length?lead.map(r=>esc(r.pc)+' '+esc(r.ver)).join(', '):'없음'}${lead.length>1?' <b style="color:#b91c1c">(담당이 둘 — 접수 PC 업데이트 필요)</b>':''}
           ${(()=>{try{OWN_CAL_AT=0;ownCalibrate();}catch(e){}const s=OWN_CAL_STAT;   /* 예상 금액(계산 전 표시)이 실제 비트 금액과 얼마나 맞나 (2026-10-28) */
-            return s&&s.n?`<br>예상 금액 정확도 — 오늘 비트 금액이 온 ${s.n}건 중 <b>똑같음 ${s.same}건</b> · ±100원 이내 ${s.ok}건 · ±1,000원 이내 ${s.near}건 · 끝자리 ${s.round}원 미만 절사${Object.keys(s.rates).length?' · 코드별 부담률 '+Object.entries(s.rates).map(([k,v])=>esc(k)+'='+Math.round(v*100)+'%').join(', '):''}`:'';})()}
+            return s&&s.n?`<br>예상 금액 정확도 — 오늘 비트 금액이 온 ${s.n}건 중 <b>똑같음 ${s.same}건</b> · ±100원 이내 ${s.ok}건 · ±1,000원 이내 ${s.near}건${Object.keys(s.rates).length?' · 코드별 부담률 '+Object.entries(s.rates).map(([k,v])=>esc(k)+'='+Math.round(v*100)+'%').join(', '):''}`:'';})()}
           ${!withOwn.length&&D.length?'<br><b style="color:#b91c1c">하나도 안 들어옴 → 전송 담당 에이전트가 db2.0 이 아니거나 아직 신호 전입니다.</b>':withOwn.length<D.length?'<br><span class="hint">안 들어온 접수는 비트 수납 창에서 아직 계산하지 않은 환자입니다.</span>':''}
           ${(()=>{/* 금액이 안 들어온 환자 (2026-10-28 강서인·이동주) — 비트 상태(수납완료인지)·그 환자 오늘 접수번호·처방 문서·금액 있는 문서를 한 줄로. 수납완료인데 없으면 다른 접수번호로 수납된 것 */
             const PAIDS=['PN','PC','PT'],STL={WN:'접수',NN:'접수',TN:'수납대기',FN:'수납대기',TC:'수납대기',FC:'수납대기',TT:'수납대기',PN:'수납완료',PC:'수납완료',PT:'수납완료',HN:'보류',HC:'보류',HT:'보류',WH:'보류',SN:'진료중',SC:'진료중',ST:'진료중'};
@@ -5963,7 +5963,7 @@ async function runSelfTest(){
      {const L=[{amt:'140000',ins:'2'},{amt:'20000',ins:'0'}],L2=[{amt:'10000',ins:'0'}];   // 예상 본인부담액 (2026-10-28)
       ok('예상 본인부담액: 비급여 100% + 급여 30%(100원 절사), 65세 이상 1.5만 이하 1,500원, 자보 급여 0, 일반 100%',
         ownCalc(L,'국민건강보험',40,{})===146000&&ownCalc(L2,'국민건강보험',70,{})===1500&&ownCalc(L,'자보',40,{})===140000&&ownCalc(L,'일반',40,{})===160000&&ownCalc([],'국민건강보험',40,{})===null
-        &&(()=>{const r0=OWN_ROUND;OWN_ROUND=10;const v=ownCalc([{amt:'69485',ins:'0'}],'국민건강보험',40,{});OWN_ROUND=r0;return v===20840;})());}   // 10원 미만 절사
+        &&ownCalc([{amt:'30000',ins:'2'},{amt:'10000',ins:'2'},{amt:'10000',ins:'2'},{amt:'97409',ins:'0'},{amt:'13150',ins:'3'}],'국민건강보험',20,{'3':1})===92350);}   // 이은혜 2026-10-28 실제 92,350
      {const _docs=BIT_RX_DOCS,_rx=BIT_RX,_rm=BIT_RX_MRN,_in=BIT_INTAKE;   // 환자부담금 = 비트 총 본인부담 (2026-10-28)
       BIT_INTAKE=[];BIT_RX_DOCS=[{ocm:'901',mrn:'4401',items:[{cod:'A'}],own:'193750'},{ocm:'902',mrn:'4401',items:[{cod:'B'}],own:'1500'},{ocm:'903',mrn:'4402',items:[{cod:'C'}]}];
       let a,b,c;try{bitRxRebuild();a=BIT_RX_MRN['4401'].own;b=BIT_RX_MRN['4402'].own;c=BIT_RX['901'].own;}finally{BIT_RX_DOCS=_docs;BIT_RX=_rx;BIT_RX_MRN=_rm;BIT_INTAKE=_in;}
@@ -14552,9 +14552,9 @@ function ownCalc(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':x
   else if(ageN!=null&&ageN>=65){const tot=g0;gOwn=tot<=15000?(tot>0?1500:0):tot<=20000?tot*0.1:tot<=25000?tot*0.2:tot*0.3;}
   else if(ageN!=null&&ageN<6)gOwn=g0*0.21;
   else gOwn=g0*0.3;
-  return Math.floor((non+gOwn+oth+1e-6)/OWN_ROUND)*OWN_ROUND;}
-/* 끝자리: 2026-10-28 실제 비교에서 100원 절사로는 50원 안팎이 틀렸다 → 10원 미만 절사. ownCalibrate 가 오늘 실제 금액으로 10·100원 중 더 잘 맞는 쪽을 고른다 */
-let OWN_ROUND=10;
+  /* 끝자리 (2026-10-28 이은혜 92,350원으로 확인): 급여 본인부담(30% 등)만 100원 미만 절사, 비급여·그 밖의 코드(물리치료 3)는 원 단위 그대로 더한다.
+     예) 비급여 50,000 + 급여 97,409×30%=29,222→29,200 + 코드3 13,150 = 92,350 */
+  return Math.round(non)+Math.floor((gOwn+1e-6)/100)*100+Math.floor(oth+1e-6);}
 function ownCtxOf(m){m=normMrn(m);const p=(data||[]).find(x=>normMrn(x.mrn)===m)||(Array.isArray(VISITS)?VISITS:[]).find(x=>normMrn(x.mrn)===m);
   const r=(BIT_INTAKE||[]).find(x=>normMrn(x.mrn)===m&&x.ins);return {ins:(p&&(bitInsOf(p)||p.ins))||(r&&r.ins)||'',ageN:ownAgeOf(p&&p.birth)};}
 /* 뜻을 모르는 급여구분 코드의 부담률: 오늘 비트 금액이 온 접수들로 0.3·0.5·0.8·1.0 중 가장 잘 맞는 값 (10분마다) */
@@ -14562,11 +14562,10 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
   const cases=(BIT_RX_DOCS||[]).filter(v=>v&&v.own!=null&&v.own!==''&&Array.isArray(v.pay)&&v.pay.length).map(v=>Object.assign({actual:Number(String(v.own).replace(/[^\d.-]/g,'')),pay:v.pay},ownCtxOf(v.mrn)));
   const codes=[...new Set(cases.flatMap(c=>c.pay.map(x=>String(x.ins==null?'':x.ins).trim())).filter(c=>c&&c!=='0'&&c!=='2'))];
   const score=rt=>cases.reduce((s,c)=>{const e=ownCalc(c.pay,c.ins,c.ageN,rt);return s+(e===c.actual?2:Math.abs(e-c.actual)<=100?1:0);},0);   // 똑같으면 2점, 100원 안이면 1점
-  {let br=10,bs=-1;[10,100].forEach(rd=>{OWN_ROUND=rd;const s=cases.reduce((a,c)=>a+(ownCalc(c.pay,c.ins,c.ageN,OWN_RATES)===c.actual?1:0),0);if(s>bs){bs=s;br=rd;}});OWN_ROUND=br;}   // 끝자리 10원/100원 — 정확히 같은 건수로
   let best={};codes.forEach(c=>{let bv=0.3,bs=-1;[0.3,0.5,0.8,1.0].forEach(v=>{const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
   OWN_RATES=best;const diff=c=>Math.abs(ownCalc(c.pay,c.ins,c.ageN,best)-c.actual);
   const same=cases.filter(c=>diff(c)===0).length,ok=cases.filter(c=>diff(c)<=100).length,near=cases.filter(c=>diff(c)<=1000).length;
-  OWN_CAL_STAT={n:cases.length,same,ok,near,rates:best,round:OWN_ROUND};}
+  OWN_CAL_STAT={n:cases.length,same,ok,near,rates:best};}
 function ownEstimate(p,rx){if(!rx||!Array.isArray(rx.pay)||!rx.pay.length)return null;try{ownCalibrate();}catch(e){}
   const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),OWN_RATES);}
 function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?consentSaved(mrn):{};
