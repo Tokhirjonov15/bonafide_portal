@@ -516,7 +516,7 @@ function injRecent4(b,today){const t=new Date(today+'T12:00:00').getTime();retur
 let BOARD=null,BOARD_SUB=null,SASO_BUSY=false;
 const nullTh=s=>!String(s||'').trim()||/^null$/i.test(String(s).trim());
 const mrnKey=s=>String(s||'').replace(/\D/g,'');
-function watchBoard(){if(!BONUS4_SUB)BONUS4_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('bonus').onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const k=mrnKey(v.mrn||d.id);if(k)m[k]=v;});BONUS4=m;BONUS4_READY=true;sasoSync();safeRender();},e=>console.warn('bonus',e));
+function watchBoard(){if(!BONUS4_SUB)BONUS4_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('bonus').onSnapshot(s=>{const m={};s.docs.forEach(d=>{const v=d.data()||{};const k=mrnKey(v.mrn||d.id);if(k)m[k]=v;});BONUS4=m;BONUS4_READY=true;sasoSync();remoteRender();},e=>console.warn('bonus',e));
   if(BOARD_SUB)return;
   BOARD_SUB=DB.collection('patientboard_v3').doc('반듯한정형외과').collection('patients').onSnapshot(s=>{BOARD=s.docs.map(d=>d.data()||{});sasoSync();},e=>console.warn('board',e));}
 function sasoCands(){const today=todayYmd();

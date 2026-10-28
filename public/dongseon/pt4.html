@@ -430,7 +430,7 @@ AUTH.onAuthStateChanged(async u=>{
   document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;
   C.meta.onSnapshot(s=>{const d=s.exists?s.data():{};
     META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0,txMinutes:d.txMinutes||{},docDuty:(d.docDuty&&typeof d.docDuty==='object')?d.docDuty:{}};
-    metaReady=true;safeRender();},e=>{console.warn('meta',e);toast('설정을 읽지 못했습니다');});
+    metaReady=true;remoteRender();},e=>{console.warn('meta',e);toast('설정을 읽지 못했습니다');});
   window.addEventListener('hashchange',route);route();
 });
 const isAdmin=()=>!!(ME&&ME.role==='admin');
@@ -688,7 +688,14 @@ function route(){R=parseHash();EDIT=null;MSG='';PAINT=null;try{if(typeof renderE
 function watchDay(date){if(SUB_DATE===date)return;if(SUB)SUB();SUB_DATE=date;DAYDOC=undefined;NEARDOC=null;
   SUB=C.day.doc(date).onSnapshot(async s=>{DAYDOC=s.exists?normDay(s.data(),date):null;
     if((!DAYDOC||!DAYDOC.th.length)){const nd=nearestDataDate(date);if(nd&&(!NEARDOC||NEARDOC.date!==nd)){try{const n=await C.day.doc(nd).get();NEARDOC=n.exists?normDay(n.data(),nd):null;}catch(e){NEARDOC=null;}}}
-    safeRender();},e=>{console.warn('day',e);toast('스케줄을 읽지 못했습니다');});}
+    remoteRender();},e=>{console.warn('day',e);toast('스케줄을 읽지 못했습니다');});}
+/* 2026-10-28 (4층 렉): 다른 PC 저장·설정·혜택 변경이 몰려 오면 올 때마다 표 전체(칸 1,000개 넘음)를 다시 그렸다 → 0.15초 안의 것은 한 번에.
+   또 화면에 안 보일 때(동선관리에서 4층 창을 닫아 둔 10분, 최소화·뒤 탭)는 그리지 않고 다시 보일 때 한 번 그린다 */
+let RR_T=0,PT4_SKIP=false;
+function pt4Hidden(){if(document.hidden)return true;try{const f=window.frameElement;if(EMBED&&f&&!f.offsetParent)return true;}catch(e){}return false;}
+function remoteRender(){if(RR_T)return;RR_T=setTimeout(()=>{RR_T=0;if(pt4Hidden()){PT4_SKIP=true;return;}safeRender();},150);}
+window.pt4Shown=()=>{if(PT4_SKIP){PT4_SKIP=false;safeRender();}};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)window.pt4Shown();});
 /* 글자를 치는 중에는 다시 그리지 않는다 — 다른 PC 의 저장이 들어와도 입력 중인 칸이 지워지지 않게 */
 let PENDING=false;
 function typing(){const a=document.activeElement;return !!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.closest('#app'));}

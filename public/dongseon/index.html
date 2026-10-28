@@ -7817,7 +7817,8 @@ function renderSelBusy(){if(_renderSelPass)return false;const a=document.activeE
 /* 2026-10-28 (렉): 보이지 않는 창(최소화·뒤에 깔린 탭, 슬립 전용 창에서 슬립을 띄운 동안)은 보드를 그리지 않고, 다시 보일 때 한 번 그린다.
    한 PC 에 보드·슬립·4층 창을 여러 개 띄워 두면 변경 하나에 창마다 150장을 다 그리느라 보이는 창까지 느려졌다 */
 let RENDER_SKIPPED=false;
-function boardHidden(){return document.hidden||(SLIP_MODE&&slipOpen&&!SUPPORT_OPEN&&!BONUS_MGR_OPEN&&!waitOpen&&!resvOpen&&!birdOpen);}
+function boardHidden(){if(document.hidden)return true;if(SUPPORT_OPEN||BONUS_MGR_OPEN||waitOpen||resvOpen||birdOpen)return false;
+  return (SLIP_MODE&&slipOpen)||!!document.querySelector('#pt4Ov.show');}   // 4층 화면이 보드를 덮고 있는 동안도 (2026-10-28 4층 렉)
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&RENDER_SKIPPED){RENDER_SKIPPED=false;try{render();}catch(e){console.warn(e);}}});
 function render(){
   if(renderSelBusy())return;
@@ -8716,12 +8717,13 @@ function openPt4(date){let ov=document.getElementById('pt4Ov');
   clearTimeout(window.PT4_DROP_T);const f=document.getElementById('pt4Frame'),hash='#/schedule?date='+encodeURIComponent(date||localYMD(new Date()));
   let warm=false;try{warm=!!(f.contentWindow&&/\/dongseon\/pt4/.test(f.contentWindow.location.pathname)&&typeof f.contentWindow.renderSchedule==='function');}catch(e){}
   if(warm){try{f.contentWindow.location.hash=hash;}catch(e){warm=false;}}
+  if(warm)setTimeout(()=>{try{f.contentWindow.pt4Shown&&f.contentWindow.pt4Shown();}catch(e){}},0);   // 닫아 둔 사이 미룬 그리기 (2026-10-28)
   if(!warm)f.src='pt4.html?embed&t='+Date.now()+hash;
   try{sessionStorage.setItem('pt4Keep','1');}catch(e){}   // 새로고침(새 버전) 뒤 4층 화면을 다시 띄우려고 (2026-10-11)
   try{renderPt4Alert();}catch(e){}   // PT 캡처 알림 띠 (2026-10-13)
   try{f4cBtn();}catch(e){}   // 4층 차팅 자동 인쇄 버튼 (2026-10-14)
   ov.classList.add('show');}
-function closePt4(){try{sessionStorage.removeItem('pt4Keep');}catch(e){}const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');
+function closePt4(){try{sessionStorage.removeItem('pt4Keep');}catch(e){}const ov=document.getElementById('pt4Ov');if(ov){ov.classList.remove('show');if(RENDER_SKIPPED)try{render();}catch(e){console.warn(e);}
   clearTimeout(window.PT4_DROP_T);window.PT4_DROP_T=setTimeout(()=>{const f=document.getElementById('pt4Frame');if(f&&!document.querySelector('#pt4Ov.show'))f.src='about:blank';},10*60000);}}   // 10분 뒤 비운다(메모리) — 그 전에 다시 열면 바로
 /* ═════ 4층 치료사 명단 (2026-10-03 요청: 월별 구글 시트 없이 동선관리에서 예약) ═════
    한 줄에 한 명: '이름 [평일 근무] [주말·공휴일 근무]'  예) 'Jack 09:00-18:00 09:00-13:00' · 시간을 비우면 기본(평일 09:00-21:00, 주말 09:00-18:00).
