@@ -3773,7 +3773,11 @@ function bitCardFor(r,pred){const ok=x=>!x.discharged&&(!pred||pred(x));
     ||(mrn&&data.find(x=>ok(x)&&normMrn(x.mrn)===mrn&&bitInsOk(bitInsOf(x),r.ins)&&bitSameIntake(x,ocm)))
     ||null;}
 /* 같은 차트번호의 카드가 보드에 둘 이상인가 — 카드에 보험 표시·처방을 접수별로 보여 줄 때 */
-function mrnTwins(p){const m=normMrn(p&&p.mrn);return !!m&&data.filter(x=>!x.discharged&&normMrn(x.mrn)===m).length>1;}
+/* 2026-10-28 (렉): 보드를 그릴 때 카드마다 전체 카드를 다시 훑었다(150장 → 2만 번 넘게) — 그리는 동안만 차트번호별 장수를 한 번 세어 둔다 */
+let MRN_TW=null,MRN_TW_ON=false;
+function mrnTwins(p){const m=normMrn(p&&p.mrn);if(!m)return false;
+  if(MRN_TW_ON){if(!MRN_TW){MRN_TW=new Map();data.forEach(x=>{if(x.discharged)return;const k=normMrn(x.mrn);if(k)MRN_TW.set(k,(MRN_TW.get(k)||0)+1);});}return (MRN_TW.get(m)||0)>1;}
+  return data.filter(x=>!x.discharged&&normMrn(x.mrn)===m).length>1;}
 function bitOnBoard(r){return !!bitCardFor(r);}
 /* 취소 처리(status='취소')된 문서가 다시 살아남 — 비트는 접수 수정·보류를 '접수취소 → 접수' 쌍으로, 예약 환자를 '예약접수 → 접수취소 → 사전예약'으로 보낸다.
    감시 스크립트는 취소 뒤에 환자가 살아 있음을 뜻하는 캐스트(접수·사전예약·호출·수납대기 등)가 오면 cancelled=false 로 되돌리므로,
@@ -4093,7 +4097,8 @@ function autoReloadBlock(){if(typeof window.recActive==='function'&&window.recAc
 function slipReloadWait(why){SLIP_RELOAD_WAIT=SLIP_RELOAD_WAIT||why;const b=document.getElementById('slipUpd');if(b)b.style.display='';}
 function slipReloadNow(){try{audit('새로고침(슬립 닫힘)',SLIP_RELOAD_WAIT);}catch(e){}try{flushBigLocal();}catch(e){}setTimeout(()=>location.reload(),300);}
 document.addEventListener('visibilitychange',()=>{if(SLIP_RELOAD_WAIT&&document.visibilityState==='hidden'&&!autoReloadBlock())slipReloadNow();});   // 안 보일 때 미뤘던 새로고침 (슬립이 열려 있거나 녹음 중이면 안 함, 2026-10-15)
-function closeSlipScreen(){if(SLIP_RELOAD_WAIT){setTimeout(slipReloadNow,0);}slipOpen=false;try{sessionStorage.removeItem('slipKeep');}catch(e){}const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}}
+function closeSlipScreen(){if(SLIP_RELOAD_WAIT){setTimeout(slipReloadNow,0);}slipOpen=false;try{sessionStorage.removeItem('slipKeep');}catch(e){}const el=document.getElementById('slipScreen');if(el)el.classList.remove('show');try{renderWaitPop();}catch(e){}
+  if(RENDER_SKIPPED)try{render();}catch(e){console.warn(e);}}   // 슬립을 띄운 동안 미룬 보드 그리기
 /* 슬립 화면 환자 검색 (2026-10-01 요청): 성함·차트번호 일부로 왼쪽 목록을 거른다. 검색 중에는 새 처방이 와도 선택이 옮겨 가지 않는다 */
 var SLIP_Q='';
 /* 검색 칸 자동 채움 막기: 직원이 이 칸에 키를 누르거나 붙여넣지 않았는데 글자가 들어 있으면 브라우저 자동 채움(로그인 아이디)으로 보고 지운다 */
@@ -4538,7 +4543,7 @@ function slipPrinted(n){if(!n||!n.printed)return {on:false,stale:false};return {
 function slipPrintedTag(n,big){const s=slipPrinted(n);if(!s.on)return '';
   const tip=`${s.by?s.by+' · ':''}${s.at?hhmm(new Date(s.at).toISOString()):''} 인쇄${s.stale?' — 그 뒤 처방이 바뀌었습니다. 다시 인쇄하세요':''}`;
   return ` <span class="slip-printed${s.stale?' stale':''}${big?' big':''}" title="${esc(tip)}">🖨 ${s.stale?'인쇄 후 변경':'인쇄됨'}</span>`;}
-function onBitNotes(){try{if(currentUser){if(bitApplyLookups())bitBackfillMrn();bitBackfillMemo();}}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)render();}catch(e){}
+function onBitNotes(){try{if(currentUser){if(bitApplyLookups())bitBackfillMrn();bitBackfillMemo();}}catch(e){console.warn(e);}try{renderSlipScreen();}catch(e){}try{if(currentUser)renderThrottled();}catch(e){}   // 진료실 처방 문서가 바뀔 때마다 바로 다시 그리던 것을 묶어서 (2026-10-28 렉)
   try{renderPt4Alert();if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p)fillCapBox(p);}}catch(e){console.warn('ptShot',e);}}   // PT 캡처 → 4층 알림·환자 정보 창 (2026-10-13)   // 특이사항 보충 + 카드 요약(처방 N줄) 갱신
 window.bitAccept=function(docId){
   const r=BIT_INTAKE.find(x=>x.docId===docId);if(!r)return;
@@ -7809,8 +7814,18 @@ function renderSelBusy(){if(_renderSelPass)return false;const a=document.activeE
       setTimeout(()=>{_renderSelPass=true;try{render();}finally{_renderSelPass=false;}},0);};
     _renderSelHold={el,t:setTimeout(go,15000),t0,off:()=>{el.removeEventListener('blur',go);el.removeEventListener('change',go);}};el.addEventListener('blur',go);el.addEventListener('change',go);}
   return true;}
+/* 2026-10-28 (렉): 보이지 않는 창(최소화·뒤에 깔린 탭, 슬립 전용 창에서 슬립을 띄운 동안)은 보드를 그리지 않고, 다시 보일 때 한 번 그린다.
+   한 PC 에 보드·슬립·4층 창을 여러 개 띄워 두면 변경 하나에 창마다 150장을 다 그리느라 보이는 창까지 느려졌다 */
+let RENDER_SKIPPED=false;
+function boardHidden(){return document.hidden||(SLIP_MODE&&slipOpen&&!SUPPORT_OPEN&&!BONUS_MGR_OPEN&&!waitOpen&&!resvOpen&&!birdOpen);}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&RENDER_SKIPPED){RENDER_SKIPPED=false;try{render();}catch(e){console.warn(e);}}});
 function render(){
   if(renderSelBusy())return;
+  if(boardHidden()){RENDER_SKIPPED=true;return;}
+  RENDER_SKIPPED=false;MRN_TW=null;MRN_TW_ON=true;
+  try{renderBoard();}finally{MRN_TW_ON=false;MRN_TW=null;}
+}
+function renderBoard(){
   normalizeData();
   try{if(SUPPORT_OPEN)renderSupport();}catch(e){}
   try{if(BONUS_MGR_OPEN&&!BONUS_PID&&!BV)renderBonusMgr();}catch(e){}   // 혜택 관리 목록: 환자가 4층 방에 들고 나면 바로 반영 (2026-10-06)   // 진료지원 창이 열려 있으면 함께 갱신 (2026-10-05)
