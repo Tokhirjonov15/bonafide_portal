@@ -3698,13 +3698,19 @@ function subscribeBitIntake(){
     },err=>console.warn('bitLookup',err));
   }
   if((role==='staff'||role==='slip')&&cloud.rxCol){   // 비트 처방내역(오늘) — 카드 요약·환자 정보 창 표 (2026-09-23)
-    cloud.unsubRx=cloud.rxCol.where('date','==',today).onSnapshot(s=>{
-      BIT_RX_DOCS=s.docs.map(d=>d.data()||{});bitRxRebuild();
+    /* 2026-10-28 (동선관리 렉): 처방 문서는 접수 PC 에이전트 여러 대가 금액·본인부담까지 자주 써서, 바뀔 때마다 모든 화면이 동선 다시 짜기·보드 전체 다시 그리기를 했다.
+       0.4초 안에 온 변경은 한 번에 모아 처리하고, 보드는 renderThrottled 로 */
+    let rxSnapT=null,rxSnapDocs=null;
+    const rxSnapRun=()=>{rxSnapT=null;if(!rxSnapDocs)return;BIT_RX_DOCS=rxSnapDocs;rxSnapDocs=null;bitRxRebuild();
       try{applyRxRoutesAll();}catch(e){console.warn('rxRoutes',e);}   // 처방 → 동선 자동 채우기 (바뀐 카드가 있으면 안에서 다시 그림)
       try{bonusScanRx();}catch(e){console.warn('bonusScan',e);}   // 주사 맞은 날 → 보너스 (2026-10-04)
       try{bitPaidAmtFill();}catch(e){console.warn('paid amt',e);}   // 계산한 카드의 기준 금액 (2026-10-14)
-      try{render();}catch(e){}
-      if(editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}
+      try{renderThrottled();}catch(e){}
+      if(editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}};
+    cloud.unsubRx=cloud.rxCol.where('date','==',today).onSnapshot(s=>{
+      rxSnapDocs=s.docs.map(d=>d.data()||{});
+      if(!BIT_RX_DOCS){rxSnapRun();return;}   // 처음 한 번은 바로
+      if(!rxSnapT)rxSnapT=setTimeout(rxSnapRun,400);
     },err=>console.warn('bitRx',err));
   }
   if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
