@@ -5919,6 +5919,12 @@ async function runSelfTest(){
       ok('슬립: 지난 주사 캡처를 날짜 상관없이 클릭 없이 전부(지난 캡처 표시, PT 캡처 제외), 오늘 것이 있으면 오늘 것 먼저 + 지난 것',
         h1.includes('x/old.jpg')&&h1.includes('x/older.jpg')&&h1.includes('지난 캡처')&&!h1.includes('x/pt.jpg')&&!/<select/.test(h1)&&h3.indexOf('x/today.jpg')>=0&&h3.indexOf('x/today.jpg')<h3.indexOf('x/old.jpg'));
       if(_p)SLIP_PAST[m]=_p;else delete SLIP_PAST[m];}
+     {const _r=STAFF_ROSTER,_d=DOCTORS,_rm=ROOMS,_m=ROOM_META['퇴사테스트방'];   // 퇴사한 분 정리 (2026-10-28 채상훈)
+      STAFF_ROSTER={'의사':['김현우 (Ethan)','채상훈 (Hun)'],'간호사':['우성복']};DOCTORS=['김현우','채상훈'];ROOMS=_rm.concat(['퇴사테스트방']);ROOM_META['퇴사테스트방']={doctors:['채상훈','김현우'],owners:[{name:'채상훈'}]};
+      let ch=false,ch2=true,opts=[];try{ch=dropFormerStaff();ch2=dropFormerStaff();opts=staffOpts('',['채상훈','김현우'],'의사');}finally{}
+      const ok1=ch&&!ch2&&JSON.stringify(STAFF_ROSTER['의사'])==='["김현우 (Ethan)"]'&&JSON.stringify(DOCTORS)==='["김현우"]'&&JSON.stringify(ROOM_META['퇴사테스트방'].doctors)==='["김현우"]'&&!ROOM_META['퇴사테스트방'].owners.length&&!opts.includes('채상훈')&&docStatIsDoctor()('채상훈');
+      STAFF_ROSTER=_r;DOCTORS=_d;ROOMS=_rm;if(_m)ROOM_META['퇴사테스트방']=_m;else delete ROOM_META['퇴사테스트방'];
+      ok('퇴사한 분: 직원 명단·진료의 목록·방 담당·고르는 칸에서 빠지고(두 번째는 바꿀 것 없음), 통계에서는 여전히 원장님', ok1);}
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
       BIT_STATUS={'진료실1':{ver:'v3.7',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.7',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db1.9',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.8',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now}};
       const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
@@ -6619,6 +6625,8 @@ function applyCfg(d){
   DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
   OFF_SCHED=(d.offSched&&typeof d.offSched==='object')?d.offSched:{};
   if(d.staffRoster&&typeof d.staffRoster==='object'){STAFF_ROSTER=d.staffRoster;try{const om=document.getElementById('offModal');if(om&&om.classList.contains('show'))renderStaffDir();}catch(e){}}   // 직원 목록 (2026-10-05)
+  /* 퇴사한 분은 앞으로 고르는 칸 어디에도 (2026-10-28 요청: 채상훈) — 직원 명단·진료의 목록·방 담당에서 빼고, 관리자 화면이면 설정에 한 번 저장. 지난 카드·내원·통계 기록은 그대로 */
+  try{if(dropFormerStaff()&&currentUser&&isAdmin())setTimeout(()=>{try{saveRooms();audit('퇴사 정리(자동)',FORMER_STAFF.join(', '));}catch(e){}},1500);}catch(e){console.warn('former staff',e);}
   if(typeof d.bkRoster==='string')BK_ROSTER_TEXT=d.bkRoster;   // 4층 치료사 명단 (2026-10-03)
   SHEET_NOTES=(d.sheetNotes&&typeof d.sheetNotes==='object')?d.sheetNotes:{};
   SHEET_STAFF_HIST=(d.sheetStaffHist&&typeof d.sheetStaffHist==='object')?d.sheetStaffHist:{};
@@ -13111,6 +13119,16 @@ const isClinicRoom=r=>/^진료실\s*\d/.test(String(r||'').trim());
    직원 목록에 넣고 빼면 카드·환자 정보 창의 선택칸이 저절로 따라간다 — 진료·술기 = 의사, 간호 = 간호사, 방사선 = 방사선사,
    그 밖의 방 담당 = 그 방 명단의 파트(기본물리치료 = 물리치료사 등). 그 방 명단(진료실 관리)에 있는 사람이 먼저, 직원 목록에서 빠진 사람은 목록에서도 빠진다.
    지금 골라 둔 값은 늘 남긴다. 오늘 휴무는 뺀다. 이름은 한글 부분만('김현우 (Ethan)' → 김현우) */
+/* 퇴사한 분 (2026-10-28) — 직원 목록의 [퇴사 처리]와 같은 정리를 자동으로. 고르는 칸(진료의·담당)에 다시 나오지 않게 */
+const FORMER_STAFF=['채상훈'];
+function isFormerStaff(n){const ks=rosterKeys(n);return FORMER_STAFF.some(f=>ks.includes(String(f).replace(/\s+/g,'').toLowerCase()));}
+function dropFormerStaff(){let ch=false;
+  const R=(STAFF_ROSTER&&typeof STAFF_ROSTER==='object')?STAFF_ROSTER:null;
+  if(R)Object.keys(R).forEach(g=>{if(Array.isArray(R[g])){const L=R[g].filter(e=>!isFormerStaff(e));if(L.length!==R[g].length){R[g]=L;ch=true;}}});
+  if(Array.isArray(DOCTORS)){const D=DOCTORS.filter(x=>!isFormerStaff(x));if(D.length!==DOCTORS.length){DOCTORS=D;ch=true;try{localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();}catch(e){}}}
+  (ROOMS||[]).forEach(r=>{const m=meta(r);['doctors','nurses','rads'].forEach(k=>{if(Array.isArray(m[k])){const L=m[k].filter(x=>!isFormerStaff(x));if(L.length!==m[k].length){m[k]=L;ch=true;}}});
+    if(Array.isArray(m.owners)){const L=m.owners.filter(o=>!isFormerStaff(o&&o.name));if(L.length!==m.owners.length){m.owners=L;ch=true;}}});
+  return ch;}
 function rosterNames(part){try{return (staffRoster()[part]||[]).map(e=>{const m=/^(.*?)\s*\(.*\)\s*$/.exec(String(e));return (m?m[1]:String(e)).trim();}).filter(Boolean);}catch(e){return [];}}
 const staffKey=n=>String(n||'').replace(/\s+/g,'').toLowerCase();
 function uniqStaff(L){const seen=new Set();return L.filter(n=>{if(!n)return false;const k=staffKey(n);if(seen.has(k))return false;seen.add(k);return true;});}
@@ -13118,7 +13136,7 @@ function uniqStaff(L){const seen=new Set();return L.filter(n=>{if(!n)return fals
    의사 칸은 직원 목록 '의사' 파트만 — 다른 칸(간호·방사선·물리치료)은 종전대로 그 방 명단을 먼저 */
 function onlyDocs(L){const R=rosterNames('의사');if(!R.length)return (L||[]).filter(Boolean);return (L||[]).filter(n=>n&&rosterPart(n)==='의사');}
 function staffOpts(cur,list,part){const R=part?rosterNames(part):[];
-  const keep=(list||[]).filter(n=>!R.length||(part==='의사'?rosterPart(n)==='의사':rosterPart(n)));
+  const keep=(list||[]).filter(n=>!isFormerStaff(n)&&(!R.length||(part==='의사'?rosterPart(n)==='의사':rosterPart(n))));   // 퇴사한 분은 고르는 칸에서 뺌(이미 그 이름이 찍힌 카드는 cur 로 그대로 보임)
   return uniqStaff([cur,...[...keep,...R].filter(n=>!isOffToday(n))]);}
 /* 진료실 관리에서 이름을 적지 않고 고르기만 (2026-10-14 요청: '직원 목록에서 알아서 따오면 안 되나') — 방마다
    staffPart(담당 파트) · showNurse/showRad(간호·방사선 칸 표시). 아직 안 고른 방은 예전 이름 칸 내용으로 정한다(있으면 그 파트·칸 표시) */
