@@ -3418,13 +3418,15 @@ function bitRxRebuild(){if(!BIT_RX_DOCS)return;const cx=bitRxCancelled();BIT_RX_
   BIT_RX={};BIT_RX_MRN={};
   BIT_RX_DOCS.forEach(v=>{const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
     if(ocm&&cx.has(ocm.replace(/\D/g,'')))return;   // 접수취소된 접수의 처방
-    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim()};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
+    const ownN=(v.own==null||v.own==='')?null:Number(String(v.own).replace(/[^\d.-]/g,''));   // 총 본인부담(비트 수납 창, 에이전트 db2.0 — 2026-10-28). 계산 전이면 없음
+    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim(),own:(ownN!=null&&isFinite(ownN))?ownN:null,ownAt:v.ownAt||''};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
     if(ocm)BIT_RX[ocm]=rec;
     /* 같은 환자가 오늘 비트에 접수가 둘 이상이면(과·담당의 바꿔 재접수 등) 처방을 모두 합친다 (2026-10-01: 한 접수분만 보였다) */
     if(mrn){const o=BIT_RX_MRN[mrn];
       if(!o)BIT_RX_MRN[mrn]=rec;
       else{const tk=x=>String(x.t||'');BIT_RX_MRN[mrn]={ocm:o.ocm,ocms:[...(o.ocms||[o.ocm]),ocm],mrn,
-        items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs};}}});}
+        items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs,
+          own:(o.own==null&&rec.own==null)?null:(o.own||0)+(rec.own||0),ownAt:(o.ownAt>rec.ownAt?o.ownAt:rec.ownAt)};}}});}   // 접수가 둘이면 본인부담도 합계
 /* 접수 목록이 바뀌어 취소된 접수가 달라지면 처방을 다시 묶는다 */
 function bitRxCancelSync(){if(!BIT_RX_DOCS)return;const sig=[...bitRxCancelled()].sort().join(',');if(sig===BIT_RX_CXSIG)return;
   bitRxRebuild();try{render();}catch(e){}if(typeof editId!=='undefined'&&editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}}
@@ -3811,7 +3813,7 @@ function bitStatusRows(){const now=Date.now();
     const ok=!!ver&&verNum(ver)>=verNum(latest);const t=new Date(st.lastSeen||0);const ageMin=isNaN(t)?null:Math.round((now-t.getTime())/60000);
     const kind=agent?'DB 에이전트 → 접수PC_에이전트업데이트.bat':/^진료실\d/.test(pc)?'진료실 → 진료실PC_설치.bat':'감시 → 기타PC_감시업데이트.bat';
     /* v3.7 부터 모드가 남는다. 옛 버전은 외래진료실 창이 열려 있으면 처방을 보낸다(차팅 섞임·열람만 슬립의 원인) */
-    const mode=agent?(st.leader?'전송 담당':'대기(다른 PC가 담당)'):st.noteOff?'처방 안 보냄':st.noteGlp?'마운자로·위고비만':verNum(ver)>=verNum('v3.7')?'처방 보냄':(st.doctorOpen?'⚠ 외래진료실 창 열림 — 처방 보내는 중(옛 버전)':'');
+    const mode=agent?(st.leader?('전송 담당'+(verNum(ver)<verNum('db2.0')?' · ⚠ 환자부담금 안 보냄 (db2.0 필요)':' · 환자부담금 보냄')):'대기(다른 PC가 담당)'):st.noteOff?'처방 안 보냄':st.noteGlp?'마운자로·위고비만':verNum(ver)>=verNum('v3.7')?'처방 보냄':(st.doctorOpen?'⚠ 외래진료실 창 열림 — 처방 보내는 중(옛 버전)':'');
     return {pc,st,ver,agent,latest,ok,ageMin,kind,mode,t};});}
 function openBitStatus(){let ov=document.getElementById('bitStOv');
   if(!ov){ov=document.createElement('div');ov.id='bitStOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
@@ -5941,11 +5943,15 @@ async function runSelfTest(){
       const ok2=isFormerStaff('홍원장')&&isFormerStaff('홍원장 (Hong)')&&isFormerStaff('김치료')&&!isFormerStaff('김현우')&&docStatIsDoctor()('홍원장')&&!docStatIsDoctor()('김치료')&&!staffOpts('',['김치료','서효성'],'').includes('김치료')&&cfgBundle().formerStaff.length===2;
       FORMER_EXTRA=_fx;
       ok('직원 목록 ✕(퇴사): 퇴사자 명단에 남아 고르는 칸에서 빠지고, 원장님이었으면 지난 통계는 원장님, 설정에 저장', ok2);}
+     {const _docs=BIT_RX_DOCS,_rx=BIT_RX,_rm=BIT_RX_MRN,_in=BIT_INTAKE;   // 환자부담금 = 비트 총 본인부담 (2026-10-28)
+      BIT_INTAKE=[];BIT_RX_DOCS=[{ocm:'901',mrn:'4401',items:[{cod:'A'}],own:'193750'},{ocm:'902',mrn:'4401',items:[{cod:'B'}],own:'1500'},{ocm:'903',mrn:'4402',items:[{cod:'C'}]}];
+      let a,b,c;try{bitRxRebuild();a=BIT_RX_MRN['4401'].own;b=BIT_RX_MRN['4402'].own;c=BIT_RX['901'].own;}finally{BIT_RX_DOCS=_docs;BIT_RX=_rx;BIT_RX_MRN=_rm;BIT_INTAKE=_in;}
+      ok('환자부담금: 비트 총 본인부담(own) — 접수가 둘이면 합계, 계산 전이면 없음', a===195250&&b===null&&c===193750,[a,b,c].join());}
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
       BIT_STATUS={'진료실1':{ver:'v3.7',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.7',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db1.9',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.8',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now}};
       const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
       ok('설치 상태: 최신(v3.7·db1.9) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시, v3.10 > v3.7',
-        g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&/진료실PC_설치/.test(g('진료실1').kind)&&/기타PC/.test(g('접수3').kind)&&!g('진료실2').ok&&g('접수1').ok&&g('접수1').mode==='전송 담당'&&!g('접수2').ok&&g('접수3').ok);}
+        g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&/진료실PC_설치/.test(g('진료실1').kind)&&/기타PC/.test(g('접수3').kind)&&!g('진료실2').ok&&g('접수1').ok&&/^전송 담당 · ⚠ 환자부담금 안 보냄/.test(g('접수1').mode)&&!g('접수2').ok&&g('접수3').ok);}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE,_v=VISITS;   // 차트 열람만 (2026-10-27 이선아)
       BIT_NOTES=[{docId:'n1',mrn:'7301',name:'열람만',rx:'med\nneuropathic pain\nx',updatedAt:new Date().toISOString()},{docId:'n2',mrn:'7302',name:'접수됨',rx:'med\nneuropathic pain\ny',updatedAt:new Date().toISOString()}];
       data=[];VISITS=[];BIT_INTAKE=[{docId:'i1',src:'db',mrn:'7302',registered:true}];const L=slipItems();const a=L.find(x=>x.mrn==='7301'),b=L.find(x=>x.mrn==='7302');
@@ -12597,7 +12603,8 @@ function fillRxHist(p,boxId){
 function rxHistRender(box,mrn,docs){
   const today=localYMD(new Date());
   const byDay={};
-  docs.forEach(v=>{const D=String(v.date||'');if(!D||D>=today)return;const g=byDay[D]||(byDay[D]={items:[],pay:[],nfs:''});if(!g.nfs&&v.nfs!=null)g.nfs=String(v.nfs).trim();
+  docs.forEach(v=>{const D=String(v.date||'');if(!D||D>=today)return;const g=byDay[D]||(byDay[D]={items:[],pay:[],nfs:'',own:null});if(!g.nfs&&v.nfs!=null)g.nfs=String(v.nfs).trim();
+    {const o=(v.own==null||v.own==='')?null:Number(String(v.own).replace(/[^\d.-]/g,''));if(o!=null&&isFinite(o))g.own=(g.own||0)+o;}   // 그날 총 본인부담(에이전트 db2.0 부터)
     (Array.isArray(v.items)?v.items:[]).forEach(x=>g.items.push(x));(Array.isArray(v.pay)?v.pay:[]).forEach(x=>g.pay.push(x));});
   const days=Object.keys(byDay).sort().reverse();
   const head=`<div class="sect-t" style="display:flex;align-items:center;gap:6px"><i data-lucide="history"></i> 과거 처방내역 <span class="hint">${days.length?days.length+'번 내원':'기록 없음'} · 2026-09-23 이후</span></div>`;
@@ -12610,7 +12617,7 @@ function rxHistRender(box,mrn,docs){
       return `<tr><td class="rx-nam" title="${esc(String(x.cod||'').trim()+(x.t?' · '+x.t:''))}">${esc(String(x.nam||'').trim())}</td><td>${esc(qty)}${unt?`<span class="rx-unt">${esc(unt)}</span>`:''}</td><td class="rx-amt">${pay?esc(rxWon(pay.amt)):''}</td><td class="rx-ins">${ib?`<span class="rx-ib ${ib.cls}" title="${esc(ib.tip)}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('');
     const open=!!(RX_HIST_OPEN[mrn]&&RX_HIST_OPEN[mrn][D]);
     const sum=g.pay.reduce((a,x)=>a+(Number(x.amt)||0),0);
-    return `<tr class="rxh-day${open?' open':''}" onclick="rxHistToggle('${esc(mrn)}','${esc(D)}')" title="누르면 ${open?'접기':'펼치기'}"><td colspan="4"><span class="rxh-car">${open?'▾':'▸'}</span> ${esc(D)} (${wd[new Date(D+'T12:00:00').getDay()]}) ${nfsBadge(g.nfs)}${dr?' · '+esc(dr):''} · ${g.items.length}건${sum?` <span class="rxh-sum">${esc(rxWon(sum))}원</span>`:''}</td></tr>${open?tr:''}`;}).join('');
+    return `<tr class="rxh-day${open?' open':''}" onclick="rxHistToggle('${esc(mrn)}','${esc(D)}')" title="누르면 ${open?'접기':'펼치기'}"><td colspan="4"><span class="rxh-car">${open?'▾':'▸'}</span> ${esc(D)} (${wd[new Date(D+'T12:00:00').getDay()]}) ${nfsBadge(g.nfs)}${dr?' · '+esc(dr):''} · ${g.items.length}건${g.own!=null?` <span class="rxh-sum" title="비트 총 본인부담">본인부담 ${esc(rxWon(g.own))}원</span>`:sum?` <span class="rxh-sum" title="공단부담 포함 진료비 (본인부담은 2026-10-28 이후 기록부터)">진료비 ${esc(rxWon(sum))}원</span>`:''}</td></tr>${open?tr:''}`;}).join('');
   box.style.display='';
   box.innerHTML=head+`<div class="rx-tblwrap rxh-wrap"><table class="rx-tbl rxh-tbl"><thead><tr><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th></tr></thead><tbody>${body}</tbody></table></div>`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}
@@ -14530,7 +14537,9 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
   let sumh='';{const L=(rx&&Array.isArray(rx.pay))?rx.pay:[];if(L.length){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
     const tot=L.reduce((s,x)=>s+n(x),0),non=L.filter(x=>String(x.ins==null?'':x.ins).trim()==='2').reduce((s,x)=>s+n(x),0);
     /* 2026-10-17: '총금액'은 공단부담까지 합친 진료비라 환자 부담금이 아니다 — 이름을 바로잡는다. 환자 부담금(비트 '총 본인부담')은 비트 DB 칸을 찾으면 넣는다(tools/bit_db_find_amt.ps1) */
-    sumh=`<div class="cd-sum"><span>총 진료비 <b>${esc(rxWon(tot))}원</b></span><span>비급여 <b>${esc(rxWon(non))}원</b></span>${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
+    /* 2026-10-28 요청: 총금액은 환자 부담금만 — 비트 수납 창의 '총 본인부담'(에이전트 db2.0). 비트에서 계산 전이면 안내, 공단부담 포함 진료비는 작게 */
+    const own=rx&&rx.own!=null?rx.own:null;
+    sumh=`<div class="cd-sum"><span>환자부담금 ${own!=null?`<b>${esc(rxWon(own))}원</b> <span class="hint">(비트 총 본인부담)</span>`:'<b class="hint" style="font-weight:700">비트 계산 전</b> <span class="hint">(수납 창에서 계산하면 나옵니다)</span>'}</span><span>비급여 <b>${esc(rxWon(non))}원</b></span><span class="hint" title="공단부담 포함">총 진료비 ${esc(rxWon(tot))}원</span>${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
     else if(p.mrn)sumh=`<div class="cd-sum"><button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button></div>`;}
   const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${sumh}${rxh}</div>`;
   return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}

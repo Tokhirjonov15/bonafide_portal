@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db1.9'   # 1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db2.0'   # 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -548,6 +548,16 @@ WHERE LEFT(m.OcmAcpDtm, 8) = '{0}'
 "@
 $script:RxHash = @{}
 $script:PayHash = @{}
+# 총 본인부담 (db2.0, 2026-10-28): 비트 수납 창의 '총 본인부담' = OrpInf.OrpTotOwn (접수번호 OrpOcmNum). 2026-10-28 차트 33341 수납 193,750원으로 확인(bit_db_find_amt v2).
+#  계산(수납 창)을 한 접수만 행이 있다. 같은 접수에 여러 행이면 가장 큰 값(재계산 기록이 남는 경우 대비) 과 행 수를 함께 보낸다
+$OWN_QUERY = @"
+SELECT RTRIM(p.OrpOcmNum) AS k, MAX(p.OrpTotOwn) AS own, COUNT(*) AS n
+FROM OrpInf p WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = p.OrpOcmNum
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}'
+GROUP BY p.OrpOcmNum
+"@
+$script:OwnHash = @{}
 function NumTxt($v) { if ($null -eq $v -or $v -is [DBNull]) { return '' }
   $d = 0.0; if (-not [double]::TryParse([string]$v, [ref]$d)) { return ([string]$v).Trim() }
   if ($d -eq [Math]::Floor($d)) { return [string][int]$d }
@@ -608,6 +618,19 @@ function PollRx() {
     }
   } catch { Log "처방 비우기 조회 오류: $($_.Exception.Message)" }
   if ($sent -or $cleared) { Log "처방 문서: $sent 건 갱신, $cleared 건 비움(처방 삭제·접수 취소) (오늘 접수 $($byOcm.Count)건 / 줄 $($rows.Rows.Count)개)" }
+  # 총 본인부담(db2.0) — 처방 문서에 own(원)·ownRows·ownAt. 값이 바뀔 때만
+  $ownN = 0
+  try {
+    $orows = SqlRows ($OWN_QUERY -f $ymd)
+    foreach ($r in $orows.Rows) {
+      $key = ([string]$r.k -replace '\D', ''); if (-not $key) { continue }
+      $own = NumTxt $r.own; $oh = "$own|$($r.n)"
+      if ($script:OwnHash[$key] -eq $oh) { continue }
+      if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:OwnHash[$key] = $oh; continue }
+      try { FsPatch "bitRx/${day}_ocm$key" @{ own = $own; ownRows = [int]$r.n; ownAt = (NowIso) }; $script:OwnHash[$key] = $oh; $ownN++ } catch { Log "본인부담 전송 오류 ${key}: $($_.Exception.Message)" }
+    }
+  } catch { Log "본인부담 조회 오류: $($_.Exception.Message)" }
+  if ($ownN) { Log "본인부담: $ownN 건 갱신" }
 }
 
 # ── 한 달 처방 합계 → bitRx/_month_YYYY-MM (db1.4, 2026-10-04) ──
