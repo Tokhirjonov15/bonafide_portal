@@ -3809,8 +3809,9 @@ function bitStatusRows(){const now=Date.now();
   return Object.keys(BIT_STATUS).sort((a,b)=>a.localeCompare(b,'ko')).map(pc=>{const st=BIT_STATUS[pc]||{};const ver=String(st.ver||'');
     const agent=st.src==='db'||/^db/.test(ver);const latest=agent?BIT_LATEST.agent:BIT_LATEST.watcher;
     const ok=!!ver&&verNum(ver)>=verNum(latest);const t=new Date(st.lastSeen||0);const ageMin=isNaN(t)?null:Math.round((now-t.getTime())/60000);
-    const kind=agent?'접수 PC · DB 에이전트':st.doctorOpen||/진료실/.test(pc)?'진료실 감시':'접수 PC · 감시';
-    const mode=agent?(st.leader?'전송 담당':'대기(다른 PC가 담당)'):/진료실/.test(pc)?(st.noteOff?'처방 안 보냄(열람용)':st.noteGlp?'마운자로·위고비만':(verNum(ver)>=verNum('v3.7')?'처방 보냄':'')):'';
+    const kind=agent?'DB 에이전트 → 접수PC_에이전트업데이트.bat':/^진료실\d/.test(pc)?'진료실 → 진료실PC_설치.bat':'감시 → 기타PC_감시업데이트.bat';
+    /* v3.7 부터 모드가 남는다. 옛 버전은 외래진료실 창이 열려 있으면 처방을 보낸다(차팅 섞임·열람만 슬립의 원인) */
+    const mode=agent?(st.leader?'전송 담당':'대기(다른 PC가 담당)'):st.noteOff?'처방 안 보냄':st.noteGlp?'마운자로·위고비만':verNum(ver)>=verNum('v3.7')?'처방 보냄':(st.doctorOpen?'⚠ 외래진료실 창 열림 — 처방 보내는 중(옛 버전)':'');
     return {pc,st,ver,agent,latest,ok,ageMin,kind,mode,t};});}
 function openBitStatus(){let ov=document.getElementById('bitStOv');
   if(!ov){ov=document.createElement('div');ov.id='bitStOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
@@ -5922,7 +5923,7 @@ async function runSelfTest(){
       BIT_STATUS={'진료실1':{ver:'v3.7',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.7',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db1.9',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.8',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now}};
       const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
       ok('설치 상태: 최신(v3.7·db1.9) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시, v3.10 > v3.7',
-        g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&!g('진료실2').ok&&g('접수1').ok&&g('접수1').mode==='전송 담당'&&!g('접수2').ok&&g('접수3').ok);}
+        g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&/진료실PC_설치/.test(g('진료실1').kind)&&/기타PC/.test(g('접수3').kind)&&!g('진료실2').ok&&g('접수1').ok&&g('접수1').mode==='전송 담당'&&!g('접수2').ok&&g('접수3').ok);}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE,_v=VISITS;   // 차트 열람만 (2026-10-27 이선아)
       BIT_NOTES=[{docId:'n1',mrn:'7301',name:'열람만',rx:'med\nneuropathic pain\nx',updatedAt:new Date().toISOString()},{docId:'n2',mrn:'7302',name:'접수됨',rx:'med\nneuropathic pain\ny',updatedAt:new Date().toISOString()}];
       data=[];VISITS=[];BIT_INTAKE=[{docId:'i1',src:'db',mrn:'7302',registered:true}];const L=slipItems();const a=L.find(x=>x.mrn==='7301'),b=L.find(x=>x.mrn==='7302');
