@@ -3819,7 +3819,7 @@ function openBitStatus(){let ov=document.getElementById('bitStOv');
   if(!ov){ov=document.createElement('div');ov.id='bitStOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
   const R=bitStatusRows();const hm=t=>isNaN(t)?'':`${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
   const old=R.filter(r=>!r.ok);
-  const rows=R.map(r=>`<tr><td><b>${esc(r.pc)}</b><div class="hint">${esc(r.kind)}</div></td>
+  const rows=R.map(r=>`<tr><td><b>${esc(r.pc)}</b>${r.st.ip?` <span class="hint" title="이 PC 의 IP — 어느 자리 컴퓨터인지 찾을 때">${esc(String(r.st.ip).split(',')[0])}</span>`:''}<div class="hint">${esc(r.kind)}</div></td>
     <td>${r.ver?`<b style="color:${r.ok?'#15803d':'#b91c1c'}">${esc(r.ver)}</b>`:'<span class="hint">(버전 없음)</span>'} ${r.ok?'✅':`<span style="color:#b91c1c;font-weight:800">⚠ 옛 버전 → ${esc(r.latest)} 필요</span>`}</td>
     <td>${esc(hm(r.t))}<div class="hint">${r.ageMin==null?'':r.ageMin<1?'방금':r.ageMin+'분 전'}${r.ageMin!=null&&r.ageMin>40?' · 꺼져 있거나 신호 없음':''}</div></td>
     <td>${esc(r.mode)}</td><td class="hint" style="max-width:260px">${r.st.lastErr?esc(String(r.st.lastErr).slice(0,120))+(r.st.lastErrAt?' ('+esc(hm(new Date(r.st.lastErrAt)))+')':''):''}</td></tr>`).join('');
