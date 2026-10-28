@@ -14534,13 +14534,11 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수</th><th>급/비</th></tr></thead><tbody>${rx.items.map(x=>{const pay=payOf(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
       return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td class="r">${esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
-  let sumh='';{const L=(rx&&Array.isArray(rx.pay))?rx.pay:[];if(L.length){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
-    const tot=L.reduce((s,x)=>s+n(x),0),non=L.filter(x=>String(x.ins==null?'':x.ins).trim()==='2').reduce((s,x)=>s+n(x),0);
-    /* 2026-10-17: '총금액'은 공단부담까지 합친 진료비라 환자 부담금이 아니다 — 이름을 바로잡는다. 환자 부담금(비트 '총 본인부담')은 비트 DB 칸을 찾으면 넣는다(tools/bit_db_find_amt.ps1) */
-    /* 2026-10-28 요청: 총금액은 환자 부담금만 — 비트 수납 창의 '총 본인부담'(에이전트 db2.0). 비트에서 계산 전이면 안내, 공단부담 포함 진료비는 작게 */
-    const own=rx&&rx.own!=null?rx.own:null;
-    sumh=`<div class="cd-sum"><span>환자부담금 ${own!=null?`<b>${esc(rxWon(own))}원</b> <span class="hint">(비트 총 본인부담)</span>`:'<b class="hint" style="font-weight:700">비트 계산 전</b> <span class="hint">(수납 창에서 계산하면 나옵니다)</span>'}</span><span>비급여 <b>${esc(rxWon(non))}원</b></span><span class="hint" title="공단부담 포함">총 진료비 ${esc(rxWon(tot))}원</span>${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
-    else if(p.mrn)sumh=`<div class="cd-sum"><button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button></div>`;}
+  /* 2026-10-28 요청: 동의서는 환자분께 '오늘 금액'을 알려 드리는 것 — 비트 수납 창의 '총 본인부담'(에이전트 db2.0)만 보인다.
+     아직 비트에서 안 왔으면 아무것도 쓰지 않는다(총 진료비·비급여·'계산 전' 안내는 빼기로) */
+  let sumh='';{const own=rx&&rx.own!=null?rx.own:null;
+    const amt=own!=null?`<span>본인부담액 <b style="font-size:17px">${esc(rxWon(own))}원</b></span>`:'';
+    if(amt||p.mrn)sumh=`<div class="cd-sum">${amt}${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
   const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${sumh}${rxh}</div>`;
   return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}
 
