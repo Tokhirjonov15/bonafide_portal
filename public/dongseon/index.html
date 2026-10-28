@@ -14540,7 +14540,8 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     const amt=own!=null?`<span>본인부담액 <b style="font-size:17px">${esc(rxWon(own))}원</b></span>`:'';
     if(amt||p.mrn)sumh=`<div class="cd-sum">${amt}${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
   const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${sumh}${rxh}</div>`;
-  return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${esc(p.mrn||'')}${p.birth?' · '+esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}
+  /* 2026-10-28 요청: 동의서 화면 머리에 차트번호는 보이지 않게 (환자분이 보는 화면) */
+  return `<div class="cd-who"><b>${esc(p.name||'')}</b> <span class="hint">${p.birth?esc(p.birth):''}${age(p.birth)?' · '+esc(age(p.birth)):''}${p.sex?' · '+esc(p.sex):''} · ${esc(curRoom(p)||'')}</span></div>${cons}${chart}${rxs}`;}
 
 /* ───── 진료지원 창 (2026-10-05 요청) ─────
    오늘 처방 D/C(p.rxDc) 와 오늘 새로 쓴 차팅(p.chartAt — markChartWritten) 을 환자별로 모아 최근 것부터. 직원 모두.
