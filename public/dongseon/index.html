@@ -2621,6 +2621,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
   <div class="modal">
     <h3><i data-lucide="door-open"></i> 진료실(방) 관리</h3>
     <div class="body">
+      <button class="btn" style="margin-bottom:10px;border-color:var(--blue,#2563eb);color:var(--blue,#2563eb);font-weight:800" onclick="openBitStatusNow()"><i data-lucide="monitor-check"></i> PC 설치 상태 (진료실·접수 PC 버전 확인)</button>
       <p class="hint">진료실 이름과 순서만 관리합니다. ⠿를 드래그해 순서를 바꾸세요. (관리자 전용)</p>
       <div id="roomsList" style="display:flex;flex-direction:column;gap:8px"></div>
       <div class="route-add">
@@ -3825,6 +3826,18 @@ function openBitStatus(){let ov=document.getElementById('bitStOv');
       <table class="ds-pt"><thead><tr><th>PC</th><th>버전</th><th>마지막 신호</th><th>모드</th><th>마지막 오류</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="hint">아직 신호를 보낸 PC가 없습니다.</td></tr>'}</tbody></table>
       <p class="hint" style="margin-top:10px">PC는 5분마다(비트 창이 안 열린 PC는 30분마다) 신호를 보냅니다. 설치 직후에는 몇 분 뒤에 바뀝니다. 꺼져 있는 PC는 마지막으로 켜져 있을 때의 버전이 보입니다.</p></div>
     <div class="foot"><button class="btn" onclick="bitStatusPoll(true).finally(()=>{if(document.getElementById('bitStOv'))openBitStatus();})">지금 새로고침</button><button class="btn primary" onclick="document.getElementById('bitStOv').remove()">닫기</button></div></div>`;}
+/* 진료실 관리 창의 [PC 설치 상태] — 비트 표시는 신호를 읽은 뒤에야 나타나 못 찾았다(2026-10-28). 먼저 열고(불러오는 중) 읽은 뒤 다시 그린다 */
+window.openBitStatusNow=function(){openBitStatus();const ov=document.getElementById('bitStOv');
+  if(ov&&!Object.keys(BIT_STATUS).length){const b=ov.querySelector('.body');if(b)b.innerHTML='<div class="hint" style="padding:20px">PC 신호를 불러오는 중…</div>';}
+  if(!cloud.bitStatusCol){if(ov){const b=ov.querySelector('.body');if(b)b.innerHTML='<div class="hint" style="padding:20px">이 화면에서는 PC 상태를 읽을 수 없습니다 — 직원용 동선관리(보드)에서 열어 주세요.</div>';}return;}
+  /* bitStatusPoll 은 직원 보드 화면에서만 읽는다 — 여기서는 버튼을 눌렀을 때 한 번 직접 읽는다 */
+  const newer=(a,b)=>new Date((a&&a.lastSeen)||0)>new Date((b&&b.lastSeen)||0);
+  cloud.bitStatusCol.get().then(sn=>{const m={};sn.docs.forEach(x=>{const v=x.data()||{};
+      if(x.id==='_all')Object.keys(v).forEach(k=>{if(v[k]&&typeof v[k]==='object'&&v[k].lastSeen&&(!m[k]||newer(v[k],m[k])))m[k]=v[k];});   // v3.4~ : 한 문서에 PC별
+      else if(v.lastSeen&&(!m[x.id]||newer(v,m[x.id])))m[x.id]=v;});   // 옛 감시 스크립트(v3.3 이하): PC별 문서
+    Object.assign(BIT_STATUS,m);BIT_STATUS_AT=Date.now();
+    try{renderBitPill();}catch(e){}if(document.getElementById('bitStOv'))openBitStatus();})
+    .catch(e=>{const b=document.querySelector('#bitStOv .body');if(b)b.innerHTML='<div class="hint" style="padding:20px">불러오지 못했습니다: '+esc(e.message||e)+'</div>';});};
 function renderBitPill(){
   const el=document.getElementById('bitPill');if(!el)return;
   const pcs=Object.keys(BIT_STATUS).sort();
