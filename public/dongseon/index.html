@@ -1858,7 +1858,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   <button class="gtab tb-disch" id="dischTab" onclick="setGroup('__disch__')" title="오늘 내원 환자 목록(접수순·날짜별·정렬·되돌리기)"><i data-lucide="clipboard-list"></i> 내원 목록</button>
   <div class="spacer"></div>
   <span id="syncPill" style="display:none;font-size:12px;font-weight:700;white-space:nowrap"></span>
-  <span id="bitPill" class="bit-pill" style="display:none" onclick="bitStatusPoll(true)" title="클릭: 지금 새로고침 · 비트플러스 연동 상태 — PC별 (초록=접수 창 또는 외래진료실 창 열림, 노랑=비트 창 닫힘, 회색=150초 이상 신호 없음)"></span>
+  <span id="bitPill" class="bit-pill" style="display:none" onclick="openBitStatus();bitStatusPoll(true).finally(()=>{if(document.getElementById('bitStOv'))openBitStatus();})" title="클릭: 지금 새로고침 · 비트플러스 연동 상태 — PC별 (초록=접수 창 또는 외래진료실 창 열림, 노랑=비트 창 닫힘, 회색=150초 이상 신호 없음)"></span>
   <button class="btn menu-btn" id="menuBtn" onclick="toggleTopMenu()" title="메뉴"><i data-lucide="menu"></i></button>
   <div class="top-actions" id="topActions">
     <button class="btn" id="chatBtn" onclick="toggleChatAll()"><i data-lucide="bell-ring"></i> 전체알람<span id="chatBadge"></span></button>
@@ -3800,6 +3800,31 @@ function renderBitBar(){
       <button type="button" class="mini" onclick="bitIgnore('${esc(r.docId)}')" title="오늘은 접수하지 않음">무시</button>
     </span>`;}).join('');
 }
+/* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
+   bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
+const BIT_LATEST={watcher:'v3.7',agent:'db1.9'};
+function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
+function bitStatusRows(){const now=Date.now();
+  return Object.keys(BIT_STATUS).sort((a,b)=>a.localeCompare(b,'ko')).map(pc=>{const st=BIT_STATUS[pc]||{};const ver=String(st.ver||'');
+    const agent=st.src==='db'||/^db/.test(ver);const latest=agent?BIT_LATEST.agent:BIT_LATEST.watcher;
+    const ok=!!ver&&verNum(ver)>=verNum(latest);const t=new Date(st.lastSeen||0);const ageMin=isNaN(t)?null:Math.round((now-t.getTime())/60000);
+    const kind=agent?'접수 PC · DB 에이전트':st.doctorOpen||/진료실/.test(pc)?'진료실 감시':'접수 PC · 감시';
+    const mode=agent?(st.leader?'전송 담당':'대기(다른 PC가 담당)'):/진료실/.test(pc)?(st.noteOff?'처방 안 보냄(열람용)':st.noteGlp?'마운자로·위고비만':(verNum(ver)>=verNum('v3.7')?'처방 보냄':'')):'';
+    return {pc,st,ver,agent,latest,ok,ageMin,kind,mode,t};});}
+function openBitStatus(){let ov=document.getElementById('bitStOv');
+  if(!ov){ov=document.createElement('div');ov.id='bitStOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
+  const R=bitStatusRows();const hm=t=>isNaN(t)?'':`${t.getMonth()+1}/${t.getDate()} ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+  const old=R.filter(r=>!r.ok);
+  const rows=R.map(r=>`<tr><td><b>${esc(r.pc)}</b><div class="hint">${esc(r.kind)}</div></td>
+    <td>${r.ver?`<b style="color:${r.ok?'#15803d':'#b91c1c'}">${esc(r.ver)}</b>`:'<span class="hint">(버전 없음)</span>'} ${r.ok?'✅':`<span style="color:#b91c1c;font-weight:800">⚠ 옛 버전 → ${esc(r.latest)} 필요</span>`}</td>
+    <td>${esc(hm(r.t))}<div class="hint">${r.ageMin==null?'':r.ageMin<1?'방금':r.ageMin+'분 전'}${r.ageMin!=null&&r.ageMin>40?' · 꺼져 있거나 신호 없음':''}</div></td>
+    <td>${esc(r.mode)}</td><td class="hint" style="max-width:260px">${r.st.lastErr?esc(String(r.st.lastErr).slice(0,120))+(r.st.lastErrAt?' ('+esc(hm(new Date(r.st.lastErrAt)))+')':''):''}</td></tr>`).join('');
+  ov.innerHTML=`<div class="modal" style="width:900px;max-width:96vw"><h3>설치 상태 — PC별 <span class="hint" style="font-size:13px">최신: 진료실·접수 감시 ${BIT_LATEST.watcher} · DB 에이전트 ${BIT_LATEST.agent} · ${BIT_STATUS_AT?Math.round((Date.now()-BIT_STATUS_AT)/60000)+'분 전 읽음':''}</span></h3>
+    <div class="body" style="max-height:70vh;overflow:auto">
+      <div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;font-weight:800;${old.length?'background:#fef2f2;color:#991b1b':'background:#f0fdf4;color:#166534'}">${old.length?`⚠ 옛 버전 ${old.length}대: ${old.map(r=>esc(r.pc)).join(', ')} — 그 PC만 USB로 다시 설치`:'✅ 모든 PC가 최신 버전입니다'}</div>
+      <table class="ds-pt"><thead><tr><th>PC</th><th>버전</th><th>마지막 신호</th><th>모드</th><th>마지막 오류</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="hint">아직 신호를 보낸 PC가 없습니다.</td></tr>'}</tbody></table>
+      <p class="hint" style="margin-top:10px">PC는 5분마다(비트 창이 안 열린 PC는 30분마다) 신호를 보냅니다. 설치 직후에는 몇 분 뒤에 바뀝니다. 꺼져 있는 PC는 마지막으로 켜져 있을 때의 버전이 보입니다.</p></div>
+    <div class="foot"><button class="btn" onclick="bitStatusPoll(true).finally(()=>{if(document.getElementById('bitStOv'))openBitStatus();})">지금 새로고침</button><button class="btn primary" onclick="document.getElementById('bitStOv').remove()">닫기</button></div></div>`;}
 function renderBitPill(){
   const el=document.getElementById('bitPill');if(!el)return;
   const pcs=Object.keys(BIT_STATUS).sort();
@@ -5880,6 +5905,11 @@ async function runSelfTest(){
       ok('슬립: 지난 주사 캡처를 날짜 상관없이 클릭 없이 전부(지난 캡처 표시, PT 캡처 제외), 오늘 것이 있으면 오늘 것 먼저 + 지난 것',
         h1.includes('x/old.jpg')&&h1.includes('x/older.jpg')&&h1.includes('지난 캡처')&&!h1.includes('x/pt.jpg')&&!/<select/.test(h1)&&h3.indexOf('x/today.jpg')>=0&&h3.indexOf('x/today.jpg')<h3.indexOf('x/old.jpg'));
       if(_p)SLIP_PAST[m]=_p;else delete SLIP_PAST[m];}
+     {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
+      BIT_STATUS={'진료실1':{ver:'v3.7',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.7',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db1.9',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.8',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now}};
+      const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
+      ok('설치 상태: 최신(v3.7·db1.9) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시, v3.10 > v3.7',
+        g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&!g('진료실2').ok&&g('접수1').ok&&g('접수1').mode==='전송 담당'&&!g('접수2').ok&&g('접수3').ok);}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE,_v=VISITS;   // 차트 열람만 (2026-10-27 이선아)
       BIT_NOTES=[{docId:'n1',mrn:'7301',name:'열람만',rx:'med\nneuropathic pain\nx',updatedAt:new Date().toISOString()},{docId:'n2',mrn:'7302',name:'접수됨',rx:'med\nneuropathic pain\ny',updatedAt:new Date().toISOString()}];
       data=[];VISITS=[];BIT_INTAKE=[{docId:'i1',src:'db',mrn:'7302',registered:true}];const L=slipItems();const a=L.find(x=>x.mrn==='7301'),b=L.find(x=>x.mrn==='7302');
