@@ -322,6 +322,7 @@ const DOC_DUTY_BASE=(()=>{const o={},A=(d,...n)=>{o[d]=n;};
   A('2026-10-26','김현우','정상민');A('2026-10-27','김현우','정상민');A('2026-10-28','김현우');A('2026-10-29','김현우');A('2026-10-30','김현우','정상민');A('2026-10-31','김현우','정상민','백민철');
   A('2026-11-01','김현우','백민철');return o;})();
 const DOC_DUTY_COLOR={'김현우':'#dc2626','정상민':'#ea8a00','백민철':'#15803d','채상훈':'#7e22ce'};
+const DUTY_FORMER=['채상훈'];   // 퇴사 — 월 근무표의 원장님 고르기에서 뺀다(색은 지난 기록 표시용으로 남김)
 const DUTY_PAL=['#2563eb','#0891b2','#be185d','#4d7c0f','#b45309','#475569'];
 function dutyColor(n){if(DOC_DUTY_COLOR[n])return DOC_DUTY_COLOR[n];let h=0;for(const ch of String(n))h=(h*31+ch.charCodeAt(0))>>>0;return DUTY_PAL[h%DUTY_PAL.length];}
 function docDutyOf(date){const m=META.docDuty||{};if(Object.prototype.hasOwnProperty.call(m,date))return Array.isArray(m[date])?m[date]:[];return DOC_DUTY_BASE[date]||null;}
@@ -347,6 +348,8 @@ window.openDutyMonth=ym=>{ym=ym||String(R.q.date||todayYmd()).slice(0,7);
   const draft={};DM={ym,draft,docs:[],act:0,tpl:[0,0,0,0,0,0,0],dirty:false};
   dmDays().forEach(k=>{draft[k]=[...(docDutyOf(k)||[])];});
   const s=new Set(Object.keys(DOC_DUTY_COLOR));Object.values(META.docDuty||{}).forEach(L=>(L||[]).forEach(n=>s.add(n)));Object.values(draft).forEach(L=>L.forEach(n=>s.add(n)));
+  /* 퇴사한 원장님 (2026-10-28 요청: 채상훈) — 그 달 근무표에 실제로 있을 때만 보인다(지난 달 기록은 그대로) */
+  DUTY_FORMER.forEach(n=>{if(!Object.values(draft).some(L=>L.includes(n)))s.delete(n);});
   DM.docs=[...s];DM.tpl=dmTplOf(DM.docs[0]);dmRender();};
 function dmSort(L){return [...new Set(L)].sort((a,b)=>DM.docs.indexOf(a)-DM.docs.indexOf(b));}
 window.dmPick=i=>{DM.act=i;DM.tpl=dmTplOf(DM.docs[i]);dmRender();};
