@@ -10361,7 +10361,9 @@ function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
      p.route=[...p.route.slice(0,p.step+1),...keep];
      try{audit('지난 방 건너뜀',p.name+(p.mrn?' ('+p.mrn+')':'')+' · '+[...new Set(skipped)].join(', '));}catch(e){}
      if(!keep.length){save(p);finishPatient(pid);return;}}}   // 남은 방이 모두 지나온 방 → 마지막 방처럼(수납·내보내기)
-  if(p.step<p.route.length-1){const from=curRoom(p);completeVisit(p,'종결');p.step++;enterCurrentRoom(p);markSpaceDone(p,from,curRoom(p));save(p);render();enteredRoom(p,curRoom(p));}}
+  if(p.step<p.route.length-1){const from=curRoom(p);const st0=p.status||'대기';completeVisit(p,'종결');p.step++;enterCurrentRoom(p);markSpaceDone(p,from,curRoom(p));save(p);render();enteredRoom(p,curRoom(p));
+    /* 이동 기록 (2026-10-28: x-ray 찍는 중에 진료실로 넘어갔다 — 누가·어느 버튼으로 옮겼는지 남긴다) */
+    try{audit('종결 → 다음 방',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+from+' → '+curRoom(p)+(st0==='진행'?'':' ('+st0+' 상태에서 — [진행] 없이)'));}catch(e){}}}
 /* 동선 순서가 기준과 어긋난 환자 — 카드를 빨갛게 (2026-09-26 지시).
    바쁠 때 물리치료를 먼저 하고 C-Arm 에 가는 식으로 순서가 뒤바뀌면 눈에 띄게 표시한다.
    처방으로 동선이 짜인 환자만 본다(손으로 짠 동선은 원래 순서가 자유로우므로) */
@@ -10394,6 +10396,7 @@ function moveByDrag(pid,room,opts){
 function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
   if(from===room)return;
+  try{audit('카드 이동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+from+' → '+room+((p.status||'대기')==='진행'?'':' ('+(p.status||'대기')+' 상태)'));}catch(e){}   // 끌기·자동 이동 모두 (2026-10-28)
   completeVisit(p,'이동');
   const i=p.route.indexOf(room,p.step+1);
   /* 동선에 없는 방으로 끌어다 놓으면 '지금 방 바로 뒤'에 끼워 넣는다 — 뒤에 남은 방들(처방으로 짠 동선)은 그대로 이어진다 (2026-09-24).
