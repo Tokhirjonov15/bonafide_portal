@@ -5924,7 +5924,11 @@ async function runSelfTest(){
       let ch=false,ch2=true,opts=[];try{ch=dropFormerStaff();ch2=dropFormerStaff();opts=staffOpts('',['채상훈','김현우'],'의사');}finally{}
       const ok1=ch&&!ch2&&JSON.stringify(STAFF_ROSTER['의사'])==='["김현우 (Ethan)"]'&&JSON.stringify(DOCTORS)==='["김현우"]'&&JSON.stringify(ROOM_META['퇴사테스트방'].doctors)==='["김현우"]'&&!ROOM_META['퇴사테스트방'].owners.length&&!opts.includes('채상훈')&&docStatIsDoctor()('채상훈');
       STAFF_ROSTER=_r;DOCTORS=_d;ROOMS=_rm;if(_m)ROOM_META['퇴사테스트방']=_m;else delete ROOM_META['퇴사테스트방'];
-      ok('퇴사한 분: 직원 명단·진료의 목록·방 담당·고르는 칸에서 빠지고(두 번째는 바꿀 것 없음), 통계에서는 여전히 원장님', ok1);}
+      ok('퇴사한 분: 직원 명단·진료의 목록·방 담당·고르는 칸에서 빠지고(두 번째는 바꿀 것 없음), 통계에서는 여전히 원장님', ok1);
+      const _fx=FORMER_EXTRA;FORMER_EXTRA=[{n:'홍원장 (Hong)',part:'의사',at:'2026-10-28'},{n:'김치료 (Kim)',part:'물리치료사',at:'2026-10-28'}];
+      const ok2=isFormerStaff('홍원장')&&isFormerStaff('홍원장 (Hong)')&&isFormerStaff('김치료')&&!isFormerStaff('김현우')&&docStatIsDoctor()('홍원장')&&!docStatIsDoctor()('김치료')&&!staffOpts('',['김치료','서효성'],'').includes('김치료')&&cfgBundle().formerStaff.length===2;
+      FORMER_EXTRA=_fx;
+      ok('직원 목록 ✕(퇴사): 퇴사자 명단에 남아 고르는 칸에서 빠지고, 원장님이었으면 지난 통계는 원장님, 설정에 저장', ok2);}
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
       BIT_STATUS={'진료실1':{ver:'v3.7',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.7',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db1.9',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.8',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now}};
       const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
@@ -6566,7 +6570,7 @@ async function loadFirebaseSdk(){
 function jclone(o){return JSON.parse(JSON.stringify(o));}
 function nextOrd(){return data.reduce((m,p)=>Math.max(m,p.ord||0),0)+1;}
 /* ── 설정 문서(저빈도 공유 설정) ── */
-function cfgBundle(){return {rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS, registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, slipWords:SLIP_WORDS, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, staffRoster:STAFF_ROSTER, bkRoster:BK_ROSTER_TEXT, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
+function cfgBundle(){return {formerStaff:(FORMER_EXTRA||[]).slice(), rooms:ROOMS, roomMeta:ROOM_META, staff:RAW_CFG_STAFF, staffPrefs:STAFF_PREFS,registry:REGISTRY.map(x=>({mrn:x.mrn,name:x.name,birth:x.birth,sex:x.sex})), seqNext:seqNext, seqDate:seqDate, routines:ROUTINES, payRoom:PAY_ROOM, punctEarly:PUNCT_EARLY, punctLate:PUNCT_LATE, parkingMin:PARKING_MIN, closeHmWd:CLOSE_HM_WD, closeHmWe:CLOSE_HM_WE, holidays:HOLIDAYS, procMaterials:PROC_MATERIALS, prepItems:PREP_ITEMS, procSet:PROC_SET, slipWords:SLIP_WORDS, docList:DOCTORS, docTemplates:DOC_TEMPLATES, offSched:OFF_SCHED, staffRoster:STAFF_ROSTER, bkRoster:BK_ROSTER_TEXT, sheetNotes:SHEET_NOTES, sheetStaffHist:SHEET_STAFF_HIST};}   // registry=가벼운 색인만(특이사항·유선문의 제외) → 설정문서 1MB 한도 보호
 function applyCfg(d){
   ROOMS=(Array.isArray(d.rooms)&&d.rooms.length)?d.rooms:[...DEFAULT_ROOMS];
   /* 1회 업그레이드: 이전 기본 목록 그대로인 설정이면 확정된 새 목록으로 교체 (직접 수정한 목록은 건드리지 않음) */
@@ -6625,6 +6629,7 @@ function applyCfg(d){
   DOCTORS=Array.isArray(d.docList)?d.docList:DEFAULT_DOCTORS.slice();localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();
   OFF_SCHED=(d.offSched&&typeof d.offSched==='object')?d.offSched:{};
   if(d.staffRoster&&typeof d.staffRoster==='object'){STAFF_ROSTER=d.staffRoster;try{const om=document.getElementById('offModal');if(om&&om.classList.contains('show'))renderStaffDir();}catch(e){}}   // 직원 목록 (2026-10-05)
+  if(Array.isArray(d.formerStaff))FORMER_EXTRA=d.formerStaff.filter(f=>f&&f.n);   // 직원 목록 ✕ 로 퇴사 처리한 분 (2026-10-28)
   /* 퇴사한 분은 앞으로 고르는 칸 어디에도 (2026-10-28 요청: 채상훈) — 직원 명단·진료의 목록·방 담당에서 빼고, 관리자 화면이면 설정에 한 번 저장. 지난 카드·내원·통계 기록은 그대로 */
   try{if(dropFormerStaff()&&currentUser&&isAdmin())setTimeout(()=>{try{saveRooms();audit('퇴사 정리(자동)',FORMER_STAFF.join(', '));}catch(e){}},1500);}catch(e){console.warn('former staff',e);}
   if(typeof d.bkRoster==='string')BK_ROSTER_TEXT=d.bkRoster;   // 4층 치료사 명단 (2026-10-03)
@@ -11476,6 +11481,7 @@ function procIncentive(doc,seen){const k=x=>String(x||'').replace(/\s+/g,'');ret
 /* 의사인가: 직원 목록 '의사' 파트 + 원장님 근무표(4층 비급여 화면)에 나온 이름 + 예전 원장님(퇴사해 직원 목록에서 빠진 분). 직원 목록에 다른 파트로 있으면 의사 아님 */
 const DOC_STAT_FORMER=['채상훈'];
 function docStatIsDoctor(){const key=n=>String(n||'').replace(/\s+/g,'').toLowerCase();const set=new Set(DOC_STAT_FORMER.map(key));
+  try{formerList().filter(f=>f.part==='의사').forEach(f=>rosterKeys(f.n).forEach(k=>set.add(k)));}catch(e){}   // 직원 목록에서 퇴사 처리한 원장님도 지난 기록은 원장님 (2026-10-28)
   try{rosterNames('의사').forEach(n=>set.add(key(n)));}catch(e){}
   try{const dd=(typeof PT4_META!=='undefined'&&PT4_META&&PT4_META.docDuty)||{};Object.values(dd).forEach(L=>(Array.isArray(L)?L:[]).forEach(n=>set.add(key(n))));}catch(e){}
   return n=>{const k=key(n);if(!k)return false;const part=(()=>{try{return rosterPart(n);}catch(e){return '';}})();
@@ -13120,8 +13126,13 @@ const isClinicRoom=r=>/^진료실\s*\d/.test(String(r||'').trim());
    그 밖의 방 담당 = 그 방 명단의 파트(기본물리치료 = 물리치료사 등). 그 방 명단(진료실 관리)에 있는 사람이 먼저, 직원 목록에서 빠진 사람은 목록에서도 빠진다.
    지금 골라 둔 값은 늘 남긴다. 오늘 휴무는 뺀다. 이름은 한글 부분만('김현우 (Ethan)' → 김현우) */
 /* 퇴사한 분 (2026-10-28) — 직원 목록의 [퇴사 처리]와 같은 정리를 자동으로. 고르는 칸(진료의·담당)에 다시 나오지 않게 */
-const FORMER_STAFF=['채상훈'];
-function isFormerStaff(n){const ks=rosterKeys(n);return FORMER_STAFF.some(f=>ks.includes(String(f).replace(/\s+/g,'').toLowerCase()));}
+/* 직원 목록에서 ✕(퇴사 처리)한 분은 설정의 formerStaff [{n:'이름 (영문)', part:'의사', at}] 에 남는다 — 다른 PC의 옛 설정이 저장돼 이름이 되살아나도 다시 빠지고,
+   원장님이었으면 통계(원장님별 진료·술기)에서 지난 기록이 계속 원장님으로 잡힌다. 같은 이름을 [+ 추가]하면(재입사) 명단에서 빠진다 */
+let FORMER_EXTRA=[];
+const FORMER_BASE=[{n:'채상훈',part:'의사',at:'2026-10-28'}];
+function formerList(){return FORMER_BASE.concat(Array.isArray(FORMER_EXTRA)?FORMER_EXTRA:[]);}
+const FORMER_STAFF={join:s=>formerList().map(f=>f.n).join(s)};   // 감사 기록 문구용
+function isFormerStaff(n){const ks=rosterKeys(n);if(!ks.length)return false;return formerList().some(f=>rosterKeys(f.n).some(k=>ks.includes(k)));}
 function dropFormerStaff(){let ch=false;
   const R=(STAFF_ROSTER&&typeof STAFF_ROSTER==='object')?STAFF_ROSTER:null;
   if(R)Object.keys(R).forEach(g=>{if(Array.isArray(R[g])){const L=R[g].filter(e=>!isFormerStaff(e));if(L.length!==R[g].length){R[g]=L;ch=true;}}});
@@ -14391,6 +14402,9 @@ window.rosterAdd=function(gi){if(!isAdmin()){alert('명단 수정은 관리자�
   const n=inp.value.trim().replace(/\s*\(\s*/,' (').replace(/\s*\)\s*$/,')');   // '김민수(Min)' → '김민수 (Min)'
   if(!n){inp.focus();return;}
   const R=staffRoster();if(R[g].includes(n)){alert('이미 '+g+' 명단에 있습니다.');return;}
+  {const ks=rosterKeys(n);const was=(FORMER_EXTRA||[]).length;FORMER_EXTRA=(FORMER_EXTRA||[]).filter(f=>!rosterKeys(f.n).some(k=>ks.includes(k)));
+   if(FORMER_EXTRA.length!==was)audit('재입사(퇴사자 명단에서 뺌)',n);
+   if(FORMER_BASE.some(f=>rosterKeys(f.n).some(k=>ks.includes(k))))alert(n+' 님은 퇴사자로 고정돼 있어 고르는 칸에 나오지 않습니다 — 재입사라면 관리 담당자에게 말씀해 주세요.');}   // 재입사 (2026-10-28)
   R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}
   const ni=document.getElementById('sdirIn'+gi);if(ni)ni.focus();};
 /* 퇴사 정리 한 번에 (2026-10-11 요청: 퇴사자가 많아 여러 곳을 따로 고치기 힘들다) — 직원 목록에서 ✕ 하면
@@ -14413,6 +14427,8 @@ ${where.length?where.join('\n'):'· (다른 곳에는 이름이 없습니다)'}
 
 로그인 계정은 그대로 남습니다 — 계정 삭제는 계정 관리에서 하세요.`))return;
   R[g].splice(i,1);
+  /* 퇴사자 명단에 남긴다 (2026-10-28) — 앞으로 고르는 칸에 다시 나오지 않게, 원장님이면 지난 통계는 원장님으로 */
+  {const ks=rosterKeys(n);FORMER_EXTRA=(FORMER_EXTRA||[]).filter(f=>!rosterKeys(f.n).some(k=>ks.includes(k)));FORMER_EXTRA.push({n,part:g,at:localYMD(new Date())});}
   ROOMS.forEach(r=>{const m=meta(r);['doctors','nurses','rads'].forEach(k=>{if(Array.isArray(m[k]))m[k]=m[k].filter(x=>!T.hit(x));});m.owners=(m.owners||[]).filter(o=>!T.hit(o&&o.name));});
   if(T.docs.length){DOCTORS=(DOCTORS||[]).filter(x=>!T.hit(x));try{localStorage.setItem('patientBoard_doctors',JSON.stringify(DOCTORS));postDoctorsToExt();}catch(e){}}
   saveRooms();   // 방·명단·진료의 목록을 설정 문서 하나로 저장(cloudSaveConfig)
