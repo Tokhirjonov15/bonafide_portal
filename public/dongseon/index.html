@@ -5975,7 +5975,8 @@ async function runSelfTest(){
       ok('예상 본인부담액: 비급여 100% + 급여 30%(100원 절사), 65세 이상 1.5만 이하 1,500원, 자보 급여 0, 일반 100%',
         ownCalc(L,'국민건강보험',40,{})===146000&&ownCalc(L2,'국민건강보험',70,{})===1500&&ownCalc(L,'자보',40,{})===140000&&ownCalc(L,'일반',40,{})===160000&&ownCalc([],'국민건강보험',40,{})===null
         &&ownCalc([{amt:'30000',ins:'2'},{amt:'10000',ins:'2'},{amt:'10000',ins:'2'},{amt:'97409',ins:'0'},{amt:'13150',ins:'3'}],'국민건강보험',20,{'3':1})===92350
-        &&ownCalc([{amt:'123',ins:'0'},{amt:'36',ins:'0'},{amt:'',ins:'2'},{amt:'28450',ins:'0'},{amt:'220',ins:'0'},{amt:'13370',ins:'0'}],'보호2종',13,{})===1500);}   // 신주아 보호2종 1,500   // 이은혜 2026-10-28 실제 92,350
+        &&ownCalc([{amt:'123',ins:'0'},{amt:'36',ins:'0'},{amt:'',ins:'2'},{amt:'28450',ins:'0'},{amt:'220',ins:'0'},{amt:'13370',ins:'0'}],'보호2종',13,{})===1500
+        &&ownCalc([{amt:'10260',ins:'0'},{amt:'10260',ins:'0'},{amt:'11780',ins:'0'},{amt:'11780',ins:'0'},{amt:'30000',ins:'2'},{amt:'510',ins:'0'},{amt:'1440',ins:'0'},{amt:'4490',ins:'3'},{amt:'6710',ins:'0'},{amt:'47390',ins:'0'},{amt:'24770',ins:'0'},{amt:'18840',ins:'0'}],'국민건강보험',27,{})===77590);}   // 문희민 2026-10-29 영수증 77,590 (코드3 기본 100%)   // 신주아 보호2종 1,500   // 이은혜 2026-10-28 실제 92,350
      {const _docs=BIT_RX_DOCS,_rx=BIT_RX,_rm=BIT_RX_MRN,_in=BIT_INTAKE;   // 환자부담금 = 비트 총 본인부담 (2026-10-28)
       BIT_INTAKE=[];BIT_RX_DOCS=[{ocm:'901',mrn:'4401',items:[{cod:'A'}],own:'193750'},{ocm:'902',mrn:'4401',items:[{cod:'B'}],own:'1500'},{ocm:'903',mrn:'4402',items:[{cod:'C'}]}];
       let a,b,c;try{bitRxRebuild();a=BIT_RX_MRN['4401'].own;b=BIT_RX_MRN['4402'].own;c=BIT_RX['901'].own;}finally{BIT_RX_DOCS=_docs;BIT_RX=_rx;BIT_RX_MRN=_rm;BIT_INTAKE=_in;}
@@ -14564,10 +14565,13 @@ function renderConsentDesk(){const L=document.getElementById('cdList'),Dt=docume
      의료급여 1종 1,000원·2종 15%, 자보·산재·공상 0, 일반(비보험) 100% · 그 밖의 코드(3·9 등, 뜻 미확인)는 부담률을 오늘 실제 금액으로 맞춰 고른다(ownCalibrate)
    · 100원 미만 절사 */
 let OWN_RATES={},OWN_CAL_AT=0,OWN_CAL_STAT=null;
+/* 확인된 부담률 — 코드 3(간섭파전류치료 ICT 등)은 100%: 이은혜 92,350(10-28)·문희민 77,590(10-29) 영수증으로 확인.
+   아침처럼 비트 금액이 온 접수가 없어 맞춰 볼 수 없을 때도 이 값을 쓴다(예전엔 30% 로 계산돼 3,143원 적게 나옴) */
+const OWN_RATE_DEF={'3':1};
 function ownAgeOf(b){const d=new Date(b||'');if(isNaN(d))return null;const t=new Date();let a=t.getFullYear()-d.getFullYear();if(t<new Date(t.getFullYear(),d.getMonth(),d.getDate()))a--;return a;}
 function ownCalc(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
   if(!lines||!lines.length)return null;const k=String(ins||'').replace(/\s+/g,'');
-  let non=0,g0=0,oth=0;lines.forEach(x=>{const c=String(x.ins==null?'':x.ins).trim(),a=n(x);if(c==='2')non+=a;else if(c===''||c==='0')g0+=a;else oth+=a*(rates&&rates[c]!=null?rates[c]:0.3);});
+  let non=0,g0=0,oth=0;lines.forEach(x=>{const c=String(x.ins==null?'':x.ins).trim(),a=n(x);if(c==='2')non+=a;else if(c===''||c==='0')g0+=a;else oth+=a*(rates&&rates[c]!=null?rates[c]:OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3);});
   let gOwn;
   if(/일반/.test(k))gOwn=g0;
   else if(/자보|자동차|산재|공상/.test(k))gOwn=0;
@@ -14587,7 +14591,7 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
   const cases=(BIT_RX_DOCS||[]).filter(v=>v&&v.own!=null&&v.own!==''&&Array.isArray(v.pay)&&v.pay.length).map(v=>Object.assign({actual:Number(String(v.own).replace(/[^\d.-]/g,'')),pay:v.pay},ownCtxOf(v.mrn)));
   const codes=[...new Set(cases.flatMap(c=>c.pay.map(x=>String(x.ins==null?'':x.ins).trim())).filter(c=>c&&c!=='0'&&c!=='2'))];
   const score=rt=>cases.reduce((s,c)=>{const e=ownCalc(c.pay,c.ins,c.ageN,rt);return s+(e===c.actual?2:Math.abs(e-c.actual)<=100?1:0);},0);   // 똑같으면 2점, 100원 안이면 1점
-  let best={};codes.forEach(c=>{let bv=0.3,bs=-1;[0.3,0.5,0.8,1.0].forEach(v=>{const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
+  let best={};codes.forEach(c=>{let bv=OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3,bs=score(Object.assign({},best,{[c]:bv}));[0.3,0.5,0.8,1.0].forEach(v=>{   // 확인된 값이 먼저 — 다른 값이 더 잘 맞을 때만 바꾼다const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
   OWN_RATES=best;const diff=c=>Math.abs(ownCalc(c.pay,c.ins,c.ageN,best)-c.actual);
   const same=cases.filter(c=>diff(c)===0).length,ok=cases.filter(c=>diff(c)<=100).length,near=cases.filter(c=>diff(c)<=1000).length;
   OWN_CAL_STAT={n:cases.length,same,ok,near,rates:best};}
