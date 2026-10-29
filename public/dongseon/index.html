@@ -14591,7 +14591,7 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
   const cases=(BIT_RX_DOCS||[]).filter(v=>v&&v.own!=null&&v.own!==''&&Array.isArray(v.pay)&&v.pay.length).map(v=>Object.assign({actual:Number(String(v.own).replace(/[^\d.-]/g,'')),pay:v.pay},ownCtxOf(v.mrn)));
   const codes=[...new Set(cases.flatMap(c=>c.pay.map(x=>String(x.ins==null?'':x.ins).trim())).filter(c=>c&&c!=='0'&&c!=='2'))];
   const score=rt=>cases.reduce((s,c)=>{const e=ownCalc(c.pay,c.ins,c.ageN,rt);return s+(e===c.actual?2:Math.abs(e-c.actual)<=100?1:0);},0);   // 똑같으면 2점, 100원 안이면 1점
-  let best={};codes.forEach(c=>{let bv=OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3,bs=score(Object.assign({},best,{[c]:bv}));[0.3,0.5,0.8,1.0].forEach(v=>{   // 확인된 값이 먼저 — 다른 값이 더 잘 맞을 때만 바꾼다const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
+  let best={};codes.forEach(c=>{let bv=OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3,bs=score(Object.assign({},best,{[c]:bv}));[0.3,0.5,0.8,1.0].forEach(v=>{/* 확인된 값이 먼저 — 다른 값이 더 잘 맞을 때만 바꾼다 */const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
   OWN_RATES=best;const diff=c=>Math.abs(ownCalc(c.pay,c.ins,c.ageN,best)-c.actual);
   const same=cases.filter(c=>diff(c)===0).length,ok=cases.filter(c=>diff(c)<=100).length,near=cases.filter(c=>diff(c)<=1000).length;
   OWN_CAL_STAT={n:cases.length,same,ok,near,rates:best};}
