@@ -4168,13 +4168,21 @@ function slipShotArea(it){const mrn=normMrn(it&&it.mrn);const today=(it&&it.shot
   const wd=['일','월','화','수','목','금','토'];
   const lbl=(d,n)=>`<div class="sd-shot-old" style="margin-top:12px;padding:6px 10px;border-radius:8px;background:#fef3c7;color:#92400e;font-weight:800;font-size:14px">📅 지난 캡처 · ${d} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${n}장 — 오늘 찍은 사진이 아닙니다</div>`;
   const body=(today.length?`<div class="sd-shot-old" style="margin-top:8px;padding:6px 10px;border-radius:8px;background:#dcfce7;color:#166534;font-weight:800;font-size:14px">📷 오늘 캡처 · ${today.length}장</div>`+slipShotsHtml(it,false):'')
-    +days.map(d=>lbl(d,g[d].length)+slipShotsHtml({id:it.id,shots:g[d]},false,true)).join('');
+    +days.map(d=>lbl(d,g[d].length)+slipShotsHtml({id:it.id,shots:g[d],pastMrn:mrn},false)).join('');
   return body?`<div class="sd-shot-area">${body}</div>`:'';}
 function slipShotsHtml(it,pop,noX){if(!it||!it.shots||!it.shots.length)return '';
   return '<div class="sd-shots">'+it.shots.map(x=>{const u=SLIP_SHOT_URL[x.path]||'';const t=x.at?hhmm(x.at):'';
     return '<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="'+(pop?'if(this.src)window.open(this.src)':'slipShotZoom(this)')+'" title="누르면 크게 보기">'
       +'<span>📷 '+esc(t)+(x.pc?' · '+esc(x.pc):'')+(x.w&&x.h?' · '+esc(x.w)+'×'+esc(x.h):'')+'</span>'
-      +(pop||noX?'':'<button type="button" class="sd-shot-x" data-doc="'+esc(it.shotDoc||it.id)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 숨기기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button>')+'</div>';}).join('')+'</div>';}
+      +(pop||noX?'':it.pastMrn?'<button type="button" class="sd-shot-x" data-mrn="'+esc(it.pastMrn)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 찍은 것)" onclick="event.stopPropagation();slipPastHide(this.dataset.mrn,this.dataset.id)">✕ 지우기</button>'
+        :'<button type="button" class="sd-shot-x" data-doc="'+esc(it.shotDoc||it.id)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 찍은 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕ 지우기</button>')+'</div>';}).join('')+'</div>';}
+/* 지난 캡처 지우기 (2026-10-29 요청: 원장실에서 잘못 캡처한 것이 다음 내원 때 '지난 캡처'로 계속 떴다) — 환자별 목록 slipShots/{차트번호}.hidden 에 넣는다(사진 파일은 남음) */
+window.slipPastHide=function(mrn,id){if(!mrn||!id||!confirm('이 지난 캡처를 지울까요?\n(슬립·환자 정보 창에서 앞으로 보이지 않습니다)'))return;
+  const col=slipShotsCol();if(!col){warnToast('서버에 연결되어 있지 않아 지우지 못했습니다');return;}
+  const P=SLIP_PAST[mrn];if(P){P.hidden=[...new Set([...(P.hidden||[]),id])];}
+  col.doc(mrn).set({mrn,hidden:firebase.firestore.FieldValue.arrayUnion(id)},{merge:true}).catch(e=>{console.warn('slipPastHide',e);warnToast('지우기를 저장하지 못했습니다 — 다시 눌러 주세요');});
+  try{audit('지난 캡처 숨김',mrn+' · '+id);}catch(e){}
+  renderSlipScreen();try{ptShotRefresh();}catch(e){}try{slipPopRender();}catch(e){}};
 /* 크게 보기 — 새 탭이 아니라 이 화면 위에 꽉 차게(태블릿에서 손가락으로 누르면 바로, 다시 누르면 닫힘). 작은 사진도 화면에 맞춰 키운다 */
 function slipShotZoom(im){if(!im||!im.src)return;
   let ov=document.getElementById('shotZoom');
@@ -4219,7 +4227,8 @@ function slipPastHtml(it){const mrn=normMrn(it&&it.mrn);if(!SLIP_PAST_OPEN.has(m
   if(!L)return '<div class="sd-past"><div class="hint">이전 캡처 기록을 불러오는 중…</div></div>';if(!L.length)return '';
   const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
   return '<div class="sd-past">'+Object.keys(g).sort().reverse().map(d=>`<div class="sd-past-day"><div class="sd-past-h">${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]}) · ${g[d].length}장</div><div class="sd-past-grid">`+
-    g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>').join('')+'</div></div>').join('')+'</div>';}
+    g[d].map(x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'" alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span>'
+      +'<button type="button" class="sd-shot-x" data-mrn="'+esc(mrn)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 찍은 것)" onclick="event.stopPropagation();slipPastHide(this.dataset.mrn,this.dataset.id)">✕ 지우기</button></div>').join('')+'</div></div>').join('')+'</div>';}
 function slipShotHide(docId,id){if(!id||!confirm('이 캡처를 지울까요?\n(슬립·환자 정보 창·4층 알림에서 모두 사라집니다)'))return;
   const n=BIT_NOTES.find(x=>x.docId===docId);const hid=[...new Set([...((n&&n.shotHidden)||[]),id])];
   saveSlipMark(docId,{shotHidden:hid});if(n)n.shotHidden=hid;
@@ -4263,7 +4272,8 @@ function capPastHtml(p){const mrn=normMrn(p&&p.mrn);if(!mrn||!slipShotsCol())ret
   const btn=`<button type="button" class="btn sm${on?' on':''}" onclick="capPastToggle('${esc(mrn)}')" title="지난 날의 PT 캡처를 날짜별로"><i data-lucide="images"></i> ${on?'이전 캡처 기록 접기':'이전 캡처 기록'} ${L.length}</button>`;
   if(!on)return {btn,body:''};
   const g={};L.forEach(x=>{const d=shotDay(x);(g[d]=g[d]||[]).push(x);});const wd=['일','월','화','수','목','금','토'];
-  const one=x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span><b class="cap-k '+(x.kind==='pt'?'pt':'inj')+'">'+(x.kind==='pt'?'PT':'주사')+'</b> 📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span></div>';
+  const one=x=>'<div class="sd-shot"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span><b class="cap-k '+(x.kind==='pt'?'pt':'inj')+'">'+(x.kind==='pt'?'PT':'주사')+'</b> 📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span>'
+    +'<button type="button" class="sd-shot-x" data-mrn="'+esc(mrn)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 찍은 것)" onclick="event.stopPropagation();slipPastHide(this.dataset.mrn,this.dataset.id)">✕ 지우기</button></div>';
   const body='<div class="cap-past">'+Object.keys(g).sort().reverse().map(d=>{const D=g[d].slice().sort((a,b)=>(a.kind==='pt'?0:1)-(b.kind==='pt'?0:1));
     return `<div class="cap-grp"><div class="cap-h"><b>${esc(d)} (${wd[new Date(d+'T12:00:00').getDay()]})</b> <span class="hint">${D.length}장</span></div><div class="cap-grid">${D.map(one).join('')}</div></div>`;}).join('')+'</div>';
   return {btn,body};}
@@ -4271,7 +4281,7 @@ function fillCapBox(p){const box=document.getElementById('capBox');if(!box)retur
   if(!all.length&&!past.btn){box.style.display='none';box.innerHTML='';box.dataset.h='';return;}
   const neu=new Set(ptShotsNew(n).map(x=>x.id));const pt=all.filter(x=>x.kind==='pt'),inj=all.filter(x=>x.kind!=='pt');
   const one=x=>'<div class="sd-shot'+(neu.has(x.id)?' cap-new':'')+'"><img data-path="'+esc(x.path)+'"'+(SLIP_SHOT_URL[x.path]?' src="'+esc(SLIP_SHOT_URL[x.path])+'"':'')+' alt="캡처" onclick="slipShotZoom(this)" title="누르면 크게 보기"><span>'+(neu.has(x.id)?'<b class="cap-nb">새로 옴</b> ':'')+'📷 '+esc(hhmm(x.at))+(x.pc?' · '+esc(x.pc):'')+'</span>'
-    +'<button type="button" class="sd-shot-x" data-doc="'+esc(n.docId)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 올린 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕</button></div>';   // 환자 정보 창에서도 지우기 (2026-10-15)
+    +'<button type="button" class="sd-shot-x" data-doc="'+esc(n.docId)+'" data-id="'+esc(x.id||'')+'" title="이 캡처 지우기 (잘못 찍은 것)" onclick="event.stopPropagation();slipShotHide(this.dataset.doc,this.dataset.id)">✕ 지우기</button></div>';   // 환자 정보 창에서도 지우기 (2026-10-15)
   const grp=(t,cls,L,extra)=>L.length?`<div class="cap-grp"><div class="cap-h"><span class="cap-k ${cls}">${t}</span> <span class="hint">${L.length}장</span>${extra||''}</div><div class="cap-grid">${L.map(one).join('')}</div></div>`:'';
   const html=`<div class="sect-t" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><i data-lucide="images"></i> 진료실 캡처 <span class="hint">${all.length?'오늘 · 누르면 크게':'오늘 캡처 없음'}</span><span style="flex:1"></span>${past.btn}</div>`+past.body+
     grp('PT 캡처','pt',pt,neu.size?` <button type="button" class="btn sm cap-ok" onclick="ptShotSeen('${esc(n.docId)}')">✔ 4층 확인 (알림 끄기)</button>`:(n&&n.ptSeenBy?` <span class="hint">✔ ${esc(n.ptSeenBy)} 확인</span>`:''))+grp('주사 캡처','inj',inj);
