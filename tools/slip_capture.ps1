@@ -326,9 +326,31 @@ function PastShots($mrn) {
   try { $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'bitNote' }); where = @{ fieldFilter = @{ field = @{ fieldPath = 'mrn' }; op = 'EQUAL'; value = @{ stringValue = "$mrn" } } } } } | ConvertTo-Json -Depth 10 -Compress
     $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents:runQuery" -Headers $H -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
     foreach ($row in @($r)) { if (-not $row.document) { continue }; $f = $row.document.fields
-      foreach ($v in (FsArr $f.shots)) { $s = ShotOf $v ([string](FsVal $f.date)); if ($s -and -not $all[$s.id]) { $all[$s.id] = $s } } } }
+      foreach ($v in (FsArr $f.shots)) { $s = ShotOf $v ([string](FsVal $f.date)); if ($s -and -not $all[$s.id]) { $all[$s.id] = $s } }
+      foreach ($v in (FsArr $f.capHidden)) { $hidden[[string]$v.stringValue] = 1 } } }   # 이 바에서 지운 것 (2026-10-29)
   catch { Log "최근 캡처 읽기 실패: $($_.Exception.Message)"; if (-not $script:PastErr) { $script:PastErr = $_.Exception.Message } }
   return @($all.Values | Where-Object { -not $hidden[$_.id] } | Sort-Object at -Descending)
+}
+# ── 캡처 지우기 (2026-10-29 요청: 진료실에서 잘못 캡처한 것을 바로) — 사진 파일은 남기고 목록에서만 숨긴다(동선관리 슬립 ✕ 와 같은 결과)
+#  ① 오늘 캡처: 그 날 bitNote 문서의 capHidden 에 넣는다 → 슬립·환자 정보 창에서 바로 사라짐(동선관리가 환자별 목록에도 옮겨 적음)
+#  ② 환자별 영구 목록 slipShots/{차트번호}.hidden 에도 넣는다 → 다음 내원 때 '지난 캡처'에도 안 뜸
+function HideShot($mrn, $s) {
+  $tok = FbToken; $H = @{ Authorization = "Bearer $tok" }
+  $base = "projects/$ProjectId/databases/(default)/documents"; $board = [Uri]::UnescapeDataString($BoardDoc)
+  $cu = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents:commit"
+  $idv = @{ stringValue = [string]$s.id }; $okAny = $false; $err = ''
+  $day = (Get-Date).ToString('yyyy-MM-dd'); $sday = ''; try { $sday = ([DateTime]::Parse($s.at)).ToString('yyyy-MM-dd') } catch { $sday = [string]$s.date }
+  if ($sday -eq $day) {
+    $w = @{ update = @{ name = "$base/bitNote/${day}_$mrn"; fields = @{} }; updateMask = @{ fieldPaths = @() }; currentDocument = @{ exists = $true }
+            updateTransforms = @(@{ fieldPath = 'capHidden'; appendMissingElements = @{ values = @($idv) } }) }
+    try { Invoke-RestMethod -TimeoutSec 30 -Method Post -Uri $cu -Headers $H -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{ writes = @($w) } | ConvertTo-Json -Depth 30 -Compress))) | Out-Null; $okAny = $true }
+    catch { $err = $_.Exception.Message; Log "오늘 캡처 지우기 실패 $mrn $($s.id): $err" } }
+  $w2 = @{ update = @{ name = "$base/$board/slipShots/$mrn"; fields = @{ mrn = @{ stringValue = "$mrn" } } }; updateMask = @{ fieldPaths = @('mrn') }
+           updateTransforms = @(@{ fieldPath = 'hidden'; appendMissingElements = @{ values = @($idv) } }) }
+  try { Invoke-RestMethod -TimeoutSec 30 -Method Post -Uri $cu -Headers $H -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{ writes = @($w2) } | ConvertTo-Json -Depth 30 -Compress))) | Out-Null; $okAny = $true }
+  catch { $e2 = $_.Exception.Message; Log "캡처 목록 지우기 실패 $mrn $($s.id): $e2"; if (-not $err) { $err = $e2 } }
+  if (-not $okAny) { throw $err }
+  Log "캡처 지움 $mrn $($s.id) ($sday)"
 }
 $script:ImgCache = @{}
 function ShotImage($path) {
@@ -360,7 +382,11 @@ function ShowPast() {
   $lb = New-Object Windows.Forms.ListBox; $lb.Dock = 'Left'; $lb.Width = 250; $lb.Font = New-Object Drawing.Font 'Malgun Gothic', 11; $lb.IntegralHeight = $false
   $pb = New-Object Windows.Forms.PictureBox; $pb.Dock = 'Fill'; $pb.SizeMode = 'Zoom'; $pb.BackColor = [Drawing.Color]::FromArgb(17, 24, 39); $pb.Cursor = [Windows.Forms.Cursors]::Hand
   $tip = New-Object Windows.Forms.Label; $tip.Dock = 'Bottom'; $tip.Height = 26; $tip.TextAlign = 'MiddleCenter'; $tip.Font = New-Object Drawing.Font 'Malgun Gothic', 9.5
-  $tip.Text = '사진을 두 번 누르면 크게(사진 보기)  ·  Esc = 닫기'
+  $tip.Text = '사진을 두 번 누르면 크게(사진 보기)  ·  잘못 찍은 것은 왼쪽 아래 [지우기]  ·  Esc = 닫기'
+  $del = New-Object Windows.Forms.Button; $del.Dock = 'Bottom'; $del.Height = 40; $del.Text = '✕  선택한 캡처 지우기'; $del.Font = New-Object Drawing.Font 'Malgun Gothic', 11, ([Drawing.FontStyle]::Bold)
+  $del.FlatStyle = 'Flat'; $del.BackColor = [Drawing.Color]::FromArgb(220, 38, 38); $del.ForeColor = [Drawing.Color]::White; $del.Cursor = [Windows.Forms.Cursors]::Hand
+  $lp = New-Object Windows.Forms.Panel; $lp.Dock = 'Left'; $lp.Width = 250; $lb.Dock = 'Fill'; $lp.Controls.AddRange(@($lb, $del))
+  $script:PastMrn = $mrn
   foreach ($s in $L) { $t = $s.at; try { $t = ([DateTime]::Parse($s.at)).ToString('yyyy-MM-dd  HH:mm') } catch { if (-not $t) { $t = $s.date } }
     $kindTxt = if ($s.kind -eq 'pt') { 'PT' } else { '주사' }
     [void]$lb.Items.Add("$t   [$kindTxt]") }
@@ -372,7 +398,18 @@ function ShowPast() {
     finally { $this.FindForm().Cursor = [Windows.Forms.Cursors]::Default } })
   $pb.Add_DoubleClick({ $i = $script:PastLb.SelectedIndex; if ($i -lt 0) { return }; $s = $script:PastL[$i]
     try { $tmp = Join-Path $env:TEMP ("slipcap_" + ($s.id -replace '[^\w-]', '_') + '.jpg'); [IO.File]::WriteAllBytes($tmp, (ShotImage $s.path)); Start-Process $tmp } catch { Log "사진 보기 열기 실패: $($_.Exception.Message)" } })
-  $f.Controls.AddRange(@($pb, $tip, $lb))
+  $del.Add_Click({ $i = $script:PastLb.SelectedIndex; if ($i -lt 0) { return }; $s = $script:PastL[$i]; $frm = $this.FindForm()
+    $q = "이 캡처를 지울까요?`n`n$($script:PastLb.Items[$i])`n`n슬립·환자 정보 창·지난 캡처에서 모두 사라집니다."
+    if ([Windows.Forms.MessageBox]::Show($frm, $q, '캡처 지우기', 'YesNo', 'Warning') -ne 'Yes') { return }
+    $frm.Cursor = [Windows.Forms.Cursors]::WaitCursor
+    try { HideShot $script:PastMrn $s }
+    catch { $frm.Cursor = [Windows.Forms.Cursors]::Default; [Windows.Forms.MessageBox]::Show($frm, "지우지 못했습니다.`n`n$($_.Exception.Message)`n`n동선관리 슬립 화면의 [✕ 지우기]로 지워 주세요.", '캡처 지우기') | Out-Null; return }
+    $frm.Cursor = [Windows.Forms.Cursors]::Default
+    $script:PastL = @($script:PastL | Where-Object { $_.id -ne $s.id }); $script:PastLb.Items.RemoveAt($i)
+    if (-not $script:PastL.Count) { $frm.Close(); SetStatus "✔ 캡처를 지웠습니다 (남은 캡처 없음)" ([Drawing.Color]::FromArgb(134, 239, 172)) 4; return }
+    $frm.Text = ($frm.Text -replace '· \d+장$', "· $($script:PastL.Count)장")
+    $script:PastLb.SelectedIndex = [Math]::Min($i, $script:PastL.Count - 1) })
+  $f.Controls.AddRange(@($pb, $tip, $lp))
   $f.Add_Shown({ $script:PastLb.SelectedIndex = 0 })
   $f.Add_FormClosed({ if ($script:PastPb.Image) { $script:PastPb.Image.Dispose() } })
   SetStatus "$name — 지난 캡처 $($L.Count)장" ([Drawing.Color]::FromArgb(134, 239, 172)) 3

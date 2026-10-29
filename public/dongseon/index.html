@@ -4396,7 +4396,8 @@ function renderSlipScreen(){
   try{slipPopRender();}catch(e){}
 }
 var SLIP_MARKS={};   // slipMark/{bitNote docId} — 인쇄됨·확인 (모든 화면 공유)
-function applySlipMarks(){(BIT_NOTES||[]).forEach(n=>{const m=SLIP_MARKS[n.docId];if(m)Object.assign(n,m);});}
+function applySlipMarks(){(BIT_NOTES||[]).forEach(n=>{const m=SLIP_MARKS[n.docId];if(m)Object.assign(n,m);
+  if(Array.isArray(n.capHidden)&&n.capHidden.length)n.shotHidden=[...new Set([...(Array.isArray(n.shotHidden)?n.shotHidden:[]),...n.capHidden.map(String)])];});}   // 진료실 캡처 바에서 지운 캡처 (2026-10-29)
 function saveSlipMark(docId,rec){
   SLIP_MARKS[docId]=Object.assign({},SLIP_MARKS[docId],rec);
   if(!(cloud.ref&&cloud.active))return;
