@@ -724,7 +724,8 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
       <div class="swatch-row"><span class="who small">색</span>${PALETTE.map(p=>`<button type="button" title="${A(p.label)}" class="swatch ${(d.color||'#ffffff')===p.hex?'on':''}" style="background:${p.hex}" onclick="dset('color','${p.hex==='#ffffff'?'':p.hex}',1)"></button>`).join('')}</div>
       ${msgHtml()}
       <div class="editor-actions"><button type="button" ${BUSY?'disabled':''} onclick="edSaveCancel()">${BUSY?'저장 중...':'저장'}</button>
-        ${c?`<button type="button" class="ghost" onclick="openEd({kind:'restore',cancel:EDIT.cancel})">스케줄로 되돌리기</button><button type="button" class="ghost danger" ${BUSY?'disabled':''} onclick="edDelCancel()">삭제</button>`:''}</div>`;}
+        ${c?`<button type="button" class="ghost" onclick="openEd({kind:'restore',cancel:EDIT.cancel})">스케줄로 되돌리기</button><button type="button" class="ghost danger" ${BUSY?'disabled':''} onclick="edDelCancel()">삭제</button>`:''}</div>
+      ${cancelAuditHtml(R.q.date,c?c.therapistName:e.therapistName,c?c.startMin:e.startMin,c?c.id:null)}`;}
   else if(e.kind==='therapists'){const d=e.draft;const pool=activeTh();const nm=id=>(thById(id)||{}).name||id;
     h=head(`${esc(R.q.date)} 치료사 명단`)+`<ol class="th-list">${d.ids.map((id,i)=>{const t=thById(id)||{};return `<li><span>${esc(nm(id))}</span>
         <label class="check small"><input type="checkbox" ${t.single?'checked':''} onchange="thFlag(${id},'single',this.checked)"> 한 칸</label>
@@ -983,7 +984,11 @@ function audText(r){const b=r.before,a=r.after;
     return '예약 수정'+(r.ref?' · '+audSlot(r.ref):'')+(d.length?' — '+d.join(', '):(a?' — '+brief(a):''));}
   if(r.entity==='cancels'){if(r.action==='create')return `${a&&a.kind==='change'?'변경':'취소'} 기록 · ${[a&&a.text,a&&a.startMin!=null?hm(a.startMin):'',a&&a.therapistName].filter(Boolean).join(' · ')}`;
     if(r.action==='delete')return (a&&a.restoredToBooking?'스케줄로 되돌림 · ':'취소/변경 기록 삭제 · ')+((b&&b.text)||'');
-    return '취소/변경 수정'+(b&&a&&'note' in a?` — 메모 ${String(b.note||'(없음)').slice(0,40)} → ${String(a.note||'(없음)').slice(0,40)}`:'');}
+    if(b&&a&&'note' in a&&!('text' in a))return `취소/변경 수정 · ${(b&&b.text)||''} — 메모 ${String(b.note||'(없음)').slice(0,40)} → ${String(a.note||'(없음)').slice(0,40)}`;
+    /* 2026-10-29: 무엇을 고쳤는지 (종류·내용·시간·치료사·색) */
+    const cl={kind:['종류',v=>v==='change'?'변경':'취소'],text:['내용'],startMin:['시간',v=>v==null?'':hm(v)],therapistName:['치료사'],color:['색',v=>v?'바꿈':'없음']};
+    const d=b&&a?Object.keys(cl).filter(k=>k in a&&JSON.stringify(b[k]??'')!==JSON.stringify(a[k]??'')).map(k=>{const [l,f]=cl[k];return `${l} ${(f?f(b[k]):String(b[k]??''))||'(없음)'} → ${(f?f(a[k]):String(a[k]??''))||'(없음)'}`;}):[];
+    return `취소/변경 수정 · ${((a&&a.text)||(b&&b.text)||'')}${d.length?' — '+d.join(', '):''}`;}
   const e=ENTITY_L[r.entity]||r.entity||'';const x=[brief(r.before),brief(r.after)].filter(Boolean);
   return `${e} ${ACTION_L[r.action]||r.action||''}${x.length?' · '+x.join(' → '):''}`;}
 let AUD_F={date:'',q:''};
@@ -1046,13 +1051,23 @@ const audLocalDay=v=>{const d=new Date(v||'');return isNaN(d)?'':d.getFullYear()
 function slotAuditInner(date,tid,min){const rows0=(AUD_BY_DAY[date]||{}).rows;const tname=audTh(tid);
   const all=(rows0||[]).filter(r=>(r.entity==='bookings'||r.entity==='cancels')&&(slotHit(r.before,tid,min,tname)||slotHit(r.after,tid,min,tname)||slotHit(r.ref,tid,min,tname)))
     .sort((x,y)=>String(y.at).localeCompare(String(x.at)));
+  return audCellHtml(date,`이 칸(${esc(tname)} ${hm(min)})`,rows0,all);}
+/* 당일 기록은 펼치고, 당일 전 기록은 '이전 기록 N건'으로 접는다 — 예약 칸·취소/변경 칸 공통 */
+function audCellHtml(date,title,rows0,all){
   const rows=all.filter(r=>audLocalDay(r.at)===date),old=all.filter(r=>audLocalDay(r.at)!==date);
   const names=[...new Set(rows.map(r=>audWho(r.after)||audWho(r.before)||audWho(r.ref)).filter(Boolean))];
   const li=L=>`<ul style="margin:6px 0 0;padding-left:18px">${L.map(r=>`<li class="small"><b>${esc(audAt(r.at))}</b> ${esc(r.user||'')} — ${esc(audText(r))}</li>`).join('')}</ul>`;
   const md=date.slice(5).replace('-','/');
-  return `<details class="bk-hist" style="margin-top:10px" ${rows.length?'open':''}><summary class="who small" style="cursor:pointer">이 칸(${esc(tname)} ${hm(min)}) ${esc(md)} 당일 기록 — 거쳐 간 환자 ${names.length}명 · ${rows.length}건</summary>
+  return `<details class="bk-hist" style="margin-top:10px" ${rows.length?'open':''}><summary class="who small" style="cursor:pointer">${title} ${esc(md)} 당일 기록 — 거쳐 간 환자 ${names.length}명 · ${rows.length}건</summary>
     ${rows0==null?'<div class="who small">불러오는 중…</div>':(rows.length?`${names.length?`<div class="small" style="margin:6px 0">${names.map(esc).join(' · ')}</div>`:''}${li(rows)}`:'<div class="who small">당일에 이 칸이 바뀐 기록이 없습니다.</div>')
       +(old.length?`<details style="margin-top:6px"><summary class="who small" style="cursor:pointer">이전 기록 ${old.length}건 (당일 전에 잡거나 바꾼 것)</summary>${li(old)}</details>`:'')}</details>`;}
+/* 취소/변경 칸 기록 (2026-10-29 요청: 누가 취소 칸으로 옮겼는지·고쳤는지·지웠는지·스케줄로 되돌렸는지) — 이 치료사의 이 시각 취소/변경 칸 + 지금 열린 그 줄(id) */
+function cancelAuditHtml(date,tname,min,cid){if(!date||!tname||min==null)return '';
+  return audDayBox('slotHist',date,date+'|cx|'+tname+'|'+min+'|'+(cid||''),()=>{const rows0=(AUD_BY_DAY[date]||{}).rows;
+    const hit=v=>!!v&&typeof v==='object'&&v.therapistName===tname&&Number(v.startMin)===Number(min);
+    const all=(rows0||[]).filter(r=>r.entity==='cancels'&&((cid!=null&&String(r.entityId)===String(cid))||hit(r.before)||hit(r.after)))
+      .sort((x,y)=>String(y.at).localeCompare(String(x.at)));
+    return audCellHtml(date,`이 취소/변경 칸(${esc(tname)} ${hm(min)})`,rows0,all);});}
 function bookingAuditInner(date,id){
   const rows=((AUD_BY_DAY[date]||{}).rows||[]).filter(r=>(r.entity==='bookings'&&String(r.entityId)===String(id))||(r.entity==='cancels'&&r.after&&String(r.after.fromBooking)===String(id)))
     .sort((x,y)=>String(y.at).localeCompare(String(x.at)));
