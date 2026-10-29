@@ -1041,12 +1041,18 @@ function bookingAuditHtml(date,id){if(!date||id==null)return '';return audDayBox
 function slotAuditHtml(date,tid,min){if(!date||tid==null||min==null)return '';return audDayBox('slotHist',date,date+'|'+tid+'|'+min,()=>slotAuditInner(date,Number(tid),Number(min)));}
 function slotHit(v,tid,min,tname){if(!v||typeof v!=='object'||v.startMin==null)return false;const s=Number(v.startMin),e=s+Number(v.durationMin||15);
   const same=v.therapistId!=null?Number(v.therapistId)===tid:(tname&&v.therapistName===tname);return !!same&&s<=min&&min<e;}
+/* 2026-10-29 요청: 미리 잡아 둔 예약(며칠 전 기록)까지는 필요 없고, 그 날 당일에 이 칸이 움직인 것만 — 그 전 기록은 접어서 '이전 기록 N건' */
+const audLocalDay=v=>{const d=new Date(v||'');return isNaN(d)?'':d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
 function slotAuditInner(date,tid,min){const rows0=(AUD_BY_DAY[date]||{}).rows;const tname=audTh(tid);
-  const rows=(rows0||[]).filter(r=>(r.entity==='bookings'||r.entity==='cancels')&&(slotHit(r.before,tid,min,tname)||slotHit(r.after,tid,min,tname)||slotHit(r.ref,tid,min,tname)))
+  const all=(rows0||[]).filter(r=>(r.entity==='bookings'||r.entity==='cancels')&&(slotHit(r.before,tid,min,tname)||slotHit(r.after,tid,min,tname)||slotHit(r.ref,tid,min,tname)))
     .sort((x,y)=>String(y.at).localeCompare(String(x.at)));
+  const rows=all.filter(r=>audLocalDay(r.at)===date),old=all.filter(r=>audLocalDay(r.at)!==date);
   const names=[...new Set(rows.map(r=>audWho(r.after)||audWho(r.before)||audWho(r.ref)).filter(Boolean))];
-  return `<details class="bk-hist" style="margin-top:10px" ${rows.length?'open':''}><summary class="who small" style="cursor:pointer">이 칸(${esc(tname)} ${hm(min)}) 기록 — 거쳐 간 환자 ${names.length}명 · ${rows.length}건</summary>
-    ${rows0==null?'<div class="who small">불러오는 중…</div>':rows.length?`${names.length?`<div class="small" style="margin:6px 0">${names.map(esc).join(' · ')}</div>`:''}<ul style="margin:6px 0 0;padding-left:18px">${rows.map(r=>`<li class="small"><b>${esc(audAt(r.at))}</b> ${esc(r.user||'')} — ${esc(audText(r))}</li>`).join('')}</ul>`:'<div class="who small">이 칸에 남은 기록이 없습니다.</div>'}</details>`;}
+  const li=L=>`<ul style="margin:6px 0 0;padding-left:18px">${L.map(r=>`<li class="small"><b>${esc(audAt(r.at))}</b> ${esc(r.user||'')} — ${esc(audText(r))}</li>`).join('')}</ul>`;
+  const md=date.slice(5).replace('-','/');
+  return `<details class="bk-hist" style="margin-top:10px" ${rows.length?'open':''}><summary class="who small" style="cursor:pointer">이 칸(${esc(tname)} ${hm(min)}) ${esc(md)} 당일 기록 — 거쳐 간 환자 ${names.length}명 · ${rows.length}건</summary>
+    ${rows0==null?'<div class="who small">불러오는 중…</div>':(rows.length?`${names.length?`<div class="small" style="margin:6px 0">${names.map(esc).join(' · ')}</div>`:''}${li(rows)}`:'<div class="who small">당일에 이 칸이 바뀐 기록이 없습니다.</div>')
+      +(old.length?`<details style="margin-top:6px"><summary class="who small" style="cursor:pointer">이전 기록 ${old.length}건 (당일 전에 잡거나 바꾼 것)</summary>${li(old)}</details>`:'')}</details>`;}
 function bookingAuditInner(date,id){
   const rows=((AUD_BY_DAY[date]||{}).rows||[]).filter(r=>(r.entity==='bookings'&&String(r.entityId)===String(id))||(r.entity==='cancels'&&r.after&&String(r.after.fromBooking)===String(id)))
     .sort((x,y)=>String(y.at).localeCompare(String(x.at)));
