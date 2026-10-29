@@ -392,8 +392,12 @@ window.saveDayNote=()=>{const v=document.getElementById('dayNote').value;if(v===
 function manualPanel(D){
   const byNo=new Map();for(const m of D.manual)byNo.set(m.no,[...(byNo.get(m.no)||[]),m]);
   const maxNo=Math.max(0,...D.manual.map(m=>m.no));const rowCount=maxNo<20?20:20+5*(Math.floor((maxNo-20)/5)+1);
-  const names=[...new Set([...D.manualTherapists,...D.manual.map(m=>String(m.therapistName||'').trim()).filter(Boolean)])];MAN_AC.names=names;
   const countOf=n=>D.manual.filter(m=>String(m.therapistName||'').trim().toUpperCase()===n.toUpperCase()).length;
+  /* 2026-10-29: 오타·입력 중 글자('임'·'신소'·'dlaguswn'·'null')가 이 달 이름 목록에 남아 표에 0 으로 줄줄이 보였다 —
+     고정 명단 + 오늘 실제로 쓰인 이름만(대소문자 다른 같은 이름은 하나로). 오늘 오타로 들어간 줄이 있으면 그 이름은 보여서 고칠 수 있다 */
+  const names=[];const seenU=new Set();const addN=n=>{n=String(n||'').trim();const u=n.toUpperCase();if(!n||seenU.has(u))return;seenU.add(u);names.push(n);};
+  MANUAL_FIXED.forEach(addN);D.manualTherapists.filter(n=>countOf(n)>0).forEach(addN);D.manual.filter(m=>!m.hidden).forEach(m=>addN(m.therapistName));
+  MAN_AC.names=[...new Set([...names,...activeTh().map(t=>t.name)])];
   const singleIds=new Set(D.therapists.filter(t=>t.single).map(t=>t.id));const cancelled=D.cancels.length;
   const total=D.bookings.filter(b=>b.visited&&!singleIds.has(b.therapistId)).length;
   const edRow=no=>`<tr class="editing-row"><td>${no}</td>
@@ -620,7 +624,27 @@ window.manThKey=e=>{const open=MAN_AC.list.length>0;
   if(open&&e.key==='Escape'){e.preventDefault();e.stopPropagation();MAN_AC.list=[];const b=document.getElementById('manAc');if(b)b.style.display='none';return;}
   if(open&&e.key==='Enter')manAcPick(MAN_AC.sel);   // 고른 이름을 넣고 그대로 저장
   manKey(e);};
+/* 치료사 이름 바로잡기 (2026-10-29 — 오타가 따로 세어져 통계가 갈라졌다): 대소문자 → 명단 표기, 영문 자판으로 친 것(dlaguswn → 임현주),
+   명단 이름의 앞부분만 친 것('임' → '임현주')은 물어보고 고치고, 명단에 없는 이름은 그대로 저장할지 묻는다. null = 저장 안 함 */
+const KO_KEY={q:'ㅂ',w:'ㅈ',e:'ㄷ',r:'ㄱ',t:'ㅅ',y:'ㅛ',u:'ㅕ',i:'ㅑ',o:'ㅐ',p:'ㅔ',a:'ㅁ',s:'ㄴ',d:'ㅇ',f:'ㄹ',g:'ㅎ',h:'ㅗ',j:'ㅓ',k:'ㅏ',l:'ㅣ',z:'ㅋ',x:'ㅌ',c:'ㅊ',v:'ㅍ',b:'ㅠ',n:'ㅜ',m:'ㅡ',Q:'ㅃ',W:'ㅉ',E:'ㄸ',R:'ㄲ',T:'ㅆ',O:'ㅒ',P:'ㅖ'};
+function engToKo(s){if(!/^[a-zA-Z]+$/.test(s))return '';
+  const CHO='ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ',JUNG='ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ',JONG=['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  const V2={'ㅗㅏ':'ㅘ','ㅗㅐ':'ㅙ','ㅗㅣ':'ㅚ','ㅜㅓ':'ㅝ','ㅜㅔ':'ㅞ','ㅜㅣ':'ㅟ','ㅡㅣ':'ㅢ'},F2={'ㄱㅅ':'ㄳ','ㄴㅈ':'ㄵ','ㄴㅎ':'ㄶ','ㄹㄱ':'ㄺ','ㄹㅁ':'ㄻ','ㄹㅂ':'ㄼ','ㄹㅅ':'ㄽ','ㄹㅌ':'ㄾ','ㄹㅍ':'ㄿ','ㄹㅎ':'ㅀ','ㅂㅅ':'ㅄ'};
+  const J=[...s].map(c=>KO_KEY[c]||KO_KEY[c.toLowerCase()]||'');if(J.some(x=>!x))return '';
+  const isV=x=>x&&JUNG.includes(x),isC=x=>x&&CHO.includes(x);let out='',i=0;
+  while(i<J.length){if(isC(J[i])&&isV(J[i+1])){const c=J[i];let v=J[i+1];i+=2;if(isV(J[i])&&V2[v+J[i]]){v=V2[v+J[i]];i++;}
+      let f='';if(isC(J[i])&&!isV(J[i+1])&&JONG.includes(J[i])){if(isC(J[i+1])&&F2[J[i]+J[i+1]]&&!isV(J[i+2])){f=F2[J[i]+J[i+1]];i+=2;}else{f=J[i];i++;}}
+      out+=String.fromCharCode(0xAC00+(CHO.indexOf(c)*21+JUNG.indexOf(v))*28+JONG.indexOf(f));}
+    else{out+=J[i];i++;}}
+  return out;}
+function manThFix(n){n=String(n||'').trim();if(!n)return {name:''};if(/^null$/i.test(n))return {name:'NULL'};
+  const known=[...new Set([...MANUAL_FIXED,...activeTh().map(t=>t.name)])].filter(x=>x&&!/^null$/i.test(x));
+  const same=known.find(k=>k.toUpperCase()===n.toUpperCase());if(same)return {name:same};
+  const ko=engToKo(n);if(ko&&known.includes(ko))return {name:ko,ask:`치료사 '${n}' → '${ko}' (한/영 전환 안 된 것 같아요)로 저장할까요?`};
+  const pre=known.filter(k=>k.startsWith(n));if(pre.length===1)return {name:pre[0],ask:`치료사 '${n}' → '${pre[0]}'(으)로 저장할까요?`};
+  return {name:n,ask:`치료사 '${n}' 은(는) 명단에 없는 이름입니다.\n그대로 저장할까요? (오타면 [취소] 후 고쳐 주세요)`,keep:true};}
 window.manSave=async()=>{if(MAN.no==null)return;const old=MAN.id?D_().manual.find(x=>x.id===MAN.id):null;
+  {const fx=manThFix(MAN.f.therapistName);if(fx.ask&&!confirm(fx.ask)){try{focusMan();}catch(e){}return;}MAN.f.therapistName=fx.name;}   // [취소] = 고치러 입력칸으로
   const body=Object.assign({id:MAN.id||undefined,no:MAN.no,color:old?old.color||'':''},MAN.f);
   document.activeElement&&document.activeElement.blur&&document.activeElement.blur();
   if(await run(R.q.date,opManualSave(body),false)){MAN.no=null;MAN.id=null;render();}};
