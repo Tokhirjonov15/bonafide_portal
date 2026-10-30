@@ -14486,6 +14486,12 @@ function rosterAutoAdd(list){const R=staffRoster();let n=0;
   (list||[]).forEach(m=>{const g=staffPart(m&&m.team),nm=String((m&&m.name)||'').trim();if(!g||!nm||rosterPart(nm))return;
     const ks=rosterKeys(nm);FORMER_EXTRA=(FORMER_EXTRA||[]).filter(f=>!rosterKeys(f.n).some(k=>ks.includes(k)));R[g].push(nm);n++;try{audit('직원 추가',g+' · '+nm+' (계정 추가)');}catch(e){}});
   if(n){cloudSaveConfig();try{if(document.getElementById('offModal').classList.contains('show'))renderStaffDir();}catch(e){}}}
+/* 직원 목록을 열 때: 파트가 정해진 계정인데 목록에 없는 사람을 자동으로 넣는다 (2026-10-30: 이주영처럼 먼저 만든 계정도).
+   퇴사자는 넣지 않는다 — 퇴사자 명단(FORMER_*)에 있거나, 처음 명단(STAFF_ROSTER_DEFAULT)에 있었는데 지금 빠진 이름(예전에 ✕ 로 뺀 사람) */
+function rosterBackfill(){if(!isAdmin()&&!isChief())return;
+  const gone=new Set();[...FORMER_BASE,...(FORMER_EXTRA||[])].forEach(f=>rosterKeys(f.n).forEach(k=>gone.add(k)));
+  Object.values(STAFF_ROSTER_DEFAULT).flat().forEach(e=>rosterKeys(e).forEach(k=>gone.add(k)));
+  rosterAutoAdd((MEMBERS||[]).filter(m=>m&&!m.super&&!isBotMember(m)&&staffPart(m.team)&&!rosterKeys(m.name).some(k=>gone.has(k))));}
 /* 계정을 지운 뒤: 직원 목록에 이름이 있으면 퇴사 처리(rosterDel — 방·진료의·4층 치료사에서도 뺌)까지 이어서 묻는다 */
 function rosterRetireByName(name){const g=rosterPart(name);if(!g)return;const gi=STAFF_TEAMS.indexOf(g),R=staffRoster();
   const k=String(name||'').replace(/\s+/g,'').toLowerCase();let i=R[g].findIndex(e=>rosterKeys(e).includes(k));
@@ -14501,7 +14507,7 @@ const STAFF_ROSTER_DEFAULT={
   '행정':['현예나 (Yena)','박진영 (Sona)','윤새한 (Evan)']};
 function staffRoster(){if(!STAFF_ROSTER||typeof STAFF_ROSTER!=='object')STAFF_ROSTER=JSON.parse(JSON.stringify(STAFF_ROSTER_DEFAULT));
   STAFF_TEAMS.forEach(t=>{if(!Array.isArray(STAFF_ROSTER[t]))STAFF_ROSTER[t]=[];});return STAFF_ROSTER;}
-window.openOff=function(){renderStaffDir();document.getElementById("offModal").classList.add("show");};
+window.openOff=function(){try{rosterBackfill();}catch(e){console.warn(e);}renderStaffDir();document.getElementById("offModal").classList.add("show");};
 window.closeOff=function(){document.getElementById("offModal").classList.remove("show");};
 function renderStaffDir(){
   const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");if(!box)return;
