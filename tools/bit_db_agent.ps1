@@ -51,7 +51,7 @@ param(
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db2.0'   # 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db2.1'   # 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -672,6 +672,63 @@ function PollRxMonth() {
   WriteRxMonth $thisFirst $false
 }
 
+# ── 자동차보험 급여 도수 가능 환자 → bitRx/_jabo (db2.1, 2026-10-30) ──
+#  조건(2026-10-30 원무 확인): 자보(보험 코드 21)로 처음 온 날부터 14일 이상 지났고, 그 전 내원에서 기본물리치료(처방코드에 MM, 또는 명칭 '기본물리치료')를 받은 날이 4일 이상.
+#  조건을 처음 만족한 내원부터 3번의 내원 동안(자동차도수 처방과 상관없이) 진료실 캡처 바(slip_capture.ps1)가 그 환자를 비트에서 열면 팝업을 띄운다.
+#  한 사고 = 자보 내원 사이가 $JaboGapDays 일 넘게 비면 새 사고로 본다. 오늘 자보로 접수한 환자만, 1분마다. 문서 하나: pts = { 차트번호: {n, first, pt, days} }
+#  ※ 문서에 'date' 칸을 두지 않는다 — 동선관리가 bitRx 를 date == 오늘 로 읽어 처방 문서로 착각하지 않게(day 로 둔다)
+$JaboGapDays = 90
+$JABO_QUERY = @"
+SELECT RTRIM(m.OcmChtNum) AS mrn, LEFT(m.OcmAcpDtm, 8) AS d,
+       MAX(CASE WHEN o.OdrCod LIKE '%MM%' OR o.OdrCodNam LIKE N'%기본물리치료%' THEN 1 ELSE 0 END) AS pt
+FROM OcmInf m WITH (NOLOCK)
+LEFT JOIN OdrInf o WITH (NOLOCK) ON o.OdrOcmNum = m.OcmNum AND o.OdrDelFlg <> 'C'
+WHERE RTRIM(CAST(m.OcmInsCod AS varchar(10))) = '21' AND m.OcmAcpDtm >= '{1}' AND m.OcmComStt IN ({2})
+  AND m.OcmChtNum IN (SELECT t.OcmChtNum FROM OcmInf t WITH (NOLOCK) WHERE LEFT(t.OcmAcpDtm, 8) = '{0}' AND RTRIM(CAST(t.OcmInsCod AS varchar(10))) = '21' AND t.OcmComStt IN ({2}))
+GROUP BY RTRIM(m.OcmChtNum), LEFT(m.OcmAcpDtm, 8)
+"@
+# 한 환자의 자보 내원일 → 오늘이 팝업 대상(조건을 만족한 1~3번째 내원)이면 정보, 아니면 $null.  $days = @{ 'yyyyMMdd' = 그날 기본물리치료 여부(0/1) }
+function JaboEligible($days, $todayYmd) {
+  $ds = @($days.Keys | ForEach-Object { [string]$_ } | Sort-Object)
+  if ($ds -notcontains $todayYmd) { return $null }
+  $first = $null; $prev = $null; $pt = 0; $nth = 0
+  foreach ($d in $ds) {
+    $dt = [DateTime]::ParseExact($d, 'yyyyMMdd', $null)
+    if ($null -eq $prev -or ($dt - $prev).TotalDays -gt $JaboGapDays) { $first = $dt; $pt = 0; $nth = 0 }   # 새 사고
+    $ok = (($dt - $first).TotalDays -ge 14 -and $pt -ge 4)   # 이 날 진료 전까지 받은 기본물리치료 일수
+    if ($ok) { $nth++ }
+    if ($d -eq $todayYmd) {
+      if ($ok -and $nth -le 3) { return @{ n = [int]$nth; first = $first.ToString('yyyy-MM-dd'); pt = [int]$pt; days = [int]($dt - $first).TotalDays } }
+      return $null
+    }
+    if ([int]$days[$d]) { $pt++ }
+    $prev = $dt
+  }
+  return $null
+}
+$script:JaboAt = [DateTime]::MinValue; $script:JaboHash = $null
+function PollJabo() {
+  if (-not $script:IsLeader -and -not $RxAlways) { return }
+  $hr = (Get-Date).Hour; if ($hr -lt 7 -or $hr -ge 22) { return }
+  if (((Get-Date) - $script:JaboAt).TotalSeconds -lt 60) { return }
+  $script:JaboAt = Get-Date
+  $today8 = (Get-Date).ToString('yyyyMMdd'); $from8 = (Get-Date).AddDays(-400).ToString('yyyyMMdd')
+  $sql = $JABO_QUERY -f $today8, $from8, (($ACTIVE | ForEach-Object { "'$_'" }) -join ',')
+  AssertReadonlySql $sql
+  $rows = SqlRows $sql 20
+  $by = @{}
+  foreach ($r in $rows.Rows) { $m = (([string]$r.mrn) -replace '\D', '').TrimStart('0'); $d = ([string]$r.d).Trim(); if (-not $m -or $d.Length -ne 8) { continue }   # 캡처 바와 같은 모양(숫자만, 앞 0 뺌)
+    if (-not $by.ContainsKey($m)) { $by[$m] = @{} }; $by[$m][$d] = [int]$r.pt }
+  $pts = @{}
+  foreach ($m in $by.Keys) { $e = JaboEligible $by[$m] $today8; if ($e) { $pts[$m] = $e } }
+  $h = "$today8`n" + (($pts.Keys | Sort-Object | ForEach-Object { "$_|$($pts[$_].n)|$($pts[$_].pt)" }) -join "`n")
+  if ($h -eq $script:JaboHash) { return }
+  if ($DryRun) { Log "자보 도수 가능(시험): 오늘 자보 $($by.Count)명 중 $($pts.Count)명"; $script:JaboHash = $h; return }
+  FsPatch "bitRx/_jabo" @{ day = (Get-Date).ToString('yyyy-MM-dd'); at = (NowIso); pc = $Pc; jabo = [int]$by.Count; pts = $pts }
+  $script:JaboHash = $h
+  Log "자보 도수 가능: 오늘 자보 $($by.Count)명 중 $($pts.Count)명 ($(($pts.Keys | Sort-Object | ForEach-Object { "$_ $($pts[$_].n)/3" }) -join ', '))"
+}
+
 # ── 메인 ──
 Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
 AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
@@ -690,6 +747,7 @@ while ($true) {
     if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
     if ($RxEvery -gt 0 -and ($RxEvery -le 1 -or ($cyc % $RxEvery) -eq 0)) { try { PollRx } catch { Log "처방 조회 오류: $($_.Exception.Message)" } }
     try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
+    try { PollJabo } catch { Log "자보 도수 조회 오류: $($_.Exception.Message)" }   # db2.1
     try { AnswerAsks } catch { Log "내원 날짜 요청 확인 오류: $($_.Exception.Message)" }   # 서류 발급 태블릿 (db1.9)
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st

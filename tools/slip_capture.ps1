@@ -273,10 +273,51 @@ $menu = New-Object Windows.Forms.ContextMenuStrip
 $bar.ContextMenuStrip = $menu; $lbl.ContextMenuStrip = $menu
 
 function SetStatus($text, $color, $sec) { $lbl.Text = $text; $lbl.ForeColor = $color; $script:HoldUntil = (Get-Date).AddSeconds($sec) }
+# ── 자동차보험 급여 도수 가능 팝업 (2026-10-30) ──
+#  접수 PC 의 DB 에이전트(db2.1)가 bitRx/_jabo 에 오늘 대상 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원)를 적는다.
+#  비트 외래진료실에서 그 환자를 열면 한 번 띄운다(이 PC 에서 하루 한 번 — 껐다 켜도 다시 안 뜨게 파일에 기억)
+$JaboShownFile = Join-Path $LogDir 'jabo_shown.txt'
+$script:Jabo = @{}; $script:JaboAt = [DateTime]::MinValue; $script:JaboShown = @{}
+try { if (Test-Path $JaboShownFile) { $d0 = (Get-Date).ToString('yyyy-MM-dd'); foreach ($l in (Get-Content $JaboShownFile -Encoding UTF8)) { if ($l -like "$d0|*") { $script:JaboShown[$l] = 1 } } } } catch {}
+function JaboLoad() {
+  if (((Get-Date) - $script:JaboAt).TotalSeconds -lt 60) { return }
+  $script:JaboAt = Get-Date
+  try {
+    $r = Invoke-RestMethod -TimeoutSec 5 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/bitRx/_jabo" -Headers @{ Authorization = "Bearer $(FbToken)" }
+    $J = @{}
+    if ((FsVal $r.fields.day) -eq (Get-Date).ToString('yyyy-MM-dd') -and $r.fields.pts.mapValue.fields) {
+      foreach ($p in $r.fields.pts.mapValue.fields.PSObject.Properties) { $f = $p.Value.mapValue.fields
+        $J[[string]$p.Name] = @{ n = [int](FsVal $f.n); first = [string](FsVal $f.first); pt = [int](FsVal $f.pt); days = [int](FsVal $f.days) } } }
+    $script:Jabo = $J
+  } catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { $script:Jabo = @{} } else { Log "자보 도수 목록 읽기 오류: $($_.Exception.Message)" } }
+}
+function JaboPopup($mrn, $name) {
+  $key = (Get-Date).ToString('yyyy-MM-dd') + '|' + $mrn
+  if ($script:JaboShown.ContainsKey($key)) { return }
+  JaboLoad
+  $e = $script:Jabo[([string]$mrn).TrimStart('0')]; if (-not $e) { return }   # 에이전트가 앞 0 을 떼고 적는다
+  $script:JaboShown[$key] = 1; try { Add-Content $JaboShownFile $key -Encoding UTF8 } catch {}
+  Log "자보 도수 팝업 $mrn ($($e.n)/3)"
+  $f = New-Object Windows.Forms.Form
+  $f.Text = '자동차보험 급여 도수'; $f.FormBorderStyle = 'FixedDialog'; $f.MaximizeBox = $false; $f.MinimizeBox = $false; $f.TopMost = $true; $f.ShowInTaskbar = $true
+  $f.StartPosition = 'CenterScreen'; $f.ClientSize = New-Object Drawing.Size 520, 230; $f.BackColor = [Drawing.Color]::White
+  $t = New-Object Windows.Forms.Label; $t.Font = New-Object Drawing.Font 'Malgun Gothic', 17, ([Drawing.FontStyle]::Bold); $t.ForeColor = [Drawing.Color]::FromArgb(4, 120, 87)
+  $t.Location = New-Object Drawing.Point 20, 18; $t.Size = New-Object Drawing.Size 480, 70; $t.Text = "이 환자는 급여 도수가`n가능한 환자입니다"
+  $s = New-Object Windows.Forms.Label; $s.Font = New-Object Drawing.Font 'Malgun Gothic', 11; $s.ForeColor = [Drawing.Color]::FromArgb(51, 65, 85)
+  $s.Location = New-Object Drawing.Point 22, 96; $s.Size = New-Object Drawing.Size 480, 80
+  $s.Text = "$name  ·  $mrn`n자보 첫 내원 $($e.first) ($($e.days)일 전)  ·  기본물리치료 $($e.pt)회`n안내 $($e.n)번째 / 3번 (조건을 만족한 뒤 3번의 내원 동안 뜹니다)"
+  $ok = New-Object Windows.Forms.Button; $ok.Text = '확인'; $ok.Font = New-Object Drawing.Font 'Malgun Gothic', 11, ([Drawing.FontStyle]::Bold)
+  $ok.Location = New-Object Drawing.Point 400, 182; $ok.Size = New-Object Drawing.Size 100, 36; $ok.FlatStyle = 'Flat'; $ok.BackColor = [Drawing.Color]::FromArgb(16, 185, 129); $ok.ForeColor = [Drawing.Color]::White
+  $ok.Add_Click({ $f.Close() }); $f.AcceptButton = $ok
+  $f.Controls.AddRange(@($t, $s, $ok))
+  $f.Add_FormClosed({ $f.Dispose() })
+  $f.Show(); $f.Activate()   # 모달이 아니라 바·비트 작업을 막지 않는다
+}
 function ReadPatient() {
   if ((Get-Date) -lt $script:HoldUntil) { return }
   $mrn = ''; $name = ''
   try { $h = FindDoctorWindow; if ($h) { $d = ReadDoctor $h; if ($d) { $mrn = [string]$d.mrn; $name = [string]$d.name } } } catch { Log "창 읽기 오류: $($_.Exception.Message)" }
+  if ($mrn -and $mrn -ne $script:CurMrn) { try { JaboPopup $mrn $name } catch { Log "자보 도수 팝업 오류: $($_.Exception.Message)" } }
   $script:CurMrn = $mrn; $script:CurName = $name
   $btn.Enabled = [bool]$mrn -or [bool]$Room; $btnPt.Enabled = $btn.Enabled; $btnPast.Enabled = $btn.Enabled
   if ($mrn) { $lbl.ForeColor = [Drawing.Color]::White; $lbl.Text = "$name  ·  $mrn" }
