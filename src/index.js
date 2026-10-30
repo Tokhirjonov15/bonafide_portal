@@ -2075,8 +2075,44 @@ async function dsCaller(request, env) {
   const acl = await a.json().catch(() => ({}));
   const arr = (k) => (((acl.fields || {})[k] || {}).arrayValue || {}).values || [];
   const admins = arr("adminEmails").map((v) => v.stringValue), supers = arr("superEmails").map((v) => v.stringValue);
-  if (!admins.includes(email) && !supers.includes(email)) throw Object.assign(new Error("관리자만 할 수 있습니다."), { status: 403 });
-  return { email, super: supers.includes(email), supers };
+  const members = arr("members");
+  const admin = admins.includes(email) || supers.includes(email);
+  /* 주임(원장님·행정실 포함 — 동선관리 isChief 와 같음): 직원 계정만 추가·삭제 (2026-10-30 요청: 퇴사자를 관리자 혼자 다 못 지움) */
+  const chief = !admin && ["chief", "doctor", "office"].includes(memRole(members.find((v) => memField(v, "email") === email)));
+  if (!admin && !chief) throw Object.assign(new Error("관리자·주임만 할 수 있습니다."), { status: 403 });
+  return { email, super: supers.includes(email), supers, admin, chief, members };
+}
+const memField = (v, k) => (v && v.mapValue && v.mapValue.fields && v.mapValue.fields[k] && v.mapValue.fields[k].stringValue) || "";
+const memRole = (v) => (v ? memField(v, "role") || "staff" : "");
+const memIsPlainStaff = (v) => !!v && memRole(v) === "staff" && !(v.mapValue.fields.super && v.mapValue.fields.super.booleanValue);
+async function nameEmail(name) {   // 동선관리 authEmail() 과 같은 계산 — 아이디(이름) → 내부 이메일
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("bonafide-auth|" + String(name || "").trim().toLowerCase()));
+  return "u" + [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 24) + FB_AUTH_SUFFIX;
+}
+/* acl/main 의 members·emails(·boardEmails) 만 고친다 — 다른 필드는 그대로. 주임은 Firestore 규칙상 명단을 직접 못 써서 서버가 대신 쓴다.
+   fn(d) 가 d.members(Firestore 값 그대로)·d.emails·d.board 를 고치고, false 를 돌려주면 쓰지 않는다. 겹쳐 쓰면(updateTime 다름) 다시 읽어 3번까지 */
+async function aclEdit(env, fn) {
+  const tok = await saAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${saCache.pid}/databases/(default)/documents/acl/main`;
+  const strArr = (a) => ({ arrayValue: a.length ? { values: a.map((x) => ({ stringValue: x })) } : {} });
+  for (let i = 0; i < 3; i++) {
+    const a = await fetch(url, { headers: { authorization: "Bearer " + tok } });
+    const acl = await a.json().catch(() => ({}));
+    if (!a.ok) throw new Error("계정 명단 읽기 실패: " + ((acl.error && acl.error.message) || a.status));
+    const f = acl.fields || {};
+    const vals = (k) => ((f[k] || {}).arrayValue || {}).values || [];
+    const d = { members: vals("members").slice(), emails: vals("emails").map((v) => v.stringValue), board: f.boardEmails ? vals("boardEmails").map((v) => v.stringValue) : null };
+    if (fn(d) === false) return;
+    const fields = { members: { arrayValue: d.members.length ? { values: d.members } : {} }, emails: strArr(d.emails), updatedAt: { integerValue: String(Date.now()) } };
+    const mask = ["members", "emails", "updatedAt"];
+    if (d.board) { fields.boardEmails = strArr(d.board); mask.push("boardEmails"); }
+    const q = mask.map((m) => "updateMask.fieldPaths=" + m).join("&") + "&currentDocument.updateTime=" + encodeURIComponent(acl.updateTime);
+    const w = await fetch(url + "?" + q, { method: "PATCH", headers: { authorization: "Bearer " + tok, "content-type": "application/json" }, body: JSON.stringify({ fields }) });
+    if (w.ok) return;
+    const wj = await w.json().catch(() => ({}));
+    if (![400, 409, 412].includes(w.status)) throw new Error("계정 명단 저장 실패: " + ((wj.error && wj.error.message) || w.status));
+  }
+  throw new Error("다른 곳에서 계정 명단을 동시에 고치고 있습니다. 잠시 후 다시 시도하세요.");
 }
 async function dongseonApi(request, env, url) {
   try {
@@ -2091,6 +2127,36 @@ async function dongseonApi(request, env, url) {
     if (FB_PROTECTED.includes(target)) return json({ error: "연동용 봇 계정은 처리할 수 없습니다." }, 400);
     const found = await fbAdminPost(env, "accounts:lookup", { email: [target] });
     const uid = found.users && found.users[0] && found.users[0].localId;
+    const tm = me.members.find((v) => memField(v, "email") === target);
+    if (me.chief) {   // 주임: 직원 계정만 — 관리자·주임·원장님·행정실 계정은 못 건드림. 명단도 서버가 고친다
+      if (path === "add-member") {
+        const name = s(body.name).trim();
+        if (!name || (await nameEmail(name)) !== target) return json({ error: "이름과 계정이 맞지 않습니다." }, 400);
+        if (!uid) return json({ error: "로그인 계정이 아직 없습니다. 다시 시도하세요." }, 404);
+        if (tm) return json({ ok: true, existed: true });
+        const team = s(body.team).trim().slice(0, 30);
+        await aclEdit(env, (d) => {
+          if (d.members.some((v) => memField(v, "email") === target)) return false;
+          d.members.push({ mapValue: { fields: { email: { stringValue: target }, name: { stringValue: name }, role: { stringValue: "staff" }, super: { booleanValue: false }, team: { stringValue: team } } } });
+          if (!d.emails.includes(target)) d.emails.push(target);
+          if (d.board && !d.board.includes(target)) d.board.push(target);
+        });
+        return json({ ok: true });
+      }
+      if (path === "delete-user") {
+        if (tm && !memIsPlainStaff(tm)) return json({ error: "주임은 직원 계정만 삭제할 수 있습니다(관리자·주임·원장님·행정실 계정은 관리자에게)." }, 403);
+        if (uid) await fbAdminPost(env, "accounts:delete", { localId: uid });
+        await aclEdit(env, (d) => {
+          const n = d.members.length;
+          d.members = d.members.filter((v) => memField(v, "email") !== target);
+          d.emails = d.emails.filter((x) => x !== target);
+          if (d.board) d.board = d.board.filter((x) => x !== target);
+          if (d.members.length === n) return false;
+        });
+        return json({ ok: true, existed: !!uid, aclDone: true });
+      }
+      return json({ error: "관리자만 할 수 있습니다." }, 403);
+    }
     if (path === "reset-password") {
       const pw = String(body.password || "");
       if (pw.length < 8) return json({ error: "비밀번호는 8자 이상이어야 합니다." }, 400);

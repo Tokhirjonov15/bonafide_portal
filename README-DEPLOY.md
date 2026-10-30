@@ -64,6 +64,9 @@ Worker 가 Firebase 서비스 계정으로 동작해야 합니다. 한 번만 �
 호출 경로: `POST /api/dongseon/admin/reset-password` · `POST /api/dongseon/admin/delete-user`
 (헤더 `Authorization: Bearer <Firebase ID 토큰>`, 호출자는 `acl/main` 의 관리자여야 함)
 
+주임(원장님·행정실 포함, 2026-10-30): `delete-user`·`add-member` 만, **직원 권한 계정만** 가능. 주임은 Firestore 규칙상 `acl/main` 을 못 쓰므로
+명단(members·emails·boardEmails)도 Worker 가 서비스 계정으로 고친다. 비밀번호 재설정·권한 변경은 관리자만.
+
 ### 동선관리 방 도착·퇴실 텔레그램 알림 (`/room`)
 
 방 담당자(예: x-ray실)가 자기 방에 들어오고 나가는 환자를 텔레그램으로 받습니다.

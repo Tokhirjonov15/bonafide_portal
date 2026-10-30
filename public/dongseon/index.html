@@ -5396,6 +5396,14 @@ function renderAccount(){
   /* 접근·활동 기록 — 관리자가 아니어도 (2026-10-19 요청). 관리자는 아래 '데이터 관리'에 같은 버튼 */
   if(!isAdmin())html+=`<div class="acc-sect"><div class="sect-t" style="margin-bottom:8px">기록</div>
       <button class="btn sm" onclick="openAuditLog()"><i data-lucide="lock"></i> 접근·활동 기록</button></div>`;
+  /* 계정 관리(주임·원장님·행정실): 직원 계정만 추가·삭제 — 명단 저장은 서버가 대신 (2026-10-30 요청: 퇴사자를 관리자 혼자 다 못 지움) */
+  if(!isAdmin()&&isChief())html+=`<div class="acc-sect">
+      <div class="sect-t" style="margin-bottom:6px"><i data-lucide="users"></i> 계정 관리 <span class="hint" style="font-weight:400">(주임 — 직원 계정만)</span></div>
+      <p class="hint" style="margin-bottom:8px"><b>추가</b>: 새 직원 계정을 만듭니다(권한은 직원). <b>삭제</b>: 퇴사한 직원 계정을 없앱니다 — 모든 앱에서 로그인할 수 없게 되며 되돌릴 수 없습니다. 관리자·주임 계정과 비밀번호 재설정은 관리자에게 요청하세요.</p>
+      <div id="staffList" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="openStaffEdit(null)"><i data-lucide="user-plus"></i> 계정 추가</button>
+        <button class="btn sm" onclick="openBulkAdd()" title="이름 목록을 붙여넣어 여러 계정을 한 번에 생성"><i data-lucide="users"></i> 여러 명 한 번에 추가</button></div>
+    </div>`;
   if(isAdmin()){
     const sup=isSuper();
     /* 계정 관리(관리자): 비밀번호를 잊은 직원에게 새 비밀번호 발급, 퇴사자 계정 삭제 — 서버(/api/dongseon/admin/*)가 Firebase 서비스 계정으로 처리 (2026-09-21) */
@@ -5438,12 +5446,15 @@ function renderStaffList(){
   const list=MEMBERS.filter(m=>m&&m.email&&!m.super&&!isBotMember(m)).sort((a,b)=>po(a)-po(b)||rk(a)-rk(b)||String(a.name||'').localeCompare(String(b.name||'')));
   if(!list.length){box.innerHTML=`<div class="route-empty">등록된 계정이 없습니다.</div>`;return;}
   const meEm=(currentUser&&currentUser.email)||'';
+  const adm=isAdmin();
   box.innerHTML=list.map((m,i)=>`${(i===0||po(list[i-1])!==po(m))?`<div class="sect-t" style="margin:10px 0 2px">${esc(partOf(m)||'파트 미지정')}</div>`:''}
     <div class="staff-row">
       <span class="sn">${esc(m.name||'')}</span>
       <span class="role-tag ${roleCls(m)}">${roleLabel(m)}</span>
       ${(m.team&&!partOf(m))?`<span class="team-tag">${esc(m.team)}</span>`:''}
-      ${m.email===meEm?`<span class="hint">(나)</span>`:`<span class="tools">
+      ${m.email===meEm?`<span class="hint">(나)</span>`:!adm?(chiefCanDel(m)?`<span class="tools">
+        <button class="btn sm ghost-red" type="button" style="margin:0" onclick="deleteStaff('${esc(m.email)}')" title="계정 삭제(퇴사)"><i data-lucide="trash-2"></i> 삭제</button>
+      </span>`:''):`<span class="tools">
         <button class="btn sm" type="button" onclick="openStaffEdit('${esc(m.email)}')" title="권한·팀 수정"><i data-lucide="pencil"></i></button>
         <button class="btn sm" type="button" onclick="adminResetPw('${esc(m.email)}')" title="비밀번호 재설정(새 비밀번호 발급)"><i data-lucide="key-round"></i> 비밀번호</button>
         <button class="btn sm ghost-red" type="button" style="margin:0" onclick="deleteStaff('${esc(m.email)}')" title="계정 삭제"><i data-lucide="trash-2"></i></button>
@@ -5453,6 +5464,7 @@ function renderStaffList(){
 }
 /* 봇 계정(프로그램용): 계정 관리 목록에 보이지 않고 비밀번호 재설정·삭제도 막는다 — 관리자 비밀번호가 새어도 연동이 끊기지 않게.
    bitbot = 비트 DB 에이전트·감시 스크립트(bitIntake/bitStatus/bitResv), sheetbot = Google Sheet 예약(bookings). 서버(src/index.js)에도 같은 목록 */
+function chiefCanDel(m){return !!m&&!m.super&&(m.role||'staff')==='staff'&&!isBotMember(m);}   // 주임이 지울 수 있는 계정 = 직원 (서버도 같은 검사)
 const BOT_EMAILS=['uc8feac453b1a01cc028b072a@bonafide.app','ua18f959e9cb13bc2208d8af4@bonafide.app'];
 function isBotMember(m){return !!m&&(BOT_EMAILS.includes(m.email)||/^(bitbot|sheetbot)$/i.test(String(m.name||'').trim()));}
 /* 관리자 작업 서버 호출(/api/dongseon/admin/*): 내 Firebase ID 토큰을 붙여 보낸다. 서버는 토큰을 Google 에 확인하고 acl/main 의 관리자인지 대조한 뒤 서비스 계정으로 처리 */
@@ -5500,14 +5512,22 @@ async function issueAuth(email,name){
   }finally{ if(sec){try{await sec.delete();}catch(_){}} }
 }
 let staffEditId=null;
+/* 주임은 권한 '직원'만 고를 수 있다 */
+function roleSelLimit(id){const sel=document.getElementById(id);if(!sel)return;const adm=isAdmin();[...sel.options].forEach(o=>{o.disabled=!adm&&o.value!=='staff';o.hidden=o.disabled;});if(!adm)sel.value='staff';}
+/* 명단(acl/main)에 새 계정 넣기 — 관리자는 직접, 주임은 서버가 대신(규칙상 명단을 못 씀) */
+async function aclAddMembers(list){
+  if(isAdmin()){await mutateAcl(members=>{list.forEach(m=>{if(!members.some(x=>x.email===m.email))members.push({email:m.email,name:m.name,role:m.role,super:false,team:m.team||''});});return members;});return;}
+  for(const m of list)await adminAuthPost('add-member',{email:m.email,name:m.name,team:m.team||''});
+}
 function openStaffEdit(sid){
+  if(!isAdmin()&&(sid||!isChief())){alert('계정 수정은 관리자만 가능합니다.');return;}
   staffEditId=sid;
   const s=sid?STAFF.find(x=>x.id===sid):null;
   if(s&&s.super){alert('최고관리자는 수정할 수 없습니다.');return;}
   document.getElementById('staffTitle').textContent=s?'계정 수정':'계정 추가';
   const nm=document.getElementById('s_name');
   nm.value=s?s.name:''; nm.readOnly=!!s;   // 수정 시 이름(=로그인 아이디) 고정
-  document.getElementById('s_role').value=s?s.role:'staff';
+  document.getElementById('s_role').value=s?s.role:'staff';roleSelLimit('s_role');
   {const cur=s?(staffPart(s.team)||s.team||''):'';const opts=STAFF_TEAMS.includes(cur)||!cur?STAFF_TEAMS:[...STAFF_TEAMS,cur];   // 예전에 적어 둔 다른 팀 이름은 그대로 남겨 둔다
    const sel=document.getElementById('s_team');sel.innerHTML='<option value="">(없음)</option>'+opts.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');sel.value=cur;}
   document.getElementById('s_pw').value='';
@@ -5520,7 +5540,8 @@ function openStaffEdit(sid){
 function closeStaff(){document.getElementById('staffModal').classList.remove('show');}
 /* ───── 여러 명 한 번에 추가(관리자): 한 줄에 "이름[, 비밀번호][, 팀]" — 비밀번호가 없는 줄은 공통 비밀번호 사용. 진료의 목록에서 계정 없는 이름을 불러올 수 있다 (2026-09-21) ───── */
 function openBulkAdd(){
-  if(!isAdmin()){alert('관리자만 가능합니다.');return;}
+  if(!isAdmin()&&!isChief()){alert('관리자·주임만 가능합니다.');return;}
+  roleSelLimit('bk_role');
   const ta=document.getElementById('bk_names');if(ta&&!ta.value.trim())ta.placeholder='홍길동\n김철수, abcd1234\n이영희, , 간호팀';
   document.getElementById('bk_pw').value='';document.getElementById('bk_result').innerHTML='';
   document.getElementById('bulkAddModal').classList.add('show');
@@ -5534,10 +5555,10 @@ async function bulkFillDoctors(){   // 방 설정·진료의 목록의 이름 �
   if(!out.length)alert('진료의 목록의 이름은 모두 계정이 있습니다.');
 }
 async function bulkAddRun(){
-  if(!isAdmin()){alert('관리자만 가능합니다.');return;}
+  if(!isAdmin()&&!isChief()){alert('관리자·주임만 가능합니다.');return;}
   const lines=document.getElementById('bk_names').value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const common=document.getElementById('bk_pw').value.trim();
-  const rv=document.getElementById('bk_role').value;const role=['admin','chief','doctor','office'].includes(rv)?rv:'staff';
+  const rv=document.getElementById('bk_role').value;const role=isAdmin()&&['admin','chief','doctor','office'].includes(rv)?rv:'staff';
   if(!lines.length){alert('이름을 한 줄에 하나씩 입력하세요.');return;}
   const rows=[];const bad=[];
   for(const l of lines){const p=l.split(/[,\t]/).map(x=>x.trim());const name=p[0]||'';const pw=p[1]||common;const team=p[2]||'';
@@ -5560,8 +5581,8 @@ async function bulkAddRun(){
     }
   } finally { try{await sec.delete();}catch(_){} }
   if(made.length){
-    try{ await mutateAcl(members=>{made.forEach(m=>{if(!members.some(x=>x.email===m.email))members.push({email:m.email,name:m.name,role:m.role,super:false,team:m.team});});return members;}); }
-    catch(e){alert('명단 저장 실패: '+((e&&e.message)||e));return;}
+    try{ await aclAddMembers(made); }
+    catch(e){alert('명단 저장 실패: '+((e&&e.message)||e)+'\n(로그인 계정은 만들어졌습니다 — 같은 이름으로 다시 [계정 만들기]를 누르면 명단에 들어갑니다)');return;}
     try{audit('계정 일괄추가',made.map(m=>m.name).join(','));}catch(e){}
   }
   const box=document.getElementById('bk_result');
@@ -5575,9 +5596,9 @@ async function bulkAddRun(){
 const STAFF_TEAMS=['의사','물리치료사','간호사','진료지원','방사선사','행정'];   // 계정의 팀 = 파트 (2026-10-05 요청 — 예전 '간호'·'방사선'·'행정실'은 staffPart 가 새 이름으로 읽음)
 function teamNames(){const set=new Set();STAFF.forEach(s=>{if(s.team)set.add(s.team);});return [...set];}
 async function saveStaff(){
-  if(!isAdmin()){alert('계정 추가·수정은 관리자만 가능합니다.');return;}
+  if(!isAdmin()&&(staffEditId||!isChief())){alert('계정 수정은 관리자만 가능합니다.');return;}
   const name=document.getElementById('s_name').value.trim();
-  const role=document.getElementById('s_role').value;
+  const role=isAdmin()?document.getElementById('s_role').value:'staff';
   const team=document.getElementById('s_team').value.trim();
   const pw=document.getElementById('s_pw').value;
   if(!name){alert('이름을 입력하세요.');return;}
@@ -5602,27 +5623,32 @@ async function saveStaff(){
     await sec.auth().createUserWithEmailAndPassword(email,pw);
     await sec.auth().signOut();
   }catch(e){
-    if(e.code==='auth/email-already-in-use')alert('이미 등록된 직원입니다(다른 앱/콘솔에서 만든 계정일 수 있음).\n잠시 후 아래 명단에 자동으로 나타납니다.');
+    const dupAuth=e.code==='auth/email-already-in-use';
+    if(sec){try{await sec.delete();}catch(_){}}
+    /* 주임: 로그인 계정은 만들어졌는데 명단 저장이 실패했던 이름을 다시 추가하면 명단에만 넣는다 */
+    if(dupAuth&&!isAdmin()){try{await aclAddMembers([{email,name,role,team}]);audit('계정추가',name+' ('+role+')');closeStaff();renderStaffList();alert(`'${name}' 은(는) 로그인 계정이 이미 있어 명단에만 넣었습니다(비밀번호는 예전 그대로).`);}catch(e2){alert('명단 저장 실패: '+((e2&&e2.message)||e2));}return;}
+    if(dupAuth)alert('이미 등록된 직원입니다(다른 앱/콘솔에서 만든 계정일 수 있음).\n잠시 후 아래 명단에 자동으로 나타납니다.');
     else if(e.code==='auth/weak-password')alert('비밀번호는 6자리 이상이어야 합니다.');
     else alert('계정 생성 실패: '+((e&&e.message)||(e&&e.code)||e));
-    if(sec){try{await sec.delete();}catch(_){}}
     return;
   }
   try{await sec.delete();}catch(_){}
-  try{await mutateAcl(members=>{members.push({email,name,role,super:false,team});return members;});}
-  catch(e){alert('명단 저장 실패: '+((e&&e.message)||e));return;}
+  try{await aclAddMembers([{email,name,role,team}]);}
+  catch(e){alert('명단 저장 실패: '+((e&&e.message)||e)+'\n(로그인 계정은 만들어졌습니다 — 같은 이름으로 다시 추가하면 명단에 들어갑니다)');return;}
   audit('계정추가',name+' ('+role+')');
   closeStaff();renderStaffList();updateUserPill();
 }
 async function deleteStaff(sid){
-  if(!isAdmin()){alert('계정 삭제는 관리자만 가능합니다.');return;}
+  if(!isAdmin()&&!isChief()){alert('계정 삭제는 관리자·주임만 가능합니다.');return;}
   const m=memByEmail(sid);if(!m)return;
   if(m.super){alert('최고관리자는 삭제할 수 없습니다.');return;}
   if(isBotMember(m)){alert('연동용 봇 계정(bitbot·sheetbot)은 삭제할 수 없습니다.');return;}
   if(currentUser&&sid===currentUser.email){alert('현재 로그인한 본인 계정은 삭제할 수 없습니다.');return;}
+  if(!isAdmin()&&!chiefCanDel(m)){alert('주임은 직원 계정만 삭제할 수 있습니다. 관리자에게 요청하세요.');return;}
   if(!confirm(`'${m.name}' 계정을 삭제할까요?\n모든 앱에서 로그인할 수 없게 됩니다.`))return;
-  try{await adminAuthPost('delete-user',{email:sid});}   // Firebase 로그인 계정 삭제(서버) — 계정이 없으면 명단만 정리
+  let r;try{r=await adminAuthPost('delete-user',{email:sid});}   // Firebase 로그인 계정 삭제(서버) — 계정이 없으면 명단만 정리. 주임이면 명단도 서버가 정리(aclDone)
   catch(e){alert('삭제 실패: '+((e&&e.message)||e));return;}
+  if(r&&r.aclDone){audit('계정삭제',m.name);renderStaffList();return;}
   try{await mutateAcl(members=>members.filter(x=>x.email!==sid));}
   catch(e){alert('로그인 계정은 지웠지만 명단 정리에 실패했습니다: '+((e&&e.message)||e)+'\n[삭제]를 한 번 더 누르세요.');return;}
   audit('계정삭제',m.name);
@@ -7069,7 +7095,7 @@ async function startHosted(){
         PMEMO=m;lsSet(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
       },err=>console.error('pmemo snap',err));
       if(cloud.unsubAcl)cloud.unsubAcl();
-      cloud.unsubAcl=cloud.aclRef.onSnapshot(s=>{applyAcl(s.exists?s.data():{});cloud.ready.acl=true;afterCloud();},err=>console.error('acl snap',err));
+      cloud.unsubAcl=cloud.aclRef.onSnapshot(s=>{applyAcl(s.exists?s.data():{});cloud.ready.acl=true;afterCloud();try{renderStaffList();}catch(e){}},err=>console.error('acl snap',err));
       subscribeBitIntake();
     });
     setLoginReady(true);   // auth 준비됨 → 로그인 버튼 활성(자동 세션 복원은 onAuthStateChanged가 처리)
