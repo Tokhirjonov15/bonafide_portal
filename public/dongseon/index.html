@@ -5584,6 +5584,7 @@ async function bulkAddRun(){
     try{ await aclAddMembers(made); }
     catch(e){alert('명단 저장 실패: '+((e&&e.message)||e)+'\n(로그인 계정은 만들어졌습니다 — 같은 이름으로 다시 [계정 만들기]를 누르면 명단에 들어갑니다)');return;}
     try{audit('계정 일괄추가',made.map(m=>m.name).join(','));}catch(e){}
+    try{rosterAutoAdd(made);}catch(e){console.warn(e);}
   }
   const box=document.getElementById('bk_result');
   box.innerHTML=`<div class="hint" style="margin-top:6px"><b>완료</b> — 생성 ${made.length}명 · 건너뜀(이미 있음) ${skipped.length}명${failed.length?' · 실패 '+failed.length+'명':''}</div>`
@@ -5626,7 +5627,7 @@ async function saveStaff(){
     const dupAuth=e.code==='auth/email-already-in-use';
     if(sec){try{await sec.delete();}catch(_){}}
     /* 주임: 로그인 계정은 만들어졌는데 명단 저장이 실패했던 이름을 다시 추가하면 명단에만 넣는다 */
-    if(dupAuth&&!isAdmin()){try{await aclAddMembers([{email,name,role,team}]);audit('계정추가',name+' ('+role+')');closeStaff();renderStaffList();alert(`'${name}' 은(는) 로그인 계정이 이미 있어 명단에만 넣었습니다(비밀번호는 예전 그대로).`);}catch(e2){alert('명단 저장 실패: '+((e2&&e2.message)||e2));}return;}
+    if(dupAuth&&!isAdmin()){try{await aclAddMembers([{email,name,role,team}]);audit('계정추가',name+' ('+role+')');try{rosterAutoAdd([{name,team}]);}catch(e){}closeStaff();renderStaffList();alert(`'${name}' 은(는) 로그인 계정이 이미 있어 명단에만 넣었습니다(비밀번호는 예전 그대로).`);}catch(e2){alert('명단 저장 실패: '+((e2&&e2.message)||e2));}return;}
     if(dupAuth)alert('이미 등록된 직원입니다(다른 앱/콘솔에서 만든 계정일 수 있음).\n잠시 후 아래 명단에 자동으로 나타납니다.');
     else if(e.code==='auth/weak-password')alert('비밀번호는 6자리 이상이어야 합니다.');
     else alert('계정 생성 실패: '+((e&&e.message)||(e&&e.code)||e));
@@ -5636,6 +5637,7 @@ async function saveStaff(){
   try{await aclAddMembers([{email,name,role,team}]);}
   catch(e){alert('명단 저장 실패: '+((e&&e.message)||e)+'\n(로그인 계정은 만들어졌습니다 — 같은 이름으로 다시 추가하면 명단에 들어갑니다)');return;}
   audit('계정추가',name+' ('+role+')');
+  try{rosterAutoAdd([{name,team}]);}catch(e){console.warn(e);}
   closeStaff();renderStaffList();updateUserPill();
 }
 async function deleteStaff(sid){
@@ -5648,11 +5650,12 @@ async function deleteStaff(sid){
   if(!confirm(`'${m.name}' 계정을 삭제할까요?\n모든 앱에서 로그인할 수 없게 됩니다.`))return;
   let r;try{r=await adminAuthPost('delete-user',{email:sid});}   // Firebase 로그인 계정 삭제(서버) — 계정이 없으면 명단만 정리. 주임이면 명단도 서버가 정리(aclDone)
   catch(e){alert('삭제 실패: '+((e&&e.message)||e));return;}
-  if(r&&r.aclDone){audit('계정삭제',m.name);renderStaffList();return;}
+  if(r&&r.aclDone){audit('계정삭제',m.name);renderStaffList();try{rosterRetireByName(m.name);}catch(e){}return;}
   try{await mutateAcl(members=>members.filter(x=>x.email!==sid));}
   catch(e){alert('로그인 계정은 지웠지만 명단 정리에 실패했습니다: '+((e&&e.message)||e)+'\n[삭제]를 한 번 더 누르세요.');return;}
   audit('계정삭제',m.name);
   renderStaffList();
+  try{rosterRetireByName(m.name);}catch(e){}
 }
 async function changeMyPassword(){
   if(!isAdmin()){alert('비밀번호 변경은 관리자만 할 수 있습니다. 관리자에게 요청해 주세요.');return;}   // 2026-09-24 지시
@@ -14478,6 +14481,16 @@ function rosterPart(name){const k=String(name||'').replace(/\s+/g,'').toLowerCas
   for(const g of STAFF_TEAMS){if((R[g]||[]).some(e=>rosterKeys(e).includes(k)))return g;}
   const m=/^(.*?)\((.*)\)$/.exec(k);if(m)for(const g of STAFF_TEAMS){if((R[g]||[]).some(e=>{const ks=rosterKeys(e);return ks.includes(m[1])||ks.includes(m[2]);}))return g;}
   return '';}
+/* 계정을 만들 때 파트를 고르면 직원 목록 그 파트에도 넣는다 (2026-10-30: 진료지원 이주영 계정을 만들었는데 직원 목록에 없던 것) — 이미 어느 파트에 있으면 그대로 */
+function rosterAutoAdd(list){const R=staffRoster();let n=0;
+  (list||[]).forEach(m=>{const g=staffPart(m&&m.team),nm=String((m&&m.name)||'').trim();if(!g||!nm||rosterPart(nm))return;
+    const ks=rosterKeys(nm);FORMER_EXTRA=(FORMER_EXTRA||[]).filter(f=>!rosterKeys(f.n).some(k=>ks.includes(k)));R[g].push(nm);n++;try{audit('직원 추가',g+' · '+nm+' (계정 추가)');}catch(e){}});
+  if(n){cloudSaveConfig();try{if(document.getElementById('offModal').classList.contains('show'))renderStaffDir();}catch(e){}}}
+/* 계정을 지운 뒤: 직원 목록에 이름이 있으면 퇴사 처리(rosterDel — 방·진료의·4층 치료사에서도 뺌)까지 이어서 묻는다 */
+function rosterRetireByName(name){const g=rosterPart(name);if(!g)return;const gi=STAFF_TEAMS.indexOf(g),R=staffRoster();
+  const k=String(name||'').replace(/\s+/g,'').toLowerCase();let i=R[g].findIndex(e=>rosterKeys(e).includes(k));
+  if(i<0){const m=/^(.*?)\((.*)\)$/.exec(k);if(m)i=R[g].findIndex(e=>{const ks=rosterKeys(e);return ks.includes(m[1])||ks.includes(m[2]);});}
+  if(i>=0)window.rosterDel(gi,i);}
 function partOf(m){return rosterPart(m&&m.name)||staffPart(m&&m.team)||((m&&m.role==='doctor')?'의사':'');}
 const STAFF_ROSTER_DEFAULT={
   '의사':['김현우 (Ethan)','정상민 (Jamie)','백민철 (Min)','박초롱'],   // 채상훈 퇴사(2026-10-28) — 통계는 DOC_STAT_FORMER 로 예전 기록 유지
@@ -14493,7 +14506,7 @@ window.closeOff=function(){document.getElementById("offModal").classList.remove(
 function renderStaffDir(){
   const box=document.getElementById("offList"),emp=document.getElementById("offEmpty");if(!box)return;
   const q=((document.getElementById("offSearch")||{}).value||"").trim().toLowerCase();
-  const R=staffRoster(),adm=isAdmin();if(emp)emp.style.display="none";
+  const R=staffRoster(),adm=isAdmin()||isChief();if(emp)emp.style.display="none";
   const html=STAFF_TEAMS.map((g,gi)=>{
     const list=R[g].map((n,i)=>({n,i})).filter(x=>!q||x.n.toLowerCase().includes(q));
     if(q&&!list.length)return '';
@@ -14502,7 +14515,7 @@ function renderStaffDir(){
       ${adm&&!q?`<span class="sdir-add"><input id="sdirIn${gi}" placeholder="이름 (영문)" maxlength="40" onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229)rosterAdd(${gi})"><button type="button" class="btn sm" onclick="rosterAdd(${gi})">+ 추가</button></span>`:''}</div></div>`;}).join('');
   box.innerHTML=html||'<p class="hint">검색 결과가 없습니다.</p>';
 }
-window.rosterAdd=function(gi){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
+window.rosterAdd=function(gi){if(!isAdmin()&&!isChief()){alert('명단 수정은 관리자·주임만 가능합니다.');return;}
   const g=STAFF_TEAMS[gi],inp=document.getElementById('sdirIn'+gi);if(!g||!inp)return;
   const n=inp.value.trim().replace(/\s*\(\s*/,' (').replace(/\s*\)\s*$/,')');   // '김민수(Min)' → '김민수 (Min)'
   if(!n){inp.focus();return;}
@@ -14521,7 +14534,7 @@ function retireTargets(entry){const keys=rosterKeys(entry);const hit=x=>{const k
     if(w.length)rooms.push(r+'('+w.join('·')+')');});
   const pt4=((PT4_META&&Array.isArray(PT4_META.therapists))?PT4_META.therapists:[]).filter(t=>t.active!==false&&hit(t.name)).map(t=>t.name);
   return {hit,rooms,docs:(DOCTORS||[]).filter(hit),pt4};}
-window.rosterDel=function(gi,i){if(!isAdmin()){alert('명단 수정은 관리자만 가능합니다.');return;}
+window.rosterDel=function(gi,i){if(!isAdmin()&&!isChief()){alert('명단 수정은 관리자·주임만 가능합니다.');return;}
   const g=STAFF_TEAMS[gi],R=staffRoster(),n=g&&R[g][i];if(!n)return;
   const T=retireTargets(n);
   const where=[T.rooms.length?'· 방: '+T.rooms.join(', '):'',T.docs.length?'· 진료의 목록':'',T.pt4.length?'· 4층 비급여 스케줄 치료사('+T.pt4.join(', ')+') — 숨김, 예전 기록은 그대로':''].filter(Boolean);
