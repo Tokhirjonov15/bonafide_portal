@@ -261,6 +261,10 @@ table.codes tr.sum th{background:#d9ead3;color:#1f2328}
 table.codes td.code{text-align:left;font-weight:700;padding-right:8px}
 table.codes td{color:var(--muted)}
 table.codes td.hit{background:#d9ead3;color:#1f2328;font-weight:600}
+table.codes [data-r]{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+table.codes .sel,table.codes td.hit.sel{background:#bfdbfe;outline:1px solid #3b82f6;outline-offset:-1px}
+#selBar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:60;display:none;gap:8px;align-items:center;background:#1e293b;color:#fff;border-radius:12px;padding:8px 10px 8px 14px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:14px}
+#selBar button{border:0;border-radius:8px;padding:7px 14px;font-weight:700;font-size:14px;cursor:pointer}
 table.codes tr.nz td.code{color:var(--text)}
 .day-details{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin-bottom:6px}
 .day-details summary{cursor:pointer;display:flex;gap:8px;align-items:center}

@@ -913,9 +913,43 @@ function breakdown(docs){
   const dates=[...new Set(docs.filter(d=>d.th.length).map(d=>d.date).concat([...dayMap.keys()]))].sort();
   const days=dates.map(date=>{const tables=dayMap.get(date)||emptyTables(ths.length);return {date,day:Number(date.slice(8)),tables,total:tables.reduce((a,t)=>a+t.total,0)};});
   return {therapists:ths,month_:monthT,days,other:[...other.entries()].map(([code,total])=>({code,total})).sort((a,b)=>b.total-a.total)};}
-function codeTable(t,ths,label,copy){return `<table class="codes"><thead><tr><th class="grp" rowspan="2">${esc(label)}</th><th>${esc(t.group)}</th>${ths.map((x,i)=>copy?`<th style="cursor:pointer;text-decoration:underline dotted" title="${esc(x.name)} 치료 내역 복사" onclick="treatCopy(${i})">${esc(x.name)}</th>`:`<th>${esc(x.name)}</th>`).join('')}<th>총합</th></tr>
-  <tr class="sum"><th>총합</th>${t.colTotals.map(n=>`<th>${n}</th>`).join('')}<th>${t.total}</th></tr></thead><tbody>
-  ${t.codes.map((code,ri)=>`<tr class="${t.rowTotals[ri]?'nz':''}">${ri===0?`<td class="grp" rowspan="${t.codes.length}"></td>`:''}<td class="code">${esc(code)}</td>${t.counts[ri].map(n=>`<td class="${n?'hit':''}">${n}</td>`).join('')}<td class="${t.rowTotals[ri]?'hit':''}">${t.rowTotals[ri]}</td></tr>`).join('')}</tbody></table>`;}
+/* 칸마다 data-r(줄: 0 이름, 1 총합, 2~ 코드) · data-c(칸: 1 코드, 2~ 치료사, 끝 총합) — 엑셀처럼 끌어서 고르기(아래 SEL) */
+function codeTable(t,ths,label){const L=ths.length+2;return `<table class="codes"><thead><tr><th class="grp" rowspan="2">${esc(label)}</th><th data-r="0" data-c="1">${esc(t.group)}</th>${ths.map((x,i)=>`<th data-r="0" data-c="${i+2}">${esc(x.name)}</th>`).join('')}<th data-r="0" data-c="${L}">총합</th></tr>
+  <tr class="sum"><th data-r="1" data-c="1">총합</th>${t.colTotals.map((n,i)=>`<th data-r="1" data-c="${i+2}">${n}</th>`).join('')}<th data-r="1" data-c="${L}">${t.total}</th></tr></thead><tbody>
+  ${t.codes.map((code,ri)=>`<tr class="${t.rowTotals[ri]?'nz':''}">${ri===0?`<td class="grp" rowspan="${t.codes.length}"></td>`:''}<td class="code" data-r="${ri+2}" data-c="1">${esc(code)}</td>${t.counts[ri].map((n,i)=>`<td class="${n?'hit':''}" data-r="${ri+2}" data-c="${i+2}">${n}</td>`).join('')}<td class="${t.rowTotals[ri]?'hit':''}" data-r="${ri+2}" data-c="${L}">${t.rowTotals[ri]}</td></tr>`).join('')}</tbody></table>`;}
+/* ── 치료 통계 표: 엑셀처럼 끌어서 고르고 복사 (2026-10-30 요청) ──
+   마우스: 끌기(Ctrl+C 도 됨). 폰: 칸을 꾹(0.35초) 누른 채 끌기 — 그냥 끌면 화면이 스크롤된다. 칸을 하나 누른 뒤 다른 칸을 누르면 그 사이까지.
+   화면이 다시 그려져도(다른 PC 입력) 표 순서·칸 번호로 다시 칠한다 */
+const TSEL={ti:-1,a:null,b:null,drag:false};
+const tsTables=()=>[...document.querySelectorAll('table.codes')];
+function tsAt(el){const c=el&&el.closest?el.closest('table.codes [data-r]'):null;if(!c)return null;return {ti:tsTables().indexOf(c.closest('table')),r:+c.dataset.r,c:+c.dataset.c};}
+function tsBox(){const a=TSEL.a,b=TSEL.b;return {r0:Math.min(a.r,b.r),r1:Math.max(a.r,b.r),c0:Math.min(a.c,b.c),c1:Math.max(a.c,b.c)};}
+function tsBar(){let el=document.getElementById('tsBar');if(!el){el=document.createElement('div');el.id='tsBar';
+    el.innerHTML='<span id="selN"></span><button type="button" style="background:#3b82f6;color:#fff" onclick="tsCopy()">복사</button><button type="button" style="background:#475569;color:#fff" onclick="tsClear()">✕</button>';document.body.appendChild(el);}return el;}
+function tsPaint(){document.querySelectorAll('table.codes .sel').forEach(x=>x.classList.remove('sel'));const tb=tsTables()[TSEL.ti];
+  if(!tb||!TSEL.a||!TSEL.b){const e=document.getElementById('tsBar');if(e)e.style.display='none';return;}
+  const B=tsBox();let n=0;tb.querySelectorAll('[data-r]').forEach(x=>{const r=+x.dataset.r,c=+x.dataset.c;if(r>=B.r0&&r<=B.r1&&c>=B.c0&&c<=B.c1){x.classList.add('sel');n++;}});
+  const e=tsBar();e.style.display='flex';document.getElementById('selN').textContent=n+'칸 선택';}
+function tsText(){const tb=tsTables()[TSEL.ti];if(!tb||!TSEL.a)return '';const B=tsBox();const M=new Map();tb.querySelectorAll('[data-r]').forEach(x=>M.set(x.dataset.r+','+x.dataset.c,x.textContent.trim()));
+  const L=[];for(let r=B.r0;r<=B.r1;r++){const row=[];for(let c=B.c0;c<=B.c1;c++)row.push(M.get(r+','+c)??'');L.push(row.join('\t'));}return L.join('\n');}
+window.tsClear=()=>{TSEL.ti=-1;TSEL.a=TSEL.b=null;tsPaint();};
+window.tsCopy=()=>{const s=tsText();if(!s)return;const done=()=>toast('복사했습니다 — 엑셀·카톡·메모에 붙여넣기');
+  const fb=()=>{const ta=document.createElement('textarea');ta.value=s;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,s.length);
+    let ok=false;try{ok=document.execCommand('copy');}catch(e){}ta.remove();if(ok)done();else prompt('아래 글을 길게 눌러 복사하세요',s);};
+  try{if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(s).then(done,fb);else fb();}catch(e){fb();}};
+function tsStart(p,extend){if(extend&&TSEL.a&&TSEL.ti===p.ti){TSEL.b=p;}else{TSEL.ti=p.ti;TSEL.a=TSEL.b=p;}tsPaint();}
+function tsMove(x,y){if(!TSEL.drag)return;const p=tsAt(document.elementFromPoint(x,y));if(p&&p.ti===TSEL.ti&&(p.r!==TSEL.b.r||p.c!==TSEL.b.c)){TSEL.b=p;tsPaint();}}
+document.addEventListener('mousedown',e=>{if(e.button!==0)return;const p=tsAt(e.target);if(!p)return;e.preventDefault();tsStart(p,e.shiftKey);TSEL.drag=true;});
+document.addEventListener('mousemove',e=>tsMove(e.clientX,e.clientY));
+document.addEventListener('mouseup',()=>{TSEL.drag=false;});
+document.addEventListener('copy',e=>{if(!TSEL.a||TSEL.ti<0)return;const a=document.activeElement;if(a&&/INPUT|TEXTAREA/.test(a.tagName))return;const s=tsText();if(!s)return;e.clipboardData.setData('text/plain',s);e.preventDefault();toast('복사했습니다');});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&TSEL.a)tsClear();});
+{let T=0,P=null,X=0,Y=0,moved=false;
+  document.addEventListener('touchstart',e=>{const p=tsAt(e.target);if(!p||e.touches.length>1)return;P=p;moved=false;X=e.touches[0].clientX;Y=e.touches[0].clientY;
+    clearTimeout(T);T=setTimeout(()=>{T=0;TSEL.drag=true;tsStart(P,false);try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}},350);},{passive:true});
+  document.addEventListener('touchmove',e=>{const t=e.touches[0];if(TSEL.drag){e.preventDefault();tsMove(t.clientX,t.clientY);return;}
+    if(T&&Math.hypot(t.clientX-X,t.clientY-Y)>8){clearTimeout(T);T=0;moved=true;}},{passive:false});
+  document.addEventListener('touchend',e=>{if(T){clearTimeout(T);T=0;if(P&&!moved){tsStart(P,!!TSEL.a);e.preventDefault();}}TSEL.drag=false;P=null;},{passive:false});}
 let TREAT_OPEN=false;
 /* 치료사 한 명의 월 합계를 글로 복사 (2026-10-30 요청: 표에서 자기 세로줄을 손으로 긁기 힘들다 — 폰) — 이름 단추나 표 머리의 이름을 누르면.
    기본은 0 이 아닌 코드만, '0 도 포함'이면 표 순서 그대로 전부(엑셀에 나란히 붙일 때) */
@@ -931,12 +965,13 @@ window.treatCopy=function(i){const s=treatCopyText(i);if(!s)return;const name=TR
 function renderTreatPage(){const {year,month,ym}=pickYm(R.q);const docs=monthDocs(ym);
   let h=`<div class="daybar"><h1>치료 통계 · ${year}년 ${month}월</h1><div class="days" style="margin:0">${monthPills('treat',ym)}</div></div>`;
   if(!docs)return h+LOADING;const b=breakdown(docs);
-  TREAT_COPY={ths:b.therapists,tables:b.month_,label:`${year}년 ${month}월`};
+  TREAT_COPY={ths:b.therapists,tables:b.month_,label:`${year}년 ${month}월`};setTimeout(tsPaint,0);   // 다시 그려져도 고른 칸 유지
   h+=`<div class="days"><span class="who small">표시 칸에 점(.)이 찍힌 내원 예약만 셉니다.</span><button class="pill" onclick="TREAT_OPEN=!TREAT_OPEN;render()">${TREAT_OPEN?'일자별 모두 접기':'일자별 모두 펼치기'}</button></div>
     <h2 class="h2">월 합계</h2>
     ${b.therapists.length?`<div class="days"><span class="who small">내 치료 복사:</span>${b.therapists.map((t,i)=>`<button class="pill small" onclick="treatCopy(${i})">${esc(t.name)}</button>`).join('')}
       <label class="who small" style="margin-left:6px"><input type="checkbox" ${TREAT_ZERO?'checked':''} onchange="TREAT_ZERO=this.checked"> 0 도 포함</label></div>`:''}
-    <div class="code-tables">${b.month_.map(t=>codeTable(t,b.therapists,'합계',true)).join('')}</div>
+    <p class="who small" style="margin:2px 0">표에서 칸을 끌어서 고르면 [복사] — 폰은 칸을 꾹 누른 채 끌거나, 한 칸 누르고 끝 칸을 누르세요.</p>
+    <div class="code-tables">${b.month_.map(t=>codeTable(t,b.therapists,'합계')).join('')}</div>
     ${b.other.length?`<p class="note">목록에 없는 코드: ${b.other.map(o=>`${esc(o.code)} ${o.total}건`).join(', ')}. 예약 입력창에서 코드를 목록대로 고쳐 주세요.</p>`:''}
     <h2 class="h2">일자별</h2>
     ${b.days.map(d=>`<details class="day-details" ${TREAT_OPEN?'open':''}><summary><strong>${d.day}일</strong> <span class="who small">${d.date}</span> · 총 ${d.total}건 <a href="${href('schedule',{date:d.date})}" class="pill small">스케줄 보기</a></summary>
