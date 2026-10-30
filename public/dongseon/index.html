@@ -3797,12 +3797,19 @@ function bitVisible(){
     return true;
   }).sort((a,b)=>new Date(b.seenAt)-new Date(a.seenAt));
 }
+/* 카드 없는 비트 접수 (2026-10-30 문경준 — 자동 접수가 멈춘 채 3시간 넘게 아무도 몰랐다).
+   선점(자동접수)만 되고 카드가 없는 오늘 접수가 4분 넘게 그대로면(되살리기는 2분) 보드 위 비트 줄에 빨간 칩으로 띄워 직원이 바로 [카드 만들기] */
+function bitStuckList(){if(!currentUser||BIT_SUB_ROLE!=='staff')return [];const today=localYMD(new Date()),now=Date.now();
+  return (BIT_INTAKE||[]).filter(r=>r&&r.date===today&&r.status==='자동접수'&&!r.patientId&&!BIT_CLAIMING[r.docId]
+    &&now-(new Date(r.handledAt||0).getTime()||now)>240000&&bitWhy(r).code==='stuck');}
 function renderBitBar(){
   const bar=document.getElementById('bitIntakeBar'),box=document.getElementById('bitChips');if(!bar||!box)return;
-  const list=currentUser?bitVisible():[];
-  if(!list.length){bar.style.display='none';return;}
+  const list=currentUser?bitVisible():[],stuck=bitStuckList();
+  if(!list.length&&!stuck.length){bar.style.display='none';return;}
   bar.style.display='';
-  box.innerHTML=list.map(r=>{
+  box.innerHTML=stuck.map(r=>`<span class="bit-chip stuck" title="비트에 접수됐는데 동선관리 카드가 안 생겼습니다(${esc(r.handledBy||'')} 화면이 만들다 멈춤)">
+      <b>⚠ ${esc(dispName(r.name||''))}</b><span class="hint">${esc(r.mrn||'')} · 카드 없음</span>
+      <button type="button" class="mini ok" onclick="bitRemakeDoc('${esc(r.docId)}')">카드 만들기</button></span>`).join('')+list.map(r=>{
     const reg=regFind(r.mrn);const nameOk=!reg||!reg.name||reg.name===r.name;
     const t=new Date(r.seenAt);const hm=isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');
     const sub=[r.doctor?('전 '+esc(r.doctor)):'',r.ins?esc(r.ins):'',r.chojae?esc(r.chojae):''].filter(Boolean).join(' · ');
@@ -4789,7 +4796,11 @@ function bitHealStuck(){if(!cloud.intakeCol||!cloud.db||!currentUser||Date.now()
     cloud.db.runTransaction(t=>t.get(ref).then(d=>{const v=d.exists?(d.data()||{}):null;if(!v||v.status!=='자동접수'||v.patientId)return false;
         t.update(ref,{status:'',handledBy:'되살림 '+(currentUser.name||''),handledAt:new Date().toISOString()});return true;}))   /* 직원은 status·handledBy·handledAt·patientId 만 쓸 수 있다(Firestore 규칙) — healedAt 을 쓰다 거부되어 되살리기가 한 번도 안 됐다 (2026-10-30 문경준) */
       .then(ok=>{if(ok){r.status='';try{audit('멈춘 자동 접수 되살림',(r.name||'')+(r.mrn?' ('+r.mrn+')':'')+' ocm'+(r.ocmNum||''));}catch(e){}setTimeout(()=>{try{bitAutoProcess();}catch(e){}},500);}})
-      .catch(e=>console.warn('bitHeal',e));});}
+      .catch(e=>{console.warn('bitHeal',e);   /* 되살리기 실패를 조용히 넘기지 않는다 — 보드 위 빨간 칩([카드 만들기])과 함께 한 번 알림 (2026-10-30) */
+        if(!BIT_HEAL_FAIL[r.docId]){BIT_HEAL_FAIL[r.docId]=1;try{audit('멈춘 자동 접수 되살리기 실패',(r.name||'')+(r.mrn?' ('+r.mrn+')':'')+' — '+(e&&e.message||e));}catch(_){}
+          try{notify('triangle-alert','카드 없는 비트 접수',esc(dispName(r.name||''))+' 님 — 비트 접수됐는데 카드를 자동으로 만들지 못했습니다. 보드 위 빨간 칩의 [카드 만들기]를 눌러 주세요.');}catch(_){}}
+        try{renderBitBar();}catch(_){}});});}
+const BIT_HEAL_FAIL={};
 /* 2026-10-26: 보험이 다른 접수(일반 + 건강보험 — 카드 2장)는 '이미 카드 있음'으로 보지 않는다. 같은 접수로 보는 것은
    보험이 같거나 한쪽이 비었고, 카드 쪽 접수번호가 없거나(손으로 만든 카드) 같은 접수번호인 카드·내원뿐 */
 function bitLateSeen(mrn,r){const today=localYMD(new Date()),m=normMrn(mrn);if(!m)return false;
@@ -11688,8 +11699,11 @@ function bitFindRender(){let ov=document.getElementById('bitFindOv');if(!BIT_FIN
   ov.innerHTML=`<div class="modal" style="width:640px"><h3>🔍 비트 접수 찾기 — ${esc(BIT_FIND.q)}</h3><div class="body" style="display:flex;flex-direction:column;gap:8px;max-height:65vh;overflow:auto">
     ${rows||`<div class="hint" style="padding:10px">최근 3일 비트 접수에서 찾지 못했습니다. <b>접수 PC 에이전트가 이 접수를 동선관리로 보내지 못한 것</b>입니다 — 접수 PC 3대에서 '접수PC_에이전트업데이트.bat' 을 실행해 주세요(새 버전은 빠진 접수를 다시 보냅니다). 급하면 보드에서 [＋ 접수]로 직접 넣어 주세요.</div>`}</div>
     <div class="foot"><button class="btn primary" onclick="BIT_FIND=null;bitFindRender()">닫기</button></div></div>`;}
-async function bitFindMake(i){const r=BIT_FIND&&BIT_FIND.L[i];if(!r)return;
-  if(bitOnBoard(r)){toast('이미 보드에 있습니다');bitFindRender();return;}
+async function bitFindMake(i){const r=BIT_FIND&&BIT_FIND.L[i];if(!r)return;await bitRemake(r);bitFindRender();}
+/* 보드 위 '카드 없는 비트 접수' 칩의 [카드 만들기] (2026-10-30) */
+function bitRemakeDoc(docId){const r=(BIT_INTAKE||[]).find(x=>x.docId===docId);if(r)bitRemake(r).then(()=>renderBitBar());}
+async function bitRemake(r){
+  if(bitOnBoard(r)){toast('이미 보드에 있습니다');return;}
   const reg=regFind(r.mrn);const name=r.name||(reg&&reg.name)||'';if(!name){alert('이름이 없어 만들 수 없습니다 — 보드에서 [＋ 접수]로 넣어 주세요.');return;}
   if(!confirm(name+'('+(r.mrn||'')+') 카드를 지금 만들까요?'))return;
   try{const ref=cloud.intakeCol.doc(r.docId);
@@ -11700,8 +11714,7 @@ async function bitFindMake(i){const r=BIT_FIND&&BIT_FIND.L[i];if(!r)return;
     try{audit('비트 접수 찾기 → 카드 만듦',name+' ('+(r.mrn||'')+') ocm'+(r.ocmNum||''));}catch(e){}
     await bitClaimAndCreate(r,name,reg);
     toast(bitOnBoard(r)?name+' 카드를 만들었습니다':'카드를 만들지 못했습니다 — 보드에서 [＋ 접수]로 넣어 주세요');}
-  catch(e){alert('만들지 못했습니다: '+(e.message||e));}
-  bitFindRender();}
+  catch(e){alert('만들지 못했습니다: '+(e.message||e));}}
 function bitFindPast(i){const r=BIT_FIND&&BIT_FIND.L[i];if(!r)return;const m=Number(r.hourMin);
   const tm=(m>=0&&m<24*60)?String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')+'-'+String(Math.floor(Math.min(m+30,1439)/60)).padStart(2,'0')+':'+String(Math.min(m+30,1439)%60).padStart(2,'0'):'';
   BIT_FIND=null;bitFindRender();addMissedVisit({day:r.date,mrn:normMrn(r.mrn),name:r.name||'',tm});}
@@ -15283,6 +15296,7 @@ boot();
   .bit-chip .mini{padding:2px 8px;font-size:11.5px}
   .bit-chip .mini.ok{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
   .bit-chip.warn{border-color:#f5b301;background:#fffbeb}
+  .bit-chip.stuck{border-color:#ef4444;background:#fef2f2;color:#b91c1c}
   .offhour-edit{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px;padding:8px 10px;border:1px dashed var(--blue);border-radius:8px;background:var(--blue-bg);font-size:12px}
 </style>
 <script src="../jaego/vendor/lucide.min.js"></script>
