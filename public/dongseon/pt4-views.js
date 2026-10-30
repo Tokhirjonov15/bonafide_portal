@@ -913,15 +913,30 @@ function breakdown(docs){
   const dates=[...new Set(docs.filter(d=>d.th.length).map(d=>d.date).concat([...dayMap.keys()]))].sort();
   const days=dates.map(date=>{const tables=dayMap.get(date)||emptyTables(ths.length);return {date,day:Number(date.slice(8)),tables,total:tables.reduce((a,t)=>a+t.total,0)};});
   return {therapists:ths,month_:monthT,days,other:[...other.entries()].map(([code,total])=>({code,total})).sort((a,b)=>b.total-a.total)};}
-function codeTable(t,ths,label){return `<table class="codes"><thead><tr><th class="grp" rowspan="2">${esc(label)}</th><th>${esc(t.group)}</th>${ths.map(x=>`<th>${esc(x.name)}</th>`).join('')}<th>총합</th></tr>
+function codeTable(t,ths,label,copy){return `<table class="codes"><thead><tr><th class="grp" rowspan="2">${esc(label)}</th><th>${esc(t.group)}</th>${ths.map((x,i)=>copy?`<th style="cursor:pointer;text-decoration:underline dotted" title="${esc(x.name)} 치료 내역 복사" onclick="treatCopy(${i})">${esc(x.name)}</th>`:`<th>${esc(x.name)}</th>`).join('')}<th>총합</th></tr>
   <tr class="sum"><th>총합</th>${t.colTotals.map(n=>`<th>${n}</th>`).join('')}<th>${t.total}</th></tr></thead><tbody>
   ${t.codes.map((code,ri)=>`<tr class="${t.rowTotals[ri]?'nz':''}">${ri===0?`<td class="grp" rowspan="${t.codes.length}"></td>`:''}<td class="code">${esc(code)}</td>${t.counts[ri].map(n=>`<td class="${n?'hit':''}">${n}</td>`).join('')}<td class="${t.rowTotals[ri]?'hit':''}">${t.rowTotals[ri]}</td></tr>`).join('')}</tbody></table>`;}
 let TREAT_OPEN=false;
+/* 치료사 한 명의 월 합계를 글로 복사 (2026-10-30 요청: 표에서 자기 세로줄을 손으로 긁기 힘들다 — 폰) — 이름 단추나 표 머리의 이름을 누르면.
+   기본은 0 이 아닌 코드만, '0 도 포함'이면 표 순서 그대로 전부(엑셀에 나란히 붙일 때) */
+let TREAT_COPY=null,TREAT_ZERO=false;
+function treatCopyText(i){const C=TREAT_COPY;if(!C||!C.ths[i])return '';const L=[];let tot=0;
+  C.tables.forEach(t=>t.codes.forEach((code,ri)=>{const n=t.counts[ri][i]||0;tot+=n;if(n||TREAT_ZERO)L.push(code+'\t'+n);}));
+  return `${C.ths[i].name} · ${C.label} 치료 (총 ${tot}건)\n`+(L.length?L.join('\n'):'(없음)');}
+window.treatCopy=function(i){const s=treatCopyText(i);if(!s)return;const name=TREAT_COPY.ths[i].name;
+  const done=()=>toast(`${name} 치료 내역을 복사했습니다 — 카톡·메모·엑셀에 붙여넣기`);
+  const fb=()=>{const ta=document.createElement('textarea');ta.value=s;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,s.length);
+    let ok=false;try{ok=document.execCommand('copy');}catch(e){}ta.remove();if(ok)done();else prompt('아래 글을 길게 눌러 복사하세요',s);};
+  try{if(navigator.clipboard&&window.isSecureContext)navigator.clipboard.writeText(s).then(done,fb);else fb();}catch(e){fb();}};
 function renderTreatPage(){const {year,month,ym}=pickYm(R.q);const docs=monthDocs(ym);
   let h=`<div class="daybar"><h1>치료 통계 · ${year}년 ${month}월</h1><div class="days" style="margin:0">${monthPills('treat',ym)}</div></div>`;
   if(!docs)return h+LOADING;const b=breakdown(docs);
+  TREAT_COPY={ths:b.therapists,tables:b.month_,label:`${year}년 ${month}월`};
   h+=`<div class="days"><span class="who small">표시 칸에 점(.)이 찍힌 내원 예약만 셉니다.</span><button class="pill" onclick="TREAT_OPEN=!TREAT_OPEN;render()">${TREAT_OPEN?'일자별 모두 접기':'일자별 모두 펼치기'}</button></div>
-    <h2 class="h2">월 합계</h2><div class="code-tables">${b.month_.map(t=>codeTable(t,b.therapists,'합계')).join('')}</div>
+    <h2 class="h2">월 합계</h2>
+    ${b.therapists.length?`<div class="days"><span class="who small">내 치료 복사:</span>${b.therapists.map((t,i)=>`<button class="pill small" onclick="treatCopy(${i})">${esc(t.name)}</button>`).join('')}
+      <label class="who small" style="margin-left:6px"><input type="checkbox" ${TREAT_ZERO?'checked':''} onchange="TREAT_ZERO=this.checked"> 0 도 포함</label></div>`:''}
+    <div class="code-tables">${b.month_.map(t=>codeTable(t,b.therapists,'합계',true)).join('')}</div>
     ${b.other.length?`<p class="note">목록에 없는 코드: ${b.other.map(o=>`${esc(o.code)} ${o.total}건`).join(', ')}. 예약 입력창에서 코드를 목록대로 고쳐 주세요.</p>`:''}
     <h2 class="h2">일자별</h2>
     ${b.days.map(d=>`<details class="day-details" ${TREAT_OPEN?'open':''}><summary><strong>${d.day}일</strong> <span class="who small">${d.date}</span> · 총 ${d.total}건 <a href="${href('schedule',{date:d.date})}" class="pill small">스케줄 보기</a></summary>
