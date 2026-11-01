@@ -3980,7 +3980,8 @@ function bitLookupByMrn(mrn){mrn=String(mrn||'').trim();if(!mrn)return null;
 /* 다른 환자와 같은 차팅 (2026-10-26: 박상하·조현진 슬립에 똑같은 차팅) — 진료실 PC 감시 프로그램이 환자를 바꾸는 순간 앞 환자 칸 내용을
    새 차트번호로 보낸 것. 오늘 처방 문서 중 차트번호가 다른데 차팅(med 위, 8자 이상)이 똑같은 것이 있으면 {other, later}.
    later = 이 문서가 나중에 처음 온 쪽(잘못 간 쪽일 가능성) → 처방 줄을 가리고 인쇄를 막는다. 비트에서 확인하고 [이 환자 것 맞음]을 누르면 풀린다(dupOk) */
-/* 2026-11-01: 차팅만 같은 템플릿(X-ray 소견 등)은 처방이 다르면 다른 환자 것 — 앞 환자 내용이 남으면 처방까지 통째로 같다. 차팅+처방이 같을 때만 */
+/* 2026-11-01: 차팅만 같은 템플릿(X-ray 소견 등)은 처방이 다르면 다른 환자 것 — 앞 환자 내용이 남으면 처방까지 통째로 같다. 차팅+처방이 같을 때만.
+   진료실 감시 v3.8 부터는 같은 내용도 막지 않고 보낸다(바로 앞뒤 환자가 정말 같을 수 있다) — 여기 경고 + [비트에서 확인함]이 그 안전장치 */
 function slipChartKey(n){const c=String((n&&n.chart)||'').replace(/\s+/g,' ').trim();return c.length>=8?c+'\n'+String((n&&n.rx)||'').replace(/\s+/g,' ').trim():'';}
 function slipDupOf(n){const k=slipChartKey(n);if(!k)return null;const m=normMrn(n.mrn);
   const t=x=>new Date(x.firstAt||x.updatedAt||0).getTime()||0;
