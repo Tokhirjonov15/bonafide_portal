@@ -5,7 +5,7 @@ if not exist "%~dp0bitplus_install.ps1" (echo. & echo  [STOP] bitplus_install.ps
 if not exist "%~dp0bitplus_watcher.ps1" (echo. & echo  [STOP] bitplus_watcher.ps1 is not in this folder: %~dp0 & echo  Open the USB drive - bitplus folder and double-click this file there. & echo. & pause & exit /b 1)
 cd /d "%~dp0"
 echo.
-echo  Watcher update (v3.7) - keeps this PC's name (reception, treatment, PT, C-Arm, consult PCs)
+echo  Watcher update (v3.8) - keeps this PC's name (reception, treatment, PT, C-Arm, consult PCs)
 echo  Run with the SAME Windows account as before. Do NOT use Run as administrator.
 echo.
 echo  Does a DOCTOR write prescriptions on this PC?
