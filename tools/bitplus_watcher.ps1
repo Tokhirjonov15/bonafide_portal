@@ -389,14 +389,21 @@ $script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0; $script:No
 #   ④ 이 PC에서 다른 환자로 읽힌 차팅·특이사항과 똑같으면 보내지 않는다(앞 환자 내용이 남은 것) ⑤ 보낸 뒤 그 환자 칸이 10초 넘게 비어 있으면 문서도 비운다
 $script:NoteMrn = ''; $script:NoteMrnAt = Get-Date; $script:NoteSeen = @{}; $script:NoteStaleLog = ''; $script:NoteEmptyAt = $null
 $script:NoteTopIns = @{}; $script:NoteFirst = @{}; $script:InsLogged = ''; $script:InsRetry = 0   # 보험별 슬립 (v3.7)
+# v3.8 (2026-11-01 강원종 33482: 슬립 '처방 목록이 오지 않았어요') — 예전엔 차팅(med 위)이나 특이사항만 같아도 2시간 동안 막았다.
+#  원장님이 같은 문구(X-ray 소견 템플릿 등)로 차팅하면 처방이 달라도 그 환자는 영영 안 갔다. 앞 환자 내용이 남는 건 환자를 바꾼 직후이고
+#  칸 전체(차팅+처방)가 똑같을 때뿐 → 칸 전체가 같고 15분 안에 읽힌 다른 접수만 막는다. 특이사항만 같으면 특이사항만 빼고 보낸다(NoteMemoDup)
 function NoteStaleOf($key, $mrn, $chart, $memo, $raw) {   # 다른 접수(차트번호|보험)에서 읽힌 같은 내용이 있으면 그 키, 없으면 ''
   foreach ($k in @($script:NoteSeen.Keys)) { if ($k -eq $key) { continue }; $s = $script:NoteSeen[$k]
-    if (((Get-Date) - $s.at).TotalMinutes -gt 120) { $script:NoteSeen.Remove($k); continue }
-    if ($s.mrn -eq $mrn) { if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k }; continue }   # 같은 환자의 다른 보험 접수: 차팅·특이사항은 같을 수 있어 칸 전체가 같을 때만
-    if ($chart -and $chart.Length -ge 8 -and $s.chart -eq $chart) { return $k }
-    if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k }
-    if ($memo -and $memo.Length -ge 6 -and $s.memo -eq $memo) { return $k } }
+    $age = ((Get-Date) - $s.at).TotalMinutes
+    if ($age -gt 120) { $script:NoteSeen.Remove($k); continue }
+    if ($age -gt 15) { continue }
+    if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k } }
   return '' }
+function NoteMemoDup($key, $memo) {   # 특이사항이 15분 안에 다른 환자에서 읽힌 것과 같으면 $true
+  if (-not $memo -or $memo.Length -lt 6) { return $false }
+  foreach ($k in @($script:NoteSeen.Keys)) { if ($k -eq $key) { continue }; $s = $script:NoteSeen[$k]
+    if ($s.mrn -ne (($key -split '\|')[0]) -and ((Get-Date) - $s.at).TotalMinutes -le 15 -and $s.memo -eq $memo) { return $true } }
+  return $false }
 # 처방 문서 보내기 — $p = @{ nkey; insK; dr; ex; rx; memo; chart }. 이미 보낸 내용이면 보내지 않는다
 function SendNote($p, $why) {
   $dr = $p.dr; $nkey = $p.nkey; $insK = $p.insK; $ex = $p.ex
@@ -582,6 +589,7 @@ while ($true) {
             $rxText = ($ex.lines -join "`n")
             $chartText = if ($dr.note.Trim()) { ExtractChart $dr.note } else { '' }
             $memo = CleanMemo $dr.memo
+            if (NoteMemoDup $nkey $memo) { $memo = '' }   # v3.8 앞 환자 특이사항이 남은 것일 수 있어 특이사항만 뺀다
             $rawNote = ($dr.note -replace '\s+', ' ').Trim()
             if ($NoteGlp -and $rxText -notmatch '(?i)마운자로|위고비|mounjaro|wegovy|tirzepatide|semaglutide') { $rxText = ''; $chartText = ''; $memo = '' }   # -NoteGlp: 마운자로·위고비가 아니면 보내지 않음(비운 것으로 보지도 않게 아래 ⑤는 이 PC가 보낸 것만)
             # v3.7 ⑤ 보낸 뒤 칸이 10초 넘게 비어 있으면(지웠거나 앞 환자 내용이 잘못 갔던 것) 문서도 비운다

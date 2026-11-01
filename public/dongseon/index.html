@@ -3980,7 +3980,8 @@ function bitLookupByMrn(mrn){mrn=String(mrn||'').trim();if(!mrn)return null;
 /* 다른 환자와 같은 차팅 (2026-10-26: 박상하·조현진 슬립에 똑같은 차팅) — 진료실 PC 감시 프로그램이 환자를 바꾸는 순간 앞 환자 칸 내용을
    새 차트번호로 보낸 것. 오늘 처방 문서 중 차트번호가 다른데 차팅(med 위, 8자 이상)이 똑같은 것이 있으면 {other, later}.
    later = 이 문서가 나중에 처음 온 쪽(잘못 간 쪽일 가능성) → 처방 줄을 가리고 인쇄를 막는다. 비트에서 확인하고 [이 환자 것 맞음]을 누르면 풀린다(dupOk) */
-function slipChartKey(n){const c=String((n&&n.chart)||'').replace(/\s+/g,' ').trim();return c.length>=8?c:'';}
+/* 2026-11-01: 차팅만 같은 템플릿(X-ray 소견 등)은 처방이 다르면 다른 환자 것 — 앞 환자 내용이 남으면 처방까지 통째로 같다. 차팅+처방이 같을 때만 */
+function slipChartKey(n){const c=String((n&&n.chart)||'').replace(/\s+/g,' ').trim();return c.length>=8?c+'\n'+String((n&&n.rx)||'').replace(/\s+/g,' ').trim():'';}
 function slipDupOf(n){const k=slipChartKey(n);if(!k)return null;const m=normMrn(n.mrn);
   const t=x=>new Date(x.firstAt||x.updatedAt||0).getTime()||0;
   /* 2026-10-27: 원장님이 같은 문구(템플릿)를 여러 환자에게 쓰면 오탐 — 실제 섞임은 같은 진료실 PC에서 앞뒤로 본 환자 사이(20분 안)에만 생긴다 */
@@ -6000,7 +6001,9 @@ async function runSelfTest(){
       ok('슬립 차팅 중복: 다른 차트번호와 차팅이 같으면 나중 것만 가림·인쇄 막음, 먼저 온 쪽은 경고만, 짧은 차팅은 무시, 확인하면 풀림', blocked&&!slipDupBlocked(BIT_NOTES[1]));
       BIT_NOTES=[{docId:'e1',mrn:'501',pc:'진료실1',chart:'Lt. knee pain 3 days',firstAt:new Date(t0).toISOString()},{docId:'e2',mrn:'502',pc:'진료실4',chart:'Lt. knee pain 3 days',firstAt:new Date(t0+60000).toISOString()},
         {docId:'e3',mrn:'503',pc:'진료실1',chart:'Lt. knee pain 3 days',firstAt:new Date(t0+3600000).toISOString(),updatedAt:new Date(t0+3600000).toISOString()}];
-      ok('슬립 차팅 중복: 다른 진료실 PC이거나 20분 넘게 떨어진 같은 문구(템플릿)는 중복으로 보지 않음', !slipDupOf(BIT_NOTES[1])&&!slipDupOf(BIT_NOTES[2]));BIT_NOTES=_n;}
+      ok('슬립 차팅 중복: 다른 진료실 PC이거나 20분 넘게 떨어진 같은 문구(템플릿)는 중복으로 보지 않음', !slipDupOf(BIT_NOTES[1])&&!slipDupOf(BIT_NOTES[2]));
+      BIT_NOTES=[{docId:'f1',mrn:'601',pc:'진료실1',chart:'xray finding : WNLs',rx:'med\nc-mbb',firstAt:new Date(t0).toISOString()},{docId:'f2',mrn:'602',pc:'진료실1',chart:'xray finding : WNLs',rx:'med\nSNB',firstAt:new Date(t0+60000).toISOString()}];
+      ok('슬립 차팅 중복: 차팅(템플릿)만 같고 처방이 다르면 중복 아님 (2026-11-01 강원종)', !slipDupOf(BIT_NOTES[1]));BIT_NOTES=_n;}
      {const m='51515',y=new Date(Date.now()-3*864e5).toISOString(),_p=SLIP_PAST[m];   // 지난 주사 캡처 자동 표시 (2026-10-27)
       SLIP_PAST[m]={at:Date.now(),shots:[{id:'s1',path:'x/old.jpg',at:y,kind:'inj'},{id:'s2',path:'x/pt.jpg',at:y,kind:'pt'}],hidden:[]};
       SLIP_PAST[m].shots.push({id:'s3',path:'x/older.jpg',at:new Date(Date.now()-9*864e5).toISOString(),kind:'inj'});
