@@ -6034,6 +6034,8 @@ async function runSelfTest(){
       BIT_INTAKE=[];BIT_RX_DOCS=[{ocm:'901',mrn:'4401',items:[{cod:'A'}],own:'193750'},{ocm:'902',mrn:'4401',items:[{cod:'B'}],own:'1500'},{ocm:'903',mrn:'4402',items:[{cod:'C'}]}];
       let a,b,c;try{bitRxRebuild();a=BIT_RX_MRN['4401'].own;b=BIT_RX_MRN['4402'].own;c=BIT_RX['901'].own;}finally{BIT_RX_DOCS=_docs;BIT_RX=_rx;BIT_RX_MRN=_rm;BIT_INTAKE=_in;}
       ok('환자부담금: 비트 총 본인부담(own) — 접수가 둘이면 합계, 계산 전이면 없음', a===195250&&b===null&&c===193750,[a,b,c].join());}
+     ok('동의서 처방내역: 먹는 약만 일수·맨 아래 (2026-11-01)', rxIsOral({nam:'아클펜정(아세클로페낙)_(0.1g/1정)'})&&rxIsOral({nam:'판토케이정20밀리그램(판토프라졸나트륨세스키히드레이트)_(22.55mg/1정)'})
+       &&!rxIsOral({nam:'대한리도카인염산염수화물2%주_(0.4266g/20mL)'})&&!rxIsOral({nam:'로카인주사2mg/mL(로피바카인염산염일수화물)_(42mg/20mL)'})&&!rxIsOral({nam:'신장분사치료3'})&&!rxIsOral({nam:'외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)'}));
      ok('계산 뒤 처방이 바뀌면(pay 가 own 보다 나중) 옛 본인부담은 쓰지 않음 (2026-11-01 허예나님 쿨밴드)',   // ISO 시각 문자열 비교
        ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00',payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:05:00.000+09:00',payAt:'2026-11-01T10:00:00.000+09:00'})&&!ownStale({own:null,payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00'}));
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
@@ -14676,6 +14678,9 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
   OWN_CAL_STAT={n:cases.length,same,ok,near,rates:best};}
 function ownEstimate(p,rx){if(!rx||!Array.isArray(rx.pay)||!rx.pay.length)return null;try{ownCalibrate();}catch(e){}
   const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),OWN_RATES);}
+/* 먹는 약(정·캡슐·시럽·포) — 비트 약 이름은 '아클펜정(아세클로페낙)_(0.1g/1정)' 처럼 끝 괄호에 1회 단위가 붙는다. 주사(…주_(…/20mL))는 제외 */
+function rxIsOral(x){const n=String((x&&x.nam)||'').trim(),h=n.split('_(')[0];if(/주(사)?(\d|\(|$)|주사/.test(h))return false;
+  return /\/\s*[\d.]*\s*(정|캡슐|포)\)\s*$/.test(n)||/[가-힣](정|캡슐|시럽|과립)(\d|\(|$)/.test(h);}
 function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?consentSaved(mrn):{};
   const total=r.items.reduce((a,x)=>a+x.amt,0);
   const cons=`<div class="cd-sect"><div class="cd-h"><i data-lucide="file-pen-line"></i> 동의서 <span class="hint">비트 처방에서 자동</span></div>
@@ -14693,9 +14698,11 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     ${n&&String(n.rx||'').trim()?`<pre class="cd-pre cd-med">${esc(n.rx)}</pre>`:''}</div>`;
   const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;let rxh='<div class="hint">비트 처방이 아직 없습니다.</div>';
   if(rx&&Array.isArray(rx.items)&&rx.items.length){const payOf=rxPayLookup(rx);
-    /* 2026-10-14 요청: 처방명칭·금액·횟수·급/비만 (코드·총투여량·일수·시각은 뺐다) */
-    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수</th><th>급/비</th></tr></thead><tbody>${rx.items.map(x=>{const pay=payOf(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
-      return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td class="r">${esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
+    /* 2026-10-14 요청: 처방명칭·금액·횟수·급/비만 (코드·총투여량·일수·시각은 뺐다)
+       2026-11-01 요청: 먹는 약은 횟수 대신 일수('2일'), 표 맨 아래로 (주사·치료 사이에 섞여 있었다) */
+    const its=rx.items.filter(x=>!rxIsOral(x)).concat(rx.items.filter(rxIsOral));
+    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수·일수</th><th>급/비</th></tr></thead><tbody>${its.map(x=>{const pay=payOf(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
+      return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td class="r">${rxIsOral(x)?(String(x.day||'').trim()?esc(String(x.day).trim())+'일':''):esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
   /* 2026-10-28 요청: 동의서는 환자분께 '오늘 금액'을 알려 드리는 것 — 비트 수납 창의 '총 본인부담'(에이전트 db2.0)만 보인다.
      아직 비트에서 안 왔으면 아무것도 쓰지 않는다(총 진료비·비급여·'계산 전' 안내는 빼기로) */
