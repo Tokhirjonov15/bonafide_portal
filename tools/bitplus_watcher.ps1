@@ -397,6 +397,29 @@ function NoteStaleOf($key, $mrn, $chart, $memo, $raw) {   # 다른 접수(차트
     if ($raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k }
     if ($memo -and $memo.Length -ge 6 -and $s.memo -eq $memo) { return $k } }
   return '' }
+# 처방 문서 보내기 — $p = @{ nkey; insK; dr; ex; rx; memo; chart }. 이미 보낸 내용이면 보내지 않는다
+function SendNote($p, $why) {
+  $dr = $p.dr; $nkey = $p.nkey; $insK = $p.insK; $ex = $p.ex
+  if ($script:NoteSent[$nkey] -eq "$($p.rx)|$($p.memo)|$($p.chart)") { return }
+  # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
+  $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
+  $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $p.rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $p.memo; chart = $p.chart; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso); ins = $insK }
+  if ($rev -eq 1) { $nf.firstAt = (NowIso) }
+  FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
+  if ($insK) {   # 보험별 칸 — 동선관리는 보험이 둘 이상 쌓이면 슬립을 보험마다 따로 만든다
+    $srev = [int]$script:NoteRev[$nkey] + 1; $script:NoteRev[$nkey] = $srev
+    $sf = @{ ins = $insK; rx = $p.rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $p.chart; rev = $srev; updatedAt = (NowIso); pc = $Pc }
+    if (-not $script:NoteFirst[$nkey]) { $script:NoteFirst[$nkey] = (NowIso) }; $sf.firstAt = $script:NoteFirst[$nkey]
+    FsPatchNested "bitNote/$(Today)_$($dr.mrn)" "v_$insK" $sf
+    $script:NoteTopIns[$dr.mrn] = $insK }
+  $script:NoteSent[$nkey] = "$($p.rx)|$($p.memo)|$($p.chart)"
+  Log "처방 전송$(if ($why) { "($why)" }): 차트번호 $($dr.mrn)$(if ($insK) { " · $insK" }) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($p.memo) { '있음' } else { '없음' }), ${rev}회차)" }
+# v3.8 (2026-11-01 최하은 32753: 슬립이 10:47 내용, 비트 기록부는 그 뒤에 고친 내용) — 3번 연속(약 6초) 같아야 보내므로, 마지막으로 고친 뒤
+#  6초 안에 다음 환자로 넘어가면 마지막 수정이 영영 안 갔다. 2번 연속 같게 읽힌 내용을 들고 있다가 환자를 바꾸거나 창을 닫을 때 보낸다.
+#  (1번만 읽힌 내용은 보내지 않는다 — 환자를 바꾸는 찰나에 다음 환자 글이 앞 환자 차트번호로 읽힐 수 있다)
+$script:NotePend = $null
+function NoteFlush() { $p = $script:NotePend; $script:NotePend = $null
+  if ($p) { try { SendNote $p '환자 바꿈 — 마지막 수정' } catch { Log "처방 전송 오류(마지막 수정): $($_.Exception.Message)" } } }
 $script:LookupSent = @{}       # 차트번호 → bitLookup 으로 보낸 인적정보 해시 (조회 내용이 바뀔 때만 다시 씀)
 $LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
 $LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
@@ -535,7 +558,7 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.7'; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.8'; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
@@ -552,7 +575,7 @@ while ($true) {
           # v3.7 보험별 (2026-10-26: 일반·건강보험 두 접수인데 슬립이 하나) — 같은 환자도 보험이 다르면 다른 접수로 따로 센다(nkey). 보험유형을 못 읽으면 예전처럼 차트번호 하나
           $insK = if ($dr) { ([string]$dr.ins -replace '\s', '') } else { '' }
           $nkey = if ($dr) { "$($dr.mrn)|$insK" } else { '' }
-          if ($dr -and $nkey -ne $script:NoteMrn) { $script:NoteMrn = $nkey; $script:NoteMrnAt = Get-Date; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteEmptyAt = $null
+          if ($dr -and $nkey -ne $script:NoteMrn) { NoteFlush; $script:NoteMrn = $nkey; $script:NoteMrnAt = Get-Date; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteEmptyAt = $null
             if ($insK -and $script:InsLogged -ne $nkey) { $script:InsLogged = $nkey; Log "보험유형 읽음: 차트번호 $($dr.mrn) · $insK" } }
           if ($dr -and $dr.mrn -and ((Get-Date) - $script:NoteMrnAt).TotalSeconds -ge 3) {   # v3.7 ① 환자(또는 보험)를 바꾸고 3초 뒤부터
             $ex = if ($dr.note.Trim()) { ExtractRx $dr.note } else { @{ lines = @(); marker = $false } }
@@ -577,31 +600,21 @@ while ($true) {
             $staleOf = if ($rxText -or $memo -or $chartText) { NoteStaleOf $nkey $dr.mrn $chartText $memo $rawNote } else { '' }
             if ($staleOf) {
               if ($script:NoteStaleLog -ne "$nkey>$staleOf") { $script:NoteStaleLog = "$nkey>$staleOf"; Log "보내지 않음: $nkey 칸 내용이 앞 접수($staleOf)와 같음 — 비트가 아직 앞 환자 내용을 보여 주는 중" }
-              $script:NoteLast = ''; $script:NoteCount = 0
+              $script:NoteLast = ''; $script:NoteCount = 0; $script:NotePend = $null
             }
             elseif ($rxText -or $memo -or $chartText) {
               $nk = "$nkey|$rxText|$memo|$chartText"
-              if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1 }
+              if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1; $script:NotePend = $null }
               if ($script:NoteCount -ge 3) { $script:NoteSeen[$nkey] = @{ mrn = $dr.mrn; chart = $chartText; memo = $memo; raw = $rawNote; at = (Get-Date) } }   # 이 접수 것으로 확인된 내용
-              if ($script:NoteCount -eq 3 -and $script:NoteSent[$nkey] -ne "$rxText|$memo|$chartText") {   # 3번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용 (v3.7: 2번 → 3번)
-                # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
-                $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
-                $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $memo; chart = $chartText; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso); ins = $insK }
-                if ($rev -eq 1) { $nf.firstAt = (NowIso) }
-                FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
-                if ($insK) {   # 보험별 칸 — 동선관리는 보험이 둘 이상 쌓이면 슬립을 보험마다 따로 만든다
-                  $srev = [int]$script:NoteRev[$nkey] + 1; $script:NoteRev[$nkey] = $srev
-                  $sf = @{ ins = $insK; rx = $rxText; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chartText; rev = $srev; updatedAt = (NowIso); pc = $Pc }
-                  if (-not $script:NoteFirst[$nkey]) { $script:NoteFirst[$nkey] = (NowIso) }; $sf.firstAt = $script:NoteFirst[$nkey]
-                  FsPatchNested "bitNote/$(Today)_$($dr.mrn)" "v_$insK" $sf
-                  $script:NoteTopIns[$dr.mrn] = $insK }
-                $script:NoteSent[$nkey] = "$rxText|$memo|$chartText"
-                Log "처방 전송: 차트번호 $($dr.mrn)$(if ($insK) { " · $insK" }) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($memo) { '있음' } else { '없음' }), ${rev}회차)"
+              if ($script:NoteCount -ge 2 -and $script:NoteSent[$nkey] -ne "$rxText|$memo|$chartText") {   # v3.8: 2번 연속 같으면 들고 있다가 환자를 바꿀 때 보낸다
+                $script:NotePend = @{ nkey = $nkey; insK = $insK; dr = $dr; ex = $ex; rx = $rxText; memo = $memo; chart = $chartText } }
+              if ($script:NoteCount -eq 3 -and $script:NotePend) {   # 3번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용 (v3.7: 2번 → 3번)
+                SendNote $script:NotePend ''; $script:NotePend = $null
               }
-            }
+            } else { $script:NotePend = $null }
           }
         } catch { Log "외래진료실 읽기 오류: $($_.Exception.Message)" }
-      }
+      } elseif ($script:NotePend) { NoteFlush }   # v3.8 외래진료실 창을 닫았으면 들고 있던 마지막 수정을 보낸다
       if ($open) {
         try {
           $rw = FindRxWindow $bw.proc.Id

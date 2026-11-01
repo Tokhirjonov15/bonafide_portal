@@ -3822,7 +3822,7 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v3.7',agent:'db2.1'};   // db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
+const BIT_LATEST={watcher:'v3.8',agent:'db2.1'};   // v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
 function bitStatusRows(){const now=Date.now();
   return Object.keys(BIT_STATUS).sort((a,b)=>a.localeCompare(b,'ko')).map(pc=>{const st=BIT_STATUS[pc]||{};const ver=String(st.ver||'');
@@ -6039,9 +6039,9 @@ async function runSelfTest(){
      ok('계산 뒤 처방이 바뀌면(pay 가 own 보다 나중) 옛 본인부담은 쓰지 않음 (2026-11-01 허예나님 쿨밴드)',   // ISO 시각 문자열 비교
        ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00',payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:05:00.000+09:00',payAt:'2026-11-01T10:00:00.000+09:00'})&&!ownStale({own:null,payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00'}));
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
-      BIT_STATUS={'진료실1':{ver:'v3.7',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.7',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db2.1',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.9',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now},'접수4':{ver:'db2.0',src:'db',leader:true,lastSeen:now}};
+      BIT_STATUS={'진료실1':{ver:'v3.8',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.8',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db2.1',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.9',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now},'접수4':{ver:'db2.0',src:'db',leader:true,lastSeen:now}};
       const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
-      ok('설치 상태: 최신(v3.7·db2.1) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시(db2.0 담당 = 자보 도수 안내 안 보냄), v3.10 > v3.7',
+      ok('설치 상태: 최신(v3.8·db2.1) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시(db2.0 담당 = 자보 도수 안내 안 보냄), v3.10 > v3.8',
         g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&/진료실PC_설치/.test(g('진료실1').kind)&&/기타PC/.test(g('접수3').kind)&&!g('진료실2').ok&&g('접수1').ok&&g('접수1').mode==='전송 담당 · 환자부담금 보냄 · 자보 도수 안내'&&!g('접수2').ok&&g('접수3').ok&&!g('접수4').ok&&/⚠ 자보 도수 안내 안 보냄/.test(g('접수4').mode),R.map(r=>r.pc+':'+r.mode).join(' / '));}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE,_v=VISITS;   // 차트 열람만 (2026-10-27 이선아)
       BIT_NOTES=[{docId:'n1',mrn:'7301',name:'열람만',rx:'med\nneuropathic pain\nx',updatedAt:new Date().toISOString()},{docId:'n2',mrn:'7302',name:'접수됨',rx:'med\nneuropathic pain\ny',updatedAt:new Date().toISOString()}];
