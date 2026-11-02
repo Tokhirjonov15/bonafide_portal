@@ -2377,6 +2377,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
       </div>
       <div class="pinfo-fold" id="pinfoFold">
       <div class="sect-t pf-head" onclick="document.getElementById('pinfoFold').classList.toggle('open')" title="마우스를 올리면 펼쳐집니다 (클릭 시 고정)"><i data-lucide="user"></i> 환자 정보 <span class="pf-sum" id="pinfoSummary"></span><span class="pf-caret">▾</span></div>
+      <div id="jaboSum" class="jabo-sum" style="display:none"></div>
       <div class="pf-body">
       <div class="row2">
         <div class="fld"><label>병록번호 <span class="hint">(번호만 입력하면 명단에서 자동 완성)</span></label><input id="f_mrn" placeholder="6016697" inputmode="numeric" oninput="onMrnInput()"></div>
@@ -3648,7 +3649,7 @@ const BIT_STALE_IDLE_SEC=2100;  // 비트 창이 모두 닫힌(노랑) PC 는 v3
    (2026-09-14 무료 읽기 한도 50,000/일 초과: 하트비트 6대 × 1,440회 × 화면 10개만으로 86,000회 → 이후 하트비트 300초 + 역할별 구독) */
 function bitClientRole(){if(typeof waitOpen!=='undefined'&&waitOpen)return 'tv';if(SLIP_MODE)return 'slip';if(RESV_MODE||BITRESV_MODE)return 'resv';return 'staff';}   // resv: 예약 시트 + 카드만
 let BIT_SUB_ROLE='',BIT_CLEANUP_SCHEDULED=false;
-function bitUnsubAll(){['unsubSlipMark','unsubIntake','unsubLookup','unsubNote','unsubBk','unsubPt4','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
+function bitUnsubAll(){['unsubSlipMark','unsubIntake','unsubLookup','unsubNote','unsubBk','unsubPt4','unsubBkEd','unsubBit','unsubResv','unsubResvSum','unsubRx','unsubJabo'].forEach(k=>{try{if(cloud[k])cloud[k]();}catch(e){}cloud[k]=null;});clearTimeout(BIT_STATUS_T);BIT_STATUS_T=null;}
 /* ── 감시 PC 하트비트 읽기 ── 실시간(onSnapshot)으로 들으면 "하트비트 1건 = 듣는 화면 수만큼 읽기"라 PC 24대 × 5분 × 화면 10개 = 하루 7만 회에 달했다(2026-09-14·15 무료 한도 초과).
    그래서 주기적으로 한 번씩만 읽는다: v3.4 부터 모든 PC 가 bitStatus/_all 한 문서에 모아 쓰므로 5분마다 그 1건만, 아직 v3.3 이하(PC 별 문서)인 PC 는 60분마다 컬렉션을 한 번 읽어 합친다(최근 lastSeen 우선).
    pill 을 누르면 즉시 새로고침. 화면 역할이 staff 일 때만 */
@@ -3713,6 +3714,10 @@ function subscribeBitIntake(){
       if(!BIT_RX_DOCS){rxSnapRun();return;}   // 처음 한 번은 바로
       if(!rxSnapT)rxSnapT=setTimeout(rxSnapRun,400);
     },err=>console.warn('bitRx',err));
+    /* 자보 급여 도수 (2026-11-02 '어떤 상황이든 자보를 확인할 수 있어야') — 접수 PC 에이전트 db2.2 가 오늘 온 자보 이력 환자 전원의 상태를 bitRx/_jabo.all 에.
+       캡처 바 팝업(하루 한 번·그 PC 만)과 별개로 보드 카드·환자 정보 창에 늘 보인다. db2.1 은 pts(팝업 대상)만 있다 */
+    cloud.unsubJabo=cloud.rxCol.doc('_jabo').onSnapshot(d=>{const v=d.exists?d.data():null;JABO=(v&&v.day===today)?v:null;try{renderThrottled();}catch(e){}
+      if(editId){const p=data.find(x=>x.id===editId);if(p)try{fillJaboSum(p);}catch(e){}}},err=>console.warn('bitJabo',err));
   }
   if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
@@ -3761,6 +3766,23 @@ async function bitCleanupOld(){
    그래서 차트번호가 같아도 '보험이 다른 접수'는 따로 카드를 만든다. 보험이 같거나 한쪽이 비어 있으면 지금처럼 같은 카드(과·담당의 바꿔 재접수 등).
    접수 문서 → 카드 찾기는 모두 bitCardFor 한 곳에서: ① 문서에 적힌 카드 id ② 접수번호 ③ 같은 차트번호 + 보험이 맞는 카드 */
 function bitInsOf(x){return String((x&&((x.bit&&x.bit.ins)||x.ins))||'').trim();}
+/* ═ 자보 급여 도수 (2026-11-02) — JABO = bitRx/_jabo(오늘). 조건: 자보 첫 내원부터 14일 이상 + 그 전 내원에서 기본물리치료 4일 이상 ═ */
+var JABO=null;
+function jaboOf(p){if(!JABO||!p)return null;const k=normMrn(p.mrn).replace(/^0+/,'');if(!k)return null;
+  const a=JABO.all&&JABO.all[k];if(a)return a;
+  const e=JABO.pts&&JABO.pts[k];return e?Object.assign({ok:true,tj:1},e):null;}   // 옛 에이전트(db2.1)는 팝업 대상만
+function jaboText(j){if(!j)return '';const md=s=>String(s||'').slice(5).replace('-','/');
+  const base=`자보 첫 내원 ${md(j.first)} (${j.days}일 지남) · 기본물리치료 ${j.pt}회`;
+  if(j.ok)return `급여 도수 가능 — ${base}${j.n?` · 조건 만족 ${j.n}번째 내원`:''}`;
+  const need=[j.days<14?`${14-j.days}일 더`:'',j.pt<4?`기본물리치료 ${4-j.pt}회 더`:''].filter(Boolean).join(' · ');
+  return `급여 도수 아직 — ${base}${need?` (${need})`:''}`;}
+function jaboTagHtml(p){const j=jaboOf(p);if(!j)return '';
+  const warn=j.tj?'':' · ⚠ 오늘 접수가 자보가 아님';
+  return `<div class="${j.ok?'silbi-tag':'ins-tag'}" title="${esc(jaboText(j)+warn)}">🚗 자보 ${j.ok?'급여 도수 가능':`${j.days}일 지남 · 물리치료 ${j.pt}회`}${warn}</div>`;}
+function fillJaboSum(p){const el=document.getElementById('jaboSum');if(!el)return;const j=jaboOf(p);
+  el.style.display=j?'':'none';if(!j){el.innerHTML='';return;}
+  el.className='jabo-sum'+(j.ok?' ok':'');
+  el.innerHTML=`🚗 ${esc(jaboText(j))}${j.tj?'':' <b>· ⚠ 오늘 비트 접수 보험이 자보가 아닙니다 — 접수 보험을 확인해 주세요</b>'}`;}
 function bitInsOk(a,b){a=String(a||'').trim();b=String(b||'').trim();return !a||!b||a===b;}
 /* 하루에 여러 번 접수 (2026-10-04 요청): 접수번호(ocmNum)가 다른 접수는 다른 방문 — 같은 차트번호 카드가 보드에 있어도 새 카드로.
    같은 카드로 묶는 것은 ① 접수번호가 없는 문서(캐스트 등) ② 카드에 접수번호가 없음(손으로 만든 카드) ③ 같은 접수번호
@@ -3823,7 +3845,7 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v3.8',agent:'db2.1'};   // v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
+const BIT_LATEST={watcher:'v3.8',agent:'db2.2'};   // db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
 function bitStatusRows(){const now=Date.now();
   return Object.keys(BIT_STATUS).sort((a,b)=>a.localeCompare(b,'ko')).map(pc=>{const st=BIT_STATUS[pc]||{};const ver=String(st.ver||'');
@@ -3831,7 +3853,7 @@ function bitStatusRows(){const now=Date.now();
     const ok=!!ver&&verNum(ver)>=verNum(latest);const t=new Date(st.lastSeen||0);const ageMin=isNaN(t)?null:Math.round((now-t.getTime())/60000);
     const kind=agent?'DB 에이전트 → 접수PC_에이전트업데이트.bat':/^진료실\d/.test(pc)?'진료실 → 진료실PC_설치.bat':'감시 → 기타PC_감시업데이트.bat';
     /* v3.7 부터 모드가 남는다. 옛 버전은 외래진료실 창이 열려 있으면 처방을 보낸다(차팅 섞임·열람만 슬립의 원인) */
-    const mode=agent?(st.leader?('전송 담당'+(verNum(ver)<verNum('db2.0')?' · ⚠ 환자부담금 안 보냄 (db2.0 필요)':' · 환자부담금 보냄'+(verNum(ver)<verNum('db2.1')?' · ⚠ 자보 도수 안내 안 보냄 (db2.1 필요)':' · 자보 도수 안내'))):'대기(다른 PC가 담당)'):st.noteOff?'처방 안 보냄':st.noteGlp?'마운자로·위고비만':verNum(ver)>=verNum('v3.7')?'처방 보냄':(st.doctorOpen?'⚠ 외래진료실 창 열림 — 처방 보내는 중(옛 버전)':'');
+    const mode=agent?(st.leader?('전송 담당'+(verNum(ver)<verNum('db2.0')?' · ⚠ 환자부담금 안 보냄 (db2.0 필요)':' · 환자부담금 보냄'+(verNum(ver)<verNum('db2.1')?' · ⚠ 자보 도수 안내 안 보냄 (db2.1 필요)':verNum(ver)<verNum('db2.2')?' · 자보 도수 안내(팝업만 — 보드·환자 정보 표시는 db2.2 필요)':' · 자보 도수 안내'))):'대기(다른 PC가 담당)'):st.noteOff?'처방 안 보냄':st.noteGlp?'마운자로·위고비만':verNum(ver)>=verNum('v3.7')?'처방 보냄':(st.doctorOpen?'⚠ 외래진료실 창 열림 — 처방 보내는 중(옛 버전)':'');
     return {pc,st,ver,agent,latest,ok,ageMin,kind,mode,t};});}
 function openBitStatus(){let ov=document.getElementById('bitStOv');
   if(!ov){ov=document.createElement('div');ov.id='bitStOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
@@ -6040,14 +6062,17 @@ async function runSelfTest(){
       BIT_INTAKE=[];BIT_RX_DOCS=[{ocm:'901',mrn:'4401',items:[{cod:'A'}],own:'193750'},{ocm:'902',mrn:'4401',items:[{cod:'B'}],own:'1500'},{ocm:'903',mrn:'4402',items:[{cod:'C'}]}];
       let a,b,c;try{bitRxRebuild();a=BIT_RX_MRN['4401'].own;b=BIT_RX_MRN['4402'].own;c=BIT_RX['901'].own;}finally{BIT_RX_DOCS=_docs;BIT_RX=_rx;BIT_RX_MRN=_rm;BIT_INTAKE=_in;}
       ok('환자부담금: 비트 총 본인부담(own) — 접수가 둘이면 합계, 계산 전이면 없음', a===195250&&b===null&&c===193750,[a,b,c].join());}
+     {const _j=JABO;JABO={day:'x',all:{'501':{first:'2026-10-10',days:23,pt:4,ok:true,n:1,tj:1},'502':{first:'2026-10-25',days:8,pt:2,ok:false,n:0,tj:0}},pts:{'503':{n:2,first:'2026-10-01',pt:5,days:30}}};   // 자보 급여 도수 표시 (2026-11-02)
+      const a=jaboOf({mrn:'00501'}),b=jaboOf({mrn:'502'}),c=jaboOf({mrn:'503'}),d=jaboOf({mrn:'999'});const tb=jaboText(b),tg=jaboTagHtml({mrn:'502'});JABO=_j;
+      ok('자보: 앞 0 무시, 조건 만족·아직(남은 일수·물리치료 횟수)·오늘 자보 아님 경고, 옛 에이전트(pts)도 표시', a&&a.ok&&/급여 도수 가능/.test(jaboText(a))&&b&&!b.ok&&/6일 더/.test(tb)&&/기본물리치료 2회 더/.test(tb)&&/자보가 아님/.test(tg)&&c&&c.ok&&c.tj===1&&d===null,tb);}
      ok('동의서 처방내역: 먹는 약만 일수·맨 아래 (2026-11-01)', rxIsOral({nam:'아클펜정(아세클로페낙)_(0.1g/1정)'})&&rxIsOral({nam:'판토케이정20밀리그램(판토프라졸나트륨세스키히드레이트)_(22.55mg/1정)'})
        &&!rxIsOral({nam:'대한리도카인염산염수화물2%주_(0.4266g/20mL)'})&&!rxIsOral({nam:'로카인주사2mg/mL(로피바카인염산염일수화물)_(42mg/20mL)'})&&!rxIsOral({nam:'신장분사치료3'})&&!rxIsOral({nam:'외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)'}));
      ok('계산 뒤 처방이 바뀌면(pay 가 own 보다 나중) 옛 본인부담은 쓰지 않음 (2026-11-01 허예나님 쿨밴드)',   // ISO 시각 문자열 비교
        ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00',payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:05:00.000+09:00',payAt:'2026-11-01T10:00:00.000+09:00'})&&!ownStale({own:null,payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00'}));
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
-      BIT_STATUS={'진료실1':{ver:'v3.8',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.8',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db2.1',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.9',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now},'접수4':{ver:'db2.0',src:'db',leader:true,lastSeen:now}};
+      BIT_STATUS={'진료실1':{ver:'v3.8',lastSeen:now,doctorOpen:true},'진료실4':{ver:'v3.8',lastSeen:now,noteGlp:true},'진료실2':{ver:'v3.6',lastSeen:now},'접수1':{ver:'db2.2',src:'db',leader:true,lastSeen:now},'접수2':{ver:'db1.9',src:'db',lastSeen:now},'접수3':{ver:'v3.10',lastSeen:now},'접수4':{ver:'db2.0',src:'db',leader:true,lastSeen:now}};
       const R=bitStatusRows();const g=pc=>R.find(r=>r.pc===pc);BIT_STATUS=_s;
-      ok('설치 상태: 최신(v3.8·db2.1) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시(db2.0 담당 = 자보 도수 안내 안 보냄), v3.10 > v3.8',
+      ok('설치 상태: 최신(v3.8·db2.2) 이상은 ✅, 옛 버전은 ⚠, 진료실4 모드·에이전트 담당 표시(db2.0 담당 = 자보 도수 안내 안 보냄), v3.10 > v3.8',
         g('진료실1').ok&&g('진료실4').ok&&g('진료실4').mode==='마운자로·위고비만'&&/진료실PC_설치/.test(g('진료실1').kind)&&/기타PC/.test(g('접수3').kind)&&!g('진료실2').ok&&g('접수1').ok&&g('접수1').mode==='전송 담당 · 환자부담금 보냄 · 자보 도수 안내'&&!g('접수2').ok&&g('접수3').ok&&!g('접수4').ok&&/⚠ 자보 도수 안내 안 보냄/.test(g('접수4').mode),R.map(r=>r.pc+':'+r.mode).join(' / '));}
      {const _n=BIT_NOTES,_d=data,_i=BIT_INTAKE,_v=VISITS;   // 차트 열람만 (2026-10-27 이선아)
       BIT_NOTES=[{docId:'n1',mrn:'7301',name:'열람만',rx:'med\nneuropathic pain\nx',updatedAt:new Date().toISOString()},{docId:'n2',mrn:'7302',name:'접수됨',rx:'med\nneuropathic pain\ny',updatedAt:new Date().toISOString()}];
@@ -9673,6 +9698,7 @@ function cardEl(p,colRoom){
     ${xrayRxHtml(p,_cur)}
     ${p.memoToday?`<div class="memo-today" title="접수메모(당일)"><i data-lucide="sticky-note"></i> ${esc(p.memoToday)}</div>`:''}
     ${p.silbi?`<div class="silbi-tag" title="실비보험 가입 환자"><i data-lucide="shield-check"></i> 실비보험${p.silbiLimit>0?` · 한도 ${won(p.silbiLimit)}원`:''}</div>`:''}
+    ${jaboTagHtml(p)}
     <div class="route"><span class="label fold-head" onclick="event.stopPropagation();toggleCardRoute('${p.id}')" title="동선 펼치기/접기"><span class="cchev${CARD_OPEN_ROUTE[p.id]?' open':''}">▶</span>동선 (${p.step+1}/${p.route.length})${dwell}</span>${CARD_OPEN_ROUTE[p.id]?steps+routeTimelineHtml(p):''}</div>
     ${''/* 비트 처방내역 요약은 카드에서 빼고 환자 정보 창의 '처방내역' 표에서만 본다 (2026-09-23) */}
     ${TREAT_COUNT_ROOMS.includes(_cur)?(()=>{const sv=schedVisitNo(p,_cur);return sv?`<div class="treat-count" title="4층 비급여 예약표의 방문수 (${esc(sv.label)}) — 예약표에서 고치면 여기도 바뀝니다"><i data-lucide="zap"></i> ${esc(_cur)} <b>${sv.n}회차</b></div>`
@@ -13485,6 +13511,7 @@ function openEdit(pid){document.getElementById('modal').classList.remove('view-o
   {const cols=document.querySelectorAll('#modal .body>.pcol'); cols[0].appendChild(document.getElementById('routeSection'));   // 동선을 1열로 복귀
    document.querySelector('#modal .modal-head').appendChild(document.getElementById('familyBox'));}   // 수정 모드: 가족관계를 상단 버튼 아래로
   {const pf=document.getElementById('pinfoFold'); if(pf){pf.classList.remove('open');const bi=[p.birth?esc(p.birth):'',p.birth&&age(p.birth)?age(p.birth):'',p.sex?esc(p.sex):''].filter(Boolean).join(' · ');document.getElementById('pinfoSummary').innerHTML=`${esc(p.name||'')}${p.mrn?' · '+esc(p.mrn):''}${bi?' · '+bi:''}${p.ins?` <span class="pf-ins"><i data-lucide="landmark"></i> ${esc(p.ins)}</span>`:''} <span style="opacity:.7">— 마우스를 올리면 펼쳐집니다</span>`;}}
+  try{fillJaboSum(p);}catch(e){}   // 자보 급여 도수 (2026-11-02)
   fillPmemo(p.mrn);
   fillScribeNotes(p.mrn);
   {const cb=document.getElementById('callsBox');if(cb)cb.classList.remove('open');}
@@ -15338,6 +15365,8 @@ boot();
   /* 실비보험 표시 */
   .silbi-tag{font-size:11.5px;font-weight:700;color:var(--t-green);background:var(--green-bg);border-radius:6px;padding:3px 9px;margin:4px 12px 2px;display:inline-block}
   .silbi-tag svg.lucide{width:11px;height:11px;vertical-align:-1px}
+  .jabo-sum{margin:6px 0 4px;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:700;color:var(--t-amber);background:var(--amber-bg);line-height:1.5}
+  .jabo-sum.ok{color:var(--t-green);background:var(--green-bg)}
   /* 진행(치료) 기록 — 이전 방에서 누가 치료했는지 */
   .prog-log{font-size:11px;color:var(--muted);background:var(--chip);border-radius:6px;padding:3px 9px;margin:3px 12px 2px;display:inline-block}
   .prog-log b{color:var(--teal)}
