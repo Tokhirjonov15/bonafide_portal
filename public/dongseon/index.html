@@ -2943,7 +2943,7 @@ function rxRouteAfter(p,r){
   if(r.payBack&&!p.discharged&&curRoom(p)===PAY_WAIT_NAME){
     p.route=[...r.next];p.step=r.step;Object.assign(p,r.rxFields);
     const wasPaid=!!p.bitPaid;delete p.bitPaid;   // 비트 수납완료 표시는 앞 계산 것 — 새 치료는 아직 계산 전
-    moveTo(p.id,r.payBack);
+    moveTo(p.id,r.payBack,'자동(새 처방)');
     try{audit('수납대기 → 새 처방 방',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+r.payBack+' (치료 뒤 다시 수납대기)'+(wasPaid?' · 비트 수납완료 표시 해제':''));}catch(e){}
     try{toast(dispName(p.name)+' 님 새 처방 → '+r.payBack+' (치료 뒤 다시 수납대기)');}catch(e){}}
   try{audit('처방 동선 자동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' → '+(r.mid.join(' → ')||'(추가 없음)'));}catch(e){}
@@ -3046,7 +3046,7 @@ function rxAutoMoveAll(){
       const key=need.join(',');if(p.greenAutoKey===key)return;
       if(isSameSpace(cur,need[0])||need.some(r=>visitedRoom(p,r))||!rxFresh(pi)){rxClaim(p,'greenAutoKey',key);return;}
       rxClaim(p,'greenAutoKey',key,()=>{const q=data.find(x=>x.id===p.id);if(!q||q.discharged||curRoom(q)===need[0])return;
-        delete q.spaceDone;const from=curRoom(q);moveTo(q.id,need[0]);
+        delete q.spaceDone;const from=curRoom(q);moveTo(q.id,need[0],'자동(GREEN+ 처방)');
         try{audit('GREEN+ 자동 이동',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+from+' → '+need[0]);}catch(e){}});
     }
   });
@@ -3059,7 +3059,7 @@ function rxMoveToXray(pid){
   let rest=q.route.slice(st+1).filter(r=>r!==xr);
   if(docR)rest=rest.filter(r=>r!==docR);                // 진료실은 x-ray 바로 뒤로(GREEN+ 면 뺀다)
   q.route=[...q.route.slice(0,st+1),xr,...((docR&&!green)?[docR]:[]),...rest];
-  moveTo(q.id,xr);
+  moveTo(q.id,xr,'자동(X-RAY 처방)');
   try{audit('X-RAY 자동 이동',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+from+' → '+xr+(green?' (GREEN+ — 진료실 건너뜀)':(docR?' → '+docR:'')));}catch(e){}
   try{toast(dispName(q.name)+' 님 X-RAY 처방 → x-ray실');}catch(e){}
 }
@@ -5103,7 +5103,7 @@ function holdDocMove(p,doc){
     if(ok!==true)return;   // 다른 화면이 이미 옮김·이미 다른 방
     const q=data.find(x=>x.id===p.id);if(!q||q.discharged||curRoom(q)===room)return;
     if(!waiting(q)||xrayFirst(q)){try{audit('접수보류 → 담당의 진료실 (안 옮김)',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · 이미 '+curRoom(q));}catch(e){}return;}
-    q.holdDocMoved=key;moveTo(q.id,room);
+    q.holdDocMoved=key;moveTo(q.id,room,'자동(비트 접수보류)');
     try{audit('접수보류 → 담당의 진료실',(q.name||'')+(q.mrn?' ('+q.mrn+')':'')+' · '+doc+' → '+room);}catch(e){}});}
 function bitApplyHold(){
   if(!currentUser||!cloud.intakeCol||!cloud.ready.pts)return;
@@ -10557,10 +10557,12 @@ function moveByDrag(pid,room,opts){
   moveTo(pid,room);
   /* 동선 밖 방으로 끌거나 사이 방을 건너뛸 때 보내던 텔레그램 알림은 없앴다 (2026-10-06 요청) */
 }
-function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
+/* by = 자동 이동의 이유(예: '자동(X-RAY 처방)') — 동선 행의 '옮긴 사람'과 기록에 그 화면에 로그인한 사람 대신 남긴다.
+   2026-11-03: 비트 X-RAY 처방으로 자동 이동했는데 그때 켜져 있던 화면의 직원(허빈) 이름이 찍혀 '아무도 안 건드렸는데 옮겨졌다'로 보였다 */
+function moveTo(pid,room,by){const p=data.find(x=>x.id===pid);if(!p)return;
   const from=curRoom(p);
   if(from===room)return;
-  try{audit('카드 이동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+from+' → '+room+((p.status||'대기')==='진행'?'':' ('+(p.status||'대기')+' 상태)'));}catch(e){}   // 끌기·자동 이동 모두 (2026-10-28)
+  try{audit(by?'카드 자동 이동':'카드 이동',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+from+' → '+room+((p.status||'대기')==='진행'?'':' ('+(p.status||'대기')+' 상태)')+(by?' · '+by+' (이 화면에서 처리됨)':''));}catch(e){}   // 끌기·자동 이동 모두 (2026-10-28)
   completeVisit(p,'이동');
   const i=p.route.indexOf(room,p.step+1);
   /* 동선에 없는 방으로 끌어다 놓으면 '지금 방 바로 뒤'에 끼워 넣는다 — 뒤에 남은 방들(처방으로 짠 동선)은 그대로 이어진다 (2026-09-24).
@@ -10569,7 +10571,7 @@ function moveTo(pid,room){const p=data.find(x=>x.id===pid);if(!p)return;
      단계가 뒤로 감기지 않고(5/5→4/5 문제) 새 단계로 끼워 넣는다 */
   if(i>=0)p.step=i; else {p.route.splice(p.step+1,0,room);p.step=p.step+1;}
   if(room===PAY_DONE_NAME)p.route=p.route.slice(0,p.step+1);   /* 수납완료가 맨 끝 — 뒤에 남은 방은 지운다 (2026-10-06 요청: 수납완료 뒤 다른 방으로 가던 문제) */
-  enterCurrentRoom(p);
+  enterCurrentRoom(p,by||undefined);
   markSpaceDone(p,from,room);
   save(p);render();enteredRoom(p,room);}
 /* 같은 공간(C-Arm·Sono·처치실·근전도검사) 안에서 옮겼으면 떠난 방은 끝난 것으로 본다 — 옮긴 자리에만 한 장 (2026-09-24). [종결]·끌기 모두 */
