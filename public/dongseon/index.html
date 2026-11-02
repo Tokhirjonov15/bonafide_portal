@@ -12381,7 +12381,8 @@ function renderHistory(){
       if(!R){box.innerHTML=head+'<div class="route-empty">녹음 기록을 불러오는 중…</div>';if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
       if(!R.n){box.innerHTML=head+'<div class="route-empty">이 환자의 진료 녹음이 없습니다.</div>';if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
       const wd=['일','월','화','수','목','금','토'];
-      box.innerHTML=head+`<div class="rec-text-box hist-rec">`+R.days.map((d,di)=>`<details class="rt-day"${di===0?' open':''}><summary>${esc(d)}${/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':''} <span class="hint">${R.g[d].length}건</span></summary>${R.g[d].map(G=>recItemHtml(G,true)).join('')}</details>`).join('')+'</div>';
+      const nfs=recNfsMap(g.mrn,null,()=>{if(histView==='rec')renderHistory();});   // 초진·90일초진 날은 색 (2026-11-02)
+      box.innerHTML=head+`<div class="rec-text-box hist-rec">`+R.days.map((d,di)=>`<details class="rt-day${recDayCls(nfs[d])}"${di===0?' open':''}><summary>${esc(d)}${/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':''} ${nfsBadge(nfs[d])} <span class="hint">${R.g[d].length}건</span></summary>${R.g[d].map(G=>recItemHtml(G,true)).join('')}</details>`).join('')+'</div>';
       if(window.lucide)try{lucide.createIcons();}catch(e){}recAudioLoad(box);return;}
     if(histView==='consult'){
       const cons=patientConsults(g);
@@ -12752,6 +12753,7 @@ function fillRxHist(p,boxId){
   cloud.rxCol.where('mrn','==',mrn).get().then(s=>{
     const docs=s.docs.map(d=>d.data()||{});RX_HIST[mrn]={docs,at:Date.now()};
     ['rxHistBox','rxHistAdd'].forEach(id=>{const b=document.getElementById(id);if(b&&b.dataset.mrn===mrn)rxHistRender(b,mrn,docs);});
+    try{const q=editId&&data.find(x=>x.id===editId);if(q&&normMrn(q.mrn)===mrn)fillRecTextBox(q);}catch(e){}   // 녹음 날짜 줄의 초진 색도 (2026-11-02)
   }).catch(e=>{console.warn('rxHist',e);delete RX_HIST[mrn];box.innerHTML=`<div class="sect-t"><i data-lucide="history"></i> 과거 처방내역 <span class="hint">불러오지 못했습니다</span></div>`;});
 }
 function rxHistRender(box,mrn,docs){
@@ -12776,6 +12778,15 @@ function rxHistRender(box,mrn,docs){
   box.innerHTML=head+`<div class="rx-tblwrap rxh-wrap"><table class="rx-tbl rxh-tbl"><thead><tr><th class="rx-nam-h">처방명칭</th><th>총투여량</th><th>금액</th><th>급/비</th></tr></thead><tbody>${body}</tbody></table></div>`;
   if(window.lucide)try{lucide.createIcons();}catch(e){}
 }
+/* 녹음 날짜 줄 색 (2026-11-02 요청: 초진이 제일 중요) — 그날 비트 초/재진이 초진·90일초진이면 주황 칸 + 배지.
+   자료는 과거 처방내역과 같은 bitRx(2026-09-23부터) — 없으면 한 번 불러와 redraw. 오늘은 지금 받은 처방(p)의 값을 먼저 쓴다 */
+function recNfsMap(mrn,p,redraw){const m=normMrn(mrn),o={};if(!m)return o;const c=RX_HIST[m];
+  if(c&&c.docs)c.docs.forEach(v=>{const D=String(v.date||''),n=String(v.nfs==null?'':v.nfs).trim();if(D&&n&&(!o[D]||/^[13]$/.test(n)))o[D]=n;});
+  else if(!c&&cloud.rxCol&&redraw){RX_HIST[m]={loading:true,at:Date.now()};
+    cloud.rxCol.where('mrn','==',m).get().then(s=>{RX_HIST[m]={docs:s.docs.map(d=>d.data()||{}),at:Date.now()};redraw();}).catch(e=>{console.warn('recNfs',e);delete RX_HIST[m];});}
+  try{const rx=p&&bitRxFor(p);if(rx&&rx.nfs)o[localYMD(new Date())]=rx.nfs;}catch(e){}
+  return o;}
+function recDayCls(n){return /^[13]$/.test(String(n||''))?' rt-new':'';}
 /* ═ 녹음기록 — 진료 녹음을 진료실 PC 가 글로 바꾼 것(recText). 이 환자 차트번호로, 최근 것부터 (2026-10-12) ═ */
 window.recTextCache={};
 function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!box)return;const mrn=String((p&&p.mrn)||'').trim();
@@ -12787,10 +12798,11 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
     const today=localYMD(new Date()),g={};L.forEach((r,i)=>{const d=String(r.date||r.startedAt||'').slice(0,10)||'날짜 없음';(g[d]=g[d]||[]).push([r,i]);});
     const wd=['일','월','화','수','목','금','토'];const days=Object.keys(g).sort().reverse();
     const nRec=new Set(L.map(r=>(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file)).size;
+    const nfs=recNfsMap(mrn,p,()=>{if(editId===p.id)fillRecTextBox(p);});
     box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${nRec}건 · ▶ 눌러 듣기 (받아쓴 글은 틀린 곳이 있을 수 있음)</span></div>`+
       days.map(d=>{const open=d===today?!REC_DAY_SHUT.has(mrn+d):REC_DAY_OPEN.has(mrn+d);const dw=/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':'';
         const byF=new Map();g[d].forEach(([r,i])=>{const k=(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file||String(i);if(!byF.has(k))byF.set(k,[]);byF.get(k).push([r,i]);});
-        return `<details class="rt-day"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} <span class="hint">${byF.size}건</span></summary>`+
+        return `<details class="rt-day${recDayCls(nfs[d])}"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} ${nfsBadge(nfs[d])} <span class="hint">${byF.size}건</span></summary>`+
         [...byF.values()].map(G=>recItemHtml(G)).join('')+'</details>';}).join('');
     box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}recAudioLoad(box);};
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
@@ -15276,7 +15288,8 @@ boot();
   .rt-item{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;background:var(--panel2)}.rt-head{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--sub)}.rt-head .btn{margin-left:auto}
   .rec-stt{flex-direction:column;align-items:flex-start;gap:4px}.rec-stt label{display:flex;gap:6px;align-items:center;cursor:pointer}
   .rt-src{font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;background:#e2e8f0;color:#334155}.rt-src.rt-chrome{background:#dbeafe;color:#1d4ed8}.rt-src.rt-openai{background:#dcfce7;color:#15803d}.rt-src.rt-clova{background:#fef3c7;color:#92400e}
-  .rt-day{margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:4px 8px;background:var(--panel)}.rt-day>summary{cursor:pointer;font-weight:800;font-size:14px;padding:4px 2px}.rt-day .rt-item{background:var(--panel2)}
+  .rt-day{margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:4px 8px;background:var(--panel)}.rt-day.rt-new{border:2px solid #f59e0b;background:rgba(245,158,11,.10)}.rt-day.rt-new>summary{color:#b45309}   /* 초진·90일초진 날 (2026-11-02) */
+ .rt-day>summary{cursor:pointer;font-weight:800;font-size:14px;padding:4px 2px}.rt-day .rt-item{background:var(--panel2)}
   .rt-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;max-height:260px;overflow:auto;margin-top:4px;color:var(--text)}   /* 녹음기록 (2026-10-12) */
   .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
   .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
