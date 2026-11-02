@@ -1,0 +1,2138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>반듯한정형외과 간호팀 신규입사자 안내문</title>
+<meta name="description" content="반듯한정형외과 간호팀 신규입사자 안내문">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap">
+<style>
+  :root{
+    --paper:#F2F3F0;        /* 배경: 표준용지 살짝 녹색끼 흰색 */
+    --sheet:#FFFFFF;        /* 문서 시트 */
+    --ink:#20262E;          /* 먹색 글자 */
+    --sub:#5C6672;          /* 보조 글자 */
+    --faint:#8A93A0;
+    --line:#E3E2DA;         /* 헤어라인 */
+    --navy:#1D2735;         /* 상단 바: 공문 먹감 */
+    --red:#B3402E;          /* 결재 도장 주홍 */
+    --amber:#B9821E;        /* 유의사항 */
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
+    font-size:15px;line-height:1.6;
+    word-break:keep-all;overflow-wrap:break-word;
+  }
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  a{color:inherit}
+  :focus-visible{outline:2px solid #2458A6;outline-offset:2px;border-radius:4px}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+
+  /* ── 상단 바 ─────────────────────────── */
+  .topbar{background:var(--navy);color:#F5F4EF}
+  .topbar .wrap{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding-top:20px;padding-bottom:18px}
+  .brand{font-family:'Gowun Batang',serif;font-size:21px;font-weight:700;letter-spacing:.02em}
+  .brand small{font-family:inherit;font-weight:400;font-size:12px;color:#B9C2CE;margin-left:10px;letter-spacing:.08em}
+  .doc-chip{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;
+    color:#C9D2DC;border:1px solid #3A4656;border-radius:999px;padding:3px 12px;letter-spacing:.04em}
+
+  /* ── 브레드크럼 바 (고정) ─────────────── */
+  .crumbbar{position:sticky;top:0;z-index:20;background:rgba(242,243,240,.94);
+    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .crumbbar .wrap{display:flex;align-items:center;gap:10px;padding-top:10px;padding-bottom:10px}
+  .crumbs{display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none;min-width:0;flex:1}
+  .crumbs::-webkit-scrollbar{display:none}
+  .crumb{white-space:nowrap;font-size:13px;color:var(--sub);padding:4px 8px;border-radius:6px;flex-shrink:0}
+  .crumb:hover{background:#E7E8E2;color:var(--ink)}
+  .crumb.home{display:inline-flex;align-items:center;gap:6px}
+  .crumb[aria-current]{color:var(--ink);font-weight:700}
+  .crumb-sep{color:#C2C7BD;font-size:12px;flex-shrink:0}
+  .backbtn{white-space:nowrap;flex-shrink:0;display:inline-flex;align-items:center;gap:6px;
+    font-size:12.5px;font-weight:600;color:var(--ink);border:1px solid #D4D4CA;border-radius:999px;
+    padding:5px 13px;background:#fff;transition:border-color .15s}
+  .backbtn:hover{border-color:var(--ink)}
+  .crumbbar .wrap{flex-wrap:wrap}
+  .search{position:relative;flex:0 1 300px;min-width:200px;display:flex;align-items:center}
+  .search-ic{position:absolute;left:12px;color:var(--faint);pointer-events:none}
+  .search input{width:100%;font:inherit;font-size:13.5px;color:var(--ink);background:#fff;border:1px solid #D4D4CA;border-radius:999px;padding:7px 34px 7px 34px;outline:none;transition:border-color .15s,box-shadow .15s}
+  .search input::placeholder{color:var(--faint)}
+  .search input:focus{border-color:var(--navy);box-shadow:0 0 0 3px rgba(29,39,53,.08)}
+  .search input::-webkit-search-cancel-button{-webkit-appearance:none}
+  .search-kbd{position:absolute;right:10px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:0 6px;background:#FAFAF7;pointer-events:none}
+  .search input:focus ~ .search-kbd,.search input:not(:placeholder-shown) ~ .search-kbd{display:none}
+  .search-pop{position:absolute;top:calc(100% + 8px);right:0;width:min(520px,calc(100vw - 40px));max-height:min(70vh,560px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(29,39,53,.16);padding:6px;z-index:40}
+  .sr-head{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--faint);padding:8px 10px 6px}
+  .sr{display:block;width:100%;text-align:left;border-radius:8px;padding:9px 12px;cursor:pointer}
+  .sr:hover,.sr.on{background:#F2F3EE}
+  .sr-t{display:block;font-size:14.5px;font-weight:700;color:var(--ink)}
+  .sr-p{display:block;font-size:11.5px;color:var(--faint);margin-top:1px}
+  .sr-s{display:block;font-size:12.5px;color:var(--sub);margin-top:3px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sr mark{background:#FFE45C;color:inherit;border-radius:3px;padding:0 1px}
+  mark.page-hl{background:#FFE45C;color:inherit;border-radius:3px;padding:0 2px;box-shadow:0 0 0 1px #F2CE2A}
+  mark.page-hl-first{animation:hlPulse 1.4s ease-out 2}
+  @keyframes hlPulse{0%{box-shadow:0 0 0 1px #F2CE2A,0 0 0 0 rgba(255,214,0,.7)}100%{box-shadow:0 0 0 1px #F2CE2A,0 0 0 10px rgba(255,214,0,0)}}
+  .sr-empty{padding:18px 12px;font-size:13.5px;color:var(--sub);text-align:center}
+  @media (max-width:640px){.search{order:-1;flex:1 1 100%}.search-pop{left:0;right:auto;width:100%}}
+
+  /* ── 본문 공통 ───────────────────────── */
+  main{padding:34px 0 70px}
+  .page-head{margin-bottom:24px}
+  .kicker{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;letter-spacing:.14em;color:var(--faint)}
+  .kicker::before{content:'';width:16px;height:3px;background:var(--dept,var(--navy));border-radius:2px}
+  h1.page-title{font-family:'Gowun Batang',serif;font-size:clamp(24px,4vw,30px);font-weight:700;line-height:1.35;margin:6px 0 6px}
+  .page-desc{font-size:14px;color:var(--sub);max-width:56ch}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+
+  /* ── 메뉴 카드 (서류철 라벨) ───────────── */
+  .card{position:relative;display:block;width:100%;text-align:left;background:var(--sheet);
+    border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px 15px 24px;
+    overflow:hidden;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+  .card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--dept)}
+  .card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(29,39,53,.09);border-color:#CDCDC2}
+  .card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;font-weight:600;
+    color:var(--dept);background:color-mix(in srgb,var(--dept) 9%,#fff);
+    border:1px solid color-mix(in srgb,var(--dept) 26%,#fff);border-radius:6px;padding:2px 8px;letter-spacing:.03em}
+  .card-arrow{margin-left:auto;color:#B9BFB4;transition:transform .18s ease,color .18s ease}
+  .card:hover .card-arrow{transform:translateX(3px);color:var(--dept)}
+  .card-name,.card-desc{display:block}
+  .card-name{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .card-desc{font-size:13px;color:var(--sub);margin-top:4px}
+  .card-meta{margin-top:14px;padding-top:10px;border-top:1px dashed var(--line);
+    font-size:12px;color:var(--faint);display:flex;justify-content:space-between;align-items:center}
+
+  /* ── 홈 ─────────────────────────────── */
+  .hero{padding:6px 0 26px}
+  .hero-split{display:grid;grid-template-columns:1fr minmax(300px,380px);gap:24px;align-items:start}
+  .hero-r .med-search{border:1px solid var(--line);border-radius:12px;background:#fff;padding:14px 16px}
+  .ms-title{margin:0 0 10px;font-size:13px;letter-spacing:.14em;color:var(--faint)}
+  .ms-hint{margin:8px 0 0;font-size:11.5px;color:var(--faint)}
+  #medModal{position:fixed;inset:0;z-index:300;background:rgba(15,23,42,.7);display:none;align-items:center;justify-content:center;padding:24px}
+  #medModal.on{display:flex;animation:lbIn .15s ease}
+  .ms-pop{position:relative;width:min(640px,94vw);max-height:84vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(0,0,0,.35)}
+  .ms-pop-body{padding:18px 20px 20px}
+  .ms-x{position:absolute;top:10px;right:10px;width:36px;height:36px;border:0;border-radius:50%;background:rgba(15,23,42,.08);color:var(--navy);font-size:15px;cursor:pointer;display:grid;place-items:center}
+  .ms-x:hover{background:rgba(15,23,42,.16)}
+  @media (max-width:860px){.hero-split{grid-template-columns:1fr}}
+  .hero h1{font-family:'Gowun Batang',serif;font-size:clamp(28px,5vw,38px);font-weight:700;line-height:1.3}
+  .hero p{margin-top:10px;color:var(--sub);font-size:14.5px}
+  .hero .stats{margin-top:14px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--faint)}
+  .quick{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 34px}
+  .quick-label{width:100%;font-size:11.5px;font-weight:700;letter-spacing:.14em;color:var(--faint);margin-bottom:2px}
+  .quick-chip{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);
+    border-radius:999px;padding:7px 15px;font-size:13px;font-weight:600;transition:border-color .15s,transform .15s}
+  .quick-chip:hover{border-color:var(--ink);transform:translateY(-1px)}
+  .quick-chip .dot{width:8px;height:8px;border-radius:2px;background:var(--dept)}
+  .home-section+.home-section{margin-top:38px}
+  .home-section h2{font-size:13px;font-weight:700;letter-spacing:.12em;color:var(--faint);margin-bottom:14px;
+    display:flex;align-items:center;gap:10px}
+  .home-section h2::after{content:'';flex:1;height:1px;background:var(--line)}
+  .grid.dept-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  @media (max-width:680px){.grid.dept-grid{grid-template-columns:1fr}}
+
+  /* ── 내용 문서 시트 ──────────────────── */
+  .sheet{position:relative;background:var(--sheet);border:1px solid var(--line);border-radius:14px;
+    padding:clamp(22px,4vw,42px);max-width:780px}
+  .sheet .kicker{margin-bottom:2px}
+  .sheet h1{font-family:'Gowun Batang',serif;font-size:clamp(22px,3.6vw,27px);font-weight:700;line-height:1.35;
+    padding-right:86px}
+  .summary{color:var(--sub);font-size:14px;margin-top:10px;max-width:58ch}
+  .doc-meta{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:22px 0 6px}
+  .doc-meta div{background:#FBFBF8;padding:10px 14px}
+  .doc-meta dt{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--faint)}
+  .doc-meta dd{font-size:13.5px;font-weight:600;margin-top:2px}
+  .doc-meta .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px}
+
+  .sub-hrow{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .setup-banner{display:flex;align-items:center;gap:12px;margin:2px 0 22px;padding:14px 18px;border:1.5px solid color-mix(in srgb,var(--dept,#1D2735) 45%,#fff);border-radius:12px;background:color-mix(in srgb,var(--dept,#1D2735) 9%,#fff);text-decoration:none;color:inherit;cursor:pointer;box-shadow:0 2px 12px rgba(15,23,42,.08);transition:transform .15s,box-shadow .15s,border-color .15s}
+  .setup-banner::before{content:'';align-self:stretch;width:5px;border-radius:3px;background:var(--dept,#1D2735);flex-shrink:0}
+  .setup-banner b{font-size:15px;white-space:nowrap;color:var(--dept,#1D2735)}
+  .setup-banner span{font-size:12.5px;font-weight:600;color:color-mix(in srgb,var(--dept,#1D2735) 60%,#000)}
+  .setup-banner em{margin-left:auto;font-style:normal;width:28px;height:28px;border-radius:50%;background:var(--dept,#1D2735);color:#fff;display:grid;place-items:center;font-size:16px;line-height:1;flex-shrink:0}
+  .setup-banner:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(15,23,42,.16);border-color:var(--dept,#1D2735)}
+  .pg-nav{display:flex;gap:6px;flex-shrink:0;padding-top:4px}
+  .pg-nav button{font:inherit;font-size:12.5px;font-weight:700;padding:7px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;color:inherit;cursor:pointer;transition:border-color .15s,background .15s}
+  .pg-nav button:hover:not(:disabled){border-color:var(--dept,#333);background:#fff}
+  .pg-nav button:disabled{opacity:.35;cursor:default}
+  .sec{margin-top:30px}
+  .sec-label{display:flex;align-items:center;gap:9px;font-size:11.5px;font-weight:700;
+    letter-spacing:.16em;color:var(--faint);margin-bottom:14px}
+  .sec-label::before{content:'';width:16px;height:3px;border-radius:2px;background:var(--dept)}
+
+  .steps{list-style:none}
+  .su-phase{margin-top:22px}
+  .su-steps{list-style:none;display:flex;flex-wrap:wrap;gap:8px;counter-reset:none}
+  .su-steps li{display:flex;align-items:center;gap:9px;padding:9px 14px 9px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;font-size:14px;font-weight:700;color:var(--ink)}
+  .su-steps li .step-n{width:22px;height:22px;font-size:11.5px}
+  .su-steps li+li{position:relative}
+  .su-alert{margin-top:10px;padding:10px 14px;border-radius:8px;background:#fdecec;color:#b42318;font-size:13.5px;font-weight:600;text-wrap:pretty}
+  .su-alert b{font-weight:800}.su-alert code{font-family:ui-monospace,Consolas,monospace;font-weight:800}
+  .su-after .su-steps li{background:#f6f7f6}
+  .su-set{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:18px;align-items:start}
+  .su-photos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .su-photos .su-img{aspect-ratio:4/5}
+  .su-img img{object-position:center !important}
+  .su-spec{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .su-spec>div{display:grid;grid-template-columns:104px 1fr;gap:12px;padding:10px 14px;border-top:1px solid var(--line);font-size:14px}
+  .su-spec>div:first-child{border-top:0}
+  .su-spec dt{color:var(--sub);font-weight:700;font-size:13px}
+  .su-spec dd{color:var(--ink);font-weight:600}
+  .su-spec>div.hl{background:#fdecec}.su-spec>div.hl dd{color:#b42318;font-weight:800}
+  .su-ex{margin-top:10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 14px;border:1px dashed var(--line);border-radius:10px;font-size:13px}
+  .su-ex-l{font-size:11px;font-weight:800;color:var(--sub);letter-spacing:.04em}
+  .su-ex code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--ink)}
+  .su-ex-r{display:flex;gap:8px;align-items:baseline;margin-left:auto}.su-ex-r span{color:var(--sub);font-size:12px}.su-ex-r b{color:#b42318;font-size:15px}
+  @media (max-width:720px){.su-set{grid-template-columns:1fr}}
+  .gd{margin:0 0 22px;background:#fff;border:1px solid var(--line);border-top:4px solid var(--dept);border-radius:12px;padding:18px 22px 10px}
+  .gd-title{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:8px}
+  .gd-steps{list-style:none;display:grid;grid-template-rows:repeat(3,auto);grid-auto-flow:column;grid-auto-columns:1fr;column-gap:28px}
+  .gd-steps li{display:grid;grid-template-columns:26px 1fr;gap:10px;padding:10px 0;border-top:1px dashed var(--line)}
+  .gd-steps li:nth-child(1),.gd-steps li:nth-child(4){border-top:0}
+  .gd-n{width:26px;height:26px;border-radius:50%;background:var(--dept);color:#fff;font-size:12.5px;font-weight:800;display:grid;place-items:center}
+  .gd-t{font-size:14.5px;font-weight:600;color:var(--ink);line-height:1.55;text-wrap:pretty;margin-top:2px}
+  .gd-t b{font-weight:800}
+  .gd-t em{font-style:normal;font-weight:800}.gd-t em.r{color:#c62828}.gd-t em.b{color:#1d4ed8}
+  .gd-d{font-size:13px;color:var(--sub);line-height:1.5;margin-top:3px;text-wrap:pretty}
+  @media (max-width:720px){.gd-steps{grid-auto-flow:row;grid-template-rows:none}.gd-steps li:nth-child(4){border-top:1px dashed var(--line)}}
+  .pos-list{display:grid;gap:16px}
+  .pos-hero{display:grid;grid-template-columns:minmax(180px,280px) 1fr;gap:16px;align-items:stretch;margin-bottom:0}
+  .pos-card-img img{object-fit:contain;background:#fff}
+  .pos-num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--dept,#1D2735);color:#fff;font-size:12px;margin-right:8px;flex-shrink:0}
+  .pos-hero-txt h3{display:flex;align-items:center;gap:2px}
+  .pos-card-img{aspect-ratio:auto;min-height:200px;height:100%}
+  .pos-card-img img{width:100%;height:100%;object-fit:cover;object-position:center;background:#fff}
+  .pos-card-img.pos-multi{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:stretch;height:100%}
+  .pos-card-img.pos-multi img{width:100%;height:100%;min-height:0;aspect-ratio:auto;object-fit:cover;background:#fff;border-radius:8px}
+  .pos-card-img img{object-fit:contain;background:#fff}
+  .pos-hero .shot{height:100%}
+  .pos-hero .pos-hero-img{aspect-ratio:auto;flex:1;min-height:0}
+  .pos-hero .shot-img img{object-fit:cover}
+  .pos-hero-txt{background:color-mix(in srgb,var(--dept,#1D2735) 6%,#fff);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+  .pos-hero-txt h3{margin:0 0 2px;font-size:16px;color:var(--dept,#1D2735)}
+  .pos-hero-txt ul{margin:0;padding-left:16px;display:grid;gap:5px;font-size:13.5px;line-height:1.55}
+  .pos-hero-txt li b{color:var(--dept,#1D2735)}
+  .pos-note{margin-top:auto;display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px dashed var(--line)}
+  .med-search{border:1px solid var(--line);border-radius:12px;background:#fff;padding:14px 16px}
+  .ms-row{display:flex;gap:8px}
+  .ms-row input{flex:1;font:inherit;font-size:14px;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:inherit}
+  .ms-row input:focus{outline:0;border-color:var(--dept,#1D2735);box-shadow:0 0 0 3px rgba(29,39,53,.08)}
+  .ms-row button{font:inherit;font-size:13.5px;font-weight:800;padding:10px 18px;border:0;border-radius:10px;background:var(--dept,#1D2735);color:#fff;cursor:pointer}
+  .ms-result{margin-top:12px}
+  .ms-idle,.ms-loading,.ms-none{margin:0;font-size:13px;color:var(--faint)}
+  .ms-interp{margin:0 0 8px;font-size:12px;color:var(--faint)}
+  .ms-interp b{color:var(--dept,#1D2735)}
+  .ms-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:8px}
+  .ms-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .ms-head b{font-size:15px;color:var(--dept,#1D2735)}
+  .ms-head span{font-size:11.5px;color:var(--faint)}
+  .ms-ext{margin:0;font-size:13.5px;line-height:1.6}
+  .ms-fig{margin:0}
+  .ms-fig img{max-width:100%;max-height:340px;border-radius:8px;border:1px solid var(--line)}
+  .ms-fig figcaption{font-size:11.5px;color:var(--faint);margin-top:4px}
+  .ms-noimg{margin:0;font-size:12px;color:var(--faint)}
+  .ms-link{font-size:12.5px;font-weight:700;color:var(--dept,#1D2735);text-decoration:none}
+  .pos-note-imgs{display:flex;gap:6px;flex-shrink:0}
+  .pos-note img{width:78px;height:58px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .pos-note b{font-size:13px;color:var(--dept,#1D2735)}
+  .pos-terms{margin:0;display:grid;gap:6px}
+  .pos-terms > div{display:grid;grid-template-columns:minmax(150px,auto) 1fr;gap:10px;align-items:baseline;border-bottom:1px dashed var(--line);padding-bottom:6px}
+  .pos-terms > div:last-child{border-bottom:0;padding-bottom:0}
+  .pos-terms dt{font-weight:800;font-size:14px;color:var(--dept,#1D2735)}
+  .pos-terms dd{margin:0;font-size:13px;color:color-mix(in srgb,var(--dept,#1D2735) 70%,#000)}
+  .pos-hero-btn{margin-top:auto;align-self:flex-start;font:inherit;font-size:12.5px;font-weight:700;padding:7px 14px;border:1px solid var(--dept,#1D2735);border-radius:999px;background:#fff;color:inherit;cursor:pointer}
+  .pos-hero-btn em{font-style:normal}
+  .pos-hero-btn:hover{background:var(--dept,#1D2735);color:#fff}
+  @media (max-width:720px){.pos-hero{grid-template-columns:1fr}}
+  .shots{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+  .shot{display:flex;flex-direction:column;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;cursor:zoom-in;padding:0;font:inherit;color:inherit;transition:border-color .15s,box-shadow .15s,transform .15s}
+  .shot:hover{border-color:var(--dept,#94a3b8);box-shadow:0 6px 18px rgba(15,23,42,.08);transform:translateY(-1px)}
+  .shot-img{display:block;aspect-ratio:16/10;background:#f1f5f9;border-bottom:1px solid var(--line);overflow:hidden}
+  .shot-img img{width:100%;height:100%;object-fit:cover;object-position:top left;display:block}
+  .shot-cap{display:flex;gap:8px;padding:9px 11px;align-items:flex-start}
+  .shot-cap>b{flex:none;width:20px;height:20px;border-radius:50%;background:var(--dept,#334155);color:#fff;font-size:11px;display:grid;place-items:center;margin-top:1px}
+  .shot-t{display:block;font-size:13px;font-weight:800;color:var(--ink)}
+  .shot-d{display:block;font-size:12px;color:var(--sub);line-height:1.45;margin-top:2px;text-wrap:pretty}
+  #lb{position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.82);display:none;align-items:center;justify-content:center;padding:24px 56px;cursor:zoom-out}
+  #lb.on{display:flex;animation:lbIn .15s ease}
+  @keyframes lbIn{from{opacity:0}to{opacity:1}}
+  .lb-fig{margin:0;width:100%;height:100%;display:flex;flex-direction:column;gap:10px;cursor:default}
+  .lb-fig img{object-fit:contain;background:transparent;user-select:none;-webkit-user-drag:none}
+  .lb-hint{flex-basis:100%;font-size:11px;opacity:.55}
+  .lb-imgs{flex:1;min-height:0;display:flex;flex-direction:row;align-items:stretch;gap:10px}
+  .lb-imgs img{flex:1;min-width:0;min-height:0;height:100%;object-fit:contain;border-radius:8px;transform:translate(var(--px,0),var(--py,0)) scale(var(--z,1));will-change:transform;user-select:none;-webkit-user-drag:none}
+  .lb-fig figcaption{color:#fff;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:14px}
+  .lb-fig figcaption b{font-size:12px;opacity:.7}
+  .lb-t{font-weight:800}.lb-d{opacity:.8;flex-basis:100%;font-size:13px}
+  .lb-x,.lb-nav{position:absolute;border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:50%;cursor:pointer;display:grid;place-items:center}
+  .lb-x{top:14px;right:14px;width:40px;height:40px;font-size:18px}
+  .lb-nav{top:50%;transform:translateY(-50%);width:48px;height:48px;font-size:30px;line-height:1}
+  .lb-nav.prev{left:12px}.lb-nav.next{right:12px}
+  .lb-x:hover,.lb-nav:hover{background:rgba(255,255,255,.28)}
+  @media (max-width:640px){#lb{padding:56px 10px}.lb-nav{top:auto;bottom:14px;transform:none}}
+  .steps li{display:grid;grid-template-columns:30px 1fr;gap:13px;padding:11px 0}
+  .steps li+li{border-top:1px solid #EFEFE8}
+  .ph-list li{align-items:center;padding:9px 0}
+  .br-spec{margin:14px 0 4px}
+  .br-top{display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:stretch;margin:14px 0 4px}
+  .br-top .br-spec{margin:0;grid-template-columns:1fr;grid-auto-rows:1fr;align-content:stretch}
+  .br-top .br-spec div{display:flex;flex-direction:column;justify-content:center}
+  .br-prod{margin:0;border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden;display:flex;flex-direction:column}
+  .br-prod img{width:100%;aspect-ratio:1/1;object-fit:contain;padding:10px;display:block}
+  .br-prod figcaption{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--faint);padding:7px 12px;border-top:1px solid var(--line);background:#FBFBF8}
+  @media (max-width:560px){.br-top{grid-template-columns:1fr}.br-prod img{max-height:240px}}
+  .br-spec div:last-child:nth-child(odd){grid-column:1/-1}
+  .br-size-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+  .br-size{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .br-size th,.br-size td{padding:9px 12px;text-align:center;border-bottom:1px solid var(--line)}
+  .br-size tr:last-child>*{border-bottom:0}
+  .br-size thead th{background:var(--dept);color:#fff;font-weight:700}
+  .br-size tbody th{background:#FBFBF8;font-weight:700;color:var(--faint);text-align:left}
+  .br-feats{list-style:none;display:flex;flex-wrap:wrap;gap:8px}
+  .br-feats li{padding:7px 12px;border-radius:8px;background:#F4F1EA;font-size:13.5px;font-weight:600}
+  .br-feats li:nth-child(2){background:#fdecec;color:#b42318}
+  .br-note{display:block;margin-top:4px;font-size:12.5px;color:var(--faint);line-height:1.55}
+  .br-pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+  .br-img{aspect-ratio:419/595;background:#fff}
+  .br-photos{grid-auto-flow:column;grid-auto-columns:clamp(240px,45%,420px);overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding-bottom:8px}
+  .br-photos .shot{scroll-snap-align:start}
+  @media (max-width:560px){.br-photos{grid-auto-columns:86%}}
+  .br-ph{aspect-ratio:3/2;background:#fff}
+  .br-ph img{object-fit:cover;object-position:center}
+  .br-img img{object-fit:contain;object-position:center}
+  .ph-tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;margin-right:7px;background:#F1EEE6;color:#6B6455;vertical-align:1px}
+  .step-n{width:26px;height:26px;border-radius:7px;background:var(--dept);color:#fff;
+    font-size:13px;font-weight:700;display:grid;place-content:center;margin-top:1px}
+  .step-t{font-size:14.5px;font-weight:700}
+  .step-d{font-size:13.5px;color:var(--sub);margin-top:2px}
+
+  .notes{list-style:none}
+  .notes li{position:relative;padding:7px 0 7px 30px;font-size:13.5px}
+  .notes li::before{content:'!';position:absolute;left:0;top:9px;width:17px;height:17px;border-radius:5px;
+    background:var(--amber);color:#fff;font-size:11px;font-weight:800;display:grid;place-content:center}
+  .notes li+li{border-top:1px dashed #EFE8D8}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #DCDBD2;border-radius:999px;
+    padding:6px 14px;font-size:12.5px;background:#FBFAF7}
+  .chip svg{color:var(--faint)}
+  .chip.rel{border-color:color-mix(in srgb,var(--dept) 35%,#fff);color:var(--dept);font-weight:600;
+    transition:background .15s}
+  .chip.rel:hover{background:color-mix(in srgb,var(--dept) 8%,#fff)}
+  .chip.mono b{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:600}
+
+  /* ── 도장 (시그니처) ─────────────────── */
+  .stamp{position:absolute;top:24px;right:clamp(18px,4vw,38px);width:86px;height:86px;border-radius:50%;
+    border:3px solid rgba(179,64,46,.72);color:rgba(179,64,46,.86);display:grid;place-content:center;
+    text-align:center;transform:rotate(-8deg);mix-blend-mode:multiply;pointer-events:none;
+    animation:stampIn .38s cubic-bezier(.2,1.4,.4,1) .15s both}
+  .stamp::before{content:'';position:absolute;inset:5px;border:1px solid rgba(179,64,46,.55);border-radius:50%}
+  .stamp .s1{font-size:10.5px;font-weight:700;letter-spacing:.28em;text-indent:.28em}
+  .stamp .s2{font-family:'Gowun Batang',serif;font-size:24px;font-weight:700;line-height:1.2}
+  .stamp .s3{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:7.5px;letter-spacing:.14em}
+  @keyframes stampIn{from{opacity:0;transform:rotate(-8deg) scale(1.8)}to{opacity:1;transform:rotate(-8deg) scale(1)}}
+
+
+  /* ── 습득 계획 페이지 ─────────────────── */
+  .plan{max-width:880px}
+  .plan-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .plan-meta span{font-size:12.5px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;color:var(--sub)}
+  .plan-meta b{color:var(--ink)}
+  .psec{margin-top:40px}
+  .psec-h{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+  .psec-h .n{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;font-weight:700;color:var(--dept)}
+  .psec-h h2{font-family:'Gowun Batang',serif;font-size:20px;font-weight:700}
+  .psec-note{font-size:13px;color:var(--sub);margin-top:10px}
+  .ptable{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13.5px}
+  .ptable th{font-size:11px;letter-spacing:.1em;color:var(--faint);font-weight:700;text-align:left;background:#FBFBF8;padding:10px 14px;border-bottom:1px solid var(--line)}
+  .ptable td{padding:12px 14px;vertical-align:top;border-bottom:1px solid #EFEFE8}
+  .ptable tr:last-child td{border-bottom:0}
+  .ptable .num{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--faint);width:36px}
+  .ptable .tname{font-weight:700;white-space:nowrap}
+  .ptable .dur{white-space:nowrap;font-weight:600;text-align:right}
+  .ptable tr.par td{background:#FAFAF6;color:var(--sub)}
+  .ptable tr.par .tname{color:var(--ink)}
+  /* 간트 */
+  .gantt{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px 10px;overflow-x:auto}
+  .g-row{display:grid;grid-template-columns:130px repeat(8,minmax(52px,1fr));align-items:center;min-width:600px}
+  .g-row+.g-row{border-top:1px dashed #EFEFE8}
+  .g-head{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;color:var(--faint);text-align:center;padding-bottom:8px}
+  .g-head:first-child{text-align:left}
+  .g-name{font-size:13px;font-weight:700;padding:12px 8px 12px 0}
+  .g-bar{height:28px;margin:8px 3px;border-radius:7px;background:var(--dept);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;padding:0 10px;white-space:nowrap;overflow:hidden}
+  .g-bar.soft{background:color-mix(in srgb,var(--dept) 12%,#fff);color:var(--dept);border:1px dashed color-mix(in srgb,var(--dept) 45%,#fff)}
+  .goals{list-style:none;margin-top:12px;display:grid;gap:6px}
+  .goals li{display:grid;grid-template-columns:84px 1fr;gap:12px;font-size:13px}
+  .goals .m{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--dept);font-weight:600}
+  /* 업무 상세 */
+  .tasks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  @media (max-width:680px){.tasks{grid-template-columns:1fr}}
+  .task{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column}
+  .task-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .task-no{width:24px;height:24px;border-radius:7px;background:var(--dept);color:#fff;font-size:12px;font-weight:700;display:grid;place-content:center}
+  .task-name{font-size:16px;font-weight:700}
+  .status{margin-left:auto;font-size:11px;font-weight:700;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,#fff);background:color-mix(in srgb,var(--amber) 8%,#fff);border-radius:999px;padding:2px 9px}
+  .task-when{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--faint)}
+  .checks{list-style:none;margin:12px 0 0}
+  .checks li{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13.5px;cursor:pointer;user-select:none}
+  .checks li+li{border-top:1px solid #F1F1EA}
+  .checks .box{width:16px;height:16px;border:1.5px solid #C6CBC0;border-radius:4px;flex-shrink:0;display:grid;place-content:center;transition:background .15s,border-color .15s}
+  .checks li.on .box{background:var(--dept);border-color:var(--dept)}
+  .checks li.on .box::after{content:'';width:8px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+  .checks li.on span:last-child{color:var(--faint);text-decoration:line-through}
+  .task-memo{margin-top:auto;padding-top:12px;font-size:12.5px;color:var(--sub)}
+  .task-memo div{border-top:1px dashed var(--line);padding-top:10px}
+  .task-memo b{color:var(--ink)}
+  .progress{height:4px;background:#EFEFE8;border-radius:2px;margin-top:10px;overflow:hidden}
+  .progress i{display:block;height:100%;background:var(--dept);transition:width .2s}
+  .pars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  @media (max-width:680px){.pars{grid-template-columns:1fr}}
+  .par-card{background:#fff;border:1px dashed color-mix(in srgb,var(--dept) 40%,#fff);border-radius:12px;padding:18px 20px}
+  .par-card .tag{font-size:11px;font-weight:700;color:var(--dept);letter-spacing:.06em}
+  .par-card h3{font-size:16px;font-weight:700;margin:4px 0 6px}
+  .par-card p{font-size:13.5px;color:var(--sub)}
+  .empty{background:#FBFBF8;border:1px dashed var(--line);border-radius:12px;padding:18px 20px;font-size:13.5px;color:var(--sub)}
+  .adds{list-style:none;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .adds li{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:12px 18px;font-size:13.5px}
+  .adds li+li{border-top:1px solid #EFEFE8}
+  .adds .d{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--faint)}
+  .reward{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:clamp(22px,4vw,34px);overflow:hidden}
+  .reward-tag{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--red)}
+  .reward h3{font-family:'Gowun Batang',serif;font-size:clamp(20px,3vw,24px);font-weight:700;margin:6px 0 8px}
+  .reward>p{font-size:14px;color:var(--sub);max-width:56ch}
+  .reward-box{display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:18px}
+  .reward-box div{display:grid;grid-template-columns:96px 1fr;gap:12px;background:#FBFBF8;padding:12px 16px;align-items:baseline}
+  .rk{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--faint)}
+  .rv{font-size:14px;font-weight:600}
+  .rv b{font-family:'Gowun Batang',serif;font-size:22px;color:var(--red)}
+  .reward-sign{margin-top:18px;text-align:right;font-family:'Gowun Batang',serif;font-size:14px;color:var(--ink)!important;max-width:none!important}
+  @media (max-width:640px){.ptable .det{display:none}}
+
+  /* ── 약물 카드 ── */
+  .drug-spec dd{font-size:16px}
+  .doc-meta.drug-spec{grid-template-columns:repeat(3,1fr)}
+  @media (max-width:480px){.doc-meta.drug-spec{grid-template-columns:1fr}}
+  .mix{list-style:none;counter-reset:mx;background:#FBFBF8;border:1px solid var(--line);border-radius:10px;padding:6px 16px}
+  .mix li{counter-increment:mx;display:flex;align-items:baseline;gap:10px;padding:10px 0;font-size:14.5px}
+  .mix li+li{border-top:1px dashed var(--line)}
+  .mix li::before{content:'+';width:18px;color:var(--dept);font-weight:700;flex-shrink:0}
+  .mix li:first-child::before{content:''}
+  .mx-n{font-weight:700}
+  .mx-dot{flex:1;border-bottom:1px dotted #CFCFC5;transform:translateY(-4px)}
+  .mx-v{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:600;font-size:13.5px}
+  .effect{font-size:15px;font-weight:600}
+  .cnt{display:inline-flex;align-items:baseline;gap:6px;margin-top:6px;background:color-mix(in srgb,var(--red) 7%,#fff);border:1px solid color-mix(in srgb,var(--red) 30%,#fff);border-radius:10px;padding:4px 14px 4px 12px}
+  .cnt b{font-family:'Gowun Batang',serif;font-size:30px;line-height:1.1;color:var(--red)}
+  .cnt-l{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--faint)}
+  .cnt-u{font-size:15px;font-weight:700;color:var(--red)}
+  .cnt-big{display:inline-flex;align-items:baseline;gap:10px;margin-top:22px;background:color-mix(in srgb,var(--red) 7%,#fff);border:1px solid color-mix(in srgb,var(--red) 30%,#fff);border-radius:14px;padding:12px 26px 12px 20px}
+  .cnt-big b{font-family:'Gowun Batang',serif;font-size:64px;line-height:1;color:var(--red)}
+  .cnt-big .cnt-l{font-size:13px}
+  .cnt-big .cnt-u{font-size:22px}
+   .cnt-note{display:block;margin-top:8px;font-size:12.5px;font-weight:600;color:#6b6b6b;line-height:1.45}
+   .cnt-note-big{font-size:15px;margin-top:12px}
+   .qbanner{background:var(--sheet);border:1px solid var(--line);border-left:5px solid var(--dept,var(--navy));border-radius:var(--radius);padding:18px 22px 20px;margin-bottom:16px}
+   .qb-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-bottom:14px}
+   .qb-title{font-family:'Gowun Batang',serif;font-size:18px;font-weight:700}
+   .qb-flow{list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--sub)}
+   .qb-flow li{background:#F4F5F1;border:1px solid var(--line);border-radius:999px;padding:2px 11px}
+   .qb-flow li.qb-arr{background:none;border:0;padding:0;color:var(--faint)}
+   .qb-flow li:last-child{color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,#fff);background:color-mix(in srgb,var(--red) 7%,#fff)}
+   .qb-items{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+   .qb-items li{display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+   .qb-items li.hl{border-color:color-mix(in srgb,var(--red) 30%,#fff)}
+   .qb-n{font-size:14px;font-weight:700}
+   .qb-c{display:flex;align-items:baseline;gap:5px}
+   .qb-c b{font-family:'Gowun Batang',serif;font-size:26px;line-height:1.1;color:var(--red)}
+   .qb-note{font-size:12px;font-weight:600;color:#6b6b6b;line-height:1.4}
+   .op-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin-top:22px}
+   .op-card{border:1px solid var(--line);border-left:4px solid var(--dept);border-radius:10px;padding:14px 18px 16px}
+   .op-hd{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin-bottom:10px}
+   .op-hd b{font-size:17px;font-weight:800}
+   .op-f{font-size:12.5px;font-weight:700;color:var(--red);background:color-mix(in srgb,var(--red) 7%,#fff);border:1px solid color-mix(in srgb,var(--red) 30%,#fff);border-radius:999px;padding:1px 10px}
+   .op-code{margin-left:auto;font-size:12px;font-weight:600;color:var(--sub)}
+   .op-code code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--dept);background:color-mix(in srgb,var(--dept) 8%,#fff);border:1px solid color-mix(in srgb,var(--dept) 25%,#fff);border-radius:6px;padding:1px 7px;margin-left:4px}
+   .op-dl{display:grid;gap:6px}
+   .op-dl div{display:grid;grid-template-columns:64px 1fr;gap:10px;font-size:13.5px;line-height:1.5}
+   .op-dl dt{color:var(--faint);font-weight:600}
+   .op-dl dd{font-weight:600}
+   .op-card .op-dl div{grid-template-columns:96px 1fr}
+   .op-codes{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 10px}
+   .op-codes .op-code{margin-left:0}
+   .med-names{color:var(--sub)}
+   .doc-notice{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin-top:14px;background:color-mix(in srgb,var(--red) 7%,#fff);border:1px solid color-mix(in srgb,var(--red) 30%,#fff);border-radius:10px;padding:10px 16px}
+   .doc-notice b{font-size:15px;font-weight:800;color:var(--red)}
+   .doc-notice span{font-size:13px;font-weight:600;color:var(--sub)}
+   .nd-legend{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}
+   .nd-legend a{text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 6px}
+   .nd-legend a:hover{border-color:var(--ink)}
+   .nd-legend i{width:16px;height:16px;border-radius:50%;background:var(--nd);box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+   .nd-list{display:grid;gap:14px}
+   .nd{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+   .nd-hd{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 14px;background:var(--nd);color:#1b1b1b;padding:10px 16px}
+   .nd-hd b{font-size:19px;font-weight:800;letter-spacing:.01em}
+   .nd-tag{font-style:normal;margin-left:8px;font-size:13px;font-weight:800;vertical-align:3px;background:rgba(255,255,255,.75);border:1px solid rgba(0,0,0,.15);border-radius:999px;padding:1px 10px}
+   .nd-legend small{font-size:11.5px;font-weight:700;color:var(--sub)}
+   .nd-hd span{font-size:12.5px;font-weight:600;opacity:.75}
+   .nd-hd.dark{color:#fff}.nd-hd.dark span{opacity:.9}
+   .nd-body{border-left:6px solid var(--nd)}
+   .nd-area{display:grid;grid-template-columns:150px 1fr;border-top:1px solid var(--line)}
+   .nd-area:first-child{border-top:0}
+   .nd-a{padding:10px 14px;font-size:14px;font-weight:800;background:color-mix(in srgb,var(--nd) 12%,#fff);border-right:1px solid var(--line)}
+   .nd-area ul{list-style:none}
+   .nd-area li{display:grid;grid-template-columns:230px 1fr;align-items:start;gap:10px;padding:7px 14px;font-size:13.5px;border-top:1px dashed var(--line)}
+   .nd-area li:first-child{border-top:0}
+   .nd-area code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px;font-weight:700;color:var(--ink)}
+   .nd-area li span{color:var(--sub)}
+    .nd-k{display:flex;flex-direction:column;gap:1px;min-width:0}.nd-k small{font-size:11.5px;color:var(--sub);line-height:1.35;text-wrap:pretty}
+    .nd-q{font-style:normal;font-size:10.5px;font-weight:800;color:#b45309;background:#fef3c7;border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap}
+   .nd-area li.strong span{color:var(--ink);font-weight:800}
+   @media (max-width:640px){.nd-area{grid-template-columns:1fr}.nd-a{border-right:0;border-bottom:1px solid var(--line)}.nd-area li{grid-template-columns:1fr;gap:4px}}
+   .grp-jump{display:flex;flex-wrap:wrap;gap:6px;margin-top:18px}
+   .grp-jump a{text-decoration:none;font-size:13px;font-weight:700;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 12px;display:inline-flex;gap:6px;align-items:center}
+   .grp-jump a:hover{border-color:var(--dept);color:var(--dept)}
+   .grp-jump a span{font-size:11px;color:var(--faint);font-weight:700}
+   .grp .op-list{margin-top:10px}
+   .grp-n{margin-left:8px;font-size:11.5px;color:var(--faint);letter-spacing:0}
+   .sec .im-grid{margin-top:10px}
+   .im-note{display:inline-block;margin-top:12px;font-size:14px;font-weight:700;color:var(--amber);background:color-mix(in srgb,var(--amber) 9%,#fff);border:1px solid color-mix(in srgb,var(--amber) 30%,#fff);border-radius:8px;padding:6px 14px}
+   .im-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:20px}
+   .im-card{border:1px solid var(--line);border-left:4px solid var(--dept);border-radius:10px;padding:14px 18px 16px}
+   .im-hd{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+   .im-hd b{font-size:17px;font-weight:800}
+   .im-part{font-size:12.5px;font-weight:700;color:var(--dept);background:color-mix(in srgb,var(--dept) 8%,#fff);border:1px solid color-mix(in srgb,var(--dept) 25%,#fff);border-radius:999px;padding:1px 10px}
+   .im-drugs{list-style:none;display:flex;flex-wrap:wrap;gap:6px}
+   .im-drugs li{font-size:13.5px;font-weight:600;background:#F4F5F1;border:1px solid var(--line);border-radius:6px;padding:3px 10px}
+   .im-drugs li.im-etc{background:none;border:0;color:var(--faint);padding:3px 2px}
+   .iv-sub{margin-top:6px;font-size:13.5px;color:var(--sub);font-weight:600}
+   .iv-list{list-style:none;margin-top:22px;display:grid;gap:10px}
+   .iv-row{border:1px solid var(--line);border-left:4px solid var(--dept);border-radius:10px;padding:12px 16px 13px;display:grid;gap:8px}
+   .iv-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+   .iv-no{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11.5px;color:var(--faint);font-weight:700}
+   .iv-n{font-size:16px;font-weight:800}
+   .iv-c{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:var(--dept);background:color-mix(in srgb,var(--dept) 8%,#fff);border:1px solid color-mix(in srgb,var(--dept) 25%,#fff);border-radius:6px;padding:1px 7px}
+   .iv-p{margin-left:auto;font-family:'Gowun Batang',serif;font-size:17px;font-weight:700;color:var(--red)}
+   .iv-mix{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-size:13.5px;font-weight:600}
+   .iv-m{background:#F4F5F1;border:1px solid var(--line);border-radius:6px;padding:2px 9px}
+   .iv-plus{color:var(--dept);font-weight:800}
+   .iv-t{margin-left:6px;font-size:12.5px;font-weight:700;color:var(--amber);background:color-mix(in srgb,var(--amber) 9%,#fff);border:1px solid color-mix(in srgb,var(--amber) 30%,#fff);border-radius:999px;padding:1px 10px}
+   .iv-e{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--sub)}
+   .iv-e span::before{content:'·';margin-right:4px;color:var(--faint)}
+   .live-sec{margin:22px 0 26px}
+   .live-title{display:flex;align-items:center;gap:8px;font-family:'Gowun Batang',serif;font-size:18px;font-weight:700;margin-bottom:12px;color:var(--ink)}
+   .live-title::before{content:'';width:16px;height:4px;border-radius:2px;background:var(--red)}
+   .card.card-live{border-color:color-mix(in srgb,var(--red) 28%,#fff)}
+   .card.card-live::before{width:10px}
+   .card.card-live .card-name{font-weight:800;font-size:18px}
+   .card.card-live .card-desc{font-weight:600;color:var(--ink)}
+   .qb-qty{align-self:flex-start;font-size:13px;font-weight:700;color:var(--red);background:color-mix(in srgb,var(--red) 7%,#fff);border:1px solid color-mix(in srgb,var(--red) 30%,#fff);border-radius:999px;padding:1px 10px}
+   .qb-lines{display:grid;gap:4px;margin-top:4px}
+   .qb-lines div{display:grid;grid-template-columns:72px 1fr;gap:8px;font-size:12.5px;line-height:1.45}
+   .qb-lines dt{color:var(--faint);font-weight:600}
+   .qb-lines dd{color:var(--ink);font-weight:600}
+  .dd-sub{display:block;font-size:12px;font-weight:500;color:var(--sub);margin-top:2px}
+  .nomix{margin-left:4px;letter-spacing:0;font-size:11px;font-weight:700;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 40%,#fff);background:color-mix(in srgb,var(--red) 7%,#fff);border-radius:999px;padding:1px 9px}
+  .product{display:flex;align-items:baseline;gap:14px;background:#FBFBF8;border:1px solid var(--line);border-radius:10px;padding:12px 16px}
+  .product span{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--faint)}
+  .product b{font-size:16px}
+  .drug-note{display:inline-block;margin-top:10px;font-size:13px;font-weight:600;color:var(--dept);background:color-mix(in srgb,var(--dept) 8%,#fff);border:1px solid color-mix(in srgb,var(--dept) 25%,#fff);border-radius:999px;padding:3px 12px}
+  /* ── 푸터/토스트 ─────────────────────── */
+  footer{border-top:1px solid var(--line);padding:22px 0 40px;font-size:12px;color:var(--faint)}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);opacity:0;
+    background:var(--navy);color:#F5F4EF;font-size:13px;padding:10px 18px;border-radius:999px;
+    pointer-events:none;transition:opacity .25s,transform .25s;z-index:50;max-width:88vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ── 등장 애니메이션 ─────────────────── */
+  .fade-in{animation:fadeUp .26s ease both}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important;transition:none!important}
+  }
+
+  /* ── 모바일 ─────────────────────────── */
+  @media (max-width:640px){
+    .doc-chip{margin-left:0}
+    .brand{font-size:18px}
+    .doc-meta{grid-template-columns:1fr 1fr}
+    .crumb{padding:4px 4px}
+    .grid{grid-template-columns:1fr}
+  }
+  @media print{
+    .crumbbar,.topbar .doc-chip,footer{display:none}
+    body{background:#fff}
+  }
+  /* ── 의학용어 검색 팝업 ── */
+  .ms-modal{position:fixed;inset:0;z-index:60}
+  .ms-modal[hidden]{display:none}
+  .ms-mask{position:absolute;inset:0;background:rgba(32,38,46,.46)}
+  .ms-panel{position:absolute;left:50%;top:12vh;transform:translateX(-50%);width:min(580px,calc(100vw - 32px));max-height:78vh;overflow:auto;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(32,38,46,.3)}
+  .ms-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:1}
+  .ms-head-t{font-size:13.5px;font-weight:700;color:var(--ink)}
+  .ms-head-t small{display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--faint)}
+  .ms-xbtn{width:30px;height:30px;border:none;background:transparent;border-radius:8px;color:var(--faint);font-size:15px;cursor:pointer;line-height:1}
+  .ms-xbtn:hover{background:var(--paper);color:var(--ink)}
+  .ms-searchrow{display:flex;gap:8px;padding:12px 18px 4px}
+  .ms-searchrow input{flex:1;min-width:0;height:38px;border:1px solid var(--line);border-radius:9px;background:var(--paper);padding:0 13px;font:inherit;font-size:13.5px;color:var(--ink);outline:none}
+  .ms-searchrow input:focus{border-color:var(--navy);background:#fff}
+  .ms-searchrow .ms-go{height:38px;padding:0 18px;font-size:13.5px}
+  .ms-body{padding:6px 18px 16px}
+  .ms-state{padding:16px 2px;font-size:13px;color:var(--sub);line-height:1.6}
+  .ms-item{display:flex;gap:12px;padding:12px 2px;border-bottom:1px solid var(--line);text-decoration:none;align-items:flex-start}
+  .ms-item:last-child{border-bottom:none}
+  .ms-thumb{flex:0 0 64px;width:64px;height:64px;border:1px solid var(--line);border-radius:8px;object-fit:cover;background:var(--paper)}
+  .ms-noimg{flex:0 0 64px;width:64px;height:64px;border:1px solid var(--line);border-radius:8px;background:var(--paper);display:flex;align-items:center;justify-content:center;color:var(--red);font-size:24px;font-weight:600}
+  .ms-main{min-width:0}
+  .ms-t{font-size:14.5px;font-weight:700;color:var(--ink);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .ms-item:hover .ms-t{color:var(--navy);text-decoration:underline}
+  .ms-en{font-style:normal;font-weight:500;font-size:11px;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .ms-x{display:block;margin-top:4px;font-size:12.5px;line-height:1.55;color:var(--sub);overflow-wrap:break-word}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">반듯한정형외과 간호팀 신규입사자 안내문<small>NEW NURSE ONBOARDING GUIDE</small></div>
+  </div>
+</header>
+
+<nav class="crumbbar" aria-label="이동 경로">
+  <div class="wrap">
+    <div class="crumbs" id="crumbs"></div>
+    <div class="search" id="search">
+      <svg class="search-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="약품, 업무, 키워드 검색" autocomplete="off" aria-label="안내문 검색">
+      <kbd class="search-kbd">/</kbd>
+      <div class="search-pop" id="searchPop" hidden></div>
+    </div>
+    <button class="backbtn" id="backbtn" hidden>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      상위로
+    </button>
+  </div>
+</nav>
+
+<main>
+  <div class="wrap"><div id="view"></div></div>
+</main>
+
+<footer>
+  <div class="wrap">
+    반듯한정형외과 간호팀 신규입사자 안내문 · 내용은 병원 절차 개정에 따라 바뀔 수 있으며, 궁금한 점은 팀장, 주임에게 문의해 주세요.
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="ms-modal" id="medModal" hidden>
+  <div class="ms-mask" data-msclose></div>
+  <div class="ms-panel" role="dialog" aria-modal="true" aria-label="의학용어 검색 결과">
+    <div class="ms-head">
+      <div class="ms-head-t">문서 내 의학용어 검색<small>위키백과 기반 · 웹 검색과는 별개입니다</small></div>
+      <button class="ms-xbtn" data-msclose aria-label="닫기">✕</button>
+    </div>
+    <div class="ms-searchrow">
+      <input id="medQm" type="search" placeholder="의학용어·병명·약품명으로 다시 검색" autocomplete="off" aria-label="의학용어 다시 검색">
+      <button class="ms-go" id="medGo2" type="button">검색</button>
+    </div>
+    <div class="ms-body" id="medResults" hidden></div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   ★ 여기만 수정하세요 ★
+   대분류(depts) → 중분류(items) → 내용 문서(docs) 순서로 채웁니다.
+   각 문서의 steps(절차)·notes(유의사항)·forms(양식)·related(관련 문서)를 바꿔주세요.
+   ════════════════════════════════════════════════════════════════ */
+const MANUAL = {
+  code: 'NSG-2026-001',
+  depts: [
+    {
+      id:'plan', code:'PL-100', name:'간호 업무 습득 계획', color:'#2458A6',
+      desc:'입사 후 8개월, 무엇을 어떤 순서로 배우는지 단계별 습득 계획',
+      items:[],
+      plan:{
+        months:8, written:'2026-10-26',
+        tasks:[
+          {name:'처치 업무', dur:1, from:1, to:1, status:'예정',
+           detail:'약물파악, 슬립 파악하기, 상차림, 주사 준비, 멸균, 주변정리',
+           goal:'슬립 파악부터 멸균·정리까지 처치 준비 루틴 익히기',
+           checks:['약물파악','슬립 파악하기','상차림','주사 준비','멸균','주변정리'], memo:''},
+          {name:'보조기 · 보호대', dur:1, from:2, to:2, status:'예정',
+           detail:'각종 보조기 및 보호대 파악 및 착용법 숙지',
+           goal:'종류 파악과 착용법 숙지',
+           checks:['보조기 파악','보호대 파악','착용법 숙지'], memo:''},
+          {name:'초음파 어시스트', dur:2, from:3, to:4, status:'예정',
+           detail:'포지션, 소독, 해부학적 위치, 기계조작, 프로브 정리 등',
+           goal:'포지션·소독·해부학적 위치·기계조작·프로브 정리',
+           checks:['포지션','소독','해부학적 위치','기계조작','프로브 정리 등'], memo:''},
+          {name:'드레싱 보조', dur:1, from:5, to:5, status:'예정',
+           detail:'슈처, 드레싱, 드레싱 상차림, 내성발톱 상차림',
+           goal:'슈처·드레싱·내성발톱 상차림까지 보조 숙달',
+           checks:['슈처','드레싱','드레싱 상차림','내성발톱 상차림'], memo:''},
+          {name:'비용 상담', dur:1, from:6, to:6, status:'예정',
+           detail:'주사처방, 물리치료 처방, 다이어트 주사제 처방 등 비급여 항목 환자 대면 상담',
+           goal:'비급여 항목(주사·물리치료·다이어트 주사제) 대면 상담',
+           checks:['주사처방 상담','물리치료 처방 상담','다이어트 주사제 처방 상담','그 외 비급여 항목 환자 대면 상담'], memo:''},
+          {name:'진료 어시스트', dur:2, from:7, to:8, status:'예정',
+           detail:'진료실 보조, 원장님 요구사항 정리, 각 파트 전달, 환자 응대, 각 진료실 상황공유 등',
+           goal:'진료실 보조와 파트 간 전달·상황공유 독립 수행',
+           checks:['진료실 보조','원장님 요구사항 정리','각 파트 전달','환자 응대','각 진료실 상황공유 등'],
+           memo:'실제로는 입사 첫날부터 수행하게 되는 업무 — 필요 시 전 기간 병행 + 후반 집중 습득으로 조정 가능'}
+        ],
+        parallel:[
+          {name:'IV / IM', tag:'자율 습득', period:'8개월 병행',
+           detail:'교육기간 내 스스로 습득 (자율 학습)',
+           desc:'교육기간(8개월) 내에 스스로 습득하는 것을 목표로 합니다. 별도의 집합 교육 기간 없이 실무 중 학습합니다.'},
+          {name:'동선관리 프로그램', tag:'지속 수행', period:'상시',
+           detail:'사용법 습득 후 지속 수행',
+           desc:'사용법을 습득한 뒤에는 교육 기간 종료 후에도 계속해서 수행하는 상시 업무입니다.'}
+        ],
+        additions:[]   /* 추가 업무·기간 조정: {date:'2026-11-01', text:'…'} 형식으로 추가 */
+      }
+    },
+    {
+      "id": "man",
+      "code": "MN-200",
+      "name": "간호업무 매뉴얼",
+      "color": "#2E7D4F",
+      "desc": "간호 업무 습득 계획의 6가지 업무별 실제 절차",
+      "items": [
+        {
+          "id": "man-210",
+          "code": "MN-210",
+          "name": "처치 업무",
+          "dur": "1개월",
+          "desc": "약물파악, 슬립 파악하기, 상차림, 주사 준비, 멸균, 주변정리",
+          "docs": [
+            {
+              "id": "man-211",
+              "sub": "처치실 약물 종류별 정리",
+              "code": "MN-211",
+              "name": "약물파악",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "처치실에서 쓰는 약물을 종류별로 정리했습니다.",
+              "steps": [],
+              "notes": [],
+              "subs": [
+                {"id":"man-211-1","name":"약재기 (초음파 및 C-arm 주사제)","hot":true,"cardName":"조기출근 약재기 &<br>초음파 및 C-arm 주사제","banner":{"title":"조기출근 약재기 수량","items":[
+                  {"name":"기본","count":"18","label":"최종","note":"28개 제조 → 10개는 기T로","hl":true},
+                  {"name":"기D","count":"15"},
+                  {"name":"D (덱사)","count":"5","note":"나머지 믹스액은 냉장고 보관"},
+                  {"name":"파미","count":"12","note":"1병 = 12개"},
+                  {"name":"기T","count":"10","label":"최종","note":"기본 10개 + 트리암 0.1ml씩","hl":true}],
+                  "flow":["기본 28개 제조","10개에 트리암 0.1ml씩 추가","기본 18개 · 기T 10개"]},"subs":[{"id":"man-211-1-l1","name":"리도","live":true,"drug":{"qty":"5cc","mix":[["N/S","100ml"],["리도카인","10cc"]],"syringe":"5cc","needle":"21G"}},{"id":"man-211-1-l2","name":"기D + PDRN","live":true,"summary":"기D 1cc만 남겨두고 + PDRN 1바이알 믹스","drug":{"mix":[["기D","1cc만 남겨두고"],["PDRN","1바이알"]]}},{"id":"man-211-1-l3","name":"PDRN","live":true,"drug":{"qty":"3cc","noMix":true,"product":"폴리네오주 1개","syringe":"5cc","needle":"30G","effect":"재생에 도움주는 치료약"}},{"id":"man-211-1-l4","name":"기 + PDRN","live":true,"summary":"기본 2cc만 남겨두고 + PDRN 1바이알 믹스","drug":{"mix":[["기본","2cc만 남겨두고"],["PDRN","1바이알"]]}},{"id":"man-211-1-1","name":"기본","drug":{
+                  "qty":"28개 제조 → 최종 18개",
+                  "qtyNote":"5cc만 · 28개 중 10개는 기T로 사용",
+                  "mix":[["N/S","100ml"],["리도카인","10cc"],["로카인","10cc"],["리포라제","1개"],["D/W 포도당 20%","1개"]],
+                  "syringe":"5cc","needle":"23G","effect":"염증을 줄여드리는 치료약"}},{"id":"man-211-1-2","name":"기D","drug":{
+                  "qty":"15개 (3cc만)",
+                  "mix":[["N/S","100ml"],["리도카인","10cc"],["로카인","10cc"],["리포라제","1개"],["D/W 포도당 20%","1개"],["덱사","1개"]],
+                  "syringe":"3cc","needle":"30G","effect":"염증 줄여드리는 치료약 (스테로이드제)"}},{"id":"man-211-1-6","name":"D (덱사)","drug":{
+                  "note":"덱사 = D로 표기",
+                  "qty":"5개 (10cc만)",
+                  "qtyNote":"5개만 제조 · 나머지 믹스액은 냉장고 보관",
+                  "mix":[["N/S","100ml"],["덱사","1개"]],
+                  "syringe":"10cc","needle":"22G","effect":"염증 줄여드리는 치료약 (스테로이드제)"}},{"id":"man-211-1-5","name":"파미","drug":{
+                  "qty":"12개 (2.5cc만)",
+                  "qtyNote":"1병 제조 · 1병당 12개",
+                  "noMix":true,
+                  "product":"파미레이",
+                  "syringe":"3cc","syringeNote":"2.5cc만 믹스","needle":"23G","effect":"조영제"}},{"id":"man-211-1-4","name":"기T","drug":{
+                  "qty":"기본 제조 후 트리암 추가 → 최종 10개",
+                  "qtyNote":"기본 28개 중 10개에 트리암 0.1ml씩 추가 · 별도 초기 제조 없음",
+                  "mix":[["기본","10개"],["트리암","0.1ml씩"]],
+                  "syringe":"5cc","needle":"18G","effect":"염증 줄여드리는 치료약 (스테로이드제)"}}]},
+                 {"id":"man-211-2","name":"IV주사제(수액)","ivTitle":"반듯한 SNU 수액 리스트","iv":[{"n":"멀티비타민주사","c":"mixinject1","p":"50,000","mix":["NS100ml","지씨멀티5"],"time":"","e":["피로회복","면역력향상","노화방지","활력증진","골다공증예방"]},{"n":"ABC주사","c":"mixinject2","p":"80,000","mix":["NS100ml","푸르설타민","히씨파겐","지씨치옥트산 (마늘, 감초, 신데렐라)"],"time":"","e":["피로회복","면역력향상","노화방지","피부미백","간기능개선"]},{"n":"반짝피로주사","c":"mixinject3","p":"50,000","mix":["NS100ml","라이넥"],"time":"","e":["집중력향상","활력증진","피로회복","항산화 노화방지","스트레스완화"]},{"n":"마늘 주사","c":"mixinject4","p":"50,000","mix":["NS100ml","푸르설타민"],"time":"","e":["피로회복","근력회복","노화방지","통증완화","혈액순환"]},{"n":"신데렐라 주사","c":"mixinject5","p":"50,000","mix":["NS100ml","지씨치옥트산"],"time":"","e":["항산화효과","성인병예방","노화방지","해독작용","체지방감소"]},{"n":"감초 주사","c":"mixinject6","p":"50,000","mix":["NS100ml","히씨파겐"],"time":"","e":["신진대사활성화","면역력강화","피로회복","간해독","피부개선"]},{"n":"감기몸살 주사","c":"rkarl","p":"50,000","mix":["큐펜 100ml","덱사","비코라민"],"time":"","e":["활력증진","면역력향상","피로회복","감기증상완화","몸살통증완화"]},{"n":"뇌영양+마그네슘 주사","c":"mixinject7","p":"60,000","mix":["NS100ml","지씨징코주","메가네슘주"],"time":"","e":["어지럼증개선","두통개선","이명개선","우울감회복","기억력향상"]},{"n":"면역력 주사","c":"mixinject8","p":"70,000","mix":["아르믹스250ml","메가네슘","푸르설타민","메리트씨"],"time":"","e":["면역력강화","활력증진","항염증·항산화","만성피로개선","피부/알레르기 질환개선"]},{"n":"장염주사","c":"jx","p":"50,000","mix":["아르믹스250ml","지씨멀티5"],"time":"","e":["장염증상완화","영양보충","피로회복","면역력강화","통증완화"]},{"n":"영양수액","c":"wenuf","p":"80,000","mix":["위너프페리주 217ml"],"time":"","e":["영양보충"]},{"n":"백옥주사","c":"mixinject9","p":"50,000","mix":["NS100ml","디톡시온주"],"time":"","e":["피부톤개선","피로감개선","멜라닌 생성 억제 보조","숙취/간 기능보조"]},{"n":"통증수액","c":"pain","p":"50,000","mix":["큐펜 100ml","덱사","비코라민"],"time":"","e":["활력증진","면역력향상","피로회복","감기증상완화","몸살통증완화"]},{"n":"통증수액4","c":"pain4","p":"50,000","mix":["NS100ml","아모부로펜 4ml"],"time":"30분 이상","e":["통증완화"]},{"n":"통증수액8","c":"pain8","p":"70,000","mix":["NS500ml","아모부로펜 8ml"],"time":"50분 이상","e":["통증완화"]},{"n":"통증수액5","c":"pain5","p":"50,000","mix":["아모부로펜프리믹스 104ml"],"time":"30분 이상","e":["통증완화"]},{"n":"통증수액10","c":"pain10","p":"100,000","mix":["큐펜","아모부로펜 4ml"],"time":"1시간 이상 천천히 투여","e":["복합통증완화"]}]},
+                 {"id":"man-211-j","name":"관절 주사","sub":"콜라겐/DNA · 연골주사","notice":"의사가 직접 놓는 주사입니다","groups":[{"name":"콜라겐/DNA","meds":[{"n":"콜라플레오","t":"처치 및 수술 시 결손 또는 손상된 인대, 건, 근육, 근막을 보충하기 위하여 사용하는 콜라겐 함유 물질","f":"1주에 1회","m":["총 3회"]},{"n":"리비탈렉스주","t":"상처의 치료 및 조직회복","f":"근육 및 피하주사"}]},{"name":"연골주사","meds":[{"n":"히루안","t":"슬관절 주사 1회 의사 직접투여 방식","f":"주 1회","m":["총 3회 진행 후 증상에 따라 횟수 조절","증상 개선 없을 시 3회 투여 후 종료"]},{"n":"시노비안","t":"슬관절 주사 1회 의사 직접투여 방식","f":"6개월 간격"},{"n":"아트리","t":"건보 적용 기준 → 만 65세 이상","f":"1주에 1회","m":["총 3회 투여 후 6개월 뒤 F/U"],"codes":[["1주 뒤 F/U","atri7"],["6개월 뒤 F/U","atri180"]]},{"n":"카티졸 프로","t":"골관절염 환자일 경우 요양급여 인정","f":"1주에 1회","m":["총 5회 투여 후 6개월 뒤 F/U"]},{"n":"리쥬란","t":"연골 주사 사용 및 피부재생에 많이 사용"}]}]},
+                 {"id":"man-211-3","name":"IM주사제(근육)","groups":[{"name":"골다공증","meds":[{"n":"포스테오","t":"폐경 이후 여성 또는 골절위험이 높은 남성에게 투약","f":"1일 1회 · 피하주사","m":["최대 투약기간 24개월까지 가능"]},{"n":"프롤리아","t":"구강검사 및 BMD(골밀도검사) 진행 후 결과 보고 사용","f":"6개월마다 · 1회 피하주사","m":["골다공증일 경우 1년 동안 약 → 급여로 처리"]},{"n":"이바넬","t":"폐경 후 여성의 골다공증 치료","f":"3개월 1회 · 15~20초 동안 정맥투여","m":["투약일이 지날 경우 최대한 빠른 접종 안내"]},{"n":"본큐어주","t":"폐경 후 여성의 골다공증 치료","f":"3개월 1회 · 15~20초 동안 정맥투여"},{"n":"테로사카트리지주","t":"환자 혼자서 주사 맞을 수 있게 피하주사 교육 진행","f":"1일 1회 · 대퇴부 or 복부 피하주사","m":["최대 24개월 투약 가능"]},{"n":"이베니티","t":"폐경 후 여성 or 골다공증 환자 치료","f":"한 달에 1회 · 피하주사","m":["총 12회 투여 가능","1개월 뒤 F/U"],"codes":[["처방코드","ev30"]]}]},{"name":"예방주사","meds":[{"n":"(회)(생)테타불린에스앤","t":"파상풍","f":"10년에 1번 · 근육주사"},{"n":"(회)(생)헤파뮨 1ml","t":"B형 간염","f":"1차 접종개시일","m":["2차 : 1차 접종 후 1개월 뒤"]},{"n":"조스타박스","t":"대상포진","f":"피하주사 or 삼각근주사","m":["대상포진 회복 후 6~12개월 뒤 접종 권고"]},{"n":"코박스플루","t":"독감주사 (무료)","f":"삼각근 주사"},{"n":"박씨그리프테트라주","t":"독감주사 (유료)","f":"삼각근 주사"}]},{"name":"교감신경흥분제","meds":[{"n":"대한에피네프린주사액","t":"부신호르몬제","f":"피하 및 근육주사 : 1회 0.2~1.0ml 투여","m":["정맥주사 : 0.25ml + 생리식염수 희석하여 천천히 주사"]}]},{"name":"스테로이드성 소염진통제","meds":[{"n":"제일덱사메타손주사액","t":"스테로이드제","f":"모든 부위 가능"},{"n":"트리암시놀론주사","t":"부신피질호르몬제 / 스테로이드제","f":"관절강내, 점액낭내, 관절, 근육 주사"}]},{"name":"항생제","meds":[{"n":"겐타프로주사","t":"항생제","f":"근육주사"},{"n":"유영세파제돈주"}]},{"name":"항히스타민","meds":[{"n":"휴온스클로르페니라민말레산염주사액","t":"항히스타민제","f":"근육 or 정맥 주사"}]}]},
+                 {"id":"man-211-x","name":"IM · IV 주사제","sub":"근육 · 정맥 모두 가능","groups":[{"name":"비스테로이드성 소염진통제","meds":[{"n":"구주디클로페낙주사액","t":"관절염 진통제","f":"근육 주사"},{"n":"아세타펜주 100ml","t":"해열, 진통, 소염 수액제","f":"정맥 주사"},{"n":"케로라주 1ml 50A","t":"해열, 진통, 소염제","f":"근육 주사, 정맥 주사"},{"n":"휴메딕스트라마돌염산염주","t":"해열, 진통, 소염제","f":"근육 주사, 정맥 주사"}]},{"name":"소화기","meds":[{"n":"맥페란주사액","t":"구역, 구토","f":"근육 주사, 정맥 주사","m":["하루 최대 3회 투여 가능"]}]}]},
+                 {"id":"man-211-l","name":"로션","groups":[{"name":"로션","meds":[{"n":"아토베리어","t":"건조한 피부 및 피부장벽 손상된 부위 피부보호"},{"n":"제로이드","t":"피부장벽강화 + 진정 + 보습"}]}]}
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-212",
+              "sub": "처치 슬립 읽고 준비할 처치 파악",
+              "code": "MN-212",
+              "name": "슬립 파악하기",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "처치 슬립을 읽고 어떤 처치를 준비할지 파악하는 방법입니다. 화면 순서대로 따라 보세요. 이미지를 누르면 크게 볼 수 있어요.",
+              "shots": [
+                {"src":"assets/slip/slip-01.png?v=2","t":"슬립 받기","d":"동선관리 상단 메뉴에서 [슬립 화면]을 누릅니다."},
+                {"src":"assets/slip/slip-02.png","t":"환자 확인","d":"왼쪽 목록에서 환자를 눌러 이름·생년월일·차트번호를 확인합니다."},
+                {"src":"assets/slip/slip-03.png","t":"목록 접기","d":"목록 옆 ◀ 화살표를 눌러 다른 환자 정보가 보이지 않게 접습니다."},
+                {"src":"assets/slip/slip-04.png","t":"처치 내용 확인","d":"약물 이름, 주사 개수, 주사 부위를 확인합니다."}
+              ],
+              "steps": [
+                [
+                  "슬립 받기",
+                  "동선관리 상단 메뉴에서 [슬립 화면]을 누릅니다."
+                ],
+                [
+                  "환자 확인",
+                  "왼쪽 목록에서 환자를 눌러 이름·생년월일·차트번호를 확인합니다."
+                ],
+                [
+                  "목록 접기",
+                  "목록 옆 ◀ 화살표를 눌러 다른 환자 정보가 보이지 않게 접습니다."
+                ],
+                [
+                  "처치 내용 확인",
+                  "약물 이름, 주사 개수, 주사 부위를 확인합니다."
+                ],
+                [
+                  "불명확 시 확인",
+                  "읽기 어렵거나 애매한 내용은 시행 전 진료실에 다시 확인합니다."
+                ]
+              ],
+              "notes": [
+                "슬립 내용이 확인되지 않은 상태로는 처치를 준비하지 않습니다."
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-213",
+              "sub": "세트별 준비 순서와 기본 셋팅",
+              "code": "MN-213",
+              "name": "상차림",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "처치 종류에 맞춰 필요한 물품을 미리 준비합니다. 세트를 골라 준비 순서와 기본 셋팅을 확인하세요.",
+              "subs": [{"id":"man-213-c","name":"C-arm set (씨암 세트)","summary":"C-SET 켈리 · 베타딘볼 · 헥시딘볼 · 4×4 거즈","setup":{"before":{"title":"C-ARM 전 처치","steps":["C-arm실에 슬립지 꽂아두기","상차림 진행","처치 원장님 글러브 준비"],"alert":"슬립지에 <code>‘med @’</code>가 있으면 해당 원장님 사이즈 글러브를 준비합니다."},"photos":[{"src":"assets/setup/carm-pack.jpg","t":"C-SET 포장","d":"인디케이터에 소독 날짜와 C 표기를 확인합니다."},{"src":"assets/setup/carm-tray.jpg","t":"기본 셋팅","d":"베타딘볼 1개 · 헥시딘볼 1개 · 4×4 거즈 2장 · 켈리"}],"spec":[["세트","C-SET 켈리"],["구분법","인디케이터 소독 날짜, C 표기"],["기본 셋팅","베타딘볼 1개, 헥시딘볼 1개, 4×4 거즈 2장"],["니들 준비","처방 부위당 1개",1]],"ex":{"q":"L-mbb lt 45 / rt 56 · 기×1 파×1 · Do.1×10cc×1개","a":"27G 4개","n":"lt 4·5 + rt 5·6 = 4부위"},"after":{"title":"C-ARM 후 처치","steps":["사용한 Set 정리","처치실에서 기구 세척 후 소독하기"]}}},{"id":"man-213-s","name":"Sono set (초음파 세트)","summary":"D-SET 포셉 · 베타딘볼 · 헥시딘볼 · 4×4 거즈","setup":{"ratio":"3/2","before":{"title":"SONO 전 처치","steps":["C-arm2에서 소노 진행 시 환자분 모시기","바로 커튼 치기"],"alert":"밖에서 보이지 않도록 <b>노출 주의</b>"},"photos":[{"src":"assets/setup/sono-pack.jpg","t":"D-SET 포장","d":"인디케이터에 소독 날짜와 D 표기를 확인합니다."},{"src":"assets/setup/sono-tray.jpg","t":"기본 셋팅","d":"베타딘볼 1개 · 헥시딘볼 2개 · 4×4 거즈 2장 · 포셉"}],"spec":[["세트","D-SET 포셉"],["구분법","인디케이터 소독 날짜, D 표기"],["기본 셋팅","베타딘볼 1개, 헥시딘볼 2개, 4×4 거즈 2장"],["부위 추가 시","헥시딘볼 1개씩 추가"],["니들 준비","주사기 개수만큼 준비<br>양쪽일 경우 ×2로 준비",1],["주사 준비","처방대로 준비"]]}},{"id":"man-213-d","name":"Dressing set (드레싱 세트)","summary":"1회용 드레싱 키트를 오픈하고 소독볼·거즈·글러브를 준비합니다.","setup":{"spec":[["준비","1회용 드레싱 키트 오픈"],["키트에 준비","헥시딘 (소) 3개 · 베타딘 (소) 3개 · 4×4 거즈 2장"],["글러브","원장님 사이즈 1개"]],"photos":[{"src":"assets/setup/dressing-set.jpg","t":"기본 셋팅","d":"1회용 드레싱 키트 · 헥시딘(소) 3개 · 베타딘(소) 3개 · 4×4 거즈 2장 · 원장님 글러브"}]}},{"id":"man-213-u","name":"Suture set (봉합 세트)","summary":"주사 약물과 나일론은 처방 시 준비, 나머지는 기본 세팅대로 준비합니다.","setup":{"spec":[["처방 시 준비","주사 약물 · 나일론 봉합사"],["트레이에 준비","베타딘(소) 3개 · 헥시딘(소) 3개 · 4×4 거즈 2장 · 매스홀더"],["소독포 위에 준비","메디컬 컵(종지) 2호 · 2×2 거즈(필수 아님) · 소공포 · 시저 · 켈리 · 에디슨 투스 포셉 · 일반 포셉 · 모스키토 · 니들홀더 · 아이리스 시저"],["소독포 외부 준비","글러브 — 원장님 사이즈 1개 · 처치 어시스트 사이즈 1개"]],"photos":[{"src":"assets/setup/suture-set.jpg","t":"기본 셋팅","d":"트레이 · 소독포 위 기구 · 글러브 전체 구성"}]}},{"id":"man-213-n","name":"Ingrown nail set (내성발톱 세트)","summary":"주사 약물과 나일론은 처방 시 준비, 나머지는 기본 세팅대로 준비합니다.","setup":{"spec":[["처방 시 준비","주사 약물 · 나일론 봉합사"],["트레이에 준비","베타딘(소) 3개 · 헥시딘(소) 3개 · 4×4 거즈 2장"],["소독포 위에 준비","메디컬 컵(종지) 2호 · 2×2 거즈(필수 아님) · 소공포 · 니들홀더 · 모스키토 · 아이리스 시저 · 시저 · 에디슨 투스 포셉 · 매스홀더 · 스케일러"],["소독포 외부 준비","글러브 — 원장님 사이즈 1개 · 처치 어시스트 사이즈 1개"]],"photos":[{"src":"assets/setup/nail-set.jpg","t":"기본 셋팅","d":"트레이 · 소독포 위 기구 · 글러브 전체 구성"}]}}],
+              "steps": [
+                [
+                  "슬립 확인",
+                  "처치 종류와 부위를 확인합니다."
+                ],
+                [
+                  "물품 준비",
+                  "처치별 기본 물품을 트레이에 준비합니다."
+                ],
+                [
+                  "멸균 확인",
+                  "멸균 물품의 포장 상태와 유효기간을 확인합니다."
+                ],
+                [
+                  "배치",
+                  "시술자가 쓰기 편한 순서로 배치합니다."
+                ]
+              ],
+              "notes": [
+                "멸균 물품은 사용 직전에 개봉합니다."
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-214",
+              "sub": "처방에 맞춘 약물·니들 준비",
+              "code": "MN-214",
+              "name": "주사 준비",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "지시에 맞춰 약물을 준비하고 주사를 준비합니다.",
+              "needles": [{"g":"30G × 38mm","c":"#FFF200","areas":[{"a":"손목 (Wrist)","rows":[{"k":"DRUJ","f":"Distal RadioUlnar Joint","d":"원위 요척골 관절 · 손목 새끼손가락쪽 (Dorsal = 등쪽)","s":0,"q":0},{"k":"TFCC","f":"TriangularFibroCartilage Complex","d":"삼각섬유연골 복합체 · 손목 새끼손가락쪽 (Palmar = 바닥쪽)","s":0,"q":0},{"k":"APL","f":"Abductor Pollicis Longus","d":"긴엄지벌림근 · 엄지와 손목을 잇는 부분","s":0,"q":0},{"k":"E1","f":"1st Extensor compartment","d":"제1 신전건 구획 (드퀘르뱅) · 엄지와 손목을 잇는 부분","s":0,"q":0}]},{"a":"팔꿈치 (Elbow)","rows":[{"k":"ECRB","f":"Extensor Carpi Radialis Brevis","d":"짧은노쪽손목폄근 · 팔꿈치 바깥쪽 ~ 손목","s":0,"q":0},{"k":"ECU","f":"Extensor Carpi Ulnaris","d":"자쪽손목폄근 · 팔꿈치 바깥쪽 ~ 손목","s":0,"q":0},{"k":"ME","f":"Medial Epicondyle","d":"내측 상과 · 팔꿈치 안쪽","s":0,"q":0},{"k":"LE","f":"Lateral Epicondyle","d":"외측 상과 · 팔꿈치 바깥쪽","s":0,"q":0},{"k":"FCR","f":"Flexor Carpi Radialis","d":"노쪽손목굽힘근 · 팔꿈치 안쪽 ~ 손목","s":0,"q":0},{"k":"FCRB","f":"Flexor Carpi Radialis Brevis","d":"팔꿈치 ~ 손목","s":0,"q":1}]},{"a":"발목 (Ankle)","rows":[{"k":"ATFL","f":"Anterior TaloFibular Ligament","d":"앞목말종아리인대 · 가쪽 복숭아뼈 앞쪽","s":0,"q":0},{"k":"CFL","f":"CalcaneoFibular Ligament","d":"발꿈치종아리인대 · 가쪽 복숭아뼈 아래 → 발꿈치뼈","s":0,"q":0},{"k":"PTFL","f":"Posterior TaloFibular Ligament","d":"뒤목말종아리인대 · 가쪽 복숭아뼈 살짝 뒤쪽","s":0,"q":0}]},{"a":"C-mbb, fb (Cervical Medial Branch Block, Facet Block) · 제이미","rows":[{"k":"","d":"3, 4, 5번","s":0}]}]},{"g":"25G × 38mm","tag":"짧은 것","c":"#FFC000","areas":[{"a":"무릎 (Knee)","rows":[{"k":"popliteus","f":"Popliteus muscle","d":"오금근 · 무릎 뒤 오금","s":0,"q":0},{"k":"IA","f":"Intra-Articular","d":"관절 내 주사","s":0,"q":0},{"k":"infrapatella","f":"Infrapatellar","d":"무릎뼈(슬개골) 바로 아래","s":0,"q":0},{"k":"MJL","f":"Medial Joint Line","d":"무릎 내측 관절선","s":0,"q":0}]},{"a":"종아리 (Calf)","rows":[{"k":"Calf","f":"Calf muscles","d":"종아리 근육 총 집합체","s":0,"q":0},{"k":"GCM/GCN","f":"GastroCnemius Muscle","d":"장딴지근 · 종아리 뒤쪽 근육","s":0,"q":0},{"k":"Soleus","f":"Soleus muscle","d":"가자미근 · 종아리 뒤안쪽 깊은 근육","s":0,"q":0}]},{"a":"뒤통수 (Occiput)","rows":[{"k":"GONB","f":"Greater Occipital Nerve Block","d":"큰뒤통수신경 차단술 · 머리와 목을 잇는 부분","s":0,"q":0}]},{"a":"승모근쪽 (Shoulder girdle)","rows":[{"k":"SPC","f":"SuPraspinatus muscle","d":"극상근 · 날개뼈 가시(가로로 튀어나온 뼈) 바로 윗부분 근육","s":0,"q":1},{"k":"TPZ/TRP","f":"TraPeZius / TRaPezius","d":"승모근 · 목 ~ 어깨 ~ 등 위쪽","s":0,"q":0},{"k":"SST","f":"SupraSpinatus Tendon","d":"극상근 힘줄 · 날개뼈 위쪽 → 어깨 위","s":0,"q":0},{"k":"IST","f":"InfraSpinatus Tendon","d":"극하근 힘줄 · 날개뼈 가시 아래쪽","s":0,"q":0},{"k":"MSB","f":"Medial Scapular Border","d":"날개뼈 안쪽 경계","s":0,"q":0}]},{"a":"엉덩이 (Gluteal)","rows":[{"k":"G.max","f":"Gluteus Maximus","d":"큰볼기근 · 엉덩이 가장 바깥 큰 근육","s":0,"q":0},{"k":"G.med","f":"Gluteus Medius","d":"중간볼기근 · 엉덩이 위 옆쪽","s":0,"q":0},{"k":"G.min","f":"Gluteus Minimus","d":"작은볼기근 · 중간볼기근 아래 깊은 쪽","s":0,"q":0}]},{"a":"꼬리뼈 차단술 (Caudal)","rows":[{"k":"Caudal block","f":"Caudal Epidural Block","d":"꼬리뼈 경막외 차단술 · 꼬리뼈","s":0,"q":0}]}]},{"g":"25G × 60mm","tag":"긴 것","c":"#FFC000","areas":[{"a":"허벅지 (Thigh · 앞, 뒤)","rows":[{"k":"Hamstring","f":"Hamstring muscles","d":"햄스트링 · 허벅지 뒤쪽 근육","s":0,"q":0},{"k":"thigh","f":"Thigh (Quadriceps)","d":"허벅지 앞쪽 근육 (대퇴사두근)","s":0,"q":0}]},{"a":"엉덩이 (Gluteal)","rows":[{"k":"buttock","f":"Buttock","d":"엉덩이 근육 (깊은 부위)","s":0,"q":0}]},{"a":"어깨 (Shoulder)","rows":[{"k":"Shoulder","f":"Shoulder joint (Glenohumeral)","d":"어깨 관절","s":0,"q":0},{"k":"BC","f":"Biceps (Bicipital groove)","d":"이두근과 어깨를 잇는 부분 · 어깨 살짝 옆앞쪽","s":0,"q":1}]},{"a":"갈비뼈 (Rib)","rows":[{"k":"ICNB+rib","f":"InterCostal Nerve Block","d":"늑간신경 차단술 · 갈비뼈 사이","s":0,"q":0}]}]},{"g":"30G × 13mm","c":"#FFF200","areas":[{"a":"손가락 (Finger)","rows":[{"k":"finger","f":"Finger joint / tendon","d":"손가락 관절 · 힘줄","s":0,"q":0}]},{"a":"발가락 (Toe)","rows":[{"k":"toe","f":"Toe joint","d":"발가락 관절","s":0,"q":0},{"k":"Dp","f":"Distal Phalanx","d":"발가락 끝마디 (먼쪽)","s":0,"q":0},{"k":"MTP","f":"MetaTarsoPhalangeal joint","d":"발허리발가락 관절 · 발가락 갈라지는 가로선 부위","s":0,"q":0}]},{"a":"뒤통수 · 이든","rows":[{"k":"gonb","f":"Greater Occipital Nerve Block","d":"큰뒤통수신경 차단술","s":0,"q":0}]}]},{"g":"23G × 90mm","c":"#5B9BD5","dark":true,"areas":[{"a":"골반 (Pelvic)","rows":[{"k":"hip","f":"Hip joint","d":"고관절 · 골반과 허벅지뼈 연결 관절","s":0,"q":0},{"k":"psoas","f":"Psoas muscle","d":"큰허리근 · 골반 앞쪽에 붙어있는 근육","s":0,"q":0},{"k":"PCB","f":"Posterior Capsule Block","d":"골반과 허벅지뼈가 잇는 곳 뒤쪽 관절낭","s":0,"q":1}]},{"a":"허리 (Lumbar)","rows":[{"k":"TFESI","f":"TransForaminal Epidural Steroid Injection","d":"경추간공 경막외 스테로이드 주사 · 척추 신경구멍 부위","s":0,"q":0},{"k":"SNB","f":"Spinal Nerve Block","d":"척추신경 차단술 · 허리뼈 신경 주사","s":0,"q":0},{"k":"SNRB","f":"Selective Nerve Root Block","d":"선택적 신경근 차단술 · 신경 하나만 골라 차단","s":0,"q":0},{"k":"root block","f":"Nerve Root Block","d":"허리 4·5번, 엉치 1번 즈음 신경근 차단술","s":1,"q":0},{"k":"transforaminal","f":"Transforaminal approach","d":"추간공 경유 · 신경이 가지치기 시작하는 뿌리(Root) 위치","s":0,"q":0}]}]},{"g":"29G × 60mm","c":"#FFC7CE","areas":[{"a":"목 C-arm (Cervical)","rows":[{"k":"C mbb / C FB","f":"Cervical Medial Branch Block / Cervical Facet Block","d":"경추 내측지 · 후관절 차단 (목-어깨 연결 통증)","s":0,"q":0},{"k":"BPB (SONO)","f":"Brachial Plexus Block","d":"상완신경총 차단술 (초음파 유도)","s":0,"q":0}]},{"a":"등 · 허리 C-arm (Thoracic · Lumbar)","rows":[{"k":"L mbb","f":"Lumbar Medial Branch Block","d":"요추 내측지 차단술 (허리-발 연결 통증)","s":0,"q":0},{"k":"L Fb / L FBN","f":"Lumbar Facet Block / Facet Block Nerve","d":"요추 후관절 차단술","s":0,"q":1},{"k":"T mbb","f":"Thoracic Medial Branch Block","d":"흉추 내측지 차단술 (등쪽 연결 통증)","s":0,"q":0},{"k":"PDNB","f":"Posterior Dorsal ramus Nerve Block","d":"척수신경 후지 차단술","s":0,"q":0}]},{"a":"C-mbb, fb (Cervical Medial Branch Block, Facet Block) · 제이미","rows":[{"k":"","d":"6, 7번","s":0}]}]},{"g":"22G × 80mm","c":"#A6A6A6","areas":[{"a":"epi (Epidural)","rows":[{"k":"이든, 빈센트","d":"epi 니들만","s":0},{"k":"제이미","d":"epi + 3cc (빈 시린지)","s":0},{"k":"메건","d":"epi + 10cc (빈 시린지)","s":0}]}]}],
+              "steps": [],
+              "notes": [
+                "컨타미네이션(오염)이 조금이라도 의심되면 즉시 폐기 후 다시 제조합니다.",
+                "약물 알레르기 병력은 시행 전에 반드시 확인합니다.",
+                "지시가 불명확하면 준비를 멈추고 다시 확인합니다."
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-216",
+              "sub": "기구 포장과 멸균기 운용",
+              "code": "MN-216",
+              "name": "멸균",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "세척한 기구를 포장하고 멸균기를 운용합니다.",
+              "steps": [
+                [
+                  "포장",
+                  "기구를 멸균 포장지에 넣고 표시지를 붙입니다."
+                ],
+                [
+                  "멸균기 가동",
+                  "정해진 순서로 멸균기를 가동합니다."
+                ],
+                [
+                  "결과 확인",
+                  "표시지 색 변화로 멸균 여부를 확인합니다."
+                ],
+                [
+                  "보관",
+                  "멸균일을 표시해 지정 위치에 보관합니다."
+                ]
+              ],
+              "notes": [
+                "표시지 변화가 불충분하면 사용하지 않고 다시 멸균합니다."
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-217",
+              "sub": "오전 업무 · 마감 업무 체크",
+              "code": "MN-217",
+              "name": "오픈&마감 체크리스트",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "출근 후 오전 업무와 퇴근 전 마감 업무를 순서대로 확인합니다.",
+              "steps": [],
+              "phases": [{"title":"오전 업무","items":["진료실 PC 비트 닥터스On / 롤프린터 On (녹색램프 확인)","진료실 의자위치 확인하기","처치실 포셉 open (소독캔 날짜 확인하기)","SONO 초음파실 Wrap 씌우기 / 초음파 장비 On / 소독기 날짜확인","CARM 2 초음파실 Wrap 씌우기 / 초음파 장비 On / 소독기 날짜확인","C-ARM,C-ARM2 포셉 OPEN","상담실 슬라이드 쇼 켜기 ( 처치원장님사진 / 주사주의사항)","EMG 전원 켜기, 밑에 검은 본체도 켜기","EMG 정상작동 여부 확인하기 / EMG실 환자복 채우기","원심분리기 전원 키기","멸균기 돌리기, 포 싸기","환자복 빨래 관리 / 탈의실 정리","냉장고 백신온도 오전 기재","1진료실 앞 슬리퍼 짝 맞춰놓고 정리해놓기","진료실 PC 정상작동 여부 확인하기","구글 4층비급여시트,간호공지방 시트 켜기","처치실 정리정돈","일출 약 준비","카트 청소 (소독약 / 지저분한 것들)","소모품 채우기","처치실 환풍기 켜기","각 치료실 스피커 전원 on"]},{"title":"마감 업무","items":["쓰레기정리하기 (분리수거,일반쓰레기) - C-ARM,C-ARM2,SONO","원심 분리기 전원 끄기","냉장고 백신온도 오후 기재","(처치) 다음날 쓸 셋트 준비해두기","(처치) 탈의실 정리 (환자복 정리 > 빨래 다음날 아침)","(처치) 초음파실 Wrap 벗기기 /  초음파장비 Off","EMG 마감하기","상담실 PC 종료 / 1진료실 서브PC 종료 필수확인","(A) 2진료실,3진료실 세로TV 끄기 / EMG 끄기 / 서버실 불 끄기","(A) 2진료실,3진료실 컴퓨터Off ,롤프린터 Off","소독포 새것 교체 (C-ARM2,SONO,처치실)","소독포 10층 빨래 예약하기 *건조기돌릴경우 필터청소진행","독감백신 카운트해서 텔레그램방에 올리기","무전기 충전하기","(다같이) 냉장고뺴고 모든불이 꺼져 있는지 확인","냉장고에 냄새나는 음식물(김밥,식사,샌드위치 등)이 있는지 확인 후 폐기","sono실,처치실 먼지 및 의료폐기물(뚜껑, 벽면,행거 등 전체적으로) 근처 오염 체크","고장 또는 작동 불량 장비 여부 확인 (탈의실 캐비넷,전산,pc,sono 장비,문고리 등 전체적으로)","각 치료실 스피커 전원 off","3진료실 프로브 보조배터리 간호주임 자리에 충전기에 충전하기(2개 모두)"]}],
+              "notes": [],
+              "forms": [],
+              "related": []
+            }
+          ]
+        },
+        {
+          "id": "man-220",
+          "code": "MN-220",
+          "name": "보조기 · 보호대",
+          "dur": "1개월",
+          "desc": "각종 보조기 및 보호대 파악 및 착용법 숙지",
+          "docs": [
+            {"id":"man-221","code":"MN-221","name":"보조기 Splint","sub":"스타픽스 8종 · 각도조절 보조기 2종","owner":"간호팀","rev":"2026-10-30","summary":"스타픽스 반깁스와 각도 조절 보조기입니다. 항목을 누르면 착용 사진과 주의사항을 볼 수 있어요.","steps":[],"notes":[],"forms":[],"related":[],"subs":[{"id":"man-221-1","name":"장상지 · 일반형","summary":"Long Arm / Normal · 스타픽스","brace":{"spec":[["구분","상지 Upper Extremity"],["제품","스타픽스 장상지 / 장상지 라이트"],["급여코드","<span class=\"mono\">K8103198 / K8103698</span>"]],"product":"assets/brace/longarm-product.png","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/longarm-1.jpg","t":"옆 모습","d":"바깥쪽에서 본 모습"},{"src":"assets/brace/longarm-2.jpg","t":"윗 모습","d":"위에서 본 모습"},{"src":"assets/brace/longarm-3.jpg","t":"옆 모습","d":"안쪽에서 본 모습"},{"src":"assets/brace/longarm-4.jpg","t":"윗 모습","d":"반대쪽에서 본 모습"}]}},{"id":"man-221-2","name":"단상지 · 일반형","summary":"Short arm / Normal · 스타픽스","brace":{"spec":[["구분","상지 Upper Extremity"],["제품","스타픽스 단상지 (Functional)"]],"product":"assets/brace/shortarm-normal-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/shortarm-normal-1.jpg","t":"윗 모습","d":"위에서 본 모습"},{"src":"assets/brace/shortarm-normal-2.jpg","t":"옆 모습","d":"측면에서 본 모습"},{"src":"assets/brace/shortarm-normal-3.jpg","t":"아래 모습 엄지위치","d":"아래에서 본 엄지 위치 모습"}]}},{"id":"man-221-3","name":"단상지 · 콕업","summary":"Short arm / Cock up · 스타픽스","brace":{"spec":[["구분","상지 Upper Extremity"],["제품","스타픽스 단상지 콕업 (Cock-Up)"]],"product":"assets/brace/shortarm-cockup-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/shortarm-cockup-1.jpg","t":"윗 모습","d":"위에서 본 모습"},{"src":"assets/brace/shortarm-cockup-2.jpg","t":"옆 모습","d":"측면에서 본 모습"},{"src":"assets/brace/shortarm-cockup-3.jpg","t":"아래 모습 엄지위치","d":"아래에서 본 엄지 위치 모습"}]}},{"id":"man-221-4","name":"단상지 · 얼라거터","summary":"Short arm / Ulnar gutter · 스타픽스","brace":{"spec":[["구분","상지 Upper Extremity"],["제품","스타픽스 얼라거터 (Ulnar Gutter)"]],"product":"assets/brace/shortarm-ulnar-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/shortarm-ulnar-1.jpg","t":"윗 모습","d":"위에서 본 모습"},{"src":"assets/brace/shortarm-ulnar-2.jpg","t":"옆 모습","d":"측면에서 본 모습"},{"src":"assets/brace/shortarm-ulnar-3.jpg","t":"아래 모습 엄지위치","d":"아래에서 본 엄지 위치 모습"}]}},{"id":"man-221-5","name":"단상지 · 엄지고정","summary":"Short arm / Thumb spica · 스타픽스","brace":{"spec":[["구분","상지 Upper Extremity"],["제품","스타픽스 단상지 엄지고정 (Thumb spica)"]],"product":"assets/brace/shortarm-spica-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/shortarm-spica-1.jpg","t":"윗 모습","d":"위에서 본 모습"},{"src":"assets/brace/shortarm-spica-2.jpg","t":"옆 모습","d":"측면에서 본 모습"},{"src":"assets/brace/shortarm-spica-3.jpg","t":"아래 모습 엄지위치","d":"아래에서 본 엄지 위치 모습"}]}},{"id":"man-221-6","name":"장하지 · 일반형","summary":"Long Leg / Normal · 스타픽스","brace":{"spec":[["구분","하지 Lower Extremity"],["제품","스타픽스 장하지 (Long Leg)"],["급여코드","<span class=\"mono\">K8103398</span>"]],"product":"assets/brace/longleg-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/longleg-1.jpg","t":"앞 모습","d":"앞에서 본 모습"},{"src":"assets/brace/longleg-2.jpg","t":"뒷 모습","d":"뒤에서 본 모습"},{"src":"assets/brace/longleg-3.jpg","t":"옆 모습","d":"측면에서 본 모습"}]}},{"id":"man-221-7","name":"단하지 · 일반형","summary":"Short Leg / Normal · 스타픽스","brace":{"spec":[["구분","하지 Lower Extremity"],["제품","스타픽스 단하지 / 라이트 / 라이트 숏"]],"product":"assets/brace/shortleg-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/shortleg-1.jpg","t":"앞 모습","d":"앞에서 본 모습"},{"src":"assets/brace/shortleg-2.jpg","t":"옆 모습","d":"측면에서 본 모습"},{"src":"assets/brace/shortleg-3.jpg","t":"뒷 모습","d":"뒤에서 본 모습"}]}},{"id":"man-221-8","name":"단하지 · 실린더","summary":"Short Leg / Cylinder · 스타픽스","brace":{"spec":[["구분","하지 Lower Extremity"],["제품","스타픽스 실린더 (Cylinder) / 실린더 라이트"]],"product":"assets/brace/cylinder-product.jpg","feats":["좌/우 구분","스타픽스 필수안내","샤워, 목욕 제외하고 주무실 때도 착용해주세요"],"photo":1,"pages":[{"src":"assets/brace/cylinder-1.jpg","t":"앞 모습","d":"앞에서 본 모습"},{"src":"assets/brace/cylinder-2.jpg","t":"옆 모습","d":"측면에서 본 모습"},{"src":"assets/brace/cylinder-3.jpg","t":"뒷 모습","d":"뒤에서 본 모습"}]}},{"id":"man-221-9","name":"팔꿈치 · Long arm brace","summary":"각도 조절 팔꿈치 보조기","brace":{"spec":[["구분","팔꿈치"],["제품","Long arm brace"]],"steps":["손잡이 방향이 아래로 오도록 팔에 넣어주기<small>※ 다이얼이 팔꿈치 옆면 중앙에 오도록 착용</small>","둘레에 맞게 벨크로를 이용하여 팔에 고정","각도 조절: 각도 조절장치 핀 뽑기 / 각도 고정: 뽑은 핀 다시 꽂기<small>※ 이후 각도 조절부 뚜껑 닫아주기<br>ex) 90º-90º → 90º 고정, 0º-90º → 0~90º까지 가동 가능</small>","확인 및 점검"],"photo":1,"pages":[{"src":"assets/brace/elbow-1.jpg","t":"팔꿈치 위치 확인","d":"착용 전 위치 확인"},{"src":"assets/brace/elbow-2.jpg","t":"1 · 팔에 넣기","d":"손잡이 방향이 아래로 오도록"},{"src":"assets/brace/elbow-3.jpg","t":"2 · 벨크로 고정"},{"src":"assets/brace/elbow-4.jpg","t":"3 · 각도 조절 핀","d":"조절장치 핀 뽑기"},{"src":"assets/brace/elbow-5.jpg","t":"3 · 뚜껑 닫기","d":"각도 조절부 뚜껑 닫은 상태"},{"src":"assets/brace/elbow-6.jpg","t":"4 · 확인 및 점검"}]}},{"id":"man-221-10","name":"무릎 · ACL brace","summary":"DR. MED KNEE SUPPORT ACL · DR-K017","brace":{"spec":[["품명","DR. MED KNEE SUPPORT ACL"],["코드","DR-K017 (ACL)"],["사용 부위","다리"]],"steps":["제품을 다리에 넣어주기<small>※ 다이얼 위치: 무릎의 옆면 중앙</small>","벨크로를 이용해 다리 전체에 고정","벨크로: 탈부착 가능, 다리 둘레에 맞게 위치 조정","각도 조절: 각도 조절장치 핀 뽑기 / 각도 고정: 뽑은 핀 다시 꽂기"],"photo":1,"pages":[{"src":"assets/brace/acl-1.jpg","t":"착용 모습","d":"측면에서 본 착용 상태"},{"src":"assets/brace/acl-2.jpg","t":"1 · 다리에 넣기","d":"다이얼 위치: 무릎 옆면 중앙"},{"src":"assets/brace/acl-3.jpg","t":"2 · 벨크로 고정 (앞)"},{"src":"assets/brace/acl-4.jpg","t":"2 · 벨크로 고정 (뒤)"},{"src":"assets/brace/acl-5.jpg","t":"3 · 벨크로 위치 조정","d":"다리 둘레에 맞게"},{"src":"assets/brace/acl-6.jpg","t":"4 · 각도 조절","d":"조절장치 핀 뽑기·꼽기"}]}}]},
+            {"id":"man-222","code":"MN-222","name":"보호대 Brace","sub":"부위별 보호대 12종 착용법","owner":"간호팀","rev":"2026-10-30","summary":"허리 · 손 · 팔 · 어깨 · 무릎 · 발목 보호대의 품명, 코드, 착용 순서입니다.","steps":[],"notes":[],"forms":[],"related":[],"subs":[{"id":"man-222-1","name":"허리보호대 INDICATIONS","summary":"DR-B048 / B049 · 허리","brace":{"spec":[["품명","허리보호대 INDICATIONS"],["코드","DR-B048 / B049"],["사용 부위","허리"]],"steps":["바깥/안쪽면 확인 — <b>라벨 붙은 곳이 위쪽</b><small>★ 사이즈 라벨 확인</small>","바깥쪽에 붙은 폴리 → 등판 옆쪽에 부착","등판 위치: 척추를 중심으로, 본체 양 끝단을 교차하여 부착","적절한 압박으로 폴리를 당겨 앞판에 부착"],"pages":[{"src":"assets/brace/brace-16.jpg","t":"제품 정보"},{"src":"assets/brace/brace-17.jpg","t":"바깥/안쪽면 확인"},{"src":"assets/brace/brace-18.jpg","t":"착용 1–3"}]}},{"id":"man-222-2","name":"허리보호대 TLSO","summary":"남성용 / 여성용 구분","brace":{"spec":[["사용 부위","허리 (흉요추)"],["구분","남성용 / 여성용"]],"steps":["사이즈 확인 (S · M · L · XL)","<b>벨크로가 앞으로</b> 오도록 착용<small>※ 남/여 구분하여 착용 — 여성용은 가슴 부분이 V자 형태</small>"],"pages":[{"src":"assets/brace/brace-41.jpg","t":"사이즈 · 착용 방법"}]}},{"id":"man-222-3","name":"손가락 보호대 Finger brace","summary":"DR-W132-2 · 엄지 외 손가락","brace":{"spec":[["품명","손가락 보호대 (Fore Finger brace)"],["코드","DR-W132-2"],["사용 부위","엄지 외 손가락 (검지, 중지, 약지)"]],"steps":["적절한 압박감이 느껴지도록 손목에 감아주기","손가락 부분에 부착된 벨크로 풀기","풀어놓은 벨크로를 적절한 압박으로 손가락에 감기"],"pages":[{"src":"assets/brace/brace-19.jpg","t":"제품 정보"},{"src":"assets/brace/brace-20.jpg","t":"착용 1–3"},{"src":"assets/brace/brace-38.jpg","t":"착용 (다른 예시)"}]}},{"id":"man-222-4","name":"엄지 손가락 보호대 Thumb brace","summary":"DR-W132-1 · 손목, 엄지","brace":{"spec":[["품명","엄지 손가락 보호대 (Thumb brace)"],["코드","DR-W132-1"],["사용 부위","손목, 엄지손가락 부위"]],"steps":["앞, 뒤 구분","보호대 착용 → 본체에 안쪽 벨크로 부착 후 스트랩은 손목에 감싸주기","엄지손가락에 위치한 벨크로를 적절한 압력으로 부착"],"pages":[{"src":"assets/brace/brace-24.jpg","t":"제품 정보"},{"src":"assets/brace/brace-25.jpg","t":"착용 1–3"}]}},{"id":"man-222-5","name":"손목 보호대 Wrist brace","summary":"DR-W004 · 손목, 수근관","brace":{"spec":[["품명","손목 보호대 (Wrist brace)"],["코드","DR-W004"],["사용 부위","손목, 수근관 등"]],"steps":["제품을 손목에 둘러주기","손목에 있는 벨크로를 이용하여 고정"],"pages":[{"src":"assets/brace/brace-39.jpg","t":"제품 정보"},{"src":"assets/brace/brace-40.jpg","t":"착용 1–2"}]}},{"id":"man-222-6","name":"팔꿈치 보호대 Elbow brace","summary":"DR-E001 · 외측·내측 상과염","brace":{"spec":[["품명","팔꿈치 보호대 (Elbow brace)"],["코드","DR-E001"],["사용 부위","상완골 외측, 내측 상과염"]],"steps":["테니스, 골프 엘보 위치 확인","벨크로 먼저 부착 후 제품 착용 → 스트랩으로 조여주기<small>※ 벨크로를 먼저 부착하면 착용이 쉬워요</small>"],"pages":[{"src":"assets/brace/brace-26.jpg","t":"제품 정보"},{"src":"assets/brace/brace-27.jpg","t":"착용 1–2"}]}},{"id":"man-222-7","name":"벨포밴드 INDICATIONS","summary":"DR-124 · 팔, 손, 손목","brace":{"spec":[["품명","벨포밴드 INDICATIONS"],["코드","DR-124"],["사용 부위","팔, 손, 손목"]],"steps":["팔걸이에 팔을 넣는다","팔걸이를 차고 있지 않은 팔에 어깨끈 걸고 고정","팔걸이 뒤쪽 고리에 끈 연결 → 몸통을 감싸서 고정","남은 끈은 팔걸이를 넣은 팔의 어깨로 감아 고정"],"pages":[{"src":"assets/brace/brace-21.jpg","t":"제품 정보"},{"src":"assets/brace/brace-22.jpg","t":"착용 1–2"},{"src":"assets/brace/brace-23.jpg","t":"착용 3–4"}]}},{"id":"man-222-8","name":"울트라슬링","summary":"DR-E016 · 견관절","brace":{"spec":[["품명","울트라슬링"],["코드","DR-E016"],["사용 부위","견관절 등"]],"steps":["받침대(쿠션)의 둥근 쪽이 앞을 향하게 하고, 굴곡 부분이 허리에 붙게 만들기","팔걸이 + 어깨끈 조립 → 받침대 옆면(평평한 부분)에 올려놓기","엄지손가락을 걸어 착용<small>※ 필요 시 고무공 연결하여 사용 가능</small>"],"pages":[{"src":"assets/brace/brace-34.jpg","t":"제품 정보"},{"src":"assets/brace/brace-35.jpg","t":"착용 1–3"}]}},{"id":"man-222-9","name":"쇄골붕대","summary":"8자 쇄골 고정","brace":{"spec":[["사용 부위","쇄골"]],"steps":["밴드를 양쪽 어깨에 각각 걸고 팔을 가슴 앞에서 교차","본체 하단의 끈(<b>가장 긴 끈 제외</b>)을 겨드랑이 사이로 넣은 뒤 회색 패드의 고리에 끼우기","나머지 끈도 같은 방법으로 연결","투명고리가 달린 가장 긴 끈은 본체 하단부 고리에 끼워 조절"],"pages":[{"src":"assets/brace/brace-42.jpg","t":"착용 1–2"},{"src":"assets/brace/brace-43.jpg","t":"착용 3–4"}]}},{"id":"man-222-10","name":"무릎 보호대 Knee brace","summary":"DR-K009 / K006 · 무릎","brace":{"spec":[["품명","무릎 보호대 (Knee brace)"],["코드","DR-K009 / K006"],["사용 부위","무릎"]],"steps":["앞, 뒷면 확인","벨크로를 풀고 보호대 중앙 구멍을 무릎뼈에 맞추기","적절한 압박으로 뒤, 아래, 위쪽 벨크로 고정"],"pages":[{"src":"assets/brace/brace-28.jpg","t":"제품 정보"},{"src":"assets/brace/brace-29.jpg","t":"착용 1–2"},{"src":"assets/brace/brace-30.jpg","t":"착용 3"}]}},{"id":"man-222-11","name":"발목 보호대 Ankle brace","summary":"DR-A002 · 발목","brace":{"spec":[["품명","발목 보호대 (Ankle brace)"],["코드","DR-A002"],["사용 부위","발목"]],"steps":["앞·뒷면 확인 → 사이즈 표기가 있는 곳이 위쪽","보조밴드 앞·뒷면 확인 → 로고 있는 부분이 밖<small>※ 보조밴드 스트랩: 발목을 잡아주는 역할, 고정강도 조절 가능</small>","스트랩을 풀고 양말 신듯 착용<small>※ 지지대: 발목 중간 위치. 복숭아뼈와 마찰이 있으면 위치 조정 후 착용</small>","2개의 스트랩을 적절한 압박으로 조절하며 부착","보조밴드 스트랩 중앙을 발바닥 아래에 두고 양 끝을 X자로 당김 → 양쪽 지지대 부분에 부착"],"pages":[{"src":"assets/brace/brace-31.jpg","t":"제품 정보"},{"src":"assets/brace/brace-32.jpg","t":"착용 1–2"},{"src":"assets/brace/brace-33.jpg","t":"착용 3–5"}]}},{"id":"man-222-12","name":"발목 보호대 (급여)","summary":"DR-A402 · 발목 · 급여","brace":{"spec":[["품명","발목 보호대 (Ankle brace)"],["코드","DR-A402"],["사용 부위","발목"],["구분","급여"]],"steps":["물품 구성 확인 — 본체(+지지대): 발목 고정 / 고무밴드 스트랩: 압박 조절","물품 안, 밖 확인<small>※ 본체 안쪽: 사이즈 표기가 있는 면<br>※ 고무밴드 스트랩 접착 부분: 벨크로 있는 부분</small>","양말을 신고 발뒤꿈치부터 넣어 끌어당기듯 착용","2개의 벨크로 스트랩을 적절히 압박하며 부착"],"pages":[{"src":"assets/brace/brace-44.jpg","t":"제품 정보"},{"src":"assets/brace/brace-45.jpg","t":"착용 1–2"},{"src":"assets/brace/brace-46.jpg","t":"착용 3–4"}]}}]},
+            {
+              "id": "man-223",
+              "code": "MN-223",
+              "name": "착용법 숙지",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "보조기·보호대를 올바르게 착용시키고 환자에게 안내합니다.",
+              "steps": [
+                [
+                  "사이즈 맞추기",
+                  "환자 부위를 확인해 맞는 사이즈를 고릅니다."
+                ],
+                [
+                  "착용",
+                  "올바른 방향과 위치로 착용시킵니다."
+                ],
+                [
+                  "조절",
+                  "조임 정도를 확인하고 불편함을 묻습니다."
+                ],
+                [
+                  "환자 교육",
+                  "착용·탈착 방법과 착용 시간을 안내합니다."
+                ]
+              ],
+              "notes": [
+                "저림·통증·피부 변색이 생기면 바로 알리도록 안내합니다."
+              ],
+              "forms": [],
+              "related": []
+            }
+          ]
+        },
+        {
+          "id": "man-240",
+          "code": "MN-240",
+          "name": "초음파 어시스트",
+          "dur": "2개월",
+          "desc": "포지션, 소독, 해부학적 위치, 기계조작, 프로브 정리 등",
+          "guide": {"title":"초음파실 환자 세팅 방법","steps":[["<b>Work list</b>에서 영문으로 된 환자명 더블클릭"],["소노 처방 날짜가 오늘 날짜인지 확인 후 <em class='r'>save</em> 클릭"],["검사(파인딩)만 진행할 경우에는 <b>probe에 젤 준비</b> 및 <b>글러브</b>와 <b>핸드타올</b> 꺼내놓기"],["중간중간 원장님이 <em class='b'>저장</em> 또는 <em class='b'>슛</em>이라고 하면 <em class='b'>저장</em>하기","보통 주사 전 상태 체크, 니들 들어간 후, 약물 들어갈 때 저장 (원장님 지시에 따라서 저장)"],["소노 끝난 후 안내문 받으셨는지 환자에게 확인 및 데스크 앞쪽으로 안내"],["뒷마무리 후 <em class='r'>검사 종료</em> 누르기"]]},
+          "docs": [
+            {
+              "id": "man-241",
+              "code": "MN-241",
+              "name": "포지션",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary":"부위별 초음파 포지션입니다. 기본 자세를 지키고 부위별 준비 사진을 확인합니다.",
+              "steps":[["부위 확인","슬립에서 검사 부위를 확인합니다. 환측부위 기준으로 준비합니다."],["기본 자세","기본 자세는 <b>매뉴얼에 작성된 지침대로</b> 이행합니다."],["선 안내 후 조절","반드시 시행 전 환자분께 먼저 안내드립니다 — ex) 베드 올라갑니다, 베드 내려갑니다. 불편한 곳이 없는지 확인합니다."],["노출 주의","원장님 콜 되기 전까지 환측부위 노출에 주의합니다. 환복이 필요하면 환복 안내를 먼저 드립니다."]],"shots":[{"src":"assets/position/basic-positions.jpg","t":"기본 포지션","posList":1,"terms":[["Prone","엎드린 자세 · 일반적인 SONO 준비자세 (환측부위 기준으로 준비)"],["Supine","바로 누운 자세"],["Sidelying (Lateral Recumbent)","옆으로 누운 자세"],["Fowler's","상체를 비스듬히 세워 앉은 자세"]]},{"src":"assets/position/part-neck.jpg","t":"목 (Neck · C-SPINE) 주사 준비","posList":1,"terms":[["자세","Prone position (엎드린 자세)"],["위치","머리가 복도 측으로 준비"]]},{"src":"assets/position/part-shoulder.jpg","t":"어깨 (Shoulder) 주사 준비","posList":1,"terms":[["자세","Sitting position (앉은 자세)"],["위치","모니터를 바라보면서 움직이지 않는 의자에 앉아서 준비"]]},{"srcs":["assets/position/elbow-main.jpg"],"t":"팔꿈치 (Elbow) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["<b>내측, 외측 상관 없이</b> 쿠션을 받친 상태로 <b>팔을 펴서</b> 준비"],"note":{"src":"assets/position/cushion-black.jpg","src2":"assets/position/cushion-green.jpg","t":"팔꿈치 주사 시 쿠션 꼭 준비"}},{"srcs":["assets/position/wrist-1.jpg","assets/position/wrist-2.jpg"],"t":"손목 (Wrist) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["<b>손목이 굽혀지게</b> 준비"],"note":{"src":"assets/position/cushion-black.jpg","src2":"assets/position/cushion-green.jpg","t":"손목 · 손가락 · 손 주사 시 쿠션 꼭 준비"}},{"srcs":["assets/position/wrist-side-1.jpg"],"t":"손목옆 (Wrist side) 주사 준비","posList":1,"points":["손목이 <b>양 옆으로 굽혀지지 않게</b>, <b>엄지손가락을 아래 방향으로</b> 내려가게 펴주세요."],"note":{"src":"assets/position/cushion-black.jpg","src2":"assets/position/cushion-green.jpg","t":"손목 · 손가락 · 손 주사 시 쿠션 꼭 준비"},"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]]},{"srcs":["assets/position/finger-joint.jpg"],"t":"손가락 관절 (Finger joint) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["주사부위 <b>손가락 관절이 구부러지지 않게</b> 준비"],"note":{"src":"assets/position/cushion-black.jpg","src2":"assets/position/cushion-green.jpg","t":"손목 · 손가락 · 손 주사 시 쿠션 꼭 준비"}},{"srcs":["assets/position/thumb-prep.jpg"],"t":"엄지손가락 (Thumb) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["베개를 <b>살짝 감싸쥔 형태로</b> 엄지 손가락 <b>주사부위가 원장님쪽에 위치</b>"],"note":{"src":"assets/position/cushion-black.jpg","src2":"assets/position/cushion-green.jpg","t":"손목 · 손가락 · 손 주사 시 쿠션 꼭 준비"}},{"srcs":["assets/position/nail-bed.jpg"],"t":"손톱 밑 (Nail bed) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["<b>손가락 사이를 다 벌려 주세요</b>","주사 부위가 <b>하늘로 향하게</b>, 관절들이 모두 벌려진 상태 유지","원장님 주사 시에 <b>다른 손가락이나 주사바늘이 장애물이 되지 않도록</b>"],"note":{"src":"assets/position/cushion-black.jpg","src2":"assets/position/cushion-green.jpg","t":"손목 · 손가락 · 손 주사 시 쿠션 꼭 준비"}},{"srcs":["assets/position/rib-icnb-right.jpg"],"t":"갈비뼈 (Rib) ① — 우측 ICNB (Intercostal Nerve Block) 주사 준비","posList":1,"terms":[["자세","Sidelying (옆으로 누운 자세)"],["위치","머리는 창가 측"]],"points":["옆으로 누운 상태에서 <b>손은 머리 위쪽으로 올라가 있도록</b> 준비","<b>양쪽 다리를 모아 접은</b> 상태로 몸이 흔들리지 않도록 준비","몸은 <b>최대한 베드 끝쪽(시술자)</b>에 맞춰서 준비"]},{"srcs":["assets/position/rib-icnb-left.jpg"],"t":"갈비뼈 (Rib) ② — 좌측 ICNB (Intercostal Nerve Block) 주사 준비","posList":1,"terms":[["자세","Sidelying (옆으로 누운 자세)"],["위치","머리는 창가 측"]],"points":["옆으로 누운 상태에서 <b>손은 머리 위쪽으로 올라가 있도록</b> 준비","<b>양쪽 다리를 모아 접은</b> 상태로 몸이 흔들리지 않도록 준비","몸은 <b>최대한 베드 끝쪽(시술자)</b>에 맞춰서 준비"]},{"srcs":["assets/position/rib-icnb-side.jpg"],"t":"갈비뼈 (Rib) ③ — 옆쪽 (측면) 주사 준비","posList":1,"terms":[["자세","Prone position"],["위치","환부가 왼쪽일 경우 머리가 창가 측, 오른쪽일 경우 머리가 복도 측"]],"points":["엎드려 누운 상태에서 <b>손은 머리 위쪽으로 올라가 있도록</b> 준비","몸은 <b>최대한 베드 끝쪽(시술자)</b>에 맞춰서 준비"]},{"srcs":["assets/position/snb-1.jpg","assets/position/snb-2.jpg"],"t":"좌골신경 (SNB · Sciatic Nerve Block) 주사 준비","posList":1,"terms":[["자세","Sidelying"],["위치","머리가 창가 측 (환부 상관 없음), 환부에 따라 오른쪽, 왼쪽으로 돌아 눕기"]],"points":["옆으로 누워서 <b>베드 끝 선 쪽으로</b> 준비","<b>하의에 소독포를 넣고</b> 환측부위까지 노출 진행","★ 주사 시행 전 <b>노출 주의</b> — 원장님 콜 되기 전까지 환측부위 노출 주의","<b>양쪽 다리를 접고</b> 몸이 흔들리지 않게 준비"]},{"srcs":["assets/position/knee-1.jpg","assets/position/knee-2.jpg"],"t":"무릎 (Knee) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["<b>네모 쿠션 위에 소독포 셋팅</b>","네모 쿠션 <b>끝 라인에 맞춰서</b> 준비"]},{"srcs":["assets/position/ankle-1.jpg","assets/position/ankle-2.jpg"],"t":"발목 (Ankle) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["<b>쿠션+소독포를 같이 준비해서</b> 발목쪽이 <b>공중에 뜨게</b> 준비 (어느 각도에서도 주사가 가능하게)"]},{"srcs":["assets/position/heel-1.jpg","assets/position/heel-2.jpg"],"t":"발뒤꿈치 (Heel) 주사 준비","posList":1,"terms":[["자세","Prone position"],["위치","환부가 왼쪽일 경우 머리가 창가 측, 오른쪽일 경우 머리가 복도 측"]],"points":["<b>네모쿠션+소독포</b> 사진과 같이 준비 후 <b>원장님 콜</b> 진행"]},{"srcs":["assets/position/toe-1.jpg","assets/position/toe-2.jpg"],"t":"발가락 (Toe) 주사 준비","posList":1,"terms":[["자세","Supine position"],["위치","환부가 왼쪽일 경우 머리가 복도 측, 오른쪽일 경우 머리가 창가 측"]],"points":["<b>네모쿠션 위 소독포</b> 올린 채 환자 발가락 <b>360º 주사 가능하게</b> 준비"]}],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-242",
+              "code": "MN-242",
+              "name": "소독",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "초음파 유도 시술 전 부위를 소독합니다.",
+              "steps": [
+                [
+                  "부위 노출",
+                  "시술 부위를 노출합니다."
+                ],
+                [
+                  "소독",
+                  "정해진 방법으로 부위를 소독합니다."
+                ],
+                [
+                  "무균 유지",
+                  "소독 후 부위가 오염되지 않게 유지합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-243",
+              "code": "MN-243",
+              "name": "해부학적 위치",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "초음파 화면에서 주요 구조물 위치를 익힙니다.",
+              "steps": [
+                [
+                  "기본 부위 학습",
+                  "어깨·무릎·발목 등 자주 보는 부위부터 익힙니다."
+                ],
+                [
+                  "화면 대조",
+                  "원장님 검사 중 화면과 부위를 대조해 봅니다."
+                ],
+                [
+                  "정리",
+                  "익힌 내용을 정리해 둡니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-244",
+              "code": "MN-244",
+              "name": "기계조작",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "초음파 기계의 기본 조작을 익힙니다.",
+              "steps": [
+                [
+                  "전원·환자 등록",
+                  "전원을 켜고 환자 정보를 입력합니다."
+                ],
+                [
+                  "프로브 선택",
+                  "부위에 맞는 프로브를 선택합니다."
+                ],
+                [
+                  "화면 조절",
+                  "원장님 요청에 따라 깊이·밝기 등을 조절합니다."
+                ],
+                [
+                  "이미지 저장",
+                  "필요한 이미지를 저장합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-245",
+              "code": "MN-245",
+              "name": "프로브 정리 등",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "사용 후 프로브와 주변을 정리합니다.",
+              "steps": [
+                [
+                  "젤 제거",
+                  "프로브의 젤을 닦아냅니다."
+                ],
+                [
+                  "소독",
+                  "지정된 소독제로 프로브를 소독합니다."
+                ],
+                [
+                  "거치·정리",
+                  "프로브를 거치대에 걸고 주변을 정리합니다."
+                ]
+              ],
+              "notes": [
+                "프로브는 떨어뜨리지 않도록 주의하고, 케이블이 꺾이지 않게 정리합니다."
+              ],
+              "forms": [],
+              "related": []
+            }
+          ]
+        },
+        {
+          "id": "man-230",
+          "code": "MN-230",
+          "name": "드레싱 보조",
+          "dur": "1개월",
+          "desc": "슈처, 드레싱, 드레싱 상차림, 내성발톱 상차림",
+          "docs": [
+            {
+              "id": "man-231",
+              "code": "MN-231",
+              "name": "슈처",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary":"슈처 처치 전 준비부터 환자 Call, 비용 안내, 원장님 Call, 어시스트, 마무리까지 어시스트가 해야 할 일입니다.",
+              "steps": [["슈처 세트 차리기","봉합 세트를 차립니다."],["환자 부위에 따른 베개 등 위치 조절","포지션별 베개 위치는 사진으로 추가 안내 예정입니다."],["환자 Call 전 확인 사항","지정 원장님 — 「OO 처치 준비해도 될까요?」(무전) → 무전 또는 텔레그램 답변 확인 후 진행<br>미지정 원장님 — 다음 단계 바로 진행"],["환자 Call","「OOO님! 처치실에서 치료 도와드리겠습니다.」<br>「성함과 생일 말씀 부탁드립니다.」 — 일치 시 다음 진행<br>「불편하신 부위가 어디일까요?」 — 슬립지와 일치하는지 확인"],["포지션대로 환자 위치","예시) 「머리는 OO방향으로 누워주시고, 불편 부위를 베개 위에 올리겠습니다.」<br>「베드 올라갑니다」 선 안내 후 조절"],["환자에게 안내문 전달","「처치 시 주의사항 안내문 읽어 보고 계세요」"],["비용 안내","「비용 안내 드리겠습니다. 비급여 항목은 OOO, OOO, OOO이며, 급여 포함 총 비용은 OOO원입니다.」<br>「진행 도와드릴까요?」 — 환자 동의 시 다음 진행"],["원장님 Call 전 세팅 확인","슬립지 보고 세팅 확인 — 글러브, 주사 처방 등<br>환부에 혈흔·피가 나고 있을 경우 — NS를 흘려서 씻어냅니다 (닦지 않음)<br>환부 주변에 테이프 성분(모아밴드 자국 등)이나 오염물질이 있으면 알콜솜으로 소독 및 제거"],["원장님 Call","「처치실 준비 됐습니다. 주사팀 원장님 Call 해주세요」(무전)"],["원장님 입장 시","「원장님 오셨습니다.」"],["어시스트 진행","원장님과 소통하며 어시스트"],["처치 마무리 후","「원장님 진료실 가십니다」(무전)"],["환자 마무리","「마무리 도와드리겠습니다」<br>코반이 있을 경우 — 감아줌<br>다른 처치가 있을 경우 — 처방대로 마무리 후 「베드 내려갑니다. 멈추면 내려오세요」"],["환자 안내","「데스크 앞쪽에 계시면 안내 드리겠습니다.」"]],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-232",
+              "code": "MN-232",
+              "name": "드레싱",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary":"드레싱 처치 전 준비부터 환자 Call, 비용 안내, 원장님 Call, 어시스트, 마무리까지 어시스트가 해야 할 일입니다.",
+              "steps":[["드레싱 세트 차리기","1회용 드레싱 키트를 오픈하고 차립니다."],["환자 부위에 따른 베개 등 위치 조절","포지션별 베개 위치는 사진으로 추가 안내 예정입니다."],["환자 Call 전 확인 사항","지정 원장님 — 「OO 처치 준비해도 될까요?」(무전) → 무전 또는 텔레그램 답변 확인 후 진행<br>미지정 원장님 — 다음 단계 바로 진행"],["환자 Call","「OOO님! 처치실에서 치료 도와드리겠습니다.」<br>「성함과 생일 말씀 부탁드립니다.」 — 일치 시 다음 진행<br>「불편하신 부위가 어디일까요?」 — 슬립지와 일치하는지 확인"],["포지션대로 환자 위치","예시) 「머리는 OO방향으로 누워주시고, 불편 부위를 베개 위에 올리겠습니다.」<br>「베드 올라갑니다」 선 안내 후 조절"],["환자에게 안내문 전달","「처치 시 주의사항 안내문 읽어 보고 계세요」"],["비용 안내","「비용 안내 드리겠습니다. 비급여 항목은 OOO, OOO, OOO이며, 급여 포함 총 비용은 OOO원입니다.」<br>「진행 도와드릴까요?」 — 환자 동의 시 다음 진행"],["원장님 Call 전 세팅 확인","슬립지 보고 세팅 확인 — 글러브, 주사 처방 등<br>환부에 혈흔·피가 나고 있을 경우 — NS를 흘려서 씻어냅니다 (닦지 않음)<br>환부 주변에 테이프 성분(모아밴드 자국 등)이나 오염물질이 있으면 알콜솜으로 소독 및 제거"],["원장님 Call","「처치실 준비 됐습니다. 주사팀 원장님 Call 해주세요」(무전)"],["원장님 입장 시","「원장님 오셨습니다.」"],["어시스트 진행","원장님과 소통하며 어시스트"],["처치 마무리 후","「원장님 진료실 가십니다」(무전)"],["환자 마무리","「마무리 도와드리겠습니다」<br>코반이 있을 경우 — 감아줌<br>다른 처치가 있을 경우 — 처방대로 마무리 후 「베드 내려갑니다. 멈추면 내려오세요」"],["환자 안내","「데스크 앞쪽에 계시면 안내 드리겠습니다.」"]],
+              "notes": [
+                "진물·발적·열감이 있으면 원장님께 보고합니다."
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-233",
+              "code": "MN-233",
+              "name": "드레싱 상차림",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "드레싱에 필요한 물품을 준비합니다.",
+              "steps": [
+                [
+                  "물품 확인",
+                  "드레싱 세트, 소독제, 거즈, 반창고를 준비합니다."
+                ],
+                [
+                  "배치",
+                  "쓰는 순서대로 배치합니다."
+                ],
+                [
+                  "보충",
+                  "사용 후 바로 보충합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-234",
+              "code": "MN-234",
+              "name": "내성발톱 상차림",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "내성발톱 시술에 필요한 물품을 준비합니다.",
+              "steps": [
+                [
+                  "물품 준비",
+                  "시술 세트와 필요한 물품을 준비합니다."
+                ],
+                [
+                  "환자 준비",
+                  "시술 자세를 잡고 부위를 노출합니다."
+                ],
+                [
+                  "시술 후 안내",
+                  "드레싱 관리와 다음 내원일을 안내합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            }
+          ]
+        },
+        {
+          "id": "man-250",
+          "code": "MN-250",
+          "name": "비용 상담",
+          "dur": "1개월",
+          "desc": "주사처방, 물리치료 처방, 다이어트 주사제 처방 등 비급여 항목 환자 대면 상담",
+          "docs": [
+            {
+              "id": "man-251",
+              "code": "MN-251",
+              "name": "주사처방 상담",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "주사 처방 비용을 환자에게 설명합니다.",
+              "steps": [
+                [
+                  "처방 확인",
+                  "처방된 주사 종류를 확인합니다."
+                ],
+                [
+                  "비용 안내",
+                  "급여·비급여 구분과 비용을 안내합니다."
+                ],
+                [
+                  "동의 확인",
+                  "환자 동의 여부를 확인합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-252",
+              "code": "MN-252",
+              "name": "물리치료 처방 상담",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "물리치료 처방 비용과 횟수를 안내합니다.",
+              "steps": [
+                [
+                  "처방 확인",
+                  "처방된 치료 종류와 횟수를 확인합니다."
+                ],
+                [
+                  "비용 안내",
+                  "회당 비용과 비급여 항목을 안내합니다."
+                ],
+                [
+                  "일정 연계",
+                  "물리치료팀과 일정을 연결합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-253",
+              "code": "MN-253",
+              "name": "다이어트 주사제 처방 상담",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "다이어트 주사제 비용과 일정을 안내합니다.",
+              "steps": [
+                [
+                  "처방 확인",
+                  "처방 내용을 확인합니다."
+                ],
+                [
+                  "비용 안내",
+                  "비용과 투여 주기를 안내합니다."
+                ],
+                [
+                  "다음 일정",
+                  "다음 투여 일정을 예약합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-254",
+              "code": "MN-254",
+              "name": "그 외 비급여 항목 환자 대면 상담",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "그 밖의 비급여 항목을 환자에게 설명합니다.",
+              "steps": [
+                [
+                  "항목 확인",
+                  "해당 비급여 항목과 비용을 확인합니다."
+                ],
+                [
+                  "설명",
+                  "환자가 이해하기 쉽게 설명합니다."
+                ],
+                [
+                  "동의 확인",
+                  "동의 여부를 확인하고 접수에 전달합니다."
+                ]
+              ],
+              "notes": [
+                "비용 질문에 확실하지 않으면 추측하지 않고 확인 후 답합니다."
+              ],
+              "forms": [],
+              "related": []
+            }
+          ]
+        },
+        {
+          "id": "man-260",
+          "code": "MN-260",
+          "name": "진료 어시스트",
+          "dur": "2개월",
+          "desc": "진료실 보조, 원장님 요구사항 정리, 각 파트 전달, 환자 응대, 각 진료실 상황공유 등",
+          "docs": [
+            {
+              "id": "man-261",
+              "code": "MN-261",
+              "name": "진료실 보조",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "진료가 원활하게 진행되도록 진료실을 보조합니다.",
+              "steps": [
+                [
+                  "진료 전 준비",
+                  "진료실 물품과 차트 화면을 준비합니다."
+                ],
+                [
+                  "환자 안내",
+                  "호명 후 진료실로 안내합니다."
+                ],
+                [
+                  "진료 중 보조",
+                  "원장님 요청 물품과 화면을 준비합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-262",
+              "code": "MN-262",
+              "name": "원장님 요구사항 정리",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "원장님 지시와 요구사항을 정리해 둡니다.",
+              "steps": [
+                [
+                  "지시 기록",
+                  "진료 중 지시를 바로 메모합니다."
+                ],
+                [
+                  "확인",
+                  "애매한 지시는 그 자리에서 다시 확인합니다."
+                ],
+                [
+                  "정리 공유",
+                  "반복되는 요구사항은 정리해 팀에 공유합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-263",
+              "code": "MN-263",
+              "name": "각 파트 전달",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "진료 후 필요한 내용을 각 파트에 전달합니다.",
+              "steps": [
+                [
+                  "전달 대상 확인",
+                  "처치실·물리치료·접수 등 전달할 곳을 확인합니다."
+                ],
+                [
+                  "전달",
+                  "슬립과 필요 사항을 정확히 전달합니다."
+                ],
+                [
+                  "확인",
+                  "전달이 됐는지 확인합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-264",
+              "code": "MN-264",
+              "name": "환자 응대",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "진료 전후 환자 질문과 요청에 응대합니다.",
+              "steps": [
+                [
+                  "경청",
+                  "환자의 요청을 끝까지 듣습니다."
+                ],
+                [
+                  "안내",
+                  "답할 수 있는 범위에서 안내합니다."
+                ],
+                [
+                  "연결",
+                  "진료 관련 질문은 원장님께 연결합니다."
+                ]
+              ],
+              "notes": [
+                "약·처치에 관한 판단이 필요한 질문은 혼자 답하지 않습니다."
+              ],
+              "forms": [],
+              "related": []
+            },
+            {
+              "id": "man-265",
+              "code": "MN-265",
+              "name": "각 진료실 상황공유 등",
+              "owner": "간호팀",
+              "rev": "2026-10-26",
+              "summary": "진료실별 대기·진행 상황을 팀과 공유합니다.",
+              "steps": [
+                [
+                  "상황 파악",
+                  "진료실별 대기 환자와 진행 상황을 확인합니다."
+                ],
+                [
+                  "공유",
+                  "지연·변경 사항을 팀에 바로 공유합니다."
+                ],
+                [
+                  "조율",
+                  "필요하면 환자 순서를 조율합니다."
+                ]
+              ],
+              "notes": [],
+              "forms": [],
+              "related": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+/* 자주 찾는 업무 — 문서 코드로 지정 */
+const QUICK = ['MN-212','MN-214','MN-223','MN-264'];
+
+/* ═══════════════════ 아래는 동작 코드 — 수정 불필요 ═══════════════════ */
+const $view = document.getElementById('view');
+const $crumbs = document.getElementById('crumbs');
+const $back = document.getElementById('backbtn');
+const $toast = document.getElementById('toast');
+const HOME_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>';
+const ARROW_ICON = '<svg class="card-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const FILE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>';
+
+const deptOf = id => MANUAL.depts.find(d => d.id === id);
+
+/* ── 검색 ── */
+let _sIndex = null;
+function textOf(o, skip){
+  const out=[]; const SK=new Set(['id','subs','color','hot','live','cardName','groups','iv','code','codes'].concat(skip||[]));
+  (function w(v,k){ if(v==null) return; if(typeof v==='string'){ if(!/^#|^man-/.test(v)) out.push(v.replace(/<[^>]+>/g,' ')); }
+    else if(typeof v==='number') out.push(String(v));
+    else if(Array.isArray(v)) v.forEach(x=>w(x));
+    else if(typeof v==='object') for(const kk in v){ if(!SK.has(kk)) w(v[kk],kk); } })(o);
+  return out.join(' · ');
+}
+function searchIndex(){
+  if (_sIndex) return _sIndex;
+  const out=[]; const add=(t,p,h,b,kind)=>out.push({t,p,h,b:b||'',kind,lt:t.toLowerCase(),all:(t+' '+p+' '+(b||'')).toLowerCase()});
+  MANUAL.depts.forEach(d=>{
+    add(d.name,'',`#/${d.id}`,'', '분류');
+    d.items.forEach(it=>{
+      add(it.name,d.name,`#/${d.id}/${it.id}`,'', '항목');
+      it.docs.forEach(dc=>{
+        const base=`#/${d.id}/${it.id}/${dc.id}`, pth=`${d.name} › ${it.name}`;
+        add(dc.name,pth,base,textOf(dc,['name']),'문서');
+        (dc.phases||[]).forEach(g=>g.items.forEach(t=>add(t,`${pth} › ${dc.name} › ${g.title}`,base,'','업무')));
+        (function walk(list,href,path){ (list||[]).forEach(x=>{
+          const h=href+'/'+x.id, nm=(x.name||'');
+          add(nm,path,h,textOf(x,['name']), '페이지');
+          (x.groups||[]).forEach(g=>g.meds.forEach(m=>add(m.n,`${path} › ${nm} › ${g.name}`,h,textOf(m,['n'])+((m.codes||[]).map(c=>' '+c[0]+' '+c[1]).join('')),'약품')));
+          (x.iv||[]).forEach(r=>add(r.n,`${path} › ${nm}`,h,`${r.c} · ₩${r.p} · ${r.mix.join(' + ')}${r.time?' · '+r.time:''} · ${r.e.join(', ')}`,'수액'));
+          if (x.banner) x.banner.items.forEach(b=>add(b.name+' 수량',`${path} › ${nm} › ${x.banner.title}`,h,`${b.label||'수량'} ${b.count}개${b.note?' · '+b.note:''}`,'수량'));
+          walk(x.subs,h,path+' › '+nm);
+        }); })(dc.subs,base,pth+' › '+dc.name);
+      });
+    });
+  });
+  return _sIndex=out;
+}
+const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, m => '\\' + m);
+function hl(str, terms){ let h=str.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  if(!terms.length) return h; return h.replace(new RegExp('('+terms.map(escRe).join('|')+')','gi'),'<mark>$1</mark>'); }
+function snippet(b, terms){ if(!b) return ''; const lb=b.toLowerCase(); let i=-1;
+  for(const t of terms){ const k=lb.indexOf(t); if(k>=0 && (i<0||k<i)) i=k; }
+  if(i<0) return b.slice(0,80); const st=Math.max(0,i-24); return (st?'…':'')+b.slice(st,st+90); }
+function runSearch(q){
+  const terms=q.toLowerCase().split(/\s+/).filter(Boolean); if(!terms.length) return [];
+  const seen=new Set();
+  return searchIndex().filter(r=>terms.every(t=>r.all.includes(t)))
+    .map(r=>({r,score:(r.lt===terms.join(' ')?0:terms.every(t=>r.lt.includes(t))?1:2)+(r.kind==='분류'||r.kind==='항목'?.5:0)}))
+    .sort((a,b)=>a.score-b.score)
+    .filter(({r})=>{const k=r.t+'|'+r.h; if(seen.has(k)) return false; seen.add(k); return true;})
+    .slice(0,40).map(x=>x.r);
+}
+let _docIndex = null;
+function docIndex(){
+  if (_docIndex) return _docIndex;
+  _docIndex = new Map();
+  MANUAL.depts.forEach(d => d.items.forEach(it => it.docs.forEach(dc => {
+    _docIndex.set(dc.id, {dept:d, item:it, doc:dc, path:[d.id, it.id, dc.id]});
+  })));
+  return _docIndex;
+}
+const byCode = code => { for (const v of docIndex().values()) if (v.doc.code === code) return v; return null; };
+const parseHash = () => location.hash.replace(/^#\/?/,'').split('/').filter(Boolean);
+
+function crumbHtml(dept, item, doc, chain){
+  chain = chain || [];
+  const sep = '<span class="crumb-sep" aria-hidden="true">›</span>';
+  let h = `<a class="crumb home" href="#/">${HOME_ICON}홈</a>`;
+  if (dept){
+    h += sep + (item ? `<a class="crumb" href="#/${dept.id}">${dept.name}</a>`
+                     : `<span class="crumb" aria-current="page">${dept.name}</span>`);
+  }
+  if (item){
+    h += sep + (doc ? `<a class="crumb" href="#/${dept.id}/${item.id}">${item.name}</a>`
+                    : `<span class="crumb" aria-current="page">${item.name}</span>`);
+  }
+  if (doc){
+    const nodes = [doc, ...chain]; let href = `#/${dept.id}/${item.id}`;
+    nodes.forEach((n,i)=>{ href += '/'+n.id;
+      h += sep + (i < nodes.length-1 ? `<a class="crumb" href="${href}">${n.name}</a>` : `<span class="crumb" aria-current="page">${n.name}</span>`); });
+  }
+  return h;
+}
+
+function cardHTML({href, color, code, name, desc, meta, hot}){
+  return `<button class="card${hot ? ' card-live' : ''}" style="--dept:${hot ? 'var(--red)' : color}" data-nav="${href}">
+    <span class="card-top">${ARROW_ICON}</span>
+    <span class="card-name">${name}</span>
+    <span class="card-desc">${desc}</span>
+    <span class="card-meta"><span>${meta}</span></span>
+  </button>`;
+}
+
+function renderHome(){
+  const nItems = MANUAL.depts.reduce((s,d)=>s+d.items.length,0);
+  const nDocs  = docIndex().size;
+  const quick = QUICK.map(code=>{
+    const hit = byCode(code); if(!hit) return '';
+    return `<button class="quick-chip" style="--dept:${hit.dept.color}" data-nav="#/${hit.path.join('/')}">
+      <span class="dot"></span>${hit.doc.name}</button>`;
+  }).join('');
+  const deptCards = MANUAL.depts.map(d=>{
+    const nD = d.items.reduce((s,i)=>s+i.docs.length,0);
+    return cardHTML({href:`#/${d.id}`, color:d.color, code:d.code, name:d.name, desc:d.desc,
+      meta: d.plan ? `총 ${d.plan.months}개월 · 업무 ${d.plan.tasks.length}개 + 병행 ${d.plan.parallel.length}개` : `업무 ${d.items.length}개 · 문서 ${nD}건`});
+  }).join('');
+  return `<div class="fade-in">
+    <section class="hero hero-split">
+      <div class="hero-l">
+        <h1>반듯한정형외과 간호팀에<br>오신 것을 환영합니다.</h1>
+        <p>입사 후 무엇을 어떤 순서로 배우는지, 실제 업무는 어떻게 하는지 이 안내문에 정리했습니다.</p>
+        <p class="stats">${MANUAL.depts.length}개 메뉴 · ${nItems}개 업무 · ${nDocs}개 문서</p>
+      </div>
+      <div class="hero-r">
+        <div class="med-search"><h2 class="ms-title">문서 내 의학용어 검색</h2>
+          <div class="ms-row"><input id="medQ" type="text" placeholder="문서 위키백과에서 의학용어·영어를 찾아봅니다 — 예: 회전근개, rotator cuff" autocomplete="off"><button id="medGo">검색</button></div>
+          <p class="ms-hint">문서 내(위키백과 기반) 의학용어 찾기 전용입니다 — 웹 검색과는 별개입니다.</p>
+        </div>
+      </div>
+    </section>
+    <section class="quick"><span class="quick-label">자주 찾는 업무</span>${quick}</section>
+    <section class="home-section"><h2>안내문 메뉴</h2><div class="grid dept-grid">${deptCards}</div></section>
+  </div>`;
+}
+
+const CIRCLED = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+const monthLabel = t => t.from===t.to ? `${t.from}개월차` : `${t.from}~${t.to}개월차`;
+const CHECK_KEY = 'nsg-plan-checks';
+const loadChecks = () => { try { return JSON.parse(localStorage.getItem(CHECK_KEY)||'{}'); } catch(e){ return {}; } };
+
+function renderPlan(dept){
+  const P = dept.plan, M = P.months, checks = loadChecks();
+  const sum = P.tasks.reduce((a,t)=>a+t.dur,0);
+  const rows = P.tasks.map((t,i)=>`<tr><td class="num">${i+1}</td><td class="tname">${t.name}</td><td class="det">${t.detail}</td><td class="dur">${t.dur}개월</td></tr>`).join('')
+    + P.parallel.map(x=>`<tr class="par"><td class="num">—</td><td class="tname">${x.name}</td><td class="det">${x.detail}</td><td class="dur">${x.period}</td></tr>`).join('');
+  const head = '<div class="g-row"><span class="g-head">업무</span>' + Array.from({length:M},(_,i)=>`<span class="g-head">${i+1}개월</span>`).join('') + '</div>';
+  const bars = P.tasks.map(t=>`<div class="g-row"><span class="g-name">${t.name}</span><span class="g-bar" style="grid-column:${t.from+1} / ${t.to+2}">${t.dur}개월</span></div>`).join('')
+    + P.parallel.map(x=>`<div class="g-row"><span class="g-name">${x.name}</span><span class="g-bar soft" style="grid-column:2 / ${M+2}">${x.tag} · ${x.period}</span></div>`).join('');
+  const goals = P.tasks.map(t=>`<li><span class="m">${monthLabel(t)}</span><span><b>${t.name}</b> — ${t.goal}</span></li>`).join('')
+    + `<li><span class="m">전 기간</span><span><b>${P.parallel.map(x=>x.name).join(' · ')}</b> — IV/IM 자율 습득, 동선관리 프로그램 지속 수행</span></li>`;
+  const tasks = P.tasks.map((t,i)=>{
+    const done = t.checks.filter((_,j)=>checks[i+'-'+j]).length;
+    return `<article class="task">
+      <div class="task-top"><span class="task-no">${i+1}</span><span class="task-name">${t.name}</span><span class="status">${t.status}</span></div>
+      <span class="task-when">${t.dur}개월 · ${monthLabel(t)} · <span data-cnt="${i}">${done}/${t.checks.length}</span></span>
+      <div class="progress"><i data-bar="${i}" style="width:${done/t.checks.length*100}%"></i></div>
+      <ul class="checks">${t.checks.map((c,j)=>`<li class="${checks[i+'-'+j]?'on':''}" data-check="${i}-${j}" role="checkbox" aria-checked="${!!checks[i+'-'+j]}" tabindex="0"><span class="box"></span><span>${c}</span></li>`).join('')}</ul>
+      <div class="task-memo"><div><b>메모</b> · ${t.memo || '—'}</div></div>
+    </article>`;
+  }).join('');
+  const pars = P.parallel.map(x=>`<div class="par-card"><span class="tag">${x.tag.toUpperCase()} · ${x.period}</span><h3>${x.name}</h3><p>${x.desc}</p></div>`).join('');
+  const adds = P.additions.length
+    ? `<ul class="adds">${P.additions.map(a=>`<li><span class="d">${a.date}</span><span>${a.text}</span></li>`).join('')}</ul>`
+    : '<div class="empty">아직 추가된 항목이 없습니다. 새 업무가 정해지면 여기에 항목·기간·세부 내용과 함께 추가됩니다.</div>';
+
+  return `<div class="fade-in plan" style="--dept:${dept.color}">
+    <header class="page-head">
+      <h1 class="page-title">${dept.name}</h1>
+      <p class="page-desc">${dept.desc}</p>
+      <div class="plan-meta"><span>총 기간 <b>${M}개월</b></span></div>
+    </header>
+
+    <section class="psec"><div class="psec-h"><span class="n">01</span><h2>한눈에 보기</h2></div>
+      <table class="ptable"><thead><tr><th>#</th><th>업무</th><th class="det">세부 내용</th><th style="text-align:right">기간</th></tr></thead><tbody>${rows}</tbody></table>
+    </section>
+
+    <section class="psec"><div class="psec-h"><span class="n">02</span><h2>월별 타임라인</h2></div>
+      <div class="gantt">${head}${bars}</div>
+      <ul class="goals">${goals}</ul>
+    </section>
+
+    <section class="psec"><div class="psec-h"><span class="n">03</span><h2>전 기간 병행 과제</h2></div>
+      <div class="pars">${pars}</div>
+    </section>
+
+    <section class="psec"><div class="psec-h"><span class="n">04</span><h2>보상 프로그램</h2></div>
+      <div class="reward">
+        <span class="reward-tag">교육 이수 보상</span>
+        <h3>8개월 동안 정말 고생 많으셨습니다.</h3>
+        <p>낯선 업무를 하나씩 익히며 교육 프로그램을 끝까지 이수해 주신 노고에 감사드립니다. 그 공로를 인정하여 아래와 같이 보상합니다.</p>
+        <div class="reward-box">
+          <div><span class="rk">보상 내용</span><span class="rv">유급휴가 <b>2일</b></span></div>
+          <div><span class="rk">대상</span><span class="rv">간호 업무 습득 계획 전 과정 이수자</span></div>
+          <div><span class="rk">지급 기준</span><span class="rv">관리자의 판단하에 습득이 완료되었다고 판단될 시 지급</span></div>
+          <div><span class="rk">사용</span><span class="rv">교육 이수 확인 후 팀장과 일정 협의</span></div>
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+
+function toggleCheck(el){
+  const key = el.dataset.check, c = loadChecks();
+  c[key] = !c[key]; if(!c[key]) delete c[key];
+  localStorage.setItem(CHECK_KEY, JSON.stringify(c));
+  el.classList.toggle('on', !!c[key]); el.setAttribute('aria-checked', !!c[key]);
+  const i = key.split('-')[0], t = deptOf('plan').plan.tasks[i];
+  const done = t.checks.filter((_,j)=>c[i+'-'+j]).length;
+  document.querySelector(`[data-cnt="${i}"]`).textContent = `${done}/${t.checks.length}`;
+  document.querySelector(`[data-bar="${i}"]`).style.width = (done/t.checks.length*100)+'%';
+}
+
+function renderDept(dept){
+  if (dept.plan) return renderPlan(dept);
+  const cards = dept.items.map(it=>{
+    return cardHTML({href:`#/${dept.id}/${it.id}`, color:dept.color, code:it.code, name:it.name, desc:it.desc,
+      meta: it.dur ? `습득 기간 ${it.dur} · 문서 ${it.docs.length}건` : `문서 ${it.docs.length}건`});
+  }).join('');
+  return `<div class="fade-in" style="--dept:${dept.color}">
+    <header class="page-head">
+      <h1 class="page-title">${dept.name}</h1>
+      <p class="page-desc">${dept.desc}</p>
+    </header>
+    <div class="grid">${cards}</div>
+  </div>`;
+}
+
+function renderItem(dept, item){
+  const cards = item.docs.map(dc=>{
+    return cardHTML({href:`#/${dept.id}/${item.id}/${dc.id}`, color:dept.color, code:dc.code, name:dc.name,
+      desc:dc.desc || '', meta:dc.sub || ((dc.steps && dc.steps.length) || dc.needles ? '정리됨' : '')});
+  }).join('');
+  return `<div class="fade-in" style="--dept:${dept.color}">
+    <header class="page-head">
+      <span class="kicker">${dept.name}</span>
+      <h1 class="page-title">${item.name}</h1>
+      <p class="page-desc">${item.desc}</p>
+    </header>
+    ${item.guide ? guideHTML(item.guide) : ''}
+    <div class="grid">${cards}</div>
+  </div>`;
+}
+
+function guideHTML(g){
+  return `<section class="gd" aria-label="${g.title}">
+    <h2 class="gd-title">${g.title}</h2>
+    <ol class="gd-steps">${g.steps.map((x,i)=>`<li><span class="gd-n">${i+1}</span><div><p class="gd-t">${x[0]}</p>${x[1]?`<p class="gd-d">${x[1]}</p>`:''}</div></li>`).join('')}</ol>
+  </section>`;
+}
+
+function shotHTML(shots){
+  window._shots = shots;
+  if (shots[0] && shots[0].posList){
+    const list = x => x.terms
+      ? `<dl class="pos-terms">${x.terms.map(t=>`<div><dt>${t[0]}</dt><dd>${t[1]}</dd></div>`).join('')}</dl>${x.points?`<ul>${x.points.map(p=>`<li>${p}</li>`).join('')}</ul>`:''}`
+      : `<ul>${(x.points||[x.d]).map(p=>`<li>${p}</li>`).join('')}</ul>`;
+    const card = (x,i)=>`<div class="pos-hero pos-card"><button class="shot pos-shot" data-shot="${i}" aria-label="${x.t} 크게 보기"><span class="shot-img pos-card-img${(x.srcs&&x.srcs.length>1)?' pos-multi':''}">${(x.srcs||[x.src]).map(src=>`<img src="${src}" alt="${x.t}" loading="lazy">`).join('')}</span></button><div class="pos-hero-txt"><h3><span class="pos-num">${i+1}</span>${x.t}</h3>${list(x)}${x.note?`<div class="pos-note"><span class="pos-note-imgs">${[x.note.src, x.note.src2].filter(Boolean).map(u=>`<img src="${u}" alt="쿠션">`).join('')}</span><span><b>${x.note.t}</b></span></div>`:''}</div></div>`;
+    return `<section class="sec"><h2 class="sec-label">포지션 가이드<span class="grp-n">${shots.length}장</span></h2><div class="pos-list">${shots.map(card).join('')}</div></section>`;
+  }
+  return `<section class="sec"><h2 class="sec-label">화면 따라하기<span class="grp-n">${shots.length}장</span></h2>
+    <div class="shots">${shots.map((x,i)=>`<button class="shot" data-shot="${i}">
+      <span class="shot-img"><img src="${x.src}" alt="${x.t}" loading="lazy"></span>
+      <span class="shot-cap"><b>${i+1}</b><span><span class="shot-t">${x.t}</span>${x.d?`<span class="shot-d">${x.d}</span>`:''}</span></span>
+    </button>`).join('')}</div></section>`;
+}
+function openShot(i){
+  const sh=window._single||window._shots||[]; if(!sh.length) return;
+  i=(i+sh.length)%sh.length; const x=sh[i];
+  let lb=document.getElementById('lb');
+  if(!lb){ lb=document.createElement('div'); lb.id='lb'; document.body.appendChild(lb);
+    if(!lb._zoom){ lb._zoom=true; const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+      const apply=()=>{ lb.querySelectorAll('.lb-fig img').forEach(im=>{ im.style.setProperty('--z',lb._z||1); im.style.setProperty('--px',(lb._px||0)+'px'); im.style.setProperty('--py',(lb._py||0)+'px'); im.style.cursor=(lb._z>1)?'grab':'zoom-out'; }); };
+      lb.addEventListener('wheel',e=>{ const im=lb.querySelector('.lb-fig img'); if(!im) return; e.preventDefault(); lb._z=clamp((lb._z||1)*(e.deltaY<0?1.2:1/1.2),1,8); if(lb._z===1){lb._px=0;lb._py=0;} apply(); },{passive:false});
+      lb.addEventListener('dblclick',()=>{ lb._z=1; lb._px=0; lb._py=0; apply(); });
+      let dg=null;
+      lb.addEventListener('mousedown',e=>{ const im=e.target.closest('.lb-fig img'); if(!im||!(lb._z>1)) return; dg={x:e.clientX,y:e.clientY,px:lb._px,py:lb._py,moved:false}; e.preventDefault(); });
+      lb.addEventListener('mousemove',e=>{ if(!dg) return; const dx=e.clientX-dg.x, dy=e.clientY-dg.y; if(Math.abs(dx)+Math.abs(dy)>4) dg.moved=true; lb._px=dg.px+dx; lb._py=dg.py+dy; apply(); });
+      lb.addEventListener('mouseup',()=>{ if(dg) lb._moved=dg.moved; dg=null; }); }
+    lb.addEventListener('click',e=>{ const nv=e.target.closest('[data-lbnav]'); if(nv){ openShot(+lb.dataset.i + +nv.dataset.lbnav); return; }
+      const inFig=e.target.closest('.lb-fig');
+      if(e.target===lb||e.target.closest('[data-lbx]')||(inFig && !(lb._z>1) && !lb._moved)) closeShot();
+      lb._moved=false; }); }
+  lb.dataset.i=i;
+  if(!lb._swipe){ lb._swipe=true; let _tx=0;
+    lb.addEventListener('touchstart',e=>{_tx=e.touches[0].clientX;},{passive:true});
+    lb.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-_tx; if(Math.abs(dx)>40) openShot(+lb.dataset.i + (dx<0?1:-1));},{passive:true}); }
+  lb.innerHTML=`<figure class="lb-fig"><span class="lb-imgs">${(x.srcs||[x.src]).map(src=>`<img src="${src}" alt="${x.t}">`).join('')}</span><figcaption><b>${i+1} / ${sh.length}</b><span class="lb-t">${x.t}</span>${x.d?`<span class="lb-d">${x.d}</span>`:''}<span class="lb-hint">휠: 확대·축소 · 더블클릭: 원래 크기</span></figcaption></figure>
+    <button class="lb-x" data-lbx aria-label="닫기">✕</button>
+    ${sh.length>1?'<button class="lb-nav prev" data-lbnav="-1" aria-label="이전">‹</button><button class="lb-nav next" data-lbnav="1" aria-label="다음">›</button>':''}`;
+  lb._z=1; lb._px=0; lb._py=0; lb._moved=false;
+  lb.querySelectorAll('.lb-fig img').forEach(zim=>{ zim.style.setProperty('--z',1); zim.style.setProperty('--px','0px'); zim.style.setProperty('--py','0px'); });
+  lb.classList.add('on'); document.body.style.overflow='hidden';
+}
+function closeShot(){
+  window._single=null; const lb=document.getElementById('lb'); if(lb){ lb.classList.remove('on'); document.body.style.overflow=''; } }
+window.addEventListener('keydown',e=>{ const lb=document.getElementById('lb'); if(!lb||!lb.classList.contains('on')) return;
+  if(e.key==='Escape'){ closeShot(); } else if(e.key==='ArrowRight'){ openShot(+lb.dataset.i+1); } else if(e.key==='ArrowLeft'){ openShot(+lb.dataset.i-1); } else return;
+  e.preventDefault(); e.stopImmediatePropagation(); }, true);
+window.addEventListener('hashchange', closeShot);
+
+function phaseHTML(ph){
+  return ph.map(g=>`<section class="sec"><h2 class="sec-label">${g.title}<span class="grp-n">${g.items.length}개</span></h2>
+    <ol class="steps ph-list">${g.items.map((t,i)=>{ const m=t.match(/^\(([^)]+)\)\s*/); const tag=m?m[1]:''; const txt=m?t.slice(m[0].length):t;
+      return `<li><span class="step-n">${i+1}</span><span class="step-t">${tag?`<span class="ph-tag">${tag}</span>`:''}${txt}</span></li>`; }).join('')}</ol></section>`).join('');
+}
+function renderDoc(dept, item, doc){
+  const SBAN = {'man-241':{t:'포지션 가이드 슬라이드',s:'포지션별 환자 자세 슬라이드 열기 (구글 슬라이드 · 새 창)',h:'https://docs.google.com/presentation/d/1w3EWA_uRfpxcYFwfTwji1RBM_XlY5YlODbloDd6haF4/edit?slide=id.g274e777daad_0_33',ext:1},'man-231':{t:'상차림 · 슈처 세트',s:'슈처 세트 차리는 법과 기본 세팅 보기',h:'#/man/man-210/man-213/man-213-u'},'man-232':{t:'상차림 · 드레싱 세트',s:'드레싱 세트 차리는 법과 기본 세팅 보기',h:'#/man/man-210/man-213/man-213-d'},'man-234':{t:'상차림 · 내성발톱 세트',s:'내성발톱 세트 차리는 법과 기본 세팅 보기',h:'#/man/man-210/man-213/man-213-n'}};
+  const steps = doc.steps.map((s,i)=>`<li><span class="step-n">${i+1}</span>
+    <span><span class="step-t">${s[0]}</span><span class="step-d" style="display:block">${s[1]}</span></span></li>`).join('');
+  const notes = doc.notes.length ? `<section class="sec"><h2 class="sec-label">유의사항</h2>
+    <ul class="notes">${doc.notes.map(n=>`<li>${n}</li>`).join('')}</ul></section>` : '';
+  const forms = doc.forms.length ? `<section class="sec"><h2 class="sec-label">관련 양식</h2>
+    <div class="chips">${doc.forms.map(f=>`<button class="chip" data-toast>${FILE_ICON}${f}</button>`).join('')}</div></section>` : '';
+  const siblings = item.docs.filter(d=>d.id!==doc.id);
+  const sibIds = new Set(siblings.map(d=>d.id));
+  const relHits = doc.related.map(byCode).filter(h => h && !sibIds.has(h.doc.id));
+  const rel = (relHits.length||siblings.length) ? `<section class="sec"><h2 class="sec-label">관련 문서</h2>
+    <div class="chips">
+      ${relHits.map(h=>`<button class="chip rel mono" data-nav="#/${h.path.join('/')}">${h.doc.name}</button>`).join('')}
+      ${siblings.map(d=>`<button class="chip rel mono" data-nav="#/${dept.id}/${item.id}/${d.id}">${d.name}</button>`).join('')}
+    </div></section>` : '';
+  return `<div class="fade-in" style="--dept:${dept.color}">
+    <article class="sheet">
+      <span class="kicker">${dept.name} · ${item.name}</span>
+      <h1>${doc.name}</h1>${doc.id === 'man-243' ? '' : SBAN[doc.id] ? `<a class="setup-banner" ${SBAN[doc.id].ext ? `href="${SBAN[doc.id].h}" target="_blank" rel="noopener noreferrer"` : `data-nav="${SBAN[doc.id].h}"`}><b>${SBAN[doc.id].t}</b><span>${SBAN[doc.id].s}</span><em>${SBAN[doc.id].ext ? "↗" : "›"}</em></a>` : ''}
+      <p class="summary">${doc.summary}</p>
+      ${doc.shots ? shotHTML(doc.shots) : ''}${doc.needles ? needleHTML(doc.needles) : ''}${doc.steps.length ? `<section class="sec"><h2 class="sec-label">처리 절차</h2><ol class="steps">${steps}</ol></section>` : ''}${doc.phases ? phaseHTML(doc.phases) : ''}
+      ${notes}${forms}${rel}
+    </article>
+  </div>`;
+}
+
+function renderSubs(dept, item, doc, chain){
+  const base = location.hash.replace(/^#/,'');
+  const parentName = chain.length ? (chain.length>1 ? chain[chain.length-2].name : null) : null;
+  const mk = list => list.map(x=>cardHTML({href:`#${base}/${x.id}`, color:dept.color, hot:x.hot, name:x.cardName||x.name,
+    desc: x.count ? `<span class="cnt"><span class="cnt-l">${x.countLabel||'수량'}</span><b>${x.count.replace(/개$/,'')}</b><span class="cnt-u">개</span></span>${x.countNote ? `<span class="cnt-note">${x.countNote}</span>` : ''}` : x.groups ? `<span class="med-names">${x.groups.map(g=>g.name).join(' · ')}</span>` : x.meds ? `<span class="med-names">${x.meds.map(m=>m.n).slice(0,4).join(' · ')}${x.meds.length>4?` 외 ${x.meds.length-4}종`:''}</span>` : x.summary ? x.summary : x.drug ? (x.drug.effect ? `효과 · ${x.drug.effect}` : (x.drug.qty ? `수량 · ${x.drug.qty}` : '')) : '', meta: x.brace ? (x.brace.spec.find(r=>r[0]==='구분')||x.brace.spec.find(r=>r[0]==='사용 부위')||['',''])[1] : x.subs ? `항목 ${x.subs.length}개` : x.groups ? `약품 ${x.groups.reduce((a,g)=>a+g.meds.length,0)}종` : x.iv ? `수액 ${x.iv.length}종` : x.im ? `부위 ${x.im.sites.length}곳` : x.op ? `약품 ${x.op.length}종` : x.meds ? `약품 ${x.meds.length}종` : (x.setup || x.drug || x.count || (x.steps && x.steps.length)) ? '정리됨' : '내용 준비 중'})).join('');
+  const liveSubs = doc.subs.filter(x=>x.live), normSubs = doc.subs.filter(x=>!x.live);
+  const cards = mk(normSubs);
+  const liveCards = liveSubs.length ? mk(liveSubs).split('class="card" style="--dept:'+dept.color+'"').join('class="card card-live" style="--dept:var(--red)"') : '';
+  return `<div class="fade-in" style="--dept:${dept.color}">
+    <header class="page-head">
+      <span class="kicker">${dept.name} · ${item.name}</span>
+      <h1 class="page-title">${doc.name}</h1>
+      ${doc.summary ? `<p class="page-desc">${doc.summary}</p>` : ''}
+    </header>
+    ${doc.banner ? bannerHTML(doc.banner) : ''}
+    <div class="grid">${cards}</div>
+    ${liveCards ? `<section class="live-sec"><h2 class="live-title">실시간 약재기</h2><div class="grid">${liveCards}</div></section>` : ''}
+  </div>`;
+}
+
+function bannerHTML(b){
+  return `<section class="qbanner" aria-label="${b.title}">
+    <div class="qb-head"><span class="qb-title">${b.title}</span>${b.flow ? `<ol class="qb-flow">${b.flow.map(f=>`<li>${f}</li>`).join('<li class="qb-arr" aria-hidden="true">→</li>')}</ol>` : ''}</div>
+    <ul class="qb-items">${b.items.map(i=>`<li class="${i.hl?'hl':''}"><span class="qb-n">${i.name}</span>${i.count ? `<span class="qb-c"><span class="cnt-l">${i.label||'수량'}</span><b>${i.count}</b><span class="cnt-u">개</span></span>` : ''}${i.qty ? `<span class="qb-qty">${i.qty}</span>` : ''}${i.lines ? `<dl class="qb-lines">${i.lines.map(l=>`<div><dt>${l[0]}</dt><dd>${l[1]}</dd></div>`).join('')}</dl>` : ''}${i.note?`<span class="qb-note">${i.note}</span>`:''}</li>`).join('')}</ul>
+  </section>`;
+}
+
+function ivHTML(sub){
+  return `<p class="iv-sub">${sub.ivTitle} · 총 ${sub.iv.length}종</p>
+    <ol class="iv-list">${sub.iv.map((r,i)=>`<li class="iv-row">
+      <div class="iv-hd"><span class="iv-no">${String(i+1).padStart(2,'0')}</span><b class="iv-n">${r.n}</b><code class="iv-c">${r.c}</code><span class="iv-p">₩${r.p}</span></div>
+      <div class="iv-mix">${r.mix.map((m,j)=>`${j?'<span class="iv-plus">+</span>':''}<span class="iv-m">${m}</span>`).join('')}${r.time?`<span class="iv-t">투여 ${r.time}</span>`:''}</div>
+      <div class="iv-e">${r.e.map(e=>`<span>${e}</span>`).join('')}</div>
+    </li>`).join('')}</ol>`;
+}
+
+function imHTML(m){
+  return `<p class="im-note">${m.note}</p>
+    <div class="im-grid">${m.sites.map(x=>`<section class="im-card">
+      <div class="im-hd"><b>${x.site}</b><span class="im-part">${x.part}</span></div>
+      <ul class="im-drugs">${x.drugs.map(d=>`<li>${d}</li>`).join('')}${x.etc?'<li class="im-etc">등</li>':''}</ul>
+    </section>`).join('')}</div>`;
+}
+
+function opHTML(list){
+  return `<div class="op-list">${list.map(x=>`<section class="op-card">
+      <div class="op-hd"><b>${x.n}</b><span class="op-f">${x.f}</span>${x.code?`<span class="op-code">처방코드 <code>${x.code}</code></span>`:''}</div>
+      <dl class="op-dl">
+        <div><dt>대상</dt><dd>${x.t}</dd></div>
+        <div><dt>투여 방법</dt><dd>${x.r}</dd></div>
+        ${x.m.length?`<div><dt>참고</dt><dd>${x.m.join(' · ')}</dd></div>`:''}
+      </dl>
+    </section>`).join('')}</div>`;
+}
+
+function medHTML(list){
+  return `<div class="op-list">${list.map(x=>`<section class="op-card">
+      <div class="op-hd"><b>${x.n}</b>${x.codes ? `<span class="op-codes">${x.codes.map(c=>`<span class="op-code">${c[0]} <code>${c[1]}</code></span>`).join('')}</span>` : ''}</div>
+      ${(x.t||x.f||x.m) ? `<dl class="op-dl">
+        ${x.t?`<div><dt>투약 · 목적</dt><dd>${x.t}</dd></div>`:''}
+        ${x.f?`<div><dt>주사 간격 · 방법</dt><dd>${x.f}</dd></div>`:''}
+        ${x.m?`<div><dt>참고</dt><dd>${x.m.join('<br>')}</dd></div>`:''}
+      </dl>` : ''}
+    </section>`).join('')}</div>`;
+}
+
+function groupHTML(sub){
+  const multi = sub.groups.length > 1;
+  return `${sub.notice ? `<div class="doc-notice"><b>${sub.notice}</b>${sub.noticeSub ? `<span>${sub.noticeSub}</span>` : ''}</div>` : ''}${sub.im ? `<section class="sec"><h2 class="sec-label">주사 부위</h2>${imHTML(sub.im)}</section>` : ''}
+    ${multi ? `<nav class="grp-jump">${sub.groups.map((g,i)=>`<a href="javascript:void 0" data-jump="grp-${i}">${g.name}<span>${g.meds.length}</span></a>`).join('')}</nav>` : ''}
+    ${sub.groups.map((g,i)=>`<section class="sec grp" id="grp-${i}">${multi||sub.im ? `<h2 class="sec-label">${g.name}<span class="grp-n">${g.meds.length}종</span></h2>` : ''}${medHTML(g.meds)}</section>`).join('')}`;
+}
+
+function needleHTML(list){
+  return `<section class="sec"><h2 class="sec-label">부위별 니들 규격</h2>
+    <nav class="nd-legend">${list.map((n,i)=>`<a href="javascript:void 0" data-jump="nd-${i}" style="--nd:${n.c}"><i></i>${n.g}${n.tag?` <small>${n.tag}</small>`:''}</a>`).join('')}</nav>
+    <div class="nd-list">${list.map((n,i)=>`<section class="nd" id="nd-${i}" style="--nd:${n.c}">
+      <header class="nd-hd${n.dark?' dark':''}"><b>${n.g}${n.tag?`<em class="nd-tag">${n.tag}</em>`:''}</b><span>${n.areas.map(a=>a.a).join(' · ')}</span></header>
+      <div class="nd-body">${n.areas.map(a=>`<div class="nd-area"><div class="nd-a">${a.a}</div><ul>${a.rows.map(r=>`<li${r.s?' class="strong"':''}><div class="nd-k"><code>${r.k||'—'}</code>${r.f?`<small>(${r.f})</small>`:''}</div><span>${r.d||''}${r.q?' <em class="nd-q">확인 필요</em>':''}</span></li>`).join('')}</ul></div>`).join('')}</div>
+    </section>`).join('')}</div></section>`;
+}
+
+function braceHTML(b){
+  window._shots = b.pages;
+  const specDl = `<dl class="doc-meta br-spec">${b.spec.map(r=>`<div><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('')}</dl>`;
+  return `${b.product ? `<div class="br-top"><figure class="br-prod"><img src="${b.product}" alt="제품 사진" data-pshot="${b.product}" data-pt="제품 사진" style="cursor:zoom-in"><figcaption>제품 사진</figcaption></figure>${specDl}</div>` : specDl}
+    ${b.sizes ? `<section class="sec"><h2 class="sec-label">사이즈</h2><div class="br-size-wrap"><table class="br-size"><thead><tr>${b.sizes.head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${b.sizes.rows.map(r=>`<tr>${r.map((c,k)=>k?`<td>${c}</td>`:`<th>${c}</th>`).join('')}</tr>`).join('')}</tbody></table></div></section>` : ''}
+    ${b.feats ? `<section class="sec"><h2 class="sec-label">특징 · 환자 안내</h2><ul class="br-feats">${b.feats.map(f=>`<li>${f}</li>`).join('')}</ul></section>` : ''}
+    ${b.steps ? `<section class="sec"><h2 class="sec-label">착용 순서</h2><ol class="steps br-steps">${b.steps.map((t,i)=>{const k=t.indexOf('<small>');const m=k<0?t:t.slice(0,k);const n=k<0?'':t.slice(k+7).replace('</small>','');return `<li><span class="step-n">${i+1}</span><span><span class="step-t">${m}</span>${n?`<span class="br-note">${n}</span>`:''}</span></li>`;}).join('')}</ol></section>` : ''}
+    <section class="sec"><h2 class="sec-label">${b.photo?'착용 모습':'착용 사진'}<span class="grp-n">${b.pages.length}장</span></h2>
+      <div class="br-pages${b.photo?' br-photos':''}">${b.pages.map((x,i)=>`<button class="shot" data-shot="${i}"><span class="shot-img ${b.photo?'br-ph':'br-img'}"><img src="${x.src}" alt="${x.t}" loading="lazy"></span><span class="shot-cap"><b>${i+1}</b><span><span class="shot-t">${x.t}</span>${x.d?`<span class="shot-d">${x.d}</span>`:''}</span></span></button>`).join('')}</div>
+    </section>`;
+}
+function setupHTML(x){
+  x = Object.assign({photos:[],spec:[]}, x);
+  const phase = (ph,cls) => `<section class="su-phase ${cls}"><h2 class="sec-label">${ph.title}</h2>
+    <ol class="su-steps">${ph.steps.map((t,i)=>`<li><span class="step-n">${i+1}</span><span>${t}</span></li>`).join('')}</ol>
+    ${ph.alert ? `<p class="su-alert">${ph.alert}</p>` : ''}</section>`;
+  window._shots = x.photos;
+  return `${x.before ? phase(x.before,'su-before') : ''}
+    <section class="sec"><h2 class="sec-label">세트 구성</h2>
+      <div class="su-set">
+        <div class="su-photos">${x.photos.map((ph,i)=>`<button class="shot" data-shot="${i}"><span class="shot-img su-img"${x.ratio?` style="aspect-ratio:${x.ratio}"`:''}><img src="${ph.src}" alt="${ph.t}"></span><span class="shot-cap"><b>${i+1}</b><span><span class="shot-t">${ph.t}</span><span class="shot-d">${ph.d}</span></span></span></button>`).join('')}</div>
+        <div>
+          <dl class="su-spec">${x.spec.map(r=>`<div${r[2]?' class="hl"':''}><dt>${r[0]}</dt><dd>${r[1]}</dd></div>`).join('')}</dl>
+          ${x.ex ? `<div class="su-ex"><span class="su-ex-l">예시</span><code>${x.ex.q}</code><span class="su-ex-r"><span>${x.ex.n}</span><b>= ${x.ex.a}</b></span></div>` : ''}
+        </div>
+      </div>
+    </section>
+    ${x.after ? phase(x.after,'su-after') : ''}`;
+}
+
+function renderSub(dept, item, doc, sub, chain){
+  const parent = chain.length>1 ? chain[chain.length-2] : doc;
+  const d = sub.drug;
+  const body = sub.brace ? braceHTML(sub.brace) : sub.setup ? setupHTML(sub.setup) : sub.groups ? groupHTML(sub) : sub.iv ? ivHTML(sub) : sub.im ? imHTML(sub.im) : sub.op ? opHTML(sub.op) : sub.meds ? medHTML(sub.meds) : sub.count && !d ? `
+      <div class="cnt-big"><span class="cnt-l">${sub.countLabel||'수량'}</span><b>${sub.count.replace(/개$/,'')}</b><span class="cnt-u">개</span></div>${sub.countNote ? `<p class="cnt-note cnt-note-big">${sub.countNote}</p>` : ''}` : d ? `
+      <dl class="doc-meta drug-spec">
+        ${d.syringe ? `<div><dt>주사기 용량</dt><dd>${d.syringe}${d.syringeNote ? `<small class="dd-sub">${d.syringeNote}</small>` : ''}</dd></div>` : ''}
+        ${d.needle ? `<div><dt>바늘 굵기</dt><dd>${d.needle}</dd></div>` : ''}
+        ${d.qty ? `<div><dt>${sub.live ? '수량' : '약재기 시 수량'}</dt><dd>${d.qty}${d.qtyNote ? `<small class="dd-sub">${d.qtyNote}</small>` : ''}</dd></div>` : ''}
+      </dl>
+      <section class="sec"><h2 class="sec-label">믹스${d.noMix ? '<span class="nomix">믹스 X</span>' : ''}</h2>
+        ${d.mix ? `<ol class="mix">${d.mix.map(m=>`<li><span class="mx-n">${m[0]}</span>${m[1] ? `<span class="mx-dot"></span><span class="mx-v">${m[1]}</span>` : ''}</li>`).join('')}</ol>` : ''}
+        ${d.product ? `<div class="product"><span>약품명</span><b>${d.product}</b></div>` : ''}
+      </section>
+      ${d.effect !== undefined ? `<section class="sec"><h2 class="sec-label">효과</h2>
+        <p class="effect">${d.effect || '—'}</p>
+      </section>` : ''}` : '';
+  const base = `#/${dept.id}/${item.id}/${doc.id}`;
+  const sib = (parent.subs || []);
+  const si = sib.findIndex(s=>s.id===sub.id);
+  const pv = si > 0 ? sib[si-1] : null, nx = si > -1 && si < sib.length-1 ? sib[si+1] : null;
+  const navBtns = `<div class="pg-nav">${pv?`<button type="button" data-nav="${base}/${pv.id}">‹ 이전</button>`:`<button type="button" disabled>‹ 이전</button>`}${nx?`<button type="button" data-nav="${base}/${nx.id}">다음 ›</button>`:`<button type="button" disabled>다음 ›</button>`}</div>`;
+  return `<div class="fade-in" style="--dept:${sub.live ? 'var(--red)' : dept.color}">
+    <article class="sheet${sub.iv ? ' sheet-iv' : ''}" style="min-height:260px">
+      <span class="kicker">${doc.name === parent.name ? doc.name : `${doc.name} · ${parent.name}`}</span>
+      <div class="sub-hrow"><h1>${sub.name}</h1>${navBtns}</div>${d && d.note ? `<p class="drug-note">${d.note}</p>` : ''}${sub.id === 'man-231' ? `<a class="setup-banner" data-nav="#/man/man-210/man-213/man-213-u"><b>상차림 · 슈처 세트</b><span>슈처 세트 차리는 법과 기본 세팅 보기</span><em>›</em></a>` : ''}${body}
+    </article>
+  </div>`;
+}
+
+function render(){
+  const ids = parseHash();
+  const dept = ids[0] ? deptOf(ids[0]) : null;
+  const item = dept && ids[1] ? dept.items.find(i=>i.id===ids[1]) : null;
+  const doc  = item && ids[2] ? item.docs.find(d=>d.id===ids[2]) : null;
+  const chain = []; let cur = doc;
+  for (let k=3; cur && cur.subs && ids[k]; k++){ const nx = cur.subs.find(x=>x.id===ids[k]); if(!nx) break; chain.push(nx); cur = nx; }
+  const sub = chain.length ? chain[chain.length-1] : null;
+  const path = sub ? `${doc.name} › ${sub.name}` : dept && item && doc ? `${dept.name} › ${item.name} › ${doc.name}` : dept ? dept.name : '홈';
+  document.title = `${path} — 반듯한정형외과 간호팀 신규입사자 안내문`;
+
+  $crumbs.innerHTML = crumbHtml(dept, item, doc, chain);
+  $back.hidden = !(dept);
+  $view.innerHTML = sub && sub.subs ? renderSubs(dept, item, sub, chain)
+                  : sub ? renderSub(dept, item, doc, sub, chain)
+                  : doc && doc.subs ? renderSubs(dept, item, doc, [])
+                  : doc ? renderDoc(dept, item, doc)
+                  : item ? renderItem(dept, item)
+                  : dept ? renderDept(dept)
+                  : renderHome();
+  window.scrollTo({top:0, behavior:'auto'});
+  if (window._hlTerms){ const t = window._hlTerms; window._hlTerms = null; markPage(t); }
+}
+
+function markPage(terms){
+  if (!terms || !terms.length) return;
+  const re = new RegExp('('+terms.map(escRe).join('|')+')','gi'), reT = new RegExp(terms.map(escRe).join('|'),'i');
+  const walker = document.createTreeWalker($view, NodeFilter.SHOW_TEXT, { acceptNode: n => n.nodeValue.trim() && !n.parentNode.closest('mark,script,style') && reT.test(n.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+  nodes.forEach(n => { re.lastIndex = 0; const f = document.createDocumentFragment(); let last = 0; n.nodeValue.replace(re, (m, g, i) => { f.appendChild(document.createTextNode(n.nodeValue.slice(last, i))); const mk = document.createElement('mark'); mk.className = 'page-hl'; mk.textContent = m; f.appendChild(mk); last = i + m.length; return m; }); f.appendChild(document.createTextNode(n.nodeValue.slice(last))); n.parentNode.replaceChild(f, n); });
+  const first = $view.querySelector('mark.page-hl');
+  if (first) requestAnimationFrame(() => { const y = first.getBoundingClientRect().top + window.scrollY - 140; if (y > 200) window.scrollTo({top: y, behavior: 'smooth'}); first.classList.add('page-hl-first'); });
+}
+
+/* 의학 용어 검색 (위키백과 — 무료 API) */
+const MED_ABBR = {
+  'jt':'joint','jts':'joints','sc':'sternoclavicular','scj':'sternoclavicular',
+  'ac':'acromioclavicular','si':'sacroiliac','tmj':'temporomandibular','cmc':'carpometacarpal',
+  'mcp':'metacarpophalangeal','pip':'proximal interphalangeal','dip':'distal interphalangeal','mtp':'metatarsophalangeal',
+  'acl':'anterior cruciate ligament','pcl':'posterior cruciate ligament','mcl':'medial collateral ligament','lcl':'lateral collateral ligament',
+  'atfl':'anterior talofibular ligament','cfl':'calcaneofibular ligament',
+  'itb':'iliotibial band','oa':'osteoarthritis','ra':'rheumatoid arthritis',
+  'fx':'fracture','c-spine':'cervical spine','t-spine':'thoracic spine','l-spine':'lumbar spine','rom':'range of motion'
+};
+function medExpand(q){
+  const low = q.toLowerCase();
+  const out = low.replace(/[a-z가-힣-]+/g, w => (MED_ABBR[w] !== undefined ? MED_ABBR[w] : w));
+  return {q: out, expanded: out !== low};
+}
+async function medSearch(raw){
+  const q0 = raw.trim(); if(!q0) return;
+  const ex = medExpand(q0); const q = ex.q;
+  let modal = document.getElementById('medModal');
+  if (!modal){
+    modal = document.createElement('div'); modal.id = 'medModal';
+    modal.innerHTML = `<div class="ms-pop"><button class="ms-x" data-msx aria-label="닫기">✕</button><div class="ms-pop-body" id="medOut"></div></div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal || e.target.closest('[data-msx]')) modal.classList.remove('on'); });
+  }
+  modal.classList.add('on');
+  const out = document.getElementById('medOut');
+  out.innerHTML = '<p class="ms-loading">검색 중…</p>';
+  const head = ex.expanded ? `<p class="ms-interp">「${q0}」→ 의학 용어로 해석: <b>${q}</b></p>` : '';
+  const wikiURL = (lang, term) => `https://${lang}.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrlimit=1&prop=pageimages|extracts&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=520&callback=`;
+  const run = (lang, term) => new Promise(res => {
+    const name = 'mscb' + Math.random().toString(36).slice(2);
+    const done = j => { clearTimeout(timer); delete window[name]; const pages = j && j.query && j.query.pages; res(pages && pages.length ? {...pages[0], lang} : null); };
+    const timer = setTimeout(() => { delete window[name]; res(null); }, 6000);
+    window[name] = done;
+    const sc = document.createElement('script');
+    sc.onerror = () => { clearTimeout(timer); delete window[name]; res(null); };
+    sc.src = wikiURL(lang, term) + name;
+    document.head.appendChild(sc);
+  });
+  const fetchRun = async (lang, term) => {
+    try { const r = await fetch(wikiURL(lang, term).replace('&callback=','')); const j = await r.json(); const p = j.query && j.query.pages; return (p && p.length) ? {...p[0], lang} : null; }
+    catch(e){ return null; }
+  };
+  try {
+    let hit = null;
+    const langs = ex.expanded ? ['en','ko'] : ['ko','en'];
+    for (const term of (ex.expanded ? [q, q0] : [q0])){
+      for (const lang of langs){
+        hit = await fetchRun(lang, term) || await run(lang, term);
+        if (hit && (lang==='en' || hit.thumbnail)) break;
+      }
+      if (hit) break;
+    }
+    if (hit && !hit.thumbnail){
+      try {
+        const ll = await fetch(`https://ko.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&titles=${encodeURIComponent(hit.title)}&prop=langlinks&lllang=en`);
+        const lj = await ll.json();
+        const enT = lj.query && lj.query.pages && lj.query.pages[0] && lj.query.pages[0].langlinks && lj.query.pages[0].langlinks[0] && lj.query.pages[0].langlinks[0]['*'];
+        if (enT){ const eh = await fetchRun('en', enT); if (eh && eh.thumbnail) hit = {title:hit.title, extract:hit.extract, lang:'ko', thumbnail:eh.thumbnail}; }
+      } catch(e){}
+    }
+    if (!hit){
+      out.innerHTML = head + `<div class="ms-card"><p class="ms-none">문서 뷰어에서 외부 검색이 차단되었습니다. 아래 버튼으로 새 창에서 확인해 주세요.</p><a class="ms-link" href="https://ko.wikipedia.org/w/index.php?search=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer">새 창에서 「${q}」 검색 결과 열기 ↗</a></div>`;
+      return;
+    }
+    const link = `https://${hit.lang}.wikipedia.org/wiki/${encodeURIComponent(hit.title.replace(/ /g,'_'))}`;
+    let koName = '';
+    if (hit.lang === 'en'){
+      try {
+        const ll = await fetch(`https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*&titles=${encodeURIComponent(hit.title)}&prop=langlinks&lllang=ko`);
+        const lj = await ll.json();
+        const koT = lj.query && lj.query.pages && lj.query.pages[0] && lj.query.pages[0].langlinks && lj.query.pages[0].langlinks[0] && lj.query.pages[0].langlinks[0]['*'];
+        if (koT) koName = `<span>한국어: ${koT}</span>`;
+      } catch(e){}
+    }
+    out.innerHTML = head + `<div class="ms-card"><div class="ms-head"><b>${hit.title}</b>${koName}<span>${hit.lang==='ko'?'위키백과(한국어)':'Wikipedia (English)'}</span></div><p class="ms-ext">${(hit.extract||'설명이 없습니다.').slice(0,600)}</p>${hit.thumbnail?`<figure class="ms-fig"><img src="${hit.thumbnail.source}" alt="${hit.title}"><figcaption>${hit.title} — 관련 이미지</figcaption></figure>`:'<p class="ms-noimg">이 용어의 이미지가 없습니다.</p>'}<a class="ms-link" href="${link}" target="_blank" rel="noopener noreferrer">위키백과에서 더 보기 ↗</a></div>`;
+  const figImg = out.querySelector('.ms-fig img');
+  if (figImg) figImg.addEventListener('error', () => { const f2 = figImg.closest('.ms-fig'); if (f2) f2.outerHTML = '<p class="ms-noimg">이미지를 불러올 수 없습니다.</p>'; });
+  } catch(err){ out.innerHTML = head + `<div class="ms-card"><p class="ms-none">검색에 실패했습니다 — 네트워크를 확인해 주세요.</p><a class="ms-link" href="https://ko.wikipedia.org/w/index.php?search=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer">새 창에서 「${q}」 검색 결과 열기 ↗</a></div>`; }
+}
+document.addEventListener('click', e=>{
+  if (e.target.id === 'medGo'){ const q = document.getElementById('medQ').value.trim(); if(q) medSearch(q); }
+});
+document.addEventListener('keydown', e=>{
+  if (e.key === 'Enter' && e.target.id === 'medQ'){ const q = e.target.value.trim(); if(q) medSearch(q); }
+  if (e.key === 'Escape' && document.getElementById('medModal')) document.getElementById('medModal').classList.remove('on');
+});
+
+/* 이벤트: 카드 클릭 / 양식 칩 / 뒤로가기 / ESC / 해시 변경 */
+document.addEventListener('click', e=>{
+  const pb = e.target.closest('[data-pshot]');
+  if (pb){ window._single=[{src:pb.dataset.pshot, t:pb.dataset.pt||'제품 사진'}]; openShot(0); return; }
+  const shb = e.target.closest('[data-shot]');
+  if (shb){ window._single=null; openShot(+shb.dataset.shot); return; }
+  const ck = e.target.closest('[data-check]');
+  if (ck){ toggleCheck(ck); return; }
+  const jp = e.target.closest('[data-jump]');
+  if (jp){ const el = document.getElementById(jp.dataset.jump); if (el) window.scrollTo({top: el.getBoundingClientRect().top + window.scrollY - 70, behavior:'smooth'}); return; }
+  const nav = e.target.closest('[data-nav]');
+  if (nav){ location.hash = nav.dataset.nav; return; }
+  const t = e.target.closest('[data-toast]');
+  if (t){
+    $toast.textContent = '양식 파일은 간호팀 공용 폴더에서 받을 수 있어요.';
+    $toast.classList.add('show');
+    clearTimeout($toast._t);
+    $toast._t = setTimeout(()=>$toast.classList.remove('show'), 2200);
+  }
+});
+const $q = document.getElementById('q'), $pop = document.getElementById('searchPop');
+let _sel = 0, _res = [];
+function drawSearch(){
+  const q=$q.value.trim(); if(!q){ $pop.hidden=true; return; }
+  const terms=q.toLowerCase().split(/\s+/).filter(Boolean);
+  _res=runSearch(q); _sel=Math.min(_sel,Math.max(0,_res.length-1));
+  $pop.innerHTML = _res.length ? `<div class="sr-head">검색 결과 ${_res.length}${_res.length===40?'+':''}건</div>` + _res.map((r,i)=>`<button class="sr${i===_sel?' on':''}" data-sr="${i}">
+      <span class="sr-t">${hl(r.t,terms)}</span>${r.p?`<span class="sr-p">${r.kind} · ${hl(r.p,terms)}</span>`:`<span class="sr-p">${r.kind}</span>`}${r.b?`<span class="sr-s">${hl(snippet(r.b,terms),terms)}</span>`:''}
+    </button>`).join('') : `<div class="sr-empty">‘${hl(q,[])}’에 대한 검색 결과가 없어요.</div>`;
+  $pop.hidden=false;
+}
+function goSearch(i){ const r=_res[i]; if(!r) return; $pop.hidden=true; $q.blur(); window._hlTerms = $q.value.trim().split(/\s+/).filter(Boolean); if(location.hash===r.h) render(); else location.hash=r.h; }
+$q.addEventListener('input', ()=>{ _sel=0; drawSearch(); });
+$q.addEventListener('focus', drawSearch);
+$q.addEventListener('keydown', e=>{
+  if(e.key==='ArrowDown'){ e.preventDefault(); _sel=Math.min(_sel+1,_res.length-1); drawSearch(); const on=$pop.querySelector('.sr.on'); if(on) $pop.scrollTop=on.offsetTop-$pop.clientHeight/2; }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); _sel=Math.max(_sel-1,0); drawSearch(); const on=$pop.querySelector('.sr.on'); if(on) $pop.scrollTop=on.offsetTop-$pop.clientHeight/2; }
+  else if(e.key==='Enter'){ e.preventDefault(); goSearch(_sel); }
+  else if(e.key==='Escape'){ $q.value=''; $pop.hidden=true; $q.blur(); e.stopPropagation(); }
+});
+$pop.addEventListener('mousedown', e=>{ const b=e.target.closest('[data-sr]'); if(b){ e.preventDefault(); goSearch(+b.dataset.sr); } });
+document.addEventListener('mousedown', e=>{ if(!e.target.closest('#search')) $pop.hidden=true; });
+document.addEventListener('keydown', e=>{ if(e.key==='/' && document.activeElement!==$q && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)){ e.preventDefault(); $q.focus(); $q.select(); } });
+
+$back.addEventListener('click', ()=>{
+  const ids = parseHash(); ids.pop();
+  location.hash = ids.length ? '/'+ids.join('/') : '/';
+});
+document.addEventListener('keydown', e=>{
+  const ck = e.target.closest && e.target.closest('[data-check]');
+  if (ck && (e.key===' '||e.key==='Enter')){ e.preventDefault(); toggleCheck(ck); return; }
+  if (e.key === 'Escape' && document.activeElement !== $q && parseHash().length) $back.click();
+});
+window.addEventListener('hashchange', render);
+
+/* ── 의학용어 검색 팝업 + 의학용어 전용 필터 ── */
+const MED_CATS = ['의학','해부학','생리학','병리학','약리학','질병','질환','증후군','약물','약학','약제','처방','치의학','간호학','임상','응급의학','외과','내과','정형외과','신경학','신경과','정신의학','종양','세균학','바이러스','면역학','유전학','독성학','재활','소독','감염','방사선','마취','소아','산부인과','이비인후','안과','피부과','비뇨의학','흉부외과','신장','심장','폐','소화기','내분비','호르몬','뼈','근골격','관절','근육','인체','건강','수술','항생제','백신','염증','외상','골절'];
+const MED_SUFFIX = /(근육|신경|골절|증후군|부전|궤양|염증|종양|질환|항생제|백신)$/;
+let _medCtrl = null;
+function medModalEl(){ return document.getElementById('medModal'); }
+function openMedModal(q){
+  const m = medModalEl(); if(!m) return;
+  if(q) document.getElementById('medQm').value = q;
+  m.hidden = false;
+  if(q && q.trim()) runMedPopup(q.trim());
+  const inp = document.getElementById('medQm'); if(inp) inp.focus();
+}
+function closeMedModal(){
+  const m = medModalEl(); if(!m) return;
+  m.hidden = true;
+  if(_medCtrl) _medCtrl.abort();
+}
+async function runMedPopup(q){
+  const mres = document.getElementById('medResults'); if(!mres) return;
+  if(!q){ mres.hidden = true; mres.innerHTML = ''; return; }
+  if(_medCtrl) _medCtrl.abort();
+  _medCtrl = new AbortController();
+  mres.hidden = false;
+  mres.innerHTML = '<div class="ms-state">위키백과에서 &lsquo;' + hl(q,[]) + '&rsquo; 의학용어를 찾는 중이에요&hellip;</div>';
+  try{
+    const sUrl = 'https://ko.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srlimit=14&srprop=size&srsearch=' + encodeURIComponent(q);
+    const sr = await fetch(sUrl, {signal:_medCtrl.signal}).then(r=>r.json());
+    const hits = (sr.query && sr.query.search) || [];
+    const none = '<div class="ms-state">&lsquo;' + hl(q,[]) + '&rsquo;에 해당하는 의학용어를 위키백과에서 찾지 못했어요.<br>병명·해부학 용어·약품명으로 다시 검색해 보세요.</div>';
+    if(!hits.length){ mres.innerHTML = none; return; }
+    const dUrl = 'https://ko.wikipedia.org/w/api.php?action=query&format=json&origin=*&prop=extracts%7Clanglinks%7Cpageimages%7Ccategories&exintro=1&explaintext=1&exlimit=14&lllimit=max&pithumbsize=140&cllimit=max&pageids=' + hits.map(h=>h.pageid).join('%7C');
+    const dr = await fetch(dUrl, {signal:_medCtrl.signal}).then(r=>r.json());
+    const order = new Map(hits.map((h,i)=>[h.pageid, i]));
+    const pages = (dr.query ? Object.values(dr.query.pages || {}) : [])
+      .sort((a,b)=>((order.get(a.pageid) ?? 99) - (order.get(b.pageid) ?? 99)));
+    const isMed = p => {
+      if(MED_SUFFIX.test(p.title || '')) return true;
+      return (p.categories || []).some(c => MED_CATS.some(k => (c.title || '').includes(k)));
+    };
+    const med = pages.filter(isMed).slice(0, 6);
+    if(!med.length){ mres.innerHTML = none; return; }
+    mres.innerHTML = med.map(p=>{
+      const en = ((p.langlinks||[]).find(l=>l.lang==='en')||{})['*'] || '';
+      const full = (p.extract||'').replace(/\s+/g,' ');
+      const ex = full.slice(0,110);
+      const th = p.thumbnail && p.thumbnail.source;
+      const url = 'https://ko.wikipedia.org/wiki/' + encodeURIComponent((p.title||'').replace(/ /g,'_'));
+      return '<a class="ms-item" href="' + url + '" target="_blank" rel="noopener">'
+        + (th ? '<img class="ms-thumb" src="' + th + '" alt="" loading="lazy">' : '<span class="ms-noimg">+</span>')
+        + '<span class="ms-main"><span class="ms-t">' + hl(p.title||'',[]) + (en ? '<em class="ms-en">' + hl(en,[]) + '</em>' : '') + '</span>'
+        + (ex ? '<span class="ms-x">' + hl(ex,[]) + (full.length>110 ? '&hellip;' : '') + '</span>' : '')
+        + '</span></a>';
+    }).join('');
+  }catch(err){
+    if(err && err.name==='AbortError') return;
+    mres.innerHTML = '<div class="ms-state">지금은 위키백과에 연결할 수 없어요. 네트워크 연결 후 다시 시도해 주세요.</div>';
+  }
+}
+/* 카드의 검색 버튼·Enter를 가로채 팝업으로 연결(기존 인라인 결과 대체) */
+document.addEventListener('click', e=>{
+  if(!e.target.closest) return;
+  if(e.target.closest('#medGo')){ e.preventDefault(); e.stopImmediatePropagation(); const q = document.getElementById('medQ').value.trim(); if(q) openMedModal(q); return; }
+  if(e.target.closest('#medGo2')){ runMedPopup(document.getElementById('medQm').value.trim()); return; }
+  if(e.target.closest('[data-msclose]')){ closeMedModal(); return; }
+}, true);
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && e.target && e.target.id==='medQ'){ e.preventDefault(); e.stopImmediatePropagation(); const q = e.target.value.trim(); if(q) openMedModal(q); }
+  else if(e.key==='Enter' && e.target && e.target.id==='medQm'){ e.preventDefault(); runMedPopup(e.target.value.trim()); }
+  else if(e.key==='Escape' && medModalEl() && !medModalEl().hidden){ e.stopImmediatePropagation(); closeMedModal(); }
+}, true);
+/* 열기: #/경로 해시 지원 */
+render();
+</script>
+</body>
+</html>

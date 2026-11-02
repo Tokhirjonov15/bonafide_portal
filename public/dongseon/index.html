@@ -1886,6 +1886,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   </div>
   <button class="btn" id="logoutBtn" style="display:none" onclick="logout()" title="로그아웃"><i data-lucide="log-out"></i> 로그아웃</button>
   <button class="btn" id="kbBtn" style="display:none" onclick="openKb()" title="고시 체크 — 보험·청구 기준을 물으면 심평원·복지부 자료에서 찾아 근거(문서·쪽)와 함께 답합니다"><i data-lucide="message-circle-question"></i> 고시 체크</button>
+  <button class="btn" id="nurseBtn" style="display:none" onclick="openNurse()" title="간호 체크 — 간호팀 신규입사자 안내문(포지션·보조기·셋팅·슬립 보는 법)"><i data-lucide="book-open-check"></i> 간호 체크</button>
   <button class="btn tb-hide-btn" onclick="toggleTopbar(true)" title="상단 바 숨기기 (보드를 넓게) — 다시 열려면 맨 위 가운데 [▾ 메뉴]"><i data-lucide="chevron-up"></i></button>
 </div>
 <!-- 상단 바 숨김 (2026-10-09 요청) — 숨기면 맨 위 가운데 작은 손잡이만. 이 기기에 기억 -->
@@ -5313,6 +5314,7 @@ function updateUserPill(){
   const sb=document.getElementById('statsBtn'),rb=document.getElementById('roomsBtn');
   const rtb0=document.getElementById('routinesBtn');
   const kbb=document.getElementById('kbBtn');if(kbb)kbb.style.display=currentUser?'':'none';
+  const nub=document.getElementById('nurseBtn');if(nub)nub.style.display=currentUser?'':'none';
   if(!currentUser){pill.style.display='none';if(lb)lb.style.display='none';if(sb)sb.style.display='none';if(rb)rb.style.display='none';if(rtb0)rtb0.style.display='none';return;}
   if(sb)sb.style.display=canStats()?'':'none';
   if(rb)rb.style.display=isAdmin()?'':'none';
@@ -9018,7 +9020,7 @@ function comboify(inp){
 function comboifyAll(root){(root||document).querySelectorAll('input[list]').forEach(el=>{if(el.id==='f_reload')return;comboify(el);});}   // f_reload 는 검색창(입력으로 거르는 게 목적) → 그대로
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{try{comboifyAll(document);}catch(e){console.warn('combo',e);}});else{try{comboifyAll(document);}catch(e){console.warn('combo',e);}}
 /* 상단 바: 사용자 pill · 로그아웃 단추를 '내원' 탭 옆(첫 줄)으로 옮긴다 — 도구 단추가 많아져 둘째 줄 끝으로 밀려 있었음 (2026-09-17) */
-(function moveUserPill(){const run=()=>{try{const t=document.getElementById('dischTab'),u=document.getElementById('userPill'),l=document.getElementById('logoutBtn'),k=document.getElementById('kbBtn');if(t&&u&&l)t.after(u,l);if(l&&k)l.after(k);}catch(e){console.warn('userPill move',e);}};
+(function moveUserPill(){const run=()=>{try{const t=document.getElementById('dischTab'),u=document.getElementById('userPill'),l=document.getElementById('logoutBtn'),k=document.getElementById('kbBtn'),nb=document.getElementById('nurseBtn');if(t&&u&&l)t.after(u,l);if(l&&k)l.after(k);if(k&&nb)k.after(nb);}catch(e){console.warn('userPill move',e);}};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run);else run();})();
 /* 배경색 선택: 시트 범례색 + 자주 쓰는 색 + 임의색(컬러 피커). 값은 #bke_color 에 */
 const BK_SWATCHES=[['','없음'],['#ffe599','내원'],['#ffff00','임시치료실'],['#ff0000','치료실 없음'],['#00ff00','시트·비트확인'],['#00ffff','실손 청구여부 확인'],['#9900ff','카톡친추 확인'],['#8e7cc3','보라'],['#b7e1cd','연두'],['#f4cccc','연분홍'],['#cfe2f3','연파랑']];
@@ -16191,6 +16193,26 @@ boot();
   document.addEventListener('keydown',e=>{if(e.target&&e.target.id==='kbQ'&&e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();kbAsk();}
     if(e.key==='Escape'){const p=document.getElementById('kbPanel');if(p&&p.style.display!=='none')closeKb();}});
 })();
+</script>
+<!-- 간호 체크 (2026-11-02 요청): 간호팀이 GenSpark 로 만든 신규입사자 안내문(ZIP)을 nurse/ 에 그대로 두고 전체 화면으로 띄운다.
+     새 판으로 바꿀 때: ZIP 을 풀어 nurse/ 를 통째로 바꾸고 배포 — assets/slip 의 화면 캡처는 환자 이름·차트번호·생년월일을 가린 것으로 다시 덮어쓴다 -->
+<div id="nursePanel" class="nurse-panel" style="display:none">
+  <div class="nurse-head"><b>간호 체크</b><span style="flex:1"></span>
+    <button type="button" class="btn sm" onclick="window.open('/dongseon/nurse/','_blank')" title="새 창(탭)으로 열기">새 창</button>
+    <button type="button" class="btn sm" onclick="closeNurse()" title="닫기">✕</button></div>
+  <iframe id="nurseFrame" title="간호 체크"></iframe>
+</div>
+<style>
+  .nurse-panel{position:fixed;inset:0;z-index:995;background:var(--panel);display:flex;flex-direction:column}
+  .nurse-head{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line)}
+  .nurse-head b{font-size:15px}
+  .nurse-panel iframe{flex:1;width:100%;border:0;background:#fff}
+</style>
+<script>
+  window.openNurse=()=>{const f=document.getElementById('nurseFrame');if(!f.getAttribute('src'))f.setAttribute('src','/dongseon/nurse/');   // 처음 열 때만 불러온다(보드 로딩에 영향 없게)
+    document.getElementById('nursePanel').style.display='';};
+  window.closeNurse=()=>{document.getElementById('nursePanel').style.display='none';};
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){const p=document.getElementById('nursePanel');if(p&&p.style.display!=='none')closeNurse();}});
 </script>
 </body>
 </html>
