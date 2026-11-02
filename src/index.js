@@ -597,6 +597,27 @@ async function dongseonStt(request, env) {
   }
   return json({ error: "x-provider 는 openai 또는 clova" }, 400);
 }
+/* 초진·90일초진 녹음 요약 → 특이사항 한 줄 (2026-11-02 요청). 동선관리가 받아쓴 글을 보내면 짧은 요약만 돌려준다 — 글·요약은 여기 저장하지 않는다.
+   모델: OPENAI_SUM_MODEL (기본 gpt-4.1-mini) */
+const RECSUM_SYS = "정형외과 초진 진료실 대화를 받아쓴 글입니다(받아쓰기 오류가 섞여 있을 수 있음). 직원이 환자 특이사항 칸에서 한눈에 볼 요약을 한국어로 씁니다.\n"
+  + "- 한 줄, 120자 안쪽, 가운뎃점(·)으로 이어 쓴다. 머리말·번호·따옴표 없이 요약만.\n"
+  + "- 순서: 아픈 부위·증상·기간 / 다친 원인(사고·운동 등) / 과거력·복용약·알레르기 등 주의할 점 / 원장님이 말한 진단·검사·치료 계획.\n"
+  + "- 대화에 없는 내용은 지어내지 않는다. 말한 것이 거의 없으면 '요약할 내용 없음' 이라고만 쓴다.";
+async function dongseonRecSum(request, env) {
+  if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 가 설정되지 않았습니다." }, 501);
+  const b = await request.json().catch(() => ({}));
+  const text = String(b.text || "").trim().slice(0, 60000);
+  if (text.length < 20) return json({ error: "글이 너무 짧습니다." }, 400);
+  const r = await fetch("https://api.openai.com/v1/responses", { method: "POST",
+    headers: { authorization: "Bearer " + env.OPENAI_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ model: env.OPENAI_SUM_MODEL || "gpt-4.1-mini", instructions: RECSUM_SYS, input: text, max_output_tokens: 300 }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
+  let sum = "";
+  for (const o of j.output || []) if (o.type === "message") for (const c of o.content || []) if (c.type === "output_text") sum += c.text || "";
+  sum = sum.replace(/\s*\n+\s*/g, " · ").trim().slice(0, 300);
+  return json({ sum, empty: !sum || /^요약할 내용 없음/.test(sum) });
+}
 /* ============================================================
    고시 체크 (2026-10-27) — 직원이 보험·청구 기준을 물으면 심평원·복지부 자료 14개(텍스트로 올려 둔 OpenAI 벡터 저장소)에서
    찾아 근거(문서·쪽)와 함께 답한다. 질문·답은 D1 kb_chat 에 직원(로그인 이메일)별로 — 본인만 보고 지운다.
@@ -2237,6 +2258,11 @@ export default {
       const email = await fbEmailFromRequest(request);
       if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
       return dongseonStt(request, env);
+    }
+    if (url.pathname === "/api/dongseon/recsum" && request.method === "POST") {   // 초진 녹음 요약 → 특이사항 (2026-11-02)
+      const email = await fbEmailFromRequest(request);
+      if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+      return dongseonRecSum(request, env);
     }
     if (url.pathname === "/api/dongseon/notify") {   // 동선관리 방 도착·퇴실 → 텔레그램(/room 구독자)
       return dongseonNotify(request, env);

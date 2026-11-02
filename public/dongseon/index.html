@@ -12787,6 +12787,42 @@ function recNfsMap(mrn,p,redraw){const m=normMrn(mrn),o={};if(!m)return o;const 
   try{const rx=p&&bitRxFor(p);if(rx&&rx.nfs)o[localYMD(new Date())]=rx.nfs;}catch(e){}
   return o;}
 function recDayCls(n){return /^[13]$/.test(String(n||''))?' rt-new':'';}
+/* 초진·90일초진 녹음 요약 → 특이사항 맨 아래 한 줄 '초진 11/02 요약: …' (2026-11-02 요청: 초진이 제일 중요).
+   직원 보드(PC)가 1분마다 오늘 녹음을 보고, 오늘 비트 초/재진이 초진·90일초진인 환자의 받아쓴 글이 다 모이면(마지막 글 10분 뒤) 하루 한 번 요약한다.
+   여러 화면이 같이 하지 않게 recSum/{차트_날짜} 를 잡고 쓴다(한 번 넣은 뒤 직원이 지워도 다시 넣지 않음). 요약은 포털 서버(/api/dongseon/recsum → OpenAI) */
+let REC_SUM_BUSY=false;
+async function recSumTick(){if(REC_SUM_BUSY||IS_PHONE||!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_ROLE!=='staff'||!(cloud.active&&cloud.ref&&cloud.db))return;
+  const today=localYMD(new Date()),nfsOf={};Object.values(BIT_RX_MRN||{}).forEach(r=>{if(r&&/^[13]$/.test(r.nfs)&&normMrn(r.mrn))nfsOf[normMrn(r.mrn)]=r.nfs;});
+  if(!Object.keys(nfsOf).length)return;
+  REC_SUM_BUSY=true;
+  try{const s=await cloud.ref.collection('recText').where('date','==',today).get();
+    const by={};s.docs.forEach(d=>{const r=d.data()||{};const m=normMrn(r.mrn);if(m&&nfsOf[m])(by[m]=by[m]||[]).push(r);});
+    for(const m of Object.keys(by)){const L=by[m];
+      const last=Math.max(...L.map(r=>new Date(r.at||r.startedAt||0).getTime()||0));
+      if(Date.now()-last<10*60000||L.some(r=>r.src==='chrome'&&r.live))continue;   // 아직 녹음·받아쓰기 중
+      const files={};L.forEach(r=>{if(r.src==='audio')return;const t=String(r.text||'').trim();if(t.length<20||/^\(/.test(t))return;
+        const k=r.file||r.startedAt||'',o=files[k];if(!o||REC_SRC_ORDER.indexOf(r.src||'local')<REC_SRC_ORDER.indexOf(o.src||'local'))files[k]=r;});   // 녹음마다 가장 좋은 받아쓰기 하나
+      const parts=Object.values(files).sort((a,b)=>String(a.startedAt||'').localeCompare(String(b.startedAt||'')));if(!parts.length)continue;
+      const lab=NFS_LABEL[nfsOf[m]],mark=lab+' '+today.slice(5).replace('-','/')+' 요약';
+      if(regMemo(m).includes(mark))continue;
+      const ref=cloud.ref.collection('recSum').doc(m+'_'+today);
+      let got=false;
+      try{got=await cloud.db.runTransaction(async tx=>{const d=await tx.get(ref);const v=d.exists?(d.data()||{}):{};
+        if(v.done||(v.tries||0)>=3||(v.lock&&Date.now()-v.lock<5*60000))return false;
+        tx.set(ref,{mrn:m,date:today,lock:Date.now(),by:currentUser.name||'',tries:(v.tries||0)+1},{merge:true});return true;});}catch(e){console.warn('recSum lock',e);}
+      if(!got)continue;
+      try{const tok=await firebase.auth().currentUser.getIdToken();
+        const text=parts.map(r=>parts.length>1?'['+hhmm(r.startedAt)+' '+(r.room||'')+']\n'+r.text:r.text).join('\n\n');
+        const res=await fetch('/api/dongseon/recsum',{method:'POST',headers:{authorization:'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({text})});
+        const j=await res.json().catch(()=>({}));if(!res.ok)throw new Error(j.error||res.status);
+        await ref.set({done:true,sum:j.sum||'',empty:!!j.empty,nfs:nfsOf[m],lock:0,at:new Date().toISOString()},{merge:true});
+        if(j.empty||!j.sum)continue;
+        const cur=regMemo(m);if(cur.includes(mark))continue;
+        const name=L[0].name||'';
+        if(setRegMemo(m,name,(cur?cur+'\n':'')+mark+': '+j.sum)){try{audit('초진 녹음 요약 → 특이사항',name+' ('+m+')');}catch(e){}try{refreshOpenMemoUI();}catch(e){}}
+      }catch(e){console.warn('recSum',m,e);try{await ref.set({lock:0,err:String(e.message||e).slice(0,300)},{merge:true});}catch(_){}}}
+  }catch(e){console.warn('recSum',e);}finally{REC_SUM_BUSY=false;}}
+setInterval(()=>{recSumTick();},60000);
 /* ═ 녹음기록 — 진료 녹음을 진료실 PC 가 글로 바꾼 것(recText). 이 환자 차트번호로, 최근 것부터 (2026-10-12) ═ */
 window.recTextCache={};
 function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!box)return;const mrn=String((p&&p.mrn)||'').trim();
