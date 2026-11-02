@@ -568,18 +568,37 @@ async function dongseonStt(request, env) {
   const fname = isWav ? "rec.wav" : "rec.webm";
   if (provider === "openai") {
     if (!env.OPENAI_API_KEY) return json({ error: "OPENAI_API_KEY 가 설정되지 않았습니다 (Cloudflare → Workers → bonafide-portal → 설정 → 변수 및 비밀)." }, 501);
-    const fd = new FormData();
-    fd.append("file", blob, fname);
-    fd.append("model", env.OPENAI_STT_MODEL || "gpt-4o-transcribe");
-    fd.append("language", "ko");
-    fd.append("prompt", STT_PROMPT);
-    fd.append("response_format", "json");
-    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { authorization: "Bearer " + env.OPENAI_API_KEY }, body: fd });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return json({ error: "OpenAI 오류: " + ((j.error && j.error.message) || r.status) }, 502);
-    const text = String(j.text || "").trim();
+    /* 2026-11-02: 몇 분짜리 진료 녹음이 '안녕하세요. 재료 보실게요.' 한 줄이나 '말소리 없음'으로만 돌아왔다(마이크 시험은 정상).
+       gpt-4o-transcribe 는 chunking_strategy 없이 보내면 말 사이 쉬는 구간에서 받아쓰기를 끝내 버려 뒷말을 빠뜨린다 →
+       'auto'(서버가 소리 크기를 맞추고 말 단위로 잘라 받아씀). 그래도 녹음 길이에 비해 글이 너무 짧으면 whisper-1 로 한 번 더 받아 더 긴 쪽을 쓴다 */
+    const model = env.OPENAI_STT_MODEL || "gpt-4o-transcribe";
+    const once = async (m) => {
+      const fd = new FormData();
+      fd.append("file", blob, fname);
+      fd.append("model", m);
+      fd.append("language", "ko");
+      fd.append("prompt", STT_PROMPT);
+      fd.append("response_format", "json");
+      if (/^gpt-4o/.test(m)) fd.append("chunking_strategy", "auto");
+      const r = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { authorization: "Bearer " + env.OPENAI_API_KEY }, body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error("OpenAI 오류: " + ((j.error && j.error.message) || r.status));
+      return String(j.text || "").trim();
+    };
+    let text;
+    try { text = await once(model); } catch (e) { return json({ error: String(e.message || e) }, 502); }
+    /* 녹음 길이(WAV 머리글의 초당 바이트) — 1분에 20자도 안 되면 짧다고 본다 */
+    let sec = 0;
+    if (isWav && audio.byteLength > 44) { const bps = new DataView(audio).getUint32(28, true); if (bps > 0) sec = (audio.byteLength - 44) / bps; }
+    const len = t => String(t || "").replace(/\s/g, "").length;
+    let used = model;
+    if (sec >= 45 && model !== "whisper-1" && (sttLooksSilent(text) || len(text) < Math.max(10, sec / 60 * 20))) {
+      try { const w = await once("whisper-1"); const ss = w.split(/[.?!\n]+/).map(x => x.replace(/\s/g, "")).filter(Boolean);
+        const junk = ss.length >= 4 && new Set(ss).size / ss.length < 0.4;   // whisper 는 조용한 녹음에 같은 말을 되풀이해 지어낸다
+        if (!junk && !sttLooksSilent(w) && len(w) > len(text)) { text = w; used = "whisper-1"; } } catch (e) {}
+    }
     if (sttLooksSilent(text)) return json({ text: STT_SILENT_TEXT, silent: true, raw: text, provider });
-    return json({ text, provider });
+    return json({ text, provider, model: used });
   }
   if (provider === "clova") {
     if (!env.CLOVA_INVOKE_URL || !env.CLOVA_SECRET) return json({ error: "CLOVA_INVOKE_URL · CLOVA_SECRET 이 설정되지 않았습니다." }, 501);
