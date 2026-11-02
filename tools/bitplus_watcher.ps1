@@ -34,6 +34,11 @@ param(
   [int]$HeartbeatSec = 300           # 하트비트 주기(초) — 2026-09-14 읽기 한도 사고 뒤 60→300: 하트비트 1건은 듣고 있는 화면 수만큼 읽기로 계산된다(6대×1,440×10화면=86,000/일). 동선관리 BIT_STALE_SEC=750 과 짝
 )
 $ErrorActionPreference = 'Continue'
+# v3.8 한 번만 실행 (2026-11-02) — 자동 시작 작업 말고 다른 길(남은 시작 프로그램 .vbs·직접 실행)로 하나 더 떠도 바로 끝난다.
+#  설치가 옛 프로세스를 강제로 끄면 잠금은 '버려진' 상태가 되는데, 그때는 새 프로세스가 잠금을 넘겨받는다(AbandonedMutexException)
+$script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideBitPlusWatcher')
+$own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
+if (-not $own) { exit }
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
@@ -519,7 +524,7 @@ function HandleCast($m, $force = $false) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.7: PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3.8: PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }

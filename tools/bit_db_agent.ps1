@@ -50,6 +50,10 @@ param(
 )
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
+# 한 번만 실행 (2026-11-02) — 남은 시작 프로그램 .vbs·직접 실행으로 하나 더 떠도 바로 끝난다. 포트를 달리한 시험용 두 번째 인스턴스는 따로
+$script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgent_$HealthPort")
+$own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
+if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $VER = 'db2.1'   # 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다

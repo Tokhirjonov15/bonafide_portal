@@ -32,7 +32,8 @@ function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
 
 # 한 번만 실행 (로그온 작업이 5분마다 다시 시작해도 이미 떠 있으면 그냥 끝난다)
 $script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideSlipCapture')
-if (-not $script:Mtx.WaitOne(0)) { exit }
+$own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }   # 설치가 옛 바를 강제로 끄면 잠금이 '버려진' 상태 — 넘겨받는다
+if (-not $own) { exit }
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type -Namespace SlipCap -Name U -MemberDefinition @'

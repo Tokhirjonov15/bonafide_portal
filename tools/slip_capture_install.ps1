@@ -43,8 +43,11 @@ try {
   $set = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -MultipleInstances IgnoreNew
   Register-ScheduledTask -TaskName $name -Action $act -Trigger @($trg, $trg2) -Settings $set -RunLevel Limited -Force -ErrorAction Stop | Out-Null
   Write-Host "③ 자동 시작 작업 등록: $name — 로그온 시 + 5분마다(꺼져 있으면 다시 켬)"
+  $old = Join-Path ([Environment]::GetFolderPath('Startup')) "$name.vbs"   # 예전에 작업 등록이 실패해 남은 대체 파일 — 두면 로그온 때 작업과 함께 하나 더 뜬다 (2026-11-02)
+  if (Test-Path $old) { Remove-Item $old -Force -ErrorAction SilentlyContinue; Write-Host "   예전 시작 프로그램 파일 지움: $old" }
   Start-ScheduledTask -TaskName $name
 } catch {
+  Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue   # 예전 작업이 남아 있으면 .vbs 와 함께 두 개가 뜬다 (2026-11-02)
   $vbs = Join-Path ([Environment]::GetFolderPath('Startup')) "$name.vbs"
   $line = 'CreateObject("WScript.Shell").Run "powershell.exe ' + ($args_ -replace '"', '""') + '", 0, False'
   [IO.File]::WriteAllText($vbs, $line, [Text.Encoding]::Unicode)
