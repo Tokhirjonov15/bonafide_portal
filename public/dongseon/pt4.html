@@ -353,7 +353,7 @@ if(EMBED)document.body.classList.add('embed');
 /* ═════════ 시간 (visit-stats lib/time.ts) ═════════ */
 const DAY_START=540, SLOT=15, SLOTS=48, DAY_END=DAY_START+SLOT*SLOTS, SHORT_END=18*60;
 const TIMES=Array.from({length:SLOTS},(_,i)=>DAY_START+i*SLOT);
-const DURATIONS=[15,30,45,60,75,90,120];
+const DURATIONS=[30,60,75,90,120];   // 15·45분은 뺐다 (2026-11-02 요청) — 예전에 15·45분으로 넣은 예약은 그 값을 목록에 그대로 보여 준다
 const WEEKDAYS=['일','월','화','수','목','금','토'];
 /* 공휴일 (주말과 함께 17:30 칸까지). 해가 바뀌면 추가 */
 const HOLIDAYS=new Set(["2026-01-01","2026-02-16","2026-02-17","2026-02-18","2026-03-01","2026-03-02","2026-05-01","2026-05-05","2026-05-24","2026-05-25",

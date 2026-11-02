@@ -702,7 +702,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
     h=head(`${title} · ${esc(thName(d.therapistId))} · ${hm(d.startMin)}`)+`<div class="form-grid" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))edSaveBooking()">
       <label>치료사<select onchange="dset('therapistId',Number(this.value),1)">${D.therapists.map(t=>opt(t.id,d.therapistId,t.name)).join('')}</select></label>
       <label>시작<select onchange="dset('startMin',Number(this.value),1)">${TIMES.filter(m=>m<D.endMin).map(m=>opt(m,d.startMin,hm(m))).join('')}</select></label>
-      <label>길이<select onchange="dset('durationMin',Number(this.value))">${DURATIONS.filter(x=>d.startMin+x<=D.endMin).map(x=>opt(x,d.durationMin,x+'분')).join('')}</select></label>
+      <label>길이<select onchange="dset('durationMin',Number(this.value))">${[...new Set([...DURATIONS.filter(x=>d.startMin+x<=D.endMin),...(DURATIONS.includes(+d.durationMin)||!d.durationMin?[]:[+d.durationMin])])].sort((a,b)=>a-b).map(x=>opt(x,d.durationMin,x+'분')).join('')}</select></label>
       <label>차트번호<input autofocus value="${A(d.mrn)}" inputmode="numeric" placeholder="32750" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,7);dset('mrn',this.value)"></label>
       <label>진료실<input value="${A(d.room)}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);dset('room',this.value)"></label>
       <label>이름<input value="${A(d.patientName)}" placeholder="함수진" oninput="dset('patientName',this.value)"></label>
