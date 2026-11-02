@@ -471,6 +471,7 @@
   .out-banner{margin:0 12px 7px;background:var(--amber-bg);color:var(--orange);font-size:11.5px;font-weight:700;border-radius:8px;padding:5px 8px}
   /* 2026-11-02 (화면 멈춤·클릭하면 다른 환자): 그림자(box-shadow)·테두리 색을 움직이는 깜빡임은 매 프레임 다시 그려야 해서, 보드를 다시 그릴 때 크롬이 화면을 못 따라가 예전 화면이 보이는 채로 클릭이 새 배치에 들어갔다(창 크기를 바꾸면 돌아옴). 깜빡임은 투명도(opacity)로만 — 다시 그리지 않고 합성만 한다 */
   @keyframes softBlink{0%,100%{opacity:1}50%{opacity:.55}}
+  @media (hover:none) and (pointer:coarse) and (max-width:760px){.park-banner,.card.pt-soon,.card.bitpaid.bitpaid-away,#waitPop .wp-h{animation:none}}   /* 폰은 깜빡임 없이 강조 색만 (2026-11-03 폰 렉) */
   .park-banner{margin:0 12px 7px;display:flex;align-items:center;gap:9px;background:linear-gradient(135deg,rgba(245,158,11,.17),rgba(245,158,11,.06));border:1px solid rgba(245,158,11,.5);border-left:4px solid var(--orange);border-radius:10px;padding:7px 10px;box-shadow:0 0 0 2px rgba(245,158,11,.25);animation:softBlink 2.2s ease-in-out infinite}
   .park-ic{font-size:17px;flex-shrink:0;line-height:1}
   .park-tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
@@ -7166,10 +7167,10 @@ function renderThrottled(){
     if(!_renderT)_renderT=setTimeout(()=>{_renderT=null;renderThrottled();},250);
     return;
   }
-  const gap=now-_renderLast;
-  if(gap>=120){_renderLast=now;render();return;}
+  const gap=now-_renderLast,MIN=(typeof IS_PHONE!=='undefined'&&IS_PHONE)?2000:120;   // 폰은 2초에 한 번까지만 보드 전체를 다시 그린다 (2026-11-03 폰 렉 — 변경이 몰리면 0.12초마다 카드 150장을 다시 그렸다)
+  if(gap>=MIN){_renderLast=now;render();return;}
   if(_renderT)return;
-  _renderT=setTimeout(()=>{_renderT=null;_renderLast=Date.now();render();},120-gap);
+  _renderT=setTimeout(()=>{_renderT=null;_renderLast=Date.now();render();},MIN-gap);
 }
 function afterCloud(){
   if(!cloud.ready.cfg)return;   // 설정 로드 후 진행
