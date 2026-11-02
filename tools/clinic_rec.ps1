@@ -50,6 +50,19 @@ function Mci($cmd) { $sb = New-Object Text.StringBuilder 256; $e = [ClinicRec.Mc
   if ($e) { $eb = New-Object Text.StringBuilder 256; [void][ClinicRec.Mci]::mciGetErrorString($e, $eb, 256); throw "MCI '$($cmd.Split(' ')[0])' 오류 ${e}: $($eb.ToString())" }
   return $sb.ToString() }
 function MciQuiet($cmd) { try { [void](Mci $cmd) } catch {} }
+# 소리 크기 재기·키우기 (2026-11-02: 녹음 대부분이 '말소리가 거의 없음'으로 받아써졌다 — 마이크가 멀거나 작게 잡혀도 받아쓸 수 있게 키워서 보내고, 크기를 녹음기록에 남긴다)
+Add-Type -Namespace ClinicRec -Name WavX -MemberDefinition @'
+public static double[] Stats(byte[] b, int off, int len) {   // [최대 %, 99.9% 지점 %, 말소리 있는 0.1초 비율 %]
+  int n = len / 2; if (n <= 0) return new double[] { 0, 0, 0 };
+  int[] h = new int[32769]; int max = 0, frames = 0, loud = 0; long acc = 0; int k = 0;
+  for (int i = 0; i < n; i++) { int v = System.BitConverter.ToInt16(b, off + i * 2); if (v < 0) v = -v; if (v > 32768) v = 32768; h[v]++; if (v > max) max = v;
+    acc += v; if (++k == 1600) { frames++; if (acc / 1600 > 300) loud++; acc = 0; k = 0; } }
+  long want = (long)(n * 0.999), c = 0; int p999 = 0; for (int v = 0; v <= 32768; v++) { c += h[v]; if (c >= want) { p999 = v; break; } }
+  return new double[] { max * 100.0 / 32768, p999 * 100.0 / 32768, frames > 0 ? loud * 100.0 / frames : 0 }; }
+public static void Gain(byte[] b, int off, int len, double g) {
+  for (int i = 0; i + 1 < len; i += 2) { int v = (int)System.Math.Round(System.BitConverter.ToInt16(b, off + i) * g); if (v > 32767) v = 32767; if (v < -32768) v = -32768;
+    b[off + i] = (byte)(v & 0xFF); b[off + i + 1] = (byte)((v >> 8) & 0xFF); } }
+'@
 function WavPeak($path) {   # 16비트 PCM 의 가장 큰 소리(0~100%) — 마이크 시험용
   $b = [IO.File]::ReadAllBytes($path); $max = 0
   for ($i = 44; $i -lt $b.Length - 1; $i += 2) { $v = [Math]::Abs([int][BitConverter]::ToInt16($b, $i)); if ($v -gt $max) { $max = $v } }
@@ -215,17 +228,21 @@ function RunStt($wav) {
   $fileName = Split-Path $wav -Leaf; $base = $wav -replace '\.wav$', ''
   $meta = @(QueueGet | Where-Object { $_ -and $_.file -eq $fileName }) | Select-Object -First 1
   try {
-    $parts = WavParts $wav 600; $texts = @(); $k = 0
+    $parts = WavParts $wav 300; $texts = @(); $k = 0; $pk = 0.0; $vo = 0.0; $gMax = 1.0   # 5분씩 (10분이면 긴 조용한 구간 뒤 말을 통째로 빠뜨리는 일이 있었다 — 2026-11-02)
     foreach ($p in $parts) { $k++
+      $st = [ClinicRec.WavX]::Stats($p, 44, $p.Length - 44); if ($st[0] -gt $pk) { $pk = $st[0] }; $vo += $st[2] / $parts.Count
+      # 작게 녹음됐으면 키운다: 99.9% 지점이 약 50% 가 되게, 최대 20배(튀는 소리는 잘림)
+      if ($st[1] -gt 0.05) { $g = [Math]::Min(20.0, 50.0 / $st[1]); if ($g -gt 1.5) { [ClinicRec.WavX]::Gain($p, 44, $p.Length - 44, $g); if ($g -gt $gMax) { $gMax = $g } } }
       $r = Invoke-RestMethod -TimeoutSec 600 -Method Post -Uri "$Portal/api/dongseon/stt" -Headers @{ Authorization = "Bearer $(FbToken)"; 'x-provider' = 'openai' } -ContentType 'audio/wav' -Body $p
-      $t = ([string]$r.text).Trim(); if ($parts.Count -gt 1) { $t = "[$(($k - 1) * 10)분부터] " + $t }; if ($t) { $texts += $t } }
+      $t = ([string]$r.text).Trim(); if ($parts.Count -gt 1) { $t = "[$(($k - 1) * 5)분부터] " + $t }; if ($t) { $texts += $t } }
     $text = ($texts -join "`r`n"); if (-not $text) { $text = '(받아쓴 말이 없습니다)' }
     [IO.File]::WriteAllText("$base.openai.txt", $text, (New-Object Text.UTF8Encoding $true))
     Remove-Item -LiteralPath "$base.openai.err" -Force -ErrorAction SilentlyContinue
-    Log "OpenAI 받아쓰기: $fileName ($($parts.Count)조각, $($text.Length)자)"
+    $lvl = "최대 $([Math]::Round($pk))% · 말소리 $([Math]::Round($vo))%$(if ($gMax -gt 1.5) { ' · ' + [Math]::Round($gMax) + '배 키움' })"
+    Log "OpenAI 받아쓰기: $fileName ($($parts.Count)조각, $($text.Length)자) · 소리 $lvl"
     if ($meta) {
       try { PutRecText ((RecDocId $fileName) + '__openai') ([ordered]@{ mrn = [string]$meta.mrn; pid = ''; name = [string]$meta.name; room = [string]$meta.room; startedAt = [string]$meta.at; endAt = [string]$meta.endAt
-          date = ([string]$meta.at).Substring(0, 10); file = $fileName; text = $(if ($text.Length -gt 200000) { $text.Substring(0, 200000) } else { $text }); src = 'openai'; dur = [int]$meta.dur; at = (NowIso); by = "녹음($Pc)" })
+          date = ([string]$meta.at).Substring(0, 10); file = $fileName; text = $(if ($text.Length -gt 200000) { $text.Substring(0, 200000) } else { $text }); src = 'openai'; dur = [int]$meta.dur; at = (NowIso); by = "녹음($Pc)"; lvl = $lvl; lvlPeak = [int][Math]::Round($pk); lvlVoice = [int][Math]::Round($vo) })
         Log "OpenAI 받아쓴 글 올림: $fileName" }
       catch { Log "OpenAI 받아쓴 글 올리기 실패 $fileName : $($_.Exception.Message) (글은 외장하드 .openai.txt 에 있음)" } }
   } catch {

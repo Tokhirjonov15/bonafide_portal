@@ -12858,10 +12858,10 @@ function recItemHtml(G,dl){const first=G[0][0];const au=G.find(([r])=>r.src==='a
     const ea=au&&(au[0].endAt?new Date(au[0].endAt):(au[0].dur?new Date(d.getTime()+Number(au[0].dur)*1000):null));
     return hms(d)+(ea&&!isNaN(ea)?' ~ '+hms(ea):'');})();
   const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span>${dl?`<button type="button" class="btn sm" title="녹음 파일 내려받기" onclick="recDownload('${esc(au[0].audio)}','${esc(String(au[0].file||'녹음.webm').replace(/'/g,''))}')"><i data-lucide="download"></i></button>`:''}</div>`:'';
-  const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>
+  const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>${r.lvl?` <span class="hint" title="녹음된 소리 크기(진료실 PC 녹음 프로그램이 잼) — 작으면 키워서 받아쓴다">🎤 ${esc(r.lvl)}</span>`:''}${r.lvlPeak!=null&&Number(r.lvlPeak)<10?' <b style="color:#dc2626">⚠ 마이크 소리가 아주 작게 녹음됨</b>':''}
       <button type="button" class="btn sm" onclick="recTextCopyEl(this)"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
   const main=tx.length?one(tx[0]):'',rest=tx.slice(1).map(one).join('');
-  return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':' <span class="hint">(소리 없음 — 글만)</span>'}</div>${player}
+  return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':(G.some(([r])=>String(r.by||'').startsWith('녹음('))?' <span class="hint">(소리 파일은 진료실 PC 외장하드에)</span>':' <span class="hint">(소리 없음 — 글만)</span>')}</div>${player}
     ${main}${rest?`<details class="rt-txt"><summary>다른 받아쓰기 ${tx.length-1}개 (${esc(tx.slice(1).map(([r])=>REC_SRC_L[r.src||'local']||r.src).join('·'))})</summary>${rest}</details>`:''}</div>`;}
 const REC_AUDIO_URL={};
 function recAudioLoad(box){try{if(!cloud.storage||!box)return;box.querySelectorAll('audio[data-path]').forEach(a=>{if(a.getAttribute('src'))return;const p=a.dataset.path;
