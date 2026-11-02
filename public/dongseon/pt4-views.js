@@ -701,7 +701,7 @@ function renderEditor(){const box=document.getElementById('editor');if(!EDIT||R.
     const title=e.kind==='restore'?'취소/변경에서 스케줄로 되돌리기':e.kind==='copyin'?`${esc(e.source.date)} 기록을 이 날로 가져오기`:isEdit?'예약 수정':'새 예약';
     h=head(`${title} · ${esc(thName(d.therapistId))} · ${hm(d.startMin)}`)+`<div class="form-grid" onkeydown="if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))edSaveBooking()">
       <label>치료사<select onchange="dset('therapistId',Number(this.value),1)">${D.therapists.map(t=>opt(t.id,d.therapistId,t.name)).join('')}</select></label>
-      <label>시작<select onchange="dset('startMin',Number(this.value),1)">${TIMES.filter(m=>m<D.endMin).map(m=>opt(m,d.startMin,hm(m))).join('')}</select></label>
+      <label>시작<select onchange="dset('startMin',Number(this.value),1)">${bookTimes(d.startMin).filter(m=>m<D.endMin).map(m=>opt(m,d.startMin,hm(m))).join('')}</select></label>
       <label>길이<select onchange="dset('durationMin',Number(this.value))">${[...new Set([...DURATIONS.filter(x=>d.startMin+x<=D.endMin),...(DURATIONS.includes(+d.durationMin)||!d.durationMin?[]:[+d.durationMin])])].sort((a,b)=>a-b).map(x=>opt(x,d.durationMin,x+'분')).join('')}</select></label>
       <label>차트번호<input autofocus value="${A(d.mrn)}" inputmode="numeric" placeholder="32750" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,7);dset('mrn',this.value)"></label>
       <label>진료실<input value="${A(d.room)}" inputmode="numeric" placeholder="1" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);dset('room',this.value)"></label>
@@ -844,9 +844,9 @@ function renderMobile(){
         <label>진료실<input inputmode="numeric" value="${A(f.room)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,2);MOB.f.room=this.value"></label>
         <label>이름<input value="${A(f.patientName)}" oninput="MOB.f.patientName=this.value"></label>
         <label>방문수<input inputmode="numeric" value="${A(f.visitNo)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);MOB.f.visitNo=this.value"></label>
-        <label>시작 시간<select onchange="mobTime(Number(this.value))">${TIMES.filter(m=>m<D.endMin).map(m=>opt(m,f.startMin,hm(m))).join('')}</select></label>
+        <label>시작 시간<select onchange="mobTime(Number(this.value))">${bookTimes(f.startMin).filter(m=>m<D.endMin).map(m=>opt(m,f.startMin,hm(m))).join('')}</select></label>
         <label>치료코드${codeSelect(f.code,"MOB.f.code=v")}</label>
-        <label>길이<select onchange="MOB.f.durationMin=Number(this.value)">${[15,30,45,60,90].filter(x=>ed.b||x<=ed.maxMin).map(x=>opt(x,f.durationMin,x+'분')).join('')}</select></label>
+        <label>길이<select onchange="MOB.f.durationMin=Number(this.value)">${[...new Set([30,60,90,...([30,60,90].includes(+f.durationMin)||!f.durationMin?[]:[+f.durationMin])])].sort((a,b)=>a-b).filter(x=>ed.b||x<=ed.maxMin).map(x=>opt(x,f.durationMin,x+'분')).join('')}</select></label>
         <label class="wide">메모<textarea rows="2" oninput="MOB.f.note=this.value">${esc(f.note)}</textarea></label></div>
       ${MSG?`<p class="err">${esc(MSG)}</p>`:''}
       <div class="row wrap"><button type="button" ${BUSY?'disabled':''} onclick="mobSave()">${BUSY?'저장 중...':'저장'}</button>

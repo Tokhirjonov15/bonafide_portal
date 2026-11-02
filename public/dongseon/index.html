@@ -8991,7 +8991,7 @@ function openBkEdit(D,key,opt){
       <label>치료사</label><input id="bke_th" list="bke_ths" value="${v('th')}" placeholder="Jennie …"><datalist id="bke_ths">${ths.map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
       <label>시간</label><select id="bke_t">${(BK_SLOTS.includes(t)||!/^\d{2}:\d{2}$/.test(t||'')?BK_SLOTS:BK_SLOTS.concat([t]).sort()).map(s=>`<option value="${s}"${s===t?' selected':''}>${s}</option>`).join('')}</select>
       <label>차단</label><label class="bk-blk-chk"><input type="checkbox" id="bke_block"${(cur&&cur.kind==='block')||opt.block?' checked':''}> 예약이 아닌 차단 칸 (루틴·점심당직·OT 등 — 메모가 칸에 보입니다)</label>
-      <label>치료시간</label><select id="bke_dur">${[15,30,45,60,90,120].map(d=>`<option value="${d}"${String(d)===String(cur?cur.dur:(opt.dur||30))?' selected':''}>${d}분</option>`).join('')}</select>
+      <label>치료시간</label><select id="bke_dur">${(()=>{const cd=Number(cur?cur.dur:(opt.dur||30)),L=[30,60,90,120];if(cd&&!L.includes(cd))L.push(cd);return L.sort((a,b)=>a-b);})().map(d=>`<option value="${d}"${String(d)===String(cur?cur.dur:(opt.dur||30))?' selected':''}>${d}분</option>`).join('')}</select>
       <label>차트번호</label><input id="bke_mrn" value="${v('mrn')}" inputmode="numeric" oninput="bkMrnChanged(this)">
       <span></span><span class="hint" id="bke_mrnHint"></span>
       <label>성함</label><input id="bke_name" value="${v('name')}" oninput="this.dataset.auto=''">

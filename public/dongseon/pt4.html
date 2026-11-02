@@ -353,6 +353,8 @@ if(EMBED)document.body.classList.add('embed');
 /* ═════════ 시간 (visit-stats lib/time.ts) ═════════ */
 const DAY_START=540, SLOT=15, SLOTS=48, DAY_END=DAY_START+SLOT*SLOTS, SHORT_END=18*60;
 const TIMES=Array.from({length:SLOTS},(_,i)=>DAY_START+i*SLOT);
+/* 예약 창 시작 시간 = 30분 정각만 (2026-11-02 요청). 표 칸은 15분 그대로, 예전 :15·:45 예약은 그 시간을 목록에 그대로 보여 준다 */
+const bookTimes=cur=>{const a=TIMES.filter(m=>m%30===0);cur=Number(cur);if(Number.isInteger(cur)&&TIMES.includes(cur)&&!a.includes(cur))a.push(cur);return a.sort((x,y)=>x-y);};
 const DURATIONS=[30,60,75,90,120];   // 15·45분은 뺐다 (2026-11-02 요청) — 예전에 15·45분으로 넣은 예약은 그 값을 목록에 그대로 보여 준다
 const WEEKDAYS=['일','월','화','수','목','금','토'];
 /* 공휴일 (주말과 함께 17:30 칸까지). 해가 바뀌면 추가 */
