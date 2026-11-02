@@ -55,7 +55,8 @@ $script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgen
 $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
 if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db2.2'   # 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+$VER = 'db2.3'   # 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
+# 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
 # ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
@@ -535,7 +536,8 @@ SELECT RTRIM(o.OdrOcmNum) AS k, RTRIM(o.OdrChtNum) AS mrn, o.OdrSeq AS seq,
        RTRIM(o.OdrCod) AS cod, RTRIM(o.OdrCodNam) AS nam,
        o.OdrQty AS qty, o.OdrTms AS tms, o.OdrDay AS dys,
        RTRIM(o.OdrUntCod) AS unt, RTRIM(u.UidNam) AS dr, RTRIM(o.OdrDtm) AS dtm,
-       o.OdrPrc AS prc, o.OdrAmt AS amt, RTRIM(o.OdrInsYon) AS ins, RTRIM(m.OcmDgsNfs) AS nfs
+       o.OdrPrc AS prc, o.OdrAmt AS amt, RTRIM(o.OdrInsYon) AS ins, RTRIM(m.OcmDgsNfs) AS nfs,
+       RTRIM(o.OdrItmCod) AS itm, RTRIM(o.OdrSotCod) AS sot
 FROM OdrInf o WITH (NOLOCK)
 JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
 LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OdrDtrCod
@@ -578,7 +580,8 @@ function PollRx() {
     $it = [ordered]@{ cod = ([string]$r.cod).Trim(); nam = ([string]$r.nam).Trim()
                       qty = (NumTxt $r.qty); tms = (NumTxt $r.tms); day = (NumTxt $r.dys)
                       unt = ([string]$r.unt).Trim(); dr = ([string]$r.dr).Trim(); ins = ([string]$r.ins).Trim()   # 급여구분 — 금액이 아직 0원(계산 전)이어도 급/비가 보이게 (db1.6, 2026-10-14)
-                      t = $(if ($dtm.Length -ge 12) { $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2) } else { '' }) }
+                      t = $(if ($dtm.Length -ge 12) { $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2) } else { '' })
+                      itm = ([string]$r.itm).Trim(); sot = ([string]$r.sot).Trim() }   # 비트 구분 (db2.3): itm 앞 두 자리 03 = @투약(먹는 약·외용약), 01 진찰·의약품관리료, 04 주사, 06 물리치료
     [void]$byOcm[$key].items.Add($it)
     # 금액(2026-10-01, db1.2): 단가·금액·급여구분(OdrInsYon: 2=비급여, 0=급여). 금액이 있는 줄만 — 비급여 동의서 금액 자동 채우기용.
     #  items 와 따로 'pay' 필드로 쓴다: 옛 빌드 담당 PC 가 items 를 다시 써도 pay 는 지워지지 않는다(FsPatch 는 준 필드만 바꾼다)
@@ -598,7 +601,7 @@ function PollRx() {
       if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:PayHash[$key] = $ph }
       else { try { FsPatch "bitRx/${day}_ocm$key" @{ pay = $pay; nfs = $v.nfs; payAt = (NowIso); payPc = $Pc }; $script:PayHash[$key] = $ph } catch { Log "처방 금액 전송 오류 ${key}: $($_.Exception.Message)" } }
     }
-    $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)|$($_.ins)" }) -join "`n")
+    $h = (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)|$($_.ins)|$($_.itm)" }) -join "`n")
     if ($script:RxHash[$key] -eq $h) { continue }
     if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }
     if (-not $script:IsLeader -and -not $RxAlways) { $script:RxHash[$key] = $h; continue }   # 대기 중엔 해시만 따라감

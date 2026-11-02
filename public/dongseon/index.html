@@ -3844,7 +3844,7 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v3.8',agent:'db2.2'};   // db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
+const BIT_LATEST={watcher:'v3.8',agent:'db2.3'};   // db2.3: 처방 줄마다 비트 구분(itm·sot) — 동의서 처방내역이 먹는 약을 비트 @투약으로 가림(2026-11-02). db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
 function bitStatusRows(){const now=Date.now();
   return Object.keys(BIT_STATUS).sort((a,b)=>a.localeCompare(b,'ko')).map(pc=>{const st=BIT_STATUS[pc]||{};const ver=String(st.ver||'');
@@ -6065,7 +6065,8 @@ async function runSelfTest(){
       const a=jaboOf({mrn:'00501'}),b=jaboOf({mrn:'502'}),c=jaboOf({mrn:'503'}),d=jaboOf({mrn:'999'});const tb=jaboText(b),tg=jaboTagHtml({mrn:'502'});JABO=_j;
       ok('자보: 앞 0 무시, 조건 만족·아직(남은 일수·물리치료 횟수)·오늘 자보 아님 경고, 옛 에이전트(pts)도 표시', a&&a.ok&&/급여 도수 가능/.test(jaboText(a))&&b&&!b.ok&&/6일 더/.test(tb)&&/기본물리치료 2회 더/.test(tb)&&/자보가 아님/.test(tg)&&c&&c.ok&&c.tj===1&&d===null,tb);}
      ok('동의서 처방내역: 먹는 약만 일수·맨 아래 (2026-11-01)', rxIsOral({nam:'아클펜정(아세클로페낙)_(0.1g/1정)'})&&rxIsOral({nam:'판토케이정20밀리그램(판토프라졸나트륨세스키히드레이트)_(22.55mg/1정)'})
-       &&!rxIsOral({nam:'대한리도카인염산염수화물2%주_(0.4266g/20mL)'})&&!rxIsOral({nam:'로카인주사2mg/mL(로피바카인염산염일수화물)_(42mg/20mL)'})&&!rxIsOral({nam:'신장분사치료3'})&&!rxIsOral({nam:'외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)'}));
+       &&!rxIsOral({nam:'대한리도카인염산염수화물2%주_(0.4266g/20mL)'})&&!rxIsOral({nam:'로카인주사2mg/mL(로피바카인염산염일수화물)_(42mg/20mL)'})&&!rxIsOral({nam:'신장분사치료3'})&&!rxIsOral({nam:'외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)'})
+       &&rxIsOral({nam:'케토톱플라스타',itm:'030200'})&&!rxIsOral({nam:'아클펜정',itm:'010300'})&&rxIsOral({nam:'x',sot:'MED'})&&!rxIsOral({nam:'세페리손정',sot:'INJ'}));   // 비트 구분이 있으면 그것대로 (db2.3)
      ok('계산 뒤 처방이 바뀌면(pay 가 own 보다 나중) 옛 본인부담은 쓰지 않음 (2026-11-01 허예나님 쿨밴드)',   // ISO 시각 문자열 비교
        ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00',payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:05:00.000+09:00',payAt:'2026-11-01T10:00:00.000+09:00'})&&!ownStale({own:null,payAt:'2026-11-01T10:05:00.000+09:00'})&&!ownStale({own:50000,ownAt:'2026-11-01T10:00:00.000+09:00'}));
      {const _s=BIT_STATUS;const now=new Date().toISOString();   // 설치 상태 표 (2026-10-28)
@@ -14782,7 +14783,9 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
 function ownEstimate(p,rx){if(!rx||!Array.isArray(rx.pay)||!rx.pay.length)return null;try{ownCalibrate();}catch(e){}
   const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),OWN_RATES);}
 /* 먹는 약(정·캡슐·시럽·포) — 비트 약 이름은 '아클펜정(아세클로페낙)_(0.1g/1정)' 처럼 끝 괄호에 1회 단위가 붙는다. 주사(…주_(…/20mL))는 제외 */
-function rxIsOral(x){const n=String((x&&x.nam)||'').trim(),h=n.split('_(')[0];if(/주(사)?(\d|\(|$)|주사/.test(h))return false;
+/* 2026-11-02: 에이전트 db2.3 부터 비트 구분이 온다 — itm(OdrItmCod) 03… = 비트 '@투약'(의약품관리료는 01…), 없으면 sot(OdrSotCod) MED. 옛 처방 문서만 아래 이름 규칙 */
+function rxIsOral(x){const itm=String((x&&x.itm)||'').trim(),sot=String((x&&x.sot)||'').trim().toUpperCase();if(itm)return /^03/.test(itm);if(sot)return sot==='MED';
+  const n=String((x&&x.nam)||'').trim(),h=n.split('_(')[0];if(/주(사)?(\d|\(|$)|주사/.test(h))return false;
   return /\/\s*[\d.]*\s*(정|캡슐|포)\)\s*$/.test(n)||/[가-힣](정|캡슐|시럽|과립)(\d|\(|$)/.test(h);}
 function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?consentSaved(mrn):{};
   const total=r.items.reduce((a,x)=>a+x.amt,0);
