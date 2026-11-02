@@ -9713,7 +9713,7 @@ function cardEl(p,colRoom){
              진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();${_mir?`cardStatus('${p.id}','${esc(_chipRoom)}','준비')`:`setStatus('${p.id}','준비')`}">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" ${st==='진행'?'title="잘못 눌렀으면 한 번 더 누르면 대기로 돌아갑니다"':''} onclick="event.stopPropagation();${_mir?`cardStatus('${p.id}','${esc(_chipRoom)}','진행')`:`setStatus('${p.id}','진행')`}">진행</button>`:''}
-      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):_mir?esc(_chipRoom)+'만 종결 — 나머지 칸은 그대로':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}',''))return;${last?`finishPatient('${p.id}')`:_mir?`cardFinish('${p.id}','${esc(_chipRoom)}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
+      <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):_mir?esc(_chipRoom)+'만 종결 — 나머지 칸은 그대로':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}','','${_mir?esc(_chipRoom):''}'))return;${last?`finishPatient('${p.id}')`:_mir?`cardFinish('${p.id}','${esc(_chipRoom)}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
@@ -10545,8 +10545,9 @@ function rxRouteOff(p,room){
   return true;}
 /* 진료실1·2·3 에서 카드를 끌어 옮기거나 [종결]할 때 한 번 더 묻는다 (2026-10-13 요청) — 진료 중 잘못 옮기면 녹음·처방이 끝나 버린다 */
 const CLINIC_ASK_ROOMS=['진료실1','진료실2','진료실3'];
-function clinicLeaveOk(pid,toRoom){const p=data.find(x=>x.id===pid);if(!p)return true;
-  const cur=String(curRoom(p)||'').trim();if(!CLINIC_ASK_ROOMS.includes(cur)||toRoom===cur)return true;
+/* fromRoom: 동시 진행 칸(다른 방에 함께 보이는 카드)의 [종결]은 그 칸의 방 — 2026-11-02: 카드 본래 방으로 판단해서, 진료실 칸 [종결]엔 안 묻고 Sono 칸 [종결]엔 묻는 등 '가끔' 뜨는 것처럼 보였다 */
+function clinicLeaveOk(pid,toRoom,fromRoom){const p=data.find(x=>x.id===pid);if(!p)return true;
+  const cur=String(fromRoom||curRoom(p)||'').trim();if(!CLINIC_ASK_ROOMS.includes(cur)||toRoom===cur)return true;
   return confirm('진짜로 옮기시겠습니까? 녹음과 처방이 종결됩니다');}
 /* 끌어다 놓기로 옮길 때만 쓴다(비트·자동 이동은 그대로 moveTo). 동선을 벗어나면 안내하고, 그래도 옮길지 확인.
    opts.noAsk — 끌기가 아닌 곳(동선 줄 [이동]·진료의 선택)은 진료실 확인창 없이 */
@@ -15230,12 +15231,13 @@ document.getElementById('board').addEventListener('wheel',e=>{
   if(board.scrollWidth<=board.clientWidth+1)return;                // 가로로 넘칠 게 없으면 관여 안 함
   const body=e.target&&e.target.closest?e.target.closest('.col-body'):null;
   if(body&&body.scrollHeight>body.clientHeight+1){                 // 세로 스크롤이 필요한 환자 목록 위
-    const atTop=body.scrollTop<=0;
-    const atBottom=body.scrollTop+body.clientHeight>=body.scrollHeight-1;
+    /* 2026-11-02 '휠로 좌우가 안 된다': 윈도우 배율 125%·150% PC 는 scrollTop 이 소수라 목록 맨 아래에서도 1px 안쪽으로 남아 끝으로 보지 않았다 → 3px 여유 */
+    const atTop=body.scrollTop<=3;
+    const atBottom=Math.ceil(body.scrollTop+body.clientHeight)>=body.scrollHeight-3;
     if(!((e.deltaY<0&&atTop)||(e.deltaY>0&&atBottom)))return;      // 아직 세로로 굴릴 수 있으면 세로 우선
   }
   e.preventDefault();
-  board.scrollLeft+=e.deltaY;
+  board.scrollLeft+=e.deltaY*(e.deltaMode===1?40:e.deltaMode===2?board.clientWidth:1);   // 줄·쪽 단위로 오는 마우스도
 },{passive:false});
 /* ── 드래그 중 보드 가로 자동 스크롤(자체 구현) ──
    브라우저 기본 자동 스크롤은 창 가장자리에서만 동작해, 듀얼 모니터의 안쪽 가장자리(옆 모니터와 맞닿은 쪽)에서는
