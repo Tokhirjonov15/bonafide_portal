@@ -16207,11 +16207,12 @@ boot();
   .nurse-head{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line)}
   .nurse-head b{font-size:15px}
   .nurse-panel iframe{flex:1;width:100%;border:0;background:#fff}
+  body.nurse-open #waitPop{display:none!important}   /* 간호 체크를 보는 동안은 대기 10분 알림을 띄우지 않는다(닫으면 다시 보임) */
 </style>
 <script>
   window.openNurse=()=>{const f=document.getElementById('nurseFrame');if(!f.getAttribute('src'))f.setAttribute('src','/dongseon/nurse/');   // 처음 열 때만 불러온다(보드 로딩에 영향 없게)
-    document.getElementById('nursePanel').style.display='';};
-  window.closeNurse=()=>{document.getElementById('nursePanel').style.display='none';};
+    document.getElementById('nursePanel').style.display='';document.body.classList.add('nurse-open');};
+  window.closeNurse=()=>{document.getElementById('nursePanel').style.display='none';document.body.classList.remove('nurse-open');};
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){const p=document.getElementById('nursePanel');if(p&&p.style.display!=='none')closeNurse();}});
 </script>
 </body>
