@@ -18,7 +18,8 @@ param([string]$Pc = $env:COMPUTERNAME,
       [int]$MinSec = 8,            # 이보다 짧은 녹음은 버린다(환자를 잘못 눌렀다 바로 바꾼 경우)
       [string]$SimFile = '',       # 시험용: 비트 창 대신 이 파일의 'mrn|이름|주민앞7' 한 줄을 지금 환자로 읽는다
       [string]$Stt = 'openai',     # 받아쓰기: openai = 저장하면 포털 서버(/api/dongseon/stt)로 보내 OpenAI 로 받아씀(1분 약 9원) · none = 안 함
-      [string]$SttJob = '',        # (내부용) 이 녹음 파일 하나를 OpenAI 로 받아쓰고 끝 — 녹음 프로그램이 따로 띄운다(녹음·자르기가 멈추지 않게)
+      [string]$SttJob = '',
+      [switch]$Redo,               # (내부용) SttJob 을 '다시 받아쓰기'로 — 이미 올린 글이 더 길어질 때만 그 글만 바꾼다(2026-11-02)        # (내부용) 이 녹음 파일 하나를 OpenAI 로 받아쓰고 끝 — 녹음 프로그램이 따로 띄운다(녹음·자르기가 멈추지 않게)
       [string]$Portal = 'https://bonafide-portal.seoulgijibae.workers.dev',
       [switch]$Test)               # 마이크 시험: 3초 녹음해서 소리 크기만 알려 주고 끝
 $ErrorActionPreference = 'Continue'
@@ -197,10 +198,11 @@ function FbToken() {
   return $script:Tok
 }
 function FsStr($v) { return @{ stringValue = [string]$v } }
-function PutRecText($docId, $fields) {   # recText/{docId} 문서 쓰기(덮어쓰기) — 동선관리 브라우저 녹음과 같은 모양
+function PutRecText($docId, $fields, [switch]$Merge) {   # recText/{docId} 문서 쓰기(덮어쓰기) — 동선관리 브라우저 녹음과 같은 모양. -Merge: 준 칸만 바꿈(문서가 있어야 함)
   $f = @{}; foreach ($k in $fields.Keys) { $v = $fields[$k]; if ($v -is [int] -or $v -is [long]) { $f[$k] = @{ integerValue = [string]$v } } else { $f[$k] = FsStr $v } }
   $body = @{ fields = $f } | ConvertTo-Json -Depth 6 -Compress
   $u = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/recText/$([Uri]::EscapeDataString($docId))"
+  if ($Merge) { $u += '?currentDocument.exists=true&' + (($fields.Keys | ForEach-Object { 'updateMask.fieldPaths=' + $_ }) -join '&') }
   Invoke-RestMethod -TimeoutSec 30 -Method Patch -Uri $u -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
 }
 
@@ -227,6 +229,7 @@ function WavParts($path, $maxSec) {
 function RunStt($wav) {
   $fileName = Split-Path $wav -Leaf; $base = $wav -replace '\.wav$', ''
   $meta = @(QueueGet | Where-Object { $_ -and $_.file -eq $fileName }) | Select-Object -First 1
+  $old = ''; if ($Redo) { try { $old = [IO.File]::ReadAllText("$base.openai.txt", [Text.Encoding]::UTF8) } catch {} }
   try {
     $parts = WavParts $wav 300; $texts = @(); $k = 0; $pk = 0.0; $vo = 0.0; $gMax = 1.0   # 5분씩 (10분이면 긴 조용한 구간 뒤 말을 통째로 빠뜨리는 일이 있었다 — 2026-11-02)
     foreach ($p in $parts) { $k++
@@ -236,6 +239,7 @@ function RunStt($wav) {
       $r = Invoke-RestMethod -TimeoutSec 600 -Method Post -Uri "$Portal/api/dongseon/stt" -Headers @{ Authorization = "Bearer $(FbToken)"; 'x-provider' = 'openai' } -ContentType 'audio/wav' -Body $p
       $t = ([string]$r.text).Trim(); if ($parts.Count -gt 1) { $t = "[$(($k - 1) * 5)분부터] " + $t }; if ($t) { $texts += $t } }
     $text = ($texts -join "`r`n"); if (-not $text) { $text = '(받아쓴 말이 없습니다)' }
+    if ($Redo -and (TxtLen $text) -le (TxtLen $old)) { Log "다시 받아써도 더 길지 않아 그대로: $fileName ($(TxtLen $old) → $(TxtLen $text)자)"; return }
     [IO.File]::WriteAllText("$base.openai.txt", $text, (New-Object Text.UTF8Encoding $true))
     Remove-Item -LiteralPath "$base.openai.err" -Force -ErrorAction SilentlyContinue
     $lvl = "최대 $([Math]::Round($pk))% · 말소리 $([Math]::Round($vo))%$(if ($gMax -gt 1.5) { ' · ' + [Math]::Round($gMax) + '배 키움' })"
@@ -245,6 +249,10 @@ function RunStt($wav) {
           date = ([string]$meta.at).Substring(0, 10); file = $fileName; text = $(if ($text.Length -gt 200000) { $text.Substring(0, 200000) } else { $text }); src = 'openai'; dur = [int]$meta.dur; at = (NowIso); by = "녹음($Pc)"; lvl = $lvl; lvlPeak = [int][Math]::Round($pk); lvlVoice = [int][Math]::Round($vo) })
         Log "OpenAI 받아쓴 글 올림: $fileName" }
       catch { Log "OpenAI 받아쓴 글 올리기 실패 $fileName : $($_.Exception.Message) (글은 외장하드 .openai.txt 에 있음)" } }
+    elseif ($Redo) {
+      try { PutRecText ((RecDocId $fileName) + '__openai') ([ordered]@{ text = $(if ($text.Length -gt 200000) { $text.Substring(0, 200000) } else { $text }); at = (NowIso); lvl = $lvl; lvlPeak = [int][Math]::Round($pk); lvlVoice = [int][Math]::Round($vo); redo = '다시 받아씀' }) -Merge
+        Log "다시 받아쓴 글 올림: $fileName ($(TxtLen $old) → $(TxtLen $text)자)" }
+      catch { Log "다시 받아쓴 글 올리기 실패 $fileName : $($_.Exception.Message)" } }
   } catch {
     $n = 0; try { $n = [int]([string](Get-Content -LiteralPath "$base.openai.err" -TotalCount 1 -ErrorAction Stop)) } catch {}
     try { [IO.File]::WriteAllText("$base.openai.err", [string]($n + 1)) } catch {}
@@ -267,6 +275,28 @@ function SttNext() {
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$PSCommandPath`"", '-Pc', "`"$Pc`"", '-SttJob', "`"$wav`"")
     if ($Dir) { $a += @('-Dir', "`"$Dir`"") }
     try { $script:SttProc = Start-Process powershell.exe -ArgumentList $a -WindowStyle Hidden -PassThru } catch { Log "받아쓰기 시작 실패: $($_.Exception.Message)" }
+    return
+  }
+  RedoNext   # 새 녹음 받아쓰기가 없을 때만
+}
+# ── 다시 받아쓰기 (2026-11-02): 받아쓰기가 쉬는 구간에서 끊겨 몇 분 녹음에 한 줄·'말소리 없음'만 남은 지난 3일 녹음을 한 번씩 다시 받아쓴다
+#  기준: 45초 넘는 녹음인데 글이 1분에 20자도 안 됨. '<녹음>.openai.redo' 를 남겨 같은 파일은 한 번만
+function TxtLen($t) { $t = [string]$t; foreach ($x in @('(말소리가 거의 없어 받아쓴 글이 없습니다)', '(받아쓴 말이 없습니다)')) { $t = $t.Replace($x, '') }; return (($t -replace '\[\d+분부터\]', '') -replace '\s', '').Length }
+$script:RedoAt = [DateTime]::MinValue
+function RedoNext() {
+  if (((Get-Date) - $script:RedoAt).TotalMinutes -lt 5) { return }; $script:RedoAt = Get-Date
+  if (-not ($Dir -and (Test-Path -LiteralPath $Dir))) { return }
+  $since = (Get-Date).AddDays(-3)
+  foreach ($t in @(Get-ChildItem -LiteralPath $Dir -Filter '*.openai.txt' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $since } | Sort-Object LastWriteTime -Descending)) {
+    $base = $t.FullName -replace '\.openai\.txt$', ''; $wav = "$base.wav"
+    if (-not (Test-Path -LiteralPath $wav) -or (Test-Path -LiteralPath "$base.openai.redo")) { continue }
+    $sec = ((Get-Item -LiteralPath $wav).Length - 44) / 32000; if ($sec -lt 45) { continue }
+    $len = 0; try { $len = TxtLen ([IO.File]::ReadAllText($t.FullName, [Text.Encoding]::UTF8)) } catch { continue }
+    if ($len -ge [Math]::Max(10, $sec / 60 * 20)) { continue }
+    try { [IO.File]::WriteAllText("$base.openai.redo", (NowIso)) } catch { continue }
+    $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', "`"$PSCommandPath`"", '-Pc', "`"$Pc`"", '-SttJob', "`"$wav`"", '-Redo', '-Dir', "`"$Dir`"")
+    Log "다시 받아쓰기: $($t.Name -replace '\.openai\.txt$', '') ($([int]$sec)초 녹음에 ${len}자)"
+    try { $script:SttProc = Start-Process powershell.exe -ArgumentList $a -WindowStyle Hidden -PassThru } catch { Log "다시 받아쓰기 시작 실패: $($_.Exception.Message)" }
     return
   }
 }
