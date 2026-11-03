@@ -7098,7 +7098,7 @@ async function startHosted(){
          if(n){try{renderThrottled();}catch(e){}}
        },err=>console.warn('visits snap',err));}
       /* 체류 기록 전체도 뒤에서 (로그인을 막지 않게, 2026-10-25) */
-      cloud.statsCol.get().then(ss=>{const all=ss.docs.map(d=>d.data()),ids=new Set(all.map(x=>x.id));const d0=new Date();d0.setHours(0,0,0,0);const t0=d0.toISOString();
+      bigSync('stats',cloud.statsCol,'leftAt').then(all=>{const ids=new Set(all.map(x=>x.id));/* 이 기기 캐시 + 새 것만 (2026-11-03) */const d0=new Date();d0.setHours(0,0,0,0);const t0=d0.toISOString();
         STATS=all.concat((STATS||[]).filter(x=>x&&x.id&&!ids.has(x.id)&&String(x.leftAt||'')>=t0));   // 받는 사이 실시간으로 들어온 오늘 기록만 더한다
         lsSet(STATS_STORE,JSON.stringify(STATS));try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}}).catch(e=>console.warn('stats full',e));
       /* 오늘 방별 체류 기록도 실시간으로 (2026-10-01): 전에는 로그인 때 한 번만 받아, 다른 PC 에서 종결한 환자가 통계의 '최근 종결 기록'에
@@ -7219,9 +7219,31 @@ function visitsMerge(recent,sinceIso){const since=sinceIso||(()=>{const d=new Da
   const ids=new Set(recent.map(v=>v&&v.id));
   VISITS=(Array.isArray(VISITS)?VISITS:[]).filter(v=>v&&!ids.has(v.id)&&visitIso(v)<since).concat(recent);
   lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));}
+/* ═════ 지난 기록 캐시 (2026-11-03: Firebase 읽기 하루 1,300만 회 — 화면을 열 때마다(배포 뒤 자동 새로고침 포함) 내원 5천·체류 2만9천 문서를 통째로 다시 받았다) ═════
+   이 기기의 IndexedDB 에 전체를 두고, 열 때는 마지막으로 받은 시각 이틀 전부터만 서버에서 받는다(그 구간은 서버 것으로 통째로 바꿔 지워진 기록도 빠진다).
+   오래된 기록을 고친 것은 이틀 창 밖이면 못 보므로 7일마다 한 번 전체를 다시 받는다. IndexedDB 를 못 쓰면 예전처럼 전체 */
+const BIG_FULL_MS=7*864e5,BIG_OVERLAP_MS=2*864e5;
+function bigIdb(){return new Promise((res,rej)=>{const r=indexedDB.open('dsBig',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function bigGet(k){try{const db=await bigIdb();return await new Promise(res=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);});}catch(e){return null;}}
+async function bigPut(k,v){try{const db=await bigIdb();await new Promise(res=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=res;t.onabort=res;});}catch(e){}}
+/* col 의 전체 문서(data 배열). field = 기록 시각(ISO 문자열) — 이 값으로 새 것만 골라 받는다 */
+async function bigSync(kind,col,field){
+  const key=kind+'|'+((cloud.ref&&cloud.ref.path)||''),c=await bigGet(key),now=Date.now();
+  const full=!c||!Array.isArray(c.ids)||!Array.isArray(c.rows)||c.ids.length!==c.rows.length||now-(c.fullAt||0)>BIG_FULL_MS||!c.maxT;
+  let ids,rows;
+  if(full){const s=await col.get();ids=s.docs.map(d=>d.id);rows=s.docs.map(d=>d.data());}
+  else{const since=new Date(Date.parse(c.maxT)-BIG_OVERLAP_MS).toISOString();
+    const s=await col.where(field,'>=',since).get();
+    ids=[];rows=[];c.ids.forEach((id,i)=>{const v=c.rows[i];if(!(v&&String(v[field]||'')>=since)){ids.push(id);rows.push(v);}});   // 이틀 창 안의 옛 것은 버리고 서버 것으로
+    const pos=new Map(ids.map((id,i)=>[id,i]));
+    s.docs.forEach(d=>{const i=pos.get(d.id);if(i!=null)rows[i]=d.data();else{ids.push(d.id);rows.push(d.data());}});}
+  let maxT='';rows.forEach(v=>{const t=String((v&&v[field])||'');if(t>maxT&&t<='9')maxT=t;});
+  bigPut(key,{ids,rows,maxT,fullAt:full?now:c.fullAt,at:now});
+  try{console.info('[bigSync]',kind,full?'전체':'새 것만',rows.length+'건');}catch(e){}
+  return rows;}
 async function loadVisitsFull(){
   if(!cloud.visitsCol||!(firebase.auth&&firebase.auth().currentUser))return;
-  try{const vs=await cloud.visitsCol.get();const all=vs.docs.map(d=>d.data()),ids=new Set(all.map(v=>v&&v.id));
+  try{const all=await bigSync('visits',cloud.visitsCol,'dischargedAt'),ids=new Set(all.map(v=>v&&v.id));
     const d0=new Date();d0.setHours(0,0,0,0);const t0=d0.toISOString();
     const extra=(VISITS||[]).filter(v=>v&&v.id&&!ids.has(v.id)&&visitIso(v)>=t0);   // 받는 사이 오늘 새로 끝난 내원(실시간으로 들어온 것)
     VISITS=all.concat(extra);
