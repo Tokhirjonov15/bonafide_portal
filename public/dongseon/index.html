@@ -9752,7 +9752,7 @@ function cardEl(p,colRoom){
   }).join("");
   const nextName=last?"":p.route[p.step+1];
   const dwell=`<span class="dwell" data-pid="${p.id}" title="대기/진행 시간">${dwellLabel(p)}</span>`;
-  const st=_mir?'대기':(p.status||'대기');   // 거울 칸은 아직 시작 안 한 칸 — 진행 표시는 실제 위치 칸에만
+  const st=_mir?((Array.isArray(p.spaceProg)&&p.spaceProg.includes(_chipRoom)&&p.status==='진행')?'진행':'대기'):(p.status||'대기');   // 거울 칸은 아직 시작 안 한 칸 — 같이 진행(spaceProg, 2026-11-03)이면 진행   // 거울 칸은 아직 시작 안 한 칸 — 진행 표시는 실제 위치 칸에만
   const _rm=meta(_mir?_chipRoom:curRoom(p));  // 현재 방 설정(단계 수 등)
   // 예약배치 방에서 예약자 정시/대기/지각 표시
   let resTagHtml="";
@@ -10106,6 +10106,8 @@ function enterCurrentRoom(p,by){p.status='대기';const now=new Date().toISOStri
   /* 이 방으로 누가 옮겼는지 — 환자 동선 행에 표시 (2026-09-23). by 를 넘기면 그 이름(예: 비트), 없으면 로그인한 사람 */
   {const _r=curRoom(p);if(_r){p.roomBy=p.roomBy||{};p.roomBy[_r]={by:(by!==undefined?by:((currentUser&&currentUser.name)||'')),at:now};
     if(!sameSpaceMates(_r).length&&p.spaceDone)delete p.spaceDone;   // 같은 공간을 벗어나면 인계 기록 초기화
+    if(Array.isArray(p.spaceProg)){if(sameSpaceMates(_r).length&&p.spaceProg.includes(_r)){p.status='진행';p.spaceProg=p.spaceProg.filter(r=>r!==_r);}   // 같이 진행하던 칸으로 넘어오면 진행 그대로 (2026-11-03)
+      if(!sameSpaceMates(_r).length||!p.spaceProg.length)delete p.spaceProg;}
     if(p.f4Move&&meta(_r).group==='4층')delete p.f4Move;}}   // 실제로 4층 방에 들어오면 '3,4층 이동' 유령 카드는 끝 (2026-10-14)
   /* 옮긴 사람을 그 방 담당으로 자동 지정하던 규칙(2026-09-24)은 2026-09-30 원장님들 요청으로 없앴다 — 카드를 옮겨도 담당은 바뀌지 않고, 직원이 직접 확인해 지정한다 */
   /* 도수(SASO·자동차도수)는 옮긴 사람 = 치료사 (2026-10-01 요청): 로그인한 사람이 그 방 치료사 목록에 있으면 그 방 치료사로 기록 → 4층 도수 표 '치료사' 칸.
@@ -10753,8 +10755,22 @@ function spaceSwitch(p,col){if(!spaceMirCol(p,col))return false;const cr=curRoom
   p.spaceDone=(p.spaceDone||[]).filter(r=>r!==col);
   try{audit('같은 공간 칸 바꿈',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+cr+' → '+col+' ('+cr+' 은 남음)');}catch(e){}
   return true;}
-window.cardStatus=function(pid,col,st){const p=data.find(x=>x.id===pid);if(!p)return;if(spaceSwitch(p,col)){save(p);}setStatus(pid,st);};
-window.cardFinish=function(pid,col){const p=data.find(x=>x.id===pid);if(!p)return;if(spaceSwitch(p,col))save(p);nextStep(pid);};
+/* 같은 공간 동시 진행 (2026-11-03 요청: Sono 주사 + 처치실 쿨밴드·코반 — Sono 에서 하고 나오는 경우도 있어 두 칸 다 [진행]).
+   실제 위치 칸이 진행 중일 때 거울 칸의 [진행]을 누르면 위치는 그대로 두고 그 칸도 진행(p.spaceProg). 한 번 더 누르면 그 칸만 대기로.
+   어느 한 칸을 [종결]하면 남은 칸이 진행 그대로 이어진다. 같은 공간을 벗어나면 지운다(enterCurrentRoom) */
+window.cardStatus=function(pid,col,st){const p=data.find(x=>x.id===pid);if(!p)return;
+  if(st==='진행'&&spaceMirCol(p,col)&&p.status==='진행'){const L=Array.isArray(p.spaceProg)?p.spaceProg.slice():[];
+    if(L.includes(col)){if(!confirm(`'${p.name||''}'님 ${col} [진행]을 취소할까요? (${curRoom(p)} 은 진행 그대로)`))return;p.spaceProg=L.filter(r=>r!==col);}
+    else{if(!CARD_STAFF_HIDE.doc(col)&&!docFor(p,col)){alert(`'${p.name}'님의 ${col} 진료의가 지정되지 않았습니다.
+카드의 🩺 선택에서 이 방(${col})의 진료의를 먼저 지정한 뒤 [진행]을 눌러주세요.`);return;}
+      L.push(col);p.spaceProg=L;}
+    try{audit('같은 공간 동시 진행',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+curRoom(p)+' + '+col+(p.spaceProg.includes(col)?' 진행':' 진행 취소'));}catch(e){}
+    save(p);render();return;}
+  if(spaceSwitch(p,col)){save(p);}setStatus(pid,st);};
+window.cardFinish=function(pid,col){const p=data.find(x=>x.id===pid);if(!p)return;
+  /* 같이 진행 중인 거울 칸을 종결 → 그 칸만 끝내고, 지금 칸은 진행 그대로(종결 뒤 들어오는 칸이 spaceProg 에 있으면 진행으로 — enterCurrentRoom) */
+  if(spaceMirCol(p,col)&&p.status==='진행'&&Array.isArray(p.spaceProg)&&p.spaceProg.includes(col)){const cr=curRoom(p);p.spaceProg=p.spaceProg.filter(r=>r!==col).concat([cr]);}
+  if(spaceSwitch(p,col))save(p);nextStep(pid);};
 function togglePaid(pid){const p=data.find(x=>x.id===pid);if(!p)return;const target=!p.paid;applyPaid(p,target);saveLocal();render();cloudPatientTxn(pid,d=>applyPaid(d,target));}
 /* ── 주차권 안내: 접수 후 PARKING_MIN분 경과 시 카드에 강조 표시, 지급 처리 시 해제 ── */
 function recvMs(p){   // 접수 시각(오늘 HH:MM 우선, 없으면 등록 시각)
