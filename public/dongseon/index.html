@@ -7100,7 +7100,7 @@ async function startHosted(){
       /* 체류 기록 전체도 뒤에서 (로그인을 막지 않게, 2026-10-25) */
       bigSync('stats',cloud.statsCol,'leftAt').then(all=>{const ids=new Set(all.map(x=>x.id));/* 이 기기 캐시 + 새 것만 (2026-11-03) */const d0=new Date();d0.setHours(0,0,0,0);const t0=d0.toISOString();
         STATS=all.concat((STATS||[]).filter(x=>x&&x.id&&!ids.has(x.id)&&String(x.leftAt||'')>=t0));   // 받는 사이 실시간으로 들어온 오늘 기록만 더한다
-        lsSet(STATS_STORE,JSON.stringify(STATS));try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}}).catch(e=>console.warn('stats full',e));
+        statsLocalSave();try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}}).catch(e=>console.warn('stats full',e));
       /* 오늘 방별 체류 기록도 실시간으로 (2026-10-01): 전에는 로그인 때 한 번만 받아, 다른 PC 에서 종결한 환자가 통계의 '최근 종결 기록'에
          새로고침 전까지 없었다(내원 목록에는 있는데 통계에는 적게 보임). 오늘 0시 이후 나간 기록만 듣는다 */
       if(cloud.unsubS)cloud.unsubS();
@@ -7195,6 +7195,10 @@ function afterCloud(){
 function loadRooms(){try{const r=JSON.parse(localStorage.getItem(ROOMS_STORE));if(Array.isArray(r)&&r.length)return r;}catch(e){}return [...DEFAULT_ROOMS];}
 function loadMeta(){try{const m=JSON.parse(localStorage.getItem(META_STORE));if(m&&typeof m==="object")return m;}catch(e){}return {};}
 function load(){try{const s=JSON.parse(localStorage.getItem(STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
+/* 체류 기록의 이 PC 저장(localStorage)은 오늘 것만 (2026-11-03): 전체(2만9천 건)는 5MB 를 넘어 매번 QuotaExceeded 였고, 그때마다 큰 JSON 을 만드느라 화면이 멈췄다.
+   전체는 IndexedDB 캐시(bigSync)가 갖고 있다 — localStorage 는 서버 연결 전 첫 화면용 */
+function statsLocalSave(){const d=new Date();d.setHours(0,0,0,0);const t0=d.toISOString();
+  lsSet(STATS_STORE,JSON.stringify((STATS||[]).filter(x=>x&&String(x.leftAt||'')>=t0)));}
 function loadStats(){try{const s=JSON.parse(localStorage.getItem(STATS_STORE));if(Array.isArray(s))return s;}catch(e){}return [];}
 function loadRegistry(){try{const s=JSON.parse(localStorage.getItem(REG_STORE));if(Array.isArray(s))return capRegistry(s);}catch(e){}return [];}
 function loadRoutines(){try{const s=JSON.parse(localStorage.getItem(ROUTINE_STORE));if(Array.isArray(s))return s;}catch(e){}return DEFAULT_ROUTINES();}
@@ -7259,7 +7263,7 @@ function lsSet(k,v){
     console.warn('localStorage 저장 실패(용량)',k,e&&e.name);return false;}}
 let _bigSaveT=null;
 function saveBigLocal(){_bigSaveT=null;
-  lsSet(STATS_STORE,JSON.stringify(STATS));
+  statsLocalSave();
   lsSet(REG_STORE,JSON.stringify(REGISTRY));
   lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));}
 function saveLocal(){lsSet(STORE,JSON.stringify(data.filter(x=>!x._viewOnly)));
@@ -10644,7 +10648,7 @@ function pruneUndoneVisits(p){if(!p||!Array.isArray(p.visits)||!p.visits.length|
   if(!drop.size)return [];
   const gone=p.visits.filter(v=>drop.has(v));p.visits=p.visits.filter(v=>!drop.has(v));
   const ids=new Set(gone.map(v=>v.id).filter(Boolean));
-  if(ids.size){STATS=STATS.filter(s=>!ids.has(s.id));try{lsSet(STATS_STORE,JSON.stringify(STATS));}catch(e){}
+  if(ids.size){STATS=STATS.filter(s=>!ids.has(s.id));try{statsLocalSave();}catch(e){}
     if(cloud.active&&cloud.statsCol)ids.forEach(id=>cloud.statsCol.doc(id).delete().catch(e=>console.warn('stat del',e)));}
   const cur=p.route[st];
   [...new Set(gone.map(v=>v.room))].forEach(room=>{if(p.visits.some(v=>v.room===room))return;
@@ -11866,7 +11870,7 @@ async function resetStatsTimes(){
       for(const d of snap.docs){batch.delete(d.ref);if(++n>=400){await batch.commit();batch=cloud.db.batch();n=0;}}
       if(n>0)await batch.commit();
     }
-    STATS=[];localStorage.setItem(STATS_STORE,JSON.stringify(STATS));
+    STATS=[];statsLocalSave();
     try{audit('체류 시간 초기화',`체류 ${nS}건 (내원 기록 유지)`);}catch(e){}
     try{renderStats();}catch(e){}
     alert('체류 시간 기록이 초기화되었습니다. (다른 PC는 새로고침 후 반영)');return true;
@@ -11925,7 +11929,7 @@ async function resetStats(){
         for(const d of snap.docs){batch.delete(d.ref);if(++n>=400){await batch.commit();batch=cloud.db.batch();n=0;}}
         if(n>0)await batch.commit();}
     }
-    VISITS=[];STATS=[];localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));localStorage.setItem(STATS_STORE,JSON.stringify(STATS));
+    VISITS=[];STATS=[];localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));statsLocalSave();
     try{audit('통계 초기화',`체류 ${nS}건 · 내원 ${nV}건`);}catch(e){}
     statsDate='';statsDateTo='';statsOpenRoom='';try{renderStats();}catch(e){}try{render();}catch(e){}
     alert('통계가 초기화되었습니다. (다른 PC의 화면은 새로고침 후 반영)');return true;
@@ -11951,7 +11955,7 @@ async function wipeAllRecords(){
     data=[];VISITS=[];STATS=[];REGISTRY=[];PMEMO={};seqNext=1;
     localStorage.setItem(STORE,JSON.stringify(data));
     localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));
-    localStorage.setItem(STATS_STORE,JSON.stringify(STATS));
+    statsLocalSave();
     localStorage.setItem(REG_STORE,JSON.stringify(REGISTRY));
     lsSet(PMEMO_STORE,JSON.stringify(PMEMO));
     localStorage.setItem("patientBoard_seq","1");
@@ -12061,7 +12065,7 @@ async function applyRestore(dump){
   localStorage.setItem("patientBoard_seq",String(seqNext));
   localStorage.setItem(STORE,JSON.stringify(data));
   localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));
-  localStorage.setItem(STATS_STORE,JSON.stringify(STATS));
+  statsLocalSave();
   if(cloud.active&&cloud.db){
     for(const col of [cloud.patientsCol,cloud.visitsCol,cloud.statsCol]){
       if(!col)continue;
@@ -12115,7 +12119,7 @@ async function deletePatientRecord(key){
     }
     localStorage.setItem(STORE,JSON.stringify(data));
     localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));
-    localStorage.setItem(STATS_STORE,JSON.stringify(STATS));
+    statsLocalSave();
     localStorage.setItem(REG_STORE,JSON.stringify(REGISTRY));
     cloudSaveConfig();  // 등록부 변경 반영
     render();histKey=null;renderHistory();
@@ -14361,7 +14365,7 @@ window.onSilbi=function(){const c=document.getElementById("f_silbi"),l=document.
 function purgePatientStats(p){try{if(!p||!p.id)return;
   const ids=new Set((p.visits||[]).map(v=>v&&v.id).filter(Boolean));
   const before=STATS.length;STATS=STATS.filter(r=>!(r.patientId===p.id||ids.has(r.id)));
-  if(STATS.length!==before)lsSet(STATS_STORE,JSON.stringify(STATS));
+  if(STATS.length!==before)statsLocalSave();
   if(cloud.active&&cloud.statsCol){
     ids.forEach(i=>cloud.statsCol.doc(i).delete().catch(e=>console.warn('stat del',e)));
     cloud.statsCol.where('patientId','==',p.id).get().then(s=>s.forEach(d=>{if(!ids.has(d.id))d.ref.delete().catch(e=>console.warn('stat del',e));})).catch(e=>console.warn('stat purge',e));}
@@ -14379,7 +14383,7 @@ function purgeTestDay(p){try{
   const vDel=(Array.isArray(VISITS)?VISITS:[]).filter(v=>same(v)&&isToday(v.dischargedAt));
   if(vDel.length){VISITS=VISITS.filter(v=>!vDel.includes(v));try{saveBigLocal&&saveBigLocal();}catch(e){}}
   const sDel=STATS.filter(r=>same(r)&&isToday(r.leftAt));
-  if(sDel.length){STATS=STATS.filter(r=>!sDel.includes(r));lsSet(STATS_STORE,JSON.stringify(STATS));}
+  if(sDel.length){STATS=STATS.filter(r=>!sDel.includes(r));statsLocalSave();}
   if(!(cloud.active))return;
   vDel.forEach(v=>{if(v.id&&cloud.visitsCol)cloud.visitsCol.doc(v.id).delete().catch(e=>console.warn('test visit del',e));});
   sDel.forEach(r=>{if(r.id&&cloud.statsCol)cloud.statsCol.doc(r.id).delete().catch(e=>console.warn('test stat del',e));});
