@@ -14910,6 +14910,14 @@ function ownParts(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':
      예) 비급여 50,000 + 급여 97,409×30%=29,222→29,200 + 코드3 13,150 = 92,350 */
   const gR=Math.floor((gOwn+1e-6)/100)*100,oR=Math.floor(oth+1e-6);
   return {total:Math.round(non)+gR+oR,non:Math.round(non),g0,gOwn,gR,oth:oR,ins:k,ageN};}
+/* 줄별 본인부담 (2026-11-03 요청: 동의서 처방내역의 금액 칸을 환자 본인부담으로) — 비급여 100% · 급여 × 부담률(보험·나이) · 그 밖의 코드 × 코드 부담률.
+   의료급여(정액)·65세 이상 1.5만 이하(정액)는 줄로 나눌 수 없어 null. 급여 줄은 10원 미만 버림 — 줄 합은 위 본인부담액과 몇십~몇백 원 다를 수 있다 */
+function ownLineAmt(x,ins,ageN,g0tot){const a=Number(String(x&&x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;if(!a)return 0;const c=String(x.ins==null?'':x.ins).trim(),k=String(ins||'').replace(/\s+/g,'');
+  if(c==='2')return Math.round(a);
+  if(c!==''&&c!=='0'){const r=OWN_RATES&&OWN_RATES[c]!=null?OWN_RATES[c]:OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3;return Math.floor(a*r+1e-6);}
+  if(/일반/.test(k))return Math.round(a);if(/자보|자동차|산재|공상/.test(k))return 0;if(/보호|의료급여|[12]종/.test(k))return null;
+  let r=0.3;if(ageN!=null&&ageN>=65){const t=g0tot||0;if(t<=15000)return null;r=t<=20000?0.1:t<=25000?0.2:0.3;}else if(ageN!=null&&ageN<6)r=0.21;
+  return Math.floor(a*r/10+1e-6)*10;}
 function ownCtxOf(m){m=normMrn(m);const p=(data||[]).find(x=>normMrn(x.mrn)===m)||(Array.isArray(VISITS)?VISITS:[]).find(x=>normMrn(x.mrn)===m);
   const r=(BIT_INTAKE||[]).find(x=>normMrn(x.mrn)===m&&x.ins);return {ins:(p&&(bitInsOf(p)||p.ins))||(r&&r.ins)||'',ageN:ownAgeOf(p&&p.birth)};}
 /* 뜻을 모르는 급여구분 코드의 부담률: 오늘 비트 금액이 온 접수들로 0.3·0.5·0.8·1.0 중 가장 잘 맞는 값 (10분마다) */
@@ -14957,8 +14965,13 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     /* 2026-10-14 요청: 처방명칭·금액·횟수·급/비만 (코드·총투여량·일수·시각은 뺐다)
        2026-11-01 요청: 먹는 약은 횟수 대신 일수('2일'), 표 맨 아래로 (주사·치료 사이에 섞여 있었다) */
     const its=rx.items.filter(x=>!rxIsOral(x)).concat(rx.items.filter(rxIsOral));
-    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r">금액</th><th class="r">횟수·일수</th><th>급/비</th></tr></thead><tbody>${its.map(x=>{const pay=payOf(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
-      return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?esc(rxWon(pay.amt)):''}</td><td class="r">${rxIsOral(x)?(String(x.day||'').trim()?esc(String(x.day).trim())+'일':''):esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
+    const oc=ownCtxOf(p&&p.mrn),oIns=(rx&&rx.insNm)||bitInsOf(p)||(p&&p.ins)||oc.ins,oAge=ownAgeOf(p&&p.birth)??oc.ageN;
+    const oG0=(rx.pay||[]).reduce((t,y)=>{const c=String(y.ins==null?'':y.ins).trim();return (c===''||c==='0')?t+(Number(String(y.amt||'').replace(/[^\d.-]/g,''))||0):t;},0);
+    /* 줄별 끝자리 나머지는 가장 큰 급여 줄에 — 줄 합이 위 본인부담액(예상 계산)과 같게 */
+    const OL=new Map();its.forEach(x=>{const y=payOf(x);if(y)OL.set(x,ownLineAmt(y,oIns,oAge,oG0));});
+    {const vs=[...OL.values()],tot=ownCalc(rx.pay,oIns,oAge,OWN_RATES);if(tot!=null&&vs.length&&vs.every(v=>v!=null)){const d=tot-vs.reduce((t,v)=>t+v,0);let big=null;OL.forEach((v,x)=>{const y=payOf(x),c=String(y.ins==null?'':y.ins).trim();if((c===''||c==='0')&&(!big||v>OL.get(big)))big=x;});if(d&&big&&Math.abs(d)<=300)OL.set(big,OL.get(big)+d);}}
+    rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r" title="환자가 내는 금액 — 비급여는 전액, 급여는 보험·나이 부담률. 줄 합은 위 본인부담액과 조금 다를 수 있습니다">본인부담</th><th class="r">횟수·일수</th><th>급/비</th></tr></thead><tbody>${its.map(x=>{const pay=payOf(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
+      return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?(()=>{const o=OL.has(x)?OL.get(x):ownLineAmt(pay,oIns,oAge,oG0);return o==null?'<span class="hint" title="정액 — 위 본인부담액에 포함">정액</span>':esc(rxWon(o));})():''}</td><td class="r">${rxIsOral(x)?(String(x.day||'').trim()?esc(String(x.day).trim())+'일':''):esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
   /* 2026-10-28 요청: 동의서는 환자분께 '오늘 금액'을 알려 드리는 것 — 비트 수납 창의 '총 본인부담'(에이전트 db2.0)만 보인다.
      아직 비트에서 안 왔으면 아무것도 쓰지 않는다(총 진료비·비급여·'계산 전' 안내는 빼기로) */
