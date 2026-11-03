@@ -1748,6 +1748,9 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   #bonusMgr .c4-chk.on{border-color:#2563eb;background:#eff6ff}
   #bonusMgr .c4-items{text-align:left;margin:0 0 3vh;padding:2.4vh 3.4vh 2.4vh 6vh;background:#fff;border-radius:20px;font-size:clamp(17px,2.4vh,26px);line-height:1.6;max-height:42vh;overflow:auto}   /* 치료 동의 항목 (2026-10-14) */
   #bonusMgr .c4-items li{margin:.4em 0}
+  #bonusMgr .c4-items .c4-ih{color:#1c1917}   /* 항목 소제목 (2026-11-03) */
+  #bonusMgr .c4-card .c4-items{font-size:clamp(14px,2.05vh,23px);line-height:1.5;max-height:52vh;margin-bottom:2.4vh}   /* 항목 4개 — 태블릿 한 화면에 */
+  #bonusMgr .c4-card .c4-title{font-size:clamp(20px,3vh,34px);letter-spacing:0;line-height:1.3}   /* 긴 제목 '물리치료 시행 및 준수사항에 관한 동의서' */
   #bonusMgr .cip-head .bm-ask{font-size:clamp(20px,3.2vh,34px);font-weight:800}   /* '물리치료 접수 하시겠습니까?' */
   #bonusMgr .c4-box{flex:none;width:clamp(56px,8vh,90px);height:clamp(56px,8vh,90px);border:5px solid #78716c;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:clamp(40px,6vh,70px);font-weight:900;color:#fff;line-height:1}
   #bonusMgr .c4-chk.on .c4-box{background:#2563eb;border-color:#2563eb}
@@ -10225,9 +10228,15 @@ let BV=null;   // {pid, d:'입력한 숫자', miss:틀린 횟수}
    · CRYO3 만 있고 MM 이 없으면: 동의 없음(목록에도 안 나옴)
    기록: 보너스 문서(bonus/{차트번호})의 c4At(처음 받은 때)·c4Days(받은 날)·c4Log. 환자 정보 창 '4층 혜택' 칸에 '4층 동의서 받음' 표시 */
 /* 2026-10-14 요청: 동의 항목(위, 나중에 받아서 C4_ITEMS 에 넣는다) + 맨 아래 '상기내용에 동의하며 치료진행에 동의합니다' 체크 */
-const C4_ITEMS=['환자분의 빠른 일상 복귀를 돕기 위해, 담당 치료사가 진행하는 전문적인 치료 행위에 동의합니다.'];
+/* 2026-11-03 요청: 동의서 글을 '물리치료 시행 및 준수사항에 관한 동의서' 4개 항목으로 바꿈 — [소제목, 내용] */
+const C4_TITLE='물리치료 시행 및 준수사항에 관한 동의서';
+const C4_ITEMS=[
+  ['치료 환경 및 안전 관리','치료사는 환자의 상태 확인 및 안전한 치료 시행, 긴급 상황 대응을 위하여 치료 진행 중 임의로 베드 커튼을 개폐할 수 있습니다.'],
+  ['환복 규정 안내','환자의 개인정보 보호 및 안전 관리를 위해 환복은 반드시 지정된 탈의실 내부에서만 진행하셔야 하며, 그 외 공간에서의 환복은 금지됩니다.'],
+  ['제공 서비스(무상 케어) 적용 기준','본원 물리치료 관련 부가 서비스는 당일 주사 치료를 완료한 환자에 한하여 한시적으로 제공됩니다. 주사 치료 미시행 시 서비스 제공이 불가하며, 병원 사정 및 환자 상태에 따라 사전 고지 없이 제한 또는 중단될 수 있습니다.'],
+  ['비급여 치료 및 실손보험 관련 안내','본원은 환자의 개별 실손보험사 및 보장 약관과 아무런 상관 관계가 없습니다. 비급여 치료 항목의 경우 환자가 가입한 보험 약관 및 지급 기준에 따라 보험금 지급이 거절(미지급)될 수 있습니다.']];
 const C4_AGREE='상기내용에 동의하며 치료진행에 동의합니다';
-const C4_TEXT=C4_ITEMS.join(' / ')+' — '+C4_AGREE;   // 기록(c4Log.text)에 남는 글
+const C4_TEXT=C4_TITLE+': '+C4_ITEMS.map(([h,t],i)=>(i+1)+'. ['+h+'] '+t).join(' / ')+' — '+C4_AGREE;   // 기록(c4Log.text)에 남는 글
 let C4=null, C4_TIMER=null;   // {pid, ok:체크함, saving}
 function c4Kind(p){let mm=false,nc=false;
   (typeof rxItemsOf==='function'?rxItemsOf(p):[]).forEach(it=>{const c=String(it.cod||'').replace(/\s+/g,'').toLowerCase();
@@ -10252,8 +10261,8 @@ function renderC4(){const box=document.getElementById('bonusMgrVerify');if(!box|
   box.innerHTML=`<div class="bv-top"><button type="button" class="btn sm bm-back" onclick="bonusMgrBack()">← 목록</button></div>
     <div class="bv-card c4-card">
       <div class="bv-name">${esc(bonusMaskName(p.name))} 님</div>
-      <div class="c4-title">치료 동의</div>
-      <ol class="c4-items">${C4_ITEMS.map(t=>`<li>${esc(t)}</li>`).join('')}</ol>
+      <div class="c4-title">${esc(C4_TITLE)}</div>
+      <ol class="c4-items">${C4_ITEMS.map(([h,t])=>`<li><b class="c4-ih">${esc(h)}</b><br>${esc(t)}</li>`).join('')}</ol>
       <button type="button" class="c4-chk${C4.ok?' on':''}" onclick="c4Toggle()" aria-pressed="${C4.ok}"><span class="c4-box">${C4.ok?'✔':''}</span><span class="c4-text">${esc(C4_AGREE)}</span></button>
       <button type="button" class="bk-btn c4-ok" ${C4.ok&&!C4.saving?'':'disabled'} onclick="c4Submit()">${C4.saving?'저장 중…':'동의합니다'}</button>
       <div class="c4-hint">${C4.ok?'':'위 네모 칸을 눌러 체크해 주세요'}</div>
@@ -10502,7 +10511,7 @@ function pbSnap(){
   const a=document.createElement('a');a.href=url;a.download=fname;document.body.appendChild(a);a.click();a.remove();
   return true;}
 window.pbCheck=function(){if(PB.mode!=='review'||PB.phase!=='cam')return;
-  pbAutoStop();try{pbSnap();}catch(e){console.warn('review photo',e);}
+  pbAutoStop();   // 사진 찍어 저장하기(pbSnap)는 뺐다 (2026-11-03 요청) — 찰칵 소리·기기 저장 없이 확인만
   PB.phase='scan';
   const b=document.getElementById('pbCheckBtn');if(b){b.disabled=true;b.textContent='확인 중…';}
   const sc=document.getElementById('pbScan');if(sc)sc.classList.add('on');
