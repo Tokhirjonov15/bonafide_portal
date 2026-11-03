@@ -7662,12 +7662,19 @@ function setConsultResult(pid,room,result){const p=data.find(x=>x.id===pid);if(!
   const target=(c.result===result?"":result);const f={result:target,by:currentUser?currentUser.name:"",at:new Date().toISOString()};
   if(target==='시행')f.reason="";   // 시행이면 사유 불필요 — 이전에 고른 사유는 지움
   if(target==='기타')setTimeout(()=>{try{consultNoTg(p,room,'기타',getConsult(p,room).reason);}catch(e){}try{consultNoGoPay(pid,room);}catch(e){console.warn('consultNoGoPay',e);}},0);   // 사유를 먼저 골랐으면 지금 보낸다 · 비용 상담이면 수납대기로
+  if(target==='시행')setTimeout(()=>{try{consultGoNext(pid,room);}catch(e){console.warn('consultGoNext',e);}},0);   // 2026-11-03 요청: [시행]을 누르면 바로 다음 동선으로(카드의 진행·종결 버튼은 뺐다)
   if(!c.who){const w=consultWho(p,room,c);if(w)f.who=w;}   // 미지정이면 화면에 보이던 담당자를 그대로 기록
   if(!c.doc){const d=consultDoc(p,room,c);if(d)f.doc=d;}   // 담당의(진료실) 자동 기록
   applyConsultSet(p,room,f);saveLocal();render();if(editId)renderConsultEditor();
   cloudPatientTxn(pid,d=>applyConsultSet(d,room,f));
-  /* 2026-10-01 요청: [시행]은 결과만 기록하고 바로 옮기지 않는다 — 직원이 [종결]을 누를 때 처방 방(C-Arm·Sono·근전도·처치실)으로 간다(nextStep) */
+  /* 2026-10-01: [시행]은 결과만 기록하고 [종결]로 옮겼다 → 2026-11-03 요청으로 [시행]이 곧 종결(consultGoNext → nextStep — 비용 상담은 처방 방(C-Arm·Sono·근전도·처치실)으로) */
 }
+/* 상담 방(비용 상담·4층 상담)에서 [시행] 또는 [시행 안 함]+사유 → 다음 동선으로 (2026-11-03 요청: 카드에서 진행·종결 버튼을 빼고 결과 버튼으로 옮긴다).
+   지금 그 상담 방에 있는 환자만 — 결과를 나중에 고치는 경우(이미 다른 방)는 옮기지 않는다. 마지막 방이면 종결 버튼과 같게 finishPatient */
+function consultGoNext(pid,room){const p=data.find(x=>x.id===pid);if(!p||p.discharged||p._viewOnly||curRoom(p)!==room||!isConsultRoom(room))return;
+  const from=curRoom(p),last=(p.step>=p.route.length-1&&!spaceNext(p))||from===PAY_DONE_NAME;
+  if(last)finishPatient(pid);else nextStep(pid);
+  try{const q=data.find(x=>x.id===pid);toast(dispName(p.name)+' 님 '+resLabel(getConsult(p,room).result)+' → '+(q&&curRoom(q)!==from?curRoom(q):'다음 단계'));}catch(e){}}
 /* 상담에서 '시행' 을 누르면 비트 처방내역에 적힌 방으로 카드를 자동으로 보낸다 (2026-09-24).
    처방에 C-Arm 이 있으면 C-Arm 으로, 여러 방이면 그 방들 모두에 펼쳐진다(같은 공간이라 거울로 함께 보임).
    처방에 네 방이 하나도 없으면 아무것도 하지 않고 상담실에 그대로 둔다. */
@@ -7772,8 +7779,11 @@ function consultNoTg(p,room,result,reason){reason=String(reason||'').trim();if(r
    4층 상담은 제외 — '기본물리치료만' 같은 사유면 남은 물리치료로 가야 한다 */
 function consultNoGoPay(pid,room){
   const p=data.find(x=>x.id===pid);if(!p||p.discharged||p._viewOnly)return;
-  if(!isClinicConsult(room)||curRoom(p)!==room)return;
+  if(curRoom(p)!==room)return;
   const c=getConsult(p,room);if(c.result!=='기타'||!String(c.reason||'').trim())return;
+  if(!isClinicConsult(room)){   /* 4층 상담 등 (2026-11-03 요청): 동선은 지우지 않고 다음 방으로 — '기본물리치료만' 같은 사유면 남은 물리치료로 가야 한다 */
+    try{audit('상담 시행 안 함 → 다음 동선',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+room+' · 사유 '+c.reason);}catch(e){}
+    consultGoNext(pid,room);return;}
   const pay=payWaitRoom();if(!pay)return;
   /* 2026-10-14 요청: 남은 동선을 다 지우지 않고 시술 방(C-Arm·Sono·처치실·근전도검사)만 지운다 — 4층 치료 등이 남아 있으면 그 방으로, 없으면 수납대기 */
   const PROC=SAME_SPACE_GROUPS[0]||[];
@@ -9709,9 +9719,10 @@ function cardEl(p,colRoom){
     <div class="pt-soon-tag" style="${PT_SOON[p.id]?'':'display:none'}">${esc(ptSoonText(PT_SOON[p.id]))}</div>
     <div class="wait-over-tag" style="${WAIT_OVER[p.id]?'':'display:none'}">${esc(waitOverText(WAIT_OVER[p.id]))}</div>
     ${(()=>{const k=ptShotAlert(p);return k?`<div class="pt-shot-tag" title="진료실에서 PT 캡처를 보냈습니다 — 카드를 눌러 사진을 보고 [4층 확인]">📷 PT 캡처 ${k}장 — 눌러서 확인</div>`:'';})()}
-    <div class="status-row">
+    <div class="status-row"${!_mir&&isConsultRoom(curRoom(p))?' style="display:none"':''}>
       ${''/* [대기] 버튼은 카드에서 뺐다 (2026-10-01 요청) — 방에 도착하면 자동으로 대기가 되고, 대기 시간은 종결로 카드가 옮겨진 때부터 [진행]까지 그대로 잰다.
-             진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다 */}
+             진행을 잘못 눌렀으면 카드를 눌러 환자 정보 창의 [대기]로 되돌린다
+             2026-11-03 요청: 상담 방(비용 상담·4층 상담) 카드는 [진행]·[종결]을 숨긴다 — 상담 결과 [시행]/[시행 안 함]+사유가 다음 동선으로 옮긴다(consultGoNext). 환자 정보 창의 버튼은 그대로(예외 처리용) */}
       ${(!_rm.noProg&&_rm.prep)?`<button class="st-btn prep ${st==='준비'?'on':''}" onclick="event.stopPropagation();${_mir?`cardStatus('${p.id}','${esc(_chipRoom)}','준비')`:`setStatus('${p.id}','준비')`}">준비</button>`:''}
       ${!_rm.noProg?`<button class="st-btn prog ${st==='진행'?'on':''}" ${st==='진행'?'title="잘못 눌렀으면 한 번 더 누르면 대기로 돌아갑니다"':''} onclick="event.stopPropagation();${_mir?`cardStatus('${p.id}','${esc(_chipRoom)}','진행')`:`setStatus('${p.id}','진행')`}">진행</button>`:''}
       <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):_mir?esc(_chipRoom)+'만 종결 — 나머지 칸은 그대로':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}','','${_mir?esc(_chipRoom):''}'))return;${last?`finishPatient('${p.id}')`:_mir?`cardFinish('${p.id}','${esc(_chipRoom)}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
