@@ -3867,7 +3867,13 @@ function openBitStatus(){let ov=document.getElementById('bitStOv');
     <td>${esc(r.mode)}</td><td class="hint" style="max-width:260px">${r.st.lastErr?esc(String(r.st.lastErr).slice(0,120))+(r.st.lastErrAt?' ('+esc(hm(new Date(r.st.lastErrAt)))+')':''):''}</td></tr>`).join('');
   ov.innerHTML=`<div class="modal" style="width:900px;max-width:96vw"><h3>설치 상태 — PC별 <span class="hint" style="font-size:13px">최신: 진료실·접수 감시 ${BIT_LATEST.watcher} · DB 에이전트 ${BIT_LATEST.agent} · ${BIT_STATUS_AT?Math.round((Date.now()-BIT_STATUS_AT)/60000)+'분 전 읽음':''}</span></h3>
     <div class="body" style="max-height:70vh;overflow:auto">
-      <div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;font-weight:800;${old.length?'background:#fef2f2;color:#991b1b':'background:#f0fdf4;color:#166534'}">${old.length?`⚠ 옛 버전 ${old.length}대: ${old.map(r=>esc(r.pc)).join(', ')} — 그 PC만 USB로 다시 설치`:'✅ 모든 PC가 최신 버전입니다'}</div>
+      ${(()=>{/* 2026-11-03 요청('어제 설치 다 했는데 옛 버전 24대?'): 한 줄에 다 섞지 않고 — 꼭 할 것(진료실 슬립 PC·전송 담당 에이전트) / 급하지 않음 / 하루 넘게 신호 없음(꺼졌거나 안 쓰는 PC) */
+        const off=old.filter(r=>r.ageMin!=null&&r.ageMin>1440),live=old.filter(r=>!off.includes(r));
+        const must=live.filter(r=>r.agent?r.st.leader:/^진료실/.test(r.pc)),later=live.filter(r=>!must.includes(r));
+        const L=a=>a.map(r=>esc(r.pc)+' <span style="font-weight:500">('+esc(r.ver||'?')+'→'+esc(r.latest)+(r.agent?' · 접수PC_에이전트업데이트.bat':/^진료실/.test(r.pc)?' · 진료실PC_설치.bat':'')+')</span>').join(', ');
+        return `<div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;font-weight:800;${must.length?'background:#fef2f2;color:#991b1b':'background:#f0fdf4;color:#166534'}">${must.length?`⚠ 꼭 업데이트 ${must.length}대: ${L(must)}`:'✅ 꼭 필요한 PC(진료실 슬립·처방 전송 담당)는 모두 최신입니다'}
+          ${later.length?`<div style="margin-top:4px;font-weight:600;color:#92400e">급하지 않음 ${later.length}대 (기능은 그대로 — 시간 날 때 기타PC_감시업데이트.bat): ${later.map(r=>esc(r.pc)).join(', ')}</div>`:''}
+          ${off.length?`<div style="margin-top:4px;font-weight:500;color:#78716c">하루 넘게 신호 없음 ${off.length}대 (꺼져 있거나 안 쓰는 PC — 켜면 다시 확인): ${off.map(r=>esc(r.pc)).join(', ')}</div>`:''}</div>`;})()}
       ${(()=>{/* 환자부담금 진단 (2026-10-28): 오늘 처방 문서 중 본인부담(own)이 들어온 접수 수 — 0 이면 에이전트(db2.0 전송 담당)가 안 보내는 것, 일부면 비트에서 계산 전인 환자 */
         const D=(BIT_RX_DOCS||[]).filter(v=>v&&(v.items||[]).length);const withOwn=D.filter(v=>v.own!=null&&v.own!=='');const lastAt=withOwn.map(v=>v.ownAt||'').sort().pop()||'';
         const lead=R.filter(r=>r.agent&&r.st.leader);
