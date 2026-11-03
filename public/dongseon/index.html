@@ -7142,17 +7142,7 @@ async function startHosted(){
       },err=>cloudErr(err));
       try{bonusSubscribe();}catch(e){console.warn('bonusSubscribe',e);}   // 리뷰·주사 보너스 (2026-10-04)
       if(cloud.unsubPm)cloud.unsubPm();
-      cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{   // 환자별 특이사항·유선문의 실시간 반영
-        const m={};
-        s.docs.forEach(d=>{const v=d.data()||{};const mrn=normMrn(v.mrn||d.id||'');if(!mrn)return;
-          const rec={};if(v.memo)rec.memo=v.memo;if(v.cont)rec.cont=v.cont;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
-          if(v.floorBase&&typeof v.floorBase==='object'&&Object.keys(v.floorBase).length)rec.floorBase=v.floorBase;   // 층별 내원 보정
-          if(v.treatBase&&typeof v.treatBase==='object'&&Object.keys(v.treatBase).length)rec.treatBase=v.treatBase;   // 치료 회차 보정(충격파·신장분사·자동차도수)
-          if(v.treatBy&&typeof v.treatBy==='object'&&Object.keys(v.treatBy).length)rec.treatBy=v.treatBy;   // 그 보정을 누가 언제 했는지
-          if(Number(v.visitAdj))rec.visitAdj=Number(v.visitAdj);   // 내원 횟수 보정(손으로 넣은 예약)
-          m[mrn]=rec;});
-        PMEMO=m;lsSet(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();
-      },err=>console.error('pmemo snap',err));
+      pmemoSubscribe().catch(e=>{console.warn('pmemo cache',e);pmemoSubscribeAll();});   // 환자별 특이사항·유선문의 — 이 기기 캐시 + 바뀐 것만 (2026-11-03)
       if(cloud.unsubAcl)cloud.unsubAcl();
       cloud.unsubAcl=cloud.aclRef.onSnapshot(s=>{applyAcl(s.exists?s.data():{});cloud.ready.acl=true;afterCloud();try{renderStaffList();}catch(e){}},err=>console.error('acl snap',err));
       subscribeBitIntake();
@@ -7347,13 +7337,49 @@ function normMrn(m){return String(m==null?'':m).normalize('NFKC').replace(/\s+/g
 function pmKey(mrn){return normMrn(mrn).replace(/[^\w-]/g,'_')||'_';}   // Firestore 문서 ID(병록번호는 보통 숫자 → 안전)
 function pmRec(mrn){mrn=normMrn(mrn);return mrn?(PMEMO[mrn]||null):null;}
 /* 한 환자 문서만 저장(전체 설정이 아니라) → 문서당 ~2KB, 1MB 한도 접근 불가 */
+/* ═════ 특이사항·유선문의(pmemo) 받기 (2026-11-03) ═════
+   전에는 화면을 열 때마다 pmemo 전체(약 2천 문서)를 실시간 구독으로 받았다. 이제 전체는 이 기기 IndexedDB 에 두고(7일마다 전체 다시),
+   서버에는 updatedAt 이 '캐시의 마지막 시각 − 이틀' 이후인 문서만 실시간으로 듣는다. 내용을 비우면 문서를 지우지 않고 deleted 표시를 남긴다(pmemoSave) */
+function pmemoRecOf(v){const rec={};if(v.memo)rec.memo=v.memo;if(v.cont)rec.cont=v.cont;if(v.family)rec.family=v.family;if(Array.isArray(v.calls)&&v.calls.length)rec.calls=v.calls;if(v.name)rec.name=v.name;if(Array.isArray(v.photos)&&v.photos.length)rec.photos=v.photos;
+  if(v.floorBase&&typeof v.floorBase==='object'&&Object.keys(v.floorBase).length)rec.floorBase=v.floorBase;   // 층별 내원 보정
+  if(v.treatBase&&typeof v.treatBase==='object'&&Object.keys(v.treatBase).length)rec.treatBase=v.treatBase;   // 치료 회차 보정(충격파·신장분사·자동차도수)
+  if(v.treatBy&&typeof v.treatBy==='object'&&Object.keys(v.treatBy).length)rec.treatBy=v.treatBy;   // 그 보정을 누가 언제 했는지
+  if(Number(v.visitAdj))rec.visitAdj=Number(v.visitAdj);   // 내원 횟수 보정(손으로 넣은 예약)
+  return rec;}
+function pmemoApply(docs){const m={};
+  Object.keys(docs).forEach(id=>{const v=docs[id]||{};if(v.deleted)return;const mrn=normMrn(v.mrn||id||'');if(!mrn)return;m[mrn]=pmemoRecOf(v);});
+  PMEMO=m;lsSet(PMEMO_STORE,JSON.stringify(PMEMO));refreshOpenMemoUI();}
+function pmemoSubscribeAll(){   // 예전 방식(전체 실시간) — IndexedDB 를 못 쓸 때
+  if(cloud.unsubPm)cloud.unsubPm();
+  cloud.unsubPm=cloud.pmemoCol.onSnapshot(s=>{const docs={};s.docs.forEach(d=>{docs[d.id]=d.data();});pmemoApply(docs);},err=>console.error('pmemo snap',err));}
+let PMEMO_SUB_SEQ=0;
+async function pmemoSubscribe(){const seq=++PMEMO_SUB_SEQ;
+  if(typeof indexedDB==='undefined')throw new Error('no IndexedDB');
+  const key='pmemo|'+((cloud.ref&&cloud.ref.path)||''),c=await bigGet(key),now=Date.now();
+  const full=!c||!c.docs||typeof c.docs!=='object'||now-(c.fullAt||0)>BIG_FULL_MS;
+  let docs,fullAt;
+  if(full){const s=await cloud.pmemoCol.get();docs={};s.docs.forEach(d=>{docs[d.id]=d.data();});fullAt=now;}
+  else{docs=c.docs;fullAt=c.fullAt;}
+  if(seq!==PMEMO_SUB_SEQ)return;   // 그 사이 다시 로그인 — 늦은 쪽은 버린다
+  let maxT=0;Object.values(docs).forEach(v=>{const t=Number(v&&v.updatedAt)||0;if(t>maxT&&t<=now+864e5)maxT=t;});
+  const since=Math.max(0,(maxT||now)-BIG_OVERLAP_MS);
+  pmemoApply(docs);
+  if(full)bigPut(key,{docs,fullAt,at:now});
+  try{console.info('[pmemo]',full?'전체':'캐시',Object.keys(docs).length+'건');}catch(e){}
+  let putT=null;
+  if(cloud.unsubPm)cloud.unsubPm();
+  cloud.unsubPm=cloud.pmemoCol.where('updatedAt','>=',since).onSnapshot(s=>{
+    let n=0;s.docChanges().forEach(ch=>{n++;if(ch.type==='removed')delete docs[ch.doc.id];else docs[ch.doc.id]=ch.doc.data();});   // updatedAt 은 늘기만 하므로 빠짐(removed) = 문서 삭제
+    if(!n)return;pmemoApply(docs);
+    clearTimeout(putT);putT=setTimeout(()=>bigPut(key,{docs,fullAt,at:Date.now()}),3000);
+  },err=>{console.error('pmemo snap',err);pmemoSubscribeAll();});}
 function pmemoSave(mrn){mrn=normMrn(mrn);if(!mrn)return;
   const rec=PMEMO[mrn], has=rec&&((rec.memo)||(rec.cont)||(rec.family)||(Array.isArray(rec.calls)&&rec.calls.length)||(Array.isArray(rec.photos)&&rec.photos.length)||(rec.floorBase&&Object.keys(rec.floorBase).length)||(rec.treatBase&&Object.keys(rec.treatBase).length)||rec.visitAdj);   // floorBase(층별 내원 보정)·treatBase(치료 회차 보정)·visitAdj 만 있어도 기록 유지
   if(!has)delete PMEMO[mrn];
   lsSet(PMEMO_STORE,JSON.stringify(PMEMO));   // PC 저장소가 가득 차도 아래 클라우드 저장은 계속 (2026-10-03)
   if(cloud.active&&cloud.pmemoCol){
     if(has)cloud.pmemoCol.doc(pmKey(mrn)).set(jclone({mrn,name:(rec.name||''),memo:(rec.memo||''),cont:(rec.cont||''),family:(rec.family||''),calls:(rec.calls||[]),photos:(rec.photos||[]),floorBase:(rec.floorBase||{}),treatBase:(rec.treatBase||{}),treatBy:(rec.treatBy||{}),visitAdj:(Number(rec.visitAdj)||0),updatedAt:Date.now(),updatedBy:cloud.email||''})).catch(e=>{syncFail('메모 저장',e);});
-    else cloud.pmemoCol.doc(pmKey(mrn)).delete().catch(()=>{});   // 내용이 비면 문서 삭제
+    else cloud.pmemoCol.doc(pmKey(mrn)).set({mrn,deleted:true,updatedAt:Date.now(),updatedBy:cloud.email||''}).catch(()=>{});   // 내용이 비면 '지움' 표시(2026-11-03: 지운 문서는 다른 기기 캐시가 알 수 없어서 삭제 대신)
   }
 }
 /* 레거시 이관: 예전엔 registry 항목에 memo/calls가 박혀 있었음 → PMEMO(+클라우드 문서)로 옮기고 registry에선 제거 */
