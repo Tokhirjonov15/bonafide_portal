@@ -14893,6 +14893,8 @@ function ownCalc(lines,ins,ageN,rates){const r=ownParts(lines,ins,ageN,rates);re
 function ownParts(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
   if(!lines||!lines.length)return null;const k=String(ins||'').replace(/\s+/g,'');
   let non=0,g0=0,oth=0;lines.forEach(x=>{const c=String(x.ins==null?'':x.ins).trim(),a=n(x);if(c==='2')non+=a;else if(c===''||c==='0')g0+=a;else oth+=a*(rates&&rates[c]!=null?rates[c]:OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3);});
+  /* 급여 총액은 10원 미만을 버린 뒤 부담률을 곱한다 (2026-11-03 신연우 33626·이희영 16093: 56,334.5 → 56,330 ×30% = 16,899 → 16,800, 비트와 100원 차이였다) */
+  g0=Math.floor(g0/10+1e-6)*10;
   let gOwn;
   if(/일반/.test(k))gOwn=g0;
   else if(/자보|자동차|산재|공상/.test(k))gOwn=0;
