@@ -7041,6 +7041,7 @@ async function startHosted(){
     cloud.app=firebase.initializeApp(HOST_FIREBASE_CONFIG);
     /* App Check는 우리 프로젝트에 설정 후 사이트 키를 넣고 활성화 (이전 지점 키 제거) */
     cloud.db=firebase.firestore();
+    try{fsReadMeter();}catch(e){console.warn('fsReadMeter',e);}
     /* 2026-10-25: 어떤 PC 는 로그인은 되는데 '자료 연결 중'에서 멈췄다 — 백신·방화벽·네트워크 장비가 Firestore 의 실시간 연결을 막는 경우.
        그런 PC 는 아래 감시가 표시(pb_fsLongPoll)를 남기고 새로고침 → 그 PC 만 롱폴링(보통 HTTP 요청)으로 연결한다. 다른 PC 는 그대로 */
     try{if(localStorage.getItem('pb_fsLongPoll')==='1'){cloud.db.settings({experimentalForceLongPolling:true,merge:true});console.warn('Firestore: 롱폴링으로 연결');}}catch(e){console.warn('fs settings',e);}
@@ -7213,6 +7214,43 @@ function visitsMerge(recent,sinceIso){const since=sinceIso||(()=>{const d=new Da
   const ids=new Set(recent.map(v=>v&&v.id));
   VISITS=(Array.isArray(VISITS)?VISITS:[]).filter(v=>v&&!ids.has(v.id)&&visitIso(v)<since).concat(recent);
   lsSet(VISIT_STORE,JSON.stringify(VISITS.length>VISIT_CACHE?VISITS.slice(-VISIT_CACHE):VISITS));}
+/* ═════ Firestore 읽기 계량기 (2026-11-03) — 이 화면이 어느 컬렉션을 얼마나 읽는지 센다(요금 = 읽은 문서 수).
+   콘솔에서 readReport() → 컬렉션별 읽은 문서 수·시간당. 서버에 아무것도 쓰지 않는다(이 화면 메모리에만).
+   셈: get() = 받은 문서 수, 실시간 구독 = 처음 받은 문서 + 그 뒤 바뀐 문서마다 1(이 기기가 방금 쓴 것·캐시에서 온 것은 빼고) */
+const FS_READS={},FS_READ_T0=Date.now();
+function fsReadMeter(){const F=firebase.firestore;if(!F||F._meterOn)return;F._meterOn=true;
+  const add=(k,n)=>{if(!n)return;const r=FS_READS[k]||(FS_READS[k]={docs:0,calls:0});r.docs+=n;r.calls++;};
+  const qName=q=>{try{if(q.id)return q.id;const p=q._delegate&&q._delegate._query&&q._delegate._query.path;return (p&&p.lastSegment&&p.lastSegment())||(q._delegate&&q._delegate._query&&q._delegate._query.collectionGroup)||'?';}catch(e){return '?';}};
+  const dName=d=>{try{return (d.parent&&d.parent.id)+'/'+d.id;}catch(e){return '?';}};
+  const dKey=d=>{try{const c=d.parent&&d.parent.id;return /^(bitStatus|bitResv|bookings|pt4Day|bookingEdits|slipMark)$/.test(c||'')?c+'/(문서)':dName(d);}catch(e){return '?';}};
+  const Q=F.Query&&F.Query.prototype,D=F.DocumentReference&&F.DocumentReference.prototype;
+  if(Q){const g=Q.get;Q.get=function(...a){const k=qName(this)+' (get)';return g.apply(this,a).then(s=>{if(!(s.metadata&&s.metadata.fromCache))add(k,s.size||0);return s;});};
+    const o=Q.onSnapshot;Q.onSnapshot=function(...a){const k=qName(this)+' (실시간)';const i=a.findIndex(x=>typeof x==='function');
+      if(i>=0){const cb=a[i];a[i]=function(s){try{if(s&&s.metadata&&!s.metadata.fromCache&&!s.metadata.hasPendingWrites)add(k,s.docChanges().length);}catch(e){}return cb.apply(this,arguments);};}
+      return o.apply(this,a);};}
+  if(D){const g=D.get;D.get=function(...a){const k=dKey(this)+' (get)';return g.apply(this,a).then(s=>{if(!(s.metadata&&s.metadata.fromCache))add(k,1);return s;});};
+    const o=D.onSnapshot;D.onSnapshot=function(...a){const k=dKey(this)+' (실시간)';const i=a.findIndex(x=>typeof x==='function');
+      if(i>=0){const cb=a[i];a[i]=function(s){try{if(s&&s.metadata&&!s.metadata.fromCache&&!s.metadata.hasPendingWrites)add(k,1);}catch(e){}return cb.apply(this,arguments);};}
+      return o.apply(this,a);};}}
+window.readReport=function(){const h=Math.max(1/60,(Date.now()-FS_READ_T0)/36e5);
+  const rows=Object.keys(FS_READS).map(k=>({컬렉션:k,문서:FS_READS[k].docs,횟수:FS_READS[k].calls,시간당:Math.round(FS_READS[k].docs/h)})).sort((a,b)=>b.문서-a.문서);
+  const tot=rows.reduce((s,r)=>s+r.문서,0);console.table(rows);console.log('합계',tot,'문서 ·',Math.round(tot/h),'/시간 · 연 지',Math.round(h*60),'분');return tot;};
+/* 계량 결과를 포털 서버(D1, Firestore 아님)에 모은다 — 화면을 연 지 3분 뒤, 그 뒤 15분마다, 닫을 때. 새로고침돼도 그때까지 센 것이 남는다.
+   모든 화면의 오늘 합계: 콘솔에서 readReportAll() (날짜: readReportAll('2026-11-03')) */
+const FS_SID=Math.random().toString(36).slice(2,10)+Date.now().toString(36),FS_OPENED=new Date().toISOString();
+function fsViewName(){try{if(SLIP_SOLO)return 'slip-solo';if(SLIP_MODE)return 'slip';if(BONUS_MODE)return 'bonus';if(window.DOCS_MODE)return 'docs';if(RESV_MODE)return 'resv';if(BITRESV_MODE)return 'bitresv';
+  const ws=document.getElementById('waitScreen');if(ws&&ws.classList.contains('show'))return 'wait';return IS_PHONE?'phone':'board';}catch(e){return '?';}}
+async function fsReadSend(keep){try{const u=window.firebase&&firebase.auth&&firebase.auth().currentUser;if(!u)return;
+  const data={};Object.keys(FS_READS).forEach(k=>{data[k]=FS_READS[k].docs;});if(!Object.keys(data).length)return;
+  const tok=await u.getIdToken();
+  await fetch('/api/dongseon/readmeter',{method:'POST',keepalive:!!keep,headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({sid:FS_SID,view:fsViewName(),opened:FS_OPENED,data})});}catch(e){}}
+setTimeout(()=>fsReadSend(),3*60000);setInterval(()=>fsReadSend(),15*60000);
+addEventListener('pagehide',()=>{fsReadSend(true);});
+window.readReportAll=async function(day){const u=firebase.auth().currentUser;if(!u){console.log('로그인 필요');return;}
+  const r=await fetch('/api/dongseon/readmeter'+(day?'?day='+encodeURIComponent(day):''),{headers:{'authorization':'Bearer '+(await u.getIdToken())}});const j=await r.json();
+  console.log(j.day,'· 합계',j.total&&j.total.docs,'문서 · 연 화면',j.total&&j.total.loads,'번');
+  console.table((j.byCollection||[]).map(x=>({컬렉션:x.k,문서:x.docs,화면수:x.screens})));
+  console.table((j.byScreen||[]).map(x=>({계정:x.who,화면:x.view,연횟수:x.loads,문서:x.docs})));return j;};
 /* ═════ 지난 기록 캐시 (2026-11-03: Firebase 읽기 하루 1,300만 회 — 화면을 열 때마다(배포 뒤 자동 새로고침 포함) 내원 5천·체류 2만9천 문서를 통째로 다시 받았다) ═════
    이 기기의 IndexedDB 에 전체를 두고, 열 때는 마지막으로 받은 시각 이틀 전부터만 서버에서 받는다(그 구간은 서버 것으로 통째로 바꿔 지워진 기록도 빠진다).
    오래된 기록을 고친 것은 이틀 창 밖이면 못 보므로 7일마다 한 번 전체를 다시 받는다. IndexedDB 를 못 쓰면 예전처럼 전체 */

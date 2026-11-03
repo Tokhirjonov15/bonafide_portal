@@ -93,6 +93,9 @@ const DDL = [
    )`,
   `CREATE INDEX IF NOT EXISTS kb_chat_email ON kb_chat(email, at)`,
   `CREATE TABLE IF NOT EXISTS kb_meta (k TEXT PRIMARY KEY, v TEXT)`,
+  /* 동선관리 Firestore 읽기 계량 (2026-11-03) — 화면(sid = 한 번 연 화면)마다 컬렉션별 읽은 문서 수(누적)를 15분마다 덮어쓴다. 14일 지나면 지움 */
+  `CREATE TABLE IF NOT EXISTS fs_reads (sid TEXT, k TEXT, day TEXT, who TEXT, view TEXT, docs INTEGER, opened TEXT, at TEXT, PRIMARY KEY (sid, k))`,
+  `CREATE INDEX IF NOT EXISTS fs_reads_day ON fs_reads(day)`,
   /* 고시 업데이트 감시 (2026-10-28) — 심평원 보험인정기준·법제처 행정규칙에서 새로 본 것. status: new(반영 대기)·applied(반영함)·book(책자 고시 개정 알림만)·seen(처음 돌 때 이미 있던 것) */
   `CREATE TABLE IF NOT EXISTS kb_watch (
      id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -934,6 +937,27 @@ async function kbWatchApply(env, id, by) {
   const u = await kbUploadText(env, name, text);
   await env.DB.prepare(`UPDATE kb_watch SET status='applied', file=?, by=?, at=? WHERE id=?`).bind(u.file, by || "", new Date().toISOString(), id).run();
   return { ok: true, msg: "반영 완료", title: row.title };
+}
+/* 동선관리 Firestore 읽기 계량 (2026-11-03): POST {sid, view, opened, data:{컬렉션: 문서 수}} → 저장, GET ?day=YYYY-MM-DD → 컬렉션별·화면별 합계 */
+async function dongseonReadMeter(request, env, url, email) {
+  await ensureSchema(env);
+  const kst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  if (request.method === "POST") {
+    const b = await request.json().catch(() => ({}));
+    const sid = String(b.sid || "").slice(0, 40), data = b.data && typeof b.data === "object" ? b.data : null;
+    if (!sid || !data) return json({ error: "sid·data 필요" }, 400);
+    const day = kst(), at = new Date().toISOString(), who = String(email || "").split("@")[0], view = String(b.view || "").slice(0, 40), opened = String(b.opened || "").slice(0, 30);
+    const st = Object.keys(data).slice(0, 60).map(k => env.DB.prepare(`INSERT OR REPLACE INTO fs_reads (sid, k, day, who, view, docs, opened, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(sid, String(k).slice(0, 80), day, who, view, Math.max(0, Math.round(Number(data[k]) || 0)), opened, at));
+    if (st.length) await env.DB.batch(st);
+    if (Math.random() < 0.02) await env.DB.prepare(`DELETE FROM fs_reads WHERE day < ?`).bind(new Date(Date.now() + 9 * 3600e3 - 14 * 864e5).toISOString().slice(0, 10)).run();
+    return json({ ok: true });
+  }
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("day") || "") ? url.searchParams.get("day") : kst();
+  const byK = await env.DB.prepare(`SELECT k, SUM(docs) AS docs, COUNT(DISTINCT sid) AS screens FROM fs_reads WHERE day = ? GROUP BY k ORDER BY docs DESC`).bind(day).all();
+  const byWho = await env.DB.prepare(`SELECT who, view, COUNT(DISTINCT sid) AS loads, SUM(docs) AS docs FROM fs_reads WHERE day = ? GROUP BY who, view ORDER BY docs DESC`).bind(day).all();
+  const tot = await env.DB.prepare(`SELECT SUM(docs) AS docs, COUNT(DISTINCT sid) AS loads FROM fs_reads WHERE day = ?`).bind(day).first();
+  return json({ day, total: tot, byCollection: byK.results, byScreen: byWho.results });
 }
 async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebase ID 토큰> → 이메일 (Google 이 검증)
   const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
@@ -2268,6 +2292,11 @@ export default {
       return json({ ok: true, n: rooms.length });
     }
     if (url.pathname === "/api/dongseon/kb/admin") return dongseonKbAdmin(request, env, url);   // 고시 체크 자료 올리기 (2026-10-27)
+    if (url.pathname === "/api/dongseon/readmeter") {   // Firestore 읽기 계량 (2026-11-03) — 로그인한 동선관리 화면만
+      const email = await fbEmailFromRequest(request);
+      if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+      return dongseonReadMeter(request, env, url, email);
+    }
     if (url.pathname.startsWith("/api/dongseon/kb/")) {   // 고시 체크 — 로그인한 직원 본인 기록만
       const email = await fbEmailFromRequest(request);
       if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
