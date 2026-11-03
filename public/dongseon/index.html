@@ -3423,14 +3423,14 @@ function bitRxRebuild(){if(!BIT_RX_DOCS)return;const cx=bitRxCancelled();BIT_RX_
   BIT_RX_DOCS.forEach(v=>{const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
     if(ocm&&cx.has(ocm.replace(/\D/g,'')))return;   // 접수취소된 접수의 처방
     const ownN=(v.own==null||v.own==='')?null:Number(String(v.own).replace(/[^\d.-]/g,''));   // 총 본인부담(비트 수납 창, 에이전트 db2.0 — 2026-10-28). 계산 전이면 없음
-    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim(),own:(ownN!=null&&isFinite(ownN))?ownN:null,ownAt:v.ownAt||'',payAt:v.payAt||''};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
+    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim(),own:(ownN!=null&&isFinite(ownN))?ownN:null,ownAt:v.ownAt||'',payAt:v.payAt||'',insNm:String(v.insNm||'').trim()};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
     if(ocm)BIT_RX[ocm]=rec;
     /* 같은 환자가 오늘 비트에 접수가 둘 이상이면(과·담당의 바꿔 재접수 등) 처방을 모두 합친다 (2026-10-01: 한 접수분만 보였다) */
     if(mrn){const o=BIT_RX_MRN[mrn];
       if(!o)BIT_RX_MRN[mrn]=rec;
       else{const tk=x=>String(x.t||'');BIT_RX_MRN[mrn]={ocm:o.ocm,ocms:[...(o.ocms||[o.ocm]),ocm],mrn,
         items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs,
-          own:(o.own==null&&rec.own==null)?null:(o.own||0)+(rec.own||0),ownAt:(o.ownAt>rec.ownAt?o.ownAt:rec.ownAt),payAt:(o.payAt>rec.payAt?o.payAt:rec.payAt)};}}});}   // 접수가 둘이면 본인부담도 합계
+          own:(o.own==null&&rec.own==null)?null:(o.own||0)+(rec.own||0),ownAt:(o.ownAt>rec.ownAt?o.ownAt:rec.ownAt),payAt:(o.payAt>rec.payAt?o.payAt:rec.payAt),insNm:o.insNm||rec.insNm};}}});}   // 접수가 둘이면 본인부담도 합계
 /* 접수 목록이 바뀌어 취소된 접수가 달라지면 처방을 다시 묶는다 */
 function bitRxCancelSync(){if(!BIT_RX_DOCS)return;const sig=[...bitRxCancelled()].sort().join(',');if(sig===BIT_RX_CXSIG)return;
   bitRxRebuild();try{render();}catch(e){}if(typeof editId!=='undefined'&&editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}}
@@ -3847,7 +3847,8 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v3.8',agent:'db2.3'};   // db2.3: 처방 줄마다 비트 구분(itm·sot) — 동의서 처방내역이 먹는 약을 비트 @투약으로 가림(2026-11-02). db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
+const BIT_LATEST={watcher:'v3.8',agent:'db2.4'};   // db2.4: 처방 문서에 그 접수의 보험(insNm) — 예상 본인부담 계산용(2026-11-03 정혁).
+  // db2.3: 처방 줄마다 비트 구분(itm·sot) — 동의서 처방내역이 먹는 약을 비트 @투약으로 가림(2026-11-02). db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
 function bitStatusRows(){const now=Date.now();
   return Object.keys(BIT_STATUS).sort((a,b)=>a.localeCompare(b,'ko')).map(pc=>{const st=BIT_STATUS[pc]||{};const ver=String(st.ver||'');
@@ -3880,7 +3881,7 @@ function openBitStatus(){let ov=document.getElementById('bitStOv');
         return `<div style="margin-bottom:10px;padding:8px 12px;border-radius:8px;background:#eff6ff;color:#1e3a8a;font-size:13px"><b>환자부담금</b> — 오늘 처방 접수 ${D.length}건 중 <b>${withOwn.length}건</b> 들어옴${lastAt?' · 마지막 '+esc(hm(new Date(lastAt))):''}
           · 전송 담당: ${lead.length?lead.map(r=>esc(r.pc)+' '+esc(r.ver)).join(', '):'없음'}${lead.length>1?' <b style="color:#b91c1c">(담당이 둘 — 접수 PC 업데이트 필요)</b>':''}
           ${(()=>{try{OWN_CAL_AT=0;ownCalibrate();}catch(e){}const s=OWN_CAL_STAT;   /* 예상 금액(계산 전 표시)이 실제 비트 금액과 얼마나 맞나 (2026-10-28) */
-            return s&&s.n?`<br>예상 금액 정확도 — 오늘 비트 금액이 온 ${s.n}건 중 <b>똑같음 ${s.same}건</b> · ±100원 이내 ${s.ok}건 · ±1,000원 이내 ${s.near}건${Object.keys(s.rates).length?' · 코드별 부담률 '+Object.entries(s.rates).map(([k,v])=>esc(k)+'='+Math.round(v*100)+'%').join(', '):''}${(s.off||[]).length?`<details style="margin-top:4px"><summary>예상과 다른 환자 ${s.off.length}명 — 계산 내역</summary>${s.off.map(o=>{const q=(data||[]).find(x=>normMrn(x.mrn)===o.mrn)||(Array.isArray(VISITS)?VISITS:[]).find(x=>normMrn(x.mrn)===o.mrn)||{},t=o.pt||{},d=(t.total||0)-o.actual,w=x=>Math.round(x||0).toLocaleString();   /* 2026-11-03 신연우 33626 */
+            return s&&s.n?`<br>예상 금액 정확도 — 오늘 비트 금액이 온 ${s.n}건 중 <b>똑같음 ${s.same}건</b> · ±100원 이내 ${s.ok}건 · ±1,000원 이내 ${s.near}건${Object.keys(s.rates).length?' · 코드별 부담률 '+Object.entries(s.rates).map(([k,v])=>k==='_m2'?'보호2종 '+v.toLocaleString()+'원':esc(k)+'='+Math.round(v*100)+'%').join(', '):''}${(s.off||[]).length?`<details style="margin-top:4px"><summary>예상과 다른 환자 ${s.off.length}명 — 계산 내역</summary>${s.off.map(o=>{const q=(data||[]).find(x=>normMrn(x.mrn)===o.mrn)||(Array.isArray(VISITS)?VISITS:[]).find(x=>normMrn(x.mrn)===o.mrn)||{},t=o.pt||{},d=(t.total||0)-o.actual,w=x=>Math.round(x||0).toLocaleString();   /* 2026-11-03 신연우 33626 */
               return `<div style="margin:3px 0;padding:3px 6px;border-left:3px solid #f59e0b">${esc(q.name||'')} ${esc(o.mrn)} · 보험 ${esc(t.ins||'?')} · ${t.ageN==null?'나이 ?':t.ageN+'세'} — 비트 <b>${w(o.actual)}</b> / 예상 <b>${w(t.total)}</b> (${d>0?'+':''}${w(d)})<br><span class="hint">비급여 ${w(t.non)} + 급여 ${w(t.g0)}→본인 ${w(t.gOwn)}(절사 ${w(t.gR)}) + 기타코드 ${w(t.oth)} · 줄: ${o.pay.map(x=>esc(String(x.cod||'').trim())+' '+esc(String(x.amt||''))+'('+esc(String(x.ins==null?'':x.ins).trim()||'-')+')').join(', ')}</span></div>`;}).join('')}</details>`:''}`:'';})()}
           ${!withOwn.length&&D.length?'<br><b style="color:#b91c1c">하나도 안 들어옴 → 전송 담당 에이전트가 db2.0 이 아니거나 아직 신호 전입니다.</b>':withOwn.length<D.length?'<br><span class="hint">안 들어온 접수는 비트 수납 창에서 아직 계산하지 않은 환자입니다.</span>':''}
           ${(()=>{/* 금액이 안 들어온 환자 (2026-10-28 강서인·이동주) — 비트 상태(수납완료인지)·그 환자 오늘 접수번호·처방 문서·금액 있는 문서를 한 줄로. 수납완료인데 없으면 다른 접수번호로 수납된 것 */
@@ -14900,7 +14901,8 @@ function ownParts(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':
   else if(/자보|자동차|산재|공상/.test(k))gOwn=0;
   /* 의료급여(보호)는 의원 외래 정액 — 물리치료 등 다른 급여 코드도 정액에 포함(oth 0). 2종 1,500원 (2026-10-28 신주아님으로 확인), 1종 1,000원(아직 확인 전) */
   else if(/보호\s*1|의료급여\s*1|1종/.test(k)){gOwn=(g0+oth)>0?1000:0;oth=0;}
-  else if(/보호\s*2|의료급여\s*2|2종/.test(k)){gOwn=(g0+oth)>0?1500:0;oth=0;}
+  /* 2종 정액: 의원 외래 1,000원(2026-11-03 최수비 20462 비트 1,000원). 10-28 신주아님은 1,500원 — 오늘 비트 금액이 온 2종 환자가 있으면 그것에 맞춘다(rates._m2, ownCalibrate) */
+  else if(/보호\s*2|의료급여\s*2|2종/.test(k)){gOwn=(g0+oth)>0?(rates&&rates._m2!=null?rates._m2:1000):0;oth=0;}
   else if(ageN!=null&&ageN>=65){const tot=g0;gOwn=tot<=15000?(tot>0?1500:0):tot<=20000?tot*0.1:tot<=25000?tot*0.2:tot*0.3;}
   else if(ageN!=null&&ageN<6)gOwn=g0*0.21;
   else gOwn=g0*0.3;
@@ -14915,16 +14917,20 @@ function ownCtxOf(m){m=normMrn(m);const p=(data||[]).find(x=>normMrn(x.mrn)===m)
    비트 본인부담(OrpTotOwn)은 수납 창에서 다시 계산해야 바뀌고, 처방 금액 줄(pay)은 바로 바뀐다 → pay 가 own 보다 나중이면 own 은 옛 처방의 금액 */
 function ownStale(rx){return !!(rx&&rx.own!=null&&rx.payAt&&rx.ownAt&&String(rx.payAt)>String(rx.ownAt));}
 function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN_CAL_AT=Date.now();
-  const cases=(BIT_RX_DOCS||[]).filter(v=>v&&v.own!=null&&v.own!==''&&Array.isArray(v.pay)&&v.pay.length&&!ownStale(v)).map(v=>Object.assign({mrn:normMrn(v.mrn),actual:Number(String(v.own).replace(/[^\d.-]/g,'')),pay:v.pay},ownCtxOf(v.mrn)));
+  const cases=(BIT_RX_DOCS||[]).filter(v=>v&&v.own!=null&&v.own!==''&&Array.isArray(v.pay)&&v.pay.length&&!ownStale(v)).map(v=>{const o=Object.assign({mrn:normMrn(v.mrn),actual:Number(String(v.own).replace(/[^\d.-]/g,'')),pay:v.pay},ownCtxOf(v.mrn));if(v.insNm)o.ins=v.insNm;return o;});
   const codes=[...new Set(cases.flatMap(c=>c.pay.map(x=>String(x.ins==null?'':x.ins).trim())).filter(c=>c&&c!=='0'&&c!=='2'))];
   const score=rt=>cases.reduce((s,c)=>{const e=ownCalc(c.pay,c.ins,c.ageN,rt);return s+(e===c.actual?2:Math.abs(e-c.actual)<=100?1:0);},0);   // 똑같으면 2점, 100원 안이면 1점
   let best={};codes.forEach(c=>{let bv=OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3,bs=score(Object.assign({},best,{[c]:bv}));[0.3,0.5,0.8,1.0].forEach(v=>{/* 확인된 값이 먼저 — 다른 값이 더 잘 맞을 때만 바꾼다 */const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
+  {const s1=score(Object.assign({},best,{_m2:1000})),s2=score(Object.assign({},best,{_m2:1500}));if(s2>s1)best._m2=1500;}   // 2종 정액 1,000/1,500 — 오늘 실제 금액으로 (2026-11-03)
   OWN_RATES=best;const diff=c=>Math.abs(ownCalc(c.pay,c.ins,c.ageN,best)-c.actual);
   const same=cases.filter(c=>diff(c)===0).length,ok=cases.filter(c=>diff(c)<=100).length,near=cases.filter(c=>diff(c)<=1000).length;
   const off=cases.filter(c=>diff(c)>0).map(c=>({mrn:c.mrn,actual:c.actual,pt:ownParts(c.pay,c.ins,c.ageN,best),pay:c.pay}));
   OWN_CAL_STAT={n:cases.length,same,ok,near,rates:best,off};}
 function ownEstimate(p,rx){if(!rx||!Array.isArray(rx.pay)||!rx.pay.length)return null;try{ownCalibrate();}catch(e){}
-  const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),OWN_RATES);}
+  /* 오늘 접수가 둘 이상(ocms)이면 접수마다 그 접수의 보험으로 계산해 더한다 (2026-11-03) */
+  if(Array.isArray(rx.ocms)&&rx.ocms.length>1){const parts=rx.ocms.map(o=>BIT_RX[o]).filter(r=>r&&Array.isArray(r.pay)&&r.pay.length);
+    if(parts.length&&parts.every(r=>r.insNm)){const a=ownAgeOf(p&&p.birth);return parts.reduce((t,r)=>t+(ownCalc(r.pay,r.insNm,a,OWN_RATES)||0),0);}}
+  const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,(rx.insNm)||bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),OWN_RATES);}   // 처방 문서의 그 접수 보험(db2.4)이 먼저
 /* 먹는 약(정·캡슐·시럽·포) — 비트 약 이름은 '아클펜정(아세클로페낙)_(0.1g/1정)' 처럼 끝 괄호에 1회 단위가 붙는다. 주사(…주_(…/20mL))는 제외 */
 /* 2026-11-02: 에이전트 db2.3 부터 비트 구분이 온다 — itm(OdrItmCod) 03… = 비트 '@투약'(의약품관리료는 01…), 없으면 sot(OdrSotCod) MED. 옛 처방 문서만 아래 이름 규칙 */
 function rxIsOral(x){const itm=String((x&&x.itm)||'').trim(),sot=String((x&&x.sot)||'').trim().toUpperCase();if(itm)return /^03/.test(itm);if(sot)return sot==='MED';
