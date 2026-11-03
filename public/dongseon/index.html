@@ -7080,9 +7080,11 @@ async function startHosted(){
          화면을 열어서, 느린 PC·네트워크에서는 한참(또는 끝없이) 기다렸다. 이제 최근 사흘 것만 받고 바로 연다. 전체는 뒤에서 받아 합친다
          (오늘 것만 쓰는 자동 접수·번호 매기기는 최근 것으로 충분하고, 통계·내원 횟수는 전체가 오면 다시 그린다) */
       loginMsg('로그인 중… (오늘 자료 받는 중)');
-      try{const d3=new Date();d3.setHours(0,0,0,0);d3.setDate(d3.getDate()-3);
-        const vs=await cloud.visitsCol.where('dischargedAt','>=',d3.toISOString()).get();
-        visitsMerge(vs.docs.map(d=>d.data()));fixAutoClosedDates();}catch(e){console.warn('visits recent',e);}
+      try{const vc=await bigGet('visits|'+((cloud.ref&&cloud.ref.path)||''));   // 2026-11-03: 이 기기 캐시가 있으면 서버에서 사흘치를 다시 받지 않는다(새 것은 3초 뒤 loadVisitsFull 이 받음)
+        if(vc&&Array.isArray(vc.rows)&&vc.rows.length){VISITS=vc.rows.slice();fixAutoClosedDates();}
+        else{const d3=new Date();d3.setHours(0,0,0,0);d3.setDate(d3.getDate()-3);
+          const vs=await cloud.visitsCol.where('dischargedAt','>=',d3.toISOString()).get();
+          visitsMerge(vs.docs.map(d=>d.data()));fixAutoClosedDates();}}catch(e){console.warn('visits recent',e);}
       if(!VISITS_FULL_T)VISITS_FULL_T=setTimeout(loadVisitsFull,3000);
       /* 오늘 내원 기록은 실시간으로 듣는다 (2026-09-29): 전에는 로그인 때 한 번만 받아서, 다른 PC 가 [내보내기] 한 환자가
          이 PC 의 내원 목록에는 새로고침 전까지 없었다 — 접수 #번호가 빠져 보이고 '완료 0' 으로 나왔다.
@@ -7255,7 +7257,7 @@ window.readReportAll=async function(day){const u=firebase.auth().currentUser;if(
 /* ═════ 지난 기록 캐시 (2026-11-03: Firebase 읽기 하루 1,300만 회 — 화면을 열 때마다(배포 뒤 자동 새로고침 포함) 내원 5천·체류 2만9천 문서를 통째로 다시 받았다) ═════
    이 기기의 IndexedDB 에 전체를 두고, 열 때는 마지막으로 받은 시각 이틀 전부터만 서버에서 받는다(그 구간은 서버 것으로 통째로 바꿔 지워진 기록도 빠진다).
    오래된 기록을 고친 것은 이틀 창 밖이면 못 보므로 7일마다 한 번 전체를 다시 받는다. IndexedDB 를 못 쓰면 예전처럼 전체 */
-const BIG_FULL_MS=7*864e5,BIG_OVERLAP_MS=2*864e5;
+const BIG_FULL_MS=7*864e5,BIG_OVERLAP_MS=6*3600e3;   // 2026-11-03 계량: 이틀 창이 화면을 열 때마다 체류 기록 1,500건을 읽었다 → 6시간
 function bigIdb(){return new Promise((res,rej)=>{const r=indexedDB.open('dsBig',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
 async function bigGet(k){try{const db=await bigIdb();return await new Promise(res=>{const q=db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null);});}catch(e){return null;}}
 async function bigPut(k,v){try{const db=await bigIdb();await new Promise(res=>{const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=res;t.onabort=res;});}catch(e){}}
@@ -8874,13 +8876,21 @@ async function pt4AutoDropCryo3(){const today=localYMD(new Date());const doc=PT4
     gone.forEach(b=>{try{audit('4층 예약표 자동 빼기',(b.patientName||'')+' ('+b.mrn+') · 처방이 CRYO3');}catch(e){}
       try{cloud.db.collection('pt4Audit').add({at:new Date().toISOString(),user:(currentUser&&currentUser.name)||'',email:cloud.email||'',action:'delete',entity:'bookings',entityId:String(b.id),date:today,before:b,after:null,src:'동선관리 자동',pname:String(b.patientName||'').replace(/\s+/g,''),pmrn:String(b.mrn||'')});}catch(e){}});}
   catch(e){console.warn('pt4 drop cryo3',e);}}
+/* 4층 예약표 지난 기록(오늘 전 400일) — 예전 방문수 셈용. 오늘 문서는 따로 실시간이고 여기서는 쓰지 않으므로(d.date>=today 건너뜀)
+   이 기기 IndexedDB 에 두고 하루 한 번만 받는다 (2026-11-03: 화면마다 10분마다 400일치를 다시 읽었다) */
+async function pt4HistLoad(){const today=localYMD(new Date());if(pt4AutoAdd.hist&&pt4AutoAdd.day===today)return;
+  const key='pt4hist|'+((cloud.ref&&cloud.ref.path)||'');
+  try{const c=await bigGet(key);if(c&&c.day===today&&Array.isArray(c.hist)){pt4AutoAdd.hist=c.hist;pt4AutoAdd.day=today;pt4AutoAdd.at=Date.now();return;}}catch(e){}
+  try{const s=await cloud.pt4Col.where('date','>=',localYMD(new Date(Date.now()-400*864e5))).where('date','<',today).get();
+    pt4AutoAdd.hist=s.docs.map(d=>d.data()||{});pt4AutoAdd.day=today;pt4AutoAdd.at=Date.now();bigPut(key,{day:today,hist:pt4AutoAdd.hist});}
+  catch(e){console.warn('pt4 hist',e);if(!pt4AutoAdd.hist)pt4AutoAdd.hist=[];}}
 async function pt4AutoAdd(){if(PT4_AUTO_BUSY||!cloud.pt4Col||!cloud.db||!currentUser)return;
   if(!PT4_AUTO_BUSY){PT4_AUTO_BUSY=true;try{await pt4AutoDropCryo3();}catch(e){}PT4_AUTO_BUSY=false;}
   if(pt4AutoAdd.hist&&!PT4_AUTO_BUSY){PT4_AUTO_BUSY=true;try{await pt4AutoFixVisit();}catch(e){}PT4_AUTO_BUSY=false;}
-  const L=pt4AutoCand();if(!L.length){if(!pt4AutoAdd.hist&&cloud.pt4Col){try{const s=await cloud.pt4Col.where('date','>=',localYMD(new Date(Date.now()-400*864e5))).get();pt4AutoAdd.hist=s.docs.map(d=>d.data()||{});pt4AutoAdd.at=Date.now();}catch(e){pt4AutoAdd.hist=[];}}return;}
+  const L=pt4AutoCand();if(!L.length){if(cloud.pt4Col)await pt4HistLoad();return;}
   PT4_AUTO_BUSY=true;const today=localYMD(new Date());
   /* 예전 신장분사 방문수 — 최근 문서에서 (한 번 읽고 10분 보관) */
-  try{if(!pt4AutoAdd.hist||Date.now()-pt4AutoAdd.at>600000){const s=await cloud.pt4Col.where('date','>=',localYMD(new Date(Date.now()-400*864e5))).get();pt4AutoAdd.hist=s.docs.map(d=>d.data()||{});pt4AutoAdd.at=Date.now();}}catch(e){pt4AutoAdd.hist=[];}
+  await pt4HistLoad();   // 2026-11-03: 10분마다 400일치를 다시 읽던 것 → 이 기기에서 하루 한 번
   for(const c of L){
     let prevMax=0;(pt4AutoAdd.hist||[]).forEach(d=>{if(d.date>=today)return;(d.bookings||[]).forEach(b=>{if(normMrn(b.mrn)===c.mrn)prevMax=Math.max(prevMax,Number(b.visitNo)||0);});});   // 방문수 = 예약표 전체 기록의 마지막 방문수 + 1 (환자 검색의 방문수와 이어지게, 2026-10-07 고침)
     const now=new Date();const nowMin=now.getHours()*60+now.getMinutes();
@@ -12904,12 +12914,19 @@ function recDayCls(n){return /^[13]$/.test(String(n||''))?' rt-new':'';}
    직원 보드(PC)가 1분마다 오늘 녹음을 보고, 오늘 비트 초/재진이 초진·90일초진인 환자의 받아쓴 글이 다 모이면(마지막 글 10분 뒤) 하루 한 번 요약한다.
    여러 화면이 같이 하지 않게 recSum/{차트_날짜} 를 잡고 쓴다(한 번 넣은 뒤 직원이 지워도 다시 넣지 않음). 요약은 포털 서버(/api/dongseon/recsum → OpenAI) */
 let REC_SUM_BUSY=false;
+/* 오늘 녹음(recText) — 처음 한 번 받고 그 뒤 바뀐 문서만(실시간). 날짜가 바뀌면 새로 구독. 첫 자료 전에는 null */
+let REC_TODAY={day:'',unsub:null,docs:null};
+function recTodayList(today){
+  if(REC_TODAY.day!==today){try{if(REC_TODAY.unsub)REC_TODAY.unsub();}catch(e){}REC_TODAY={day:today,unsub:null,docs:null};
+    REC_TODAY.unsub=cloud.ref.collection('recText').where('date','==',today).onSnapshot(s=>{const m=new Map();s.docs.forEach(d=>m.set(d.id,d.data()||{}));REC_TODAY.docs=m;},
+      e=>{console.warn('recText today',e);try{if(REC_TODAY.unsub)REC_TODAY.unsub();}catch(_){}REC_TODAY={day:'',unsub:null,docs:null};});}
+  return REC_TODAY.docs?[...REC_TODAY.docs.values()]:null;}
 async function recSumTick(){if(REC_SUM_BUSY||IS_PHONE||!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_ROLE!=='staff'||!(cloud.active&&cloud.ref&&cloud.db))return;
   const today=localYMD(new Date()),nfsOf={};Object.values(BIT_RX_MRN||{}).forEach(r=>{if(r&&/^[13]$/.test(r.nfs)&&normMrn(r.mrn))nfsOf[normMrn(r.mrn)]=r.nfs;});
   if(!Object.keys(nfsOf).length)return;
   REC_SUM_BUSY=true;
-  try{const s=await cloud.ref.collection('recText').where('date','==',today).get();
-    const by={};s.docs.forEach(d=>{const r=d.data()||{};const m=normMrn(r.mrn);if(m&&nfsOf[m])(by[m]=by[m]||[]).push(r);});
+  try{const L0=recTodayList(today);if(!L0)return;   // 2026-11-03: 1분마다 get() 이 화면마다 오늘 녹음 전체를 다시 읽었다(하루 수백만 읽기) → 실시간 구독 하나로 바뀐 것만
+    const by={};L0.forEach(r0=>{const r=r0||{};const m=normMrn(r.mrn);if(m&&nfsOf[m])(by[m]=by[m]||[]).push(r);});
     for(const m of Object.keys(by)){const L=by[m];
       const last=Math.max(...L.map(r=>new Date(r.at||r.startedAt||0).getTime()||0));
       if(Date.now()-last<10*60000||L.some(r=>r.src==='chrome'&&r.live))continue;   // 아직 녹음·받아쓰기 중
