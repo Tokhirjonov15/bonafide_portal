@@ -7251,10 +7251,10 @@ const FS_SID=Math.random().toString(36).slice(2,10)+Date.now().toString(36),FS_O
 function fsViewName(){try{if(SLIP_SOLO)return 'slip-solo';if(SLIP_MODE)return 'slip';if(BONUS_MODE)return 'bonus';if(window.DOCS_MODE)return 'docs';if(RESV_MODE)return 'resv';if(BITRESV_MODE)return 'bitresv';
   const ws=document.getElementById('waitScreen');if(ws&&ws.classList.contains('show'))return 'wait';return IS_PHONE?'phone':'board';}catch(e){return '?';}}
 async function fsReadSend(keep){try{const u=window.firebase&&firebase.auth&&firebase.auth().currentUser;if(!u)return;
-  const data={};Object.keys(FS_READS).forEach(k=>{data[k]=FS_READS[k].docs;});if(!Object.keys(data).length)return;
-  const tok=await u.getIdToken();
+  const data={};let tot=0;Object.keys(FS_READS).forEach(k=>{data[k]=FS_READS[k].docs;tot+=FS_READS[k].docs;});if(!tot||tot===fsReadSend.last)return;   // 2026-11-05: 바뀐 게 없으면 보내지 않는다(D1 쓰기 한도)
+  fsReadSend.last=tot;const tok=await u.getIdToken();
   await fetch('/api/dongseon/readmeter',{method:'POST',keepalive:!!keep,headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify({sid:FS_SID,view:fsViewName(),opened:FS_OPENED,data})});}catch(e){}}
-setTimeout(()=>fsReadSend(),3*60000);setInterval(()=>fsReadSend(),15*60000);
+setTimeout(()=>fsReadSend(),5*60000);setInterval(()=>fsReadSend(),30*60000);   // 2026-11-05: 15분 → 30분
 addEventListener('pagehide',()=>{fsReadSend(true);});
 window.readReportAll=async function(day){const u=firebase.auth().currentUser;if(!u){console.log('로그인 필요');return;}
   const r=await fetch('/api/dongseon/readmeter'+(day?'?day='+encodeURIComponent(day):''),{headers:{'authorization':'Bearer '+(await u.getIdToken())}});const j=await r.json();

@@ -94,8 +94,7 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS kb_chat_email ON kb_chat(email, at)`,
   `CREATE TABLE IF NOT EXISTS kb_meta (k TEXT PRIMARY KEY, v TEXT)`,
   /* 동선관리 Firestore 읽기 계량 (2026-11-03) — 화면(sid = 한 번 연 화면)마다 컬렉션별 읽은 문서 수(누적)를 15분마다 덮어쓴다. 14일 지나면 지움 */
-  `CREATE TABLE IF NOT EXISTS fs_reads (sid TEXT, k TEXT, day TEXT, who TEXT, view TEXT, docs INTEGER, opened TEXT, at TEXT, PRIMARY KEY (sid, k))`,
-  `CREATE INDEX IF NOT EXISTS fs_reads_day ON fs_reads(day)`,
+  `CREATE TABLE IF NOT EXISTS fs_reads2 (sid TEXT PRIMARY KEY, day TEXT, who TEXT, view TEXT, opened TEXT, at TEXT, data TEXT)`,   /* 2026-11-05: 화면당 한 줄(JSON) — 예전 fs_reads(컬렉션마다 한 줄)는 쓰기 한도를 넘겨 버림 */
   /* 고시 업데이트 감시 (2026-10-28) — 심평원 보험인정기준·법제처 행정규칙에서 새로 본 것. status: new(반영 대기)·applied(반영함)·book(책자 고시 개정 알림만)·seen(처음 돌 때 이미 있던 것) */
   `CREATE TABLE IF NOT EXISTS kb_watch (
      id     INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -942,22 +941,28 @@ async function kbWatchApply(env, id, by) {
 async function dongseonReadMeter(request, env, url, email) {
   await ensureSchema(env);
   const kst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  /* 2026-11-05: 처음 판은 컬렉션마다 한 줄씩(화면당 30줄)을 15분마다 다시 써서 D1 무료 쓰기 한도(하루 10만 줄)를 넘겼다 — 재고관리 등 D1 전체가 막힘.
+     이제 화면(sid)당 한 줄(JSON)만 덮어쓴다(fs_reads2, 색인 없음). 화면은 30분마다·바뀌었을 때만 보낸다 */
   if (request.method === "POST") {
     const b = await request.json().catch(() => ({}));
     const sid = String(b.sid || "").slice(0, 40), data = b.data && typeof b.data === "object" ? b.data : null;
     if (!sid || !data) return json({ error: "sid·data 필요" }, 400);
+    const clean = {}; Object.keys(data).slice(0, 60).forEach(k => { clean[String(k).slice(0, 80)] = Math.max(0, Math.round(Number(data[k]) || 0)); });
     const day = kst(), at = new Date().toISOString(), who = String(email || "").split("@")[0], view = String(b.view || "").slice(0, 40), opened = String(b.opened || "").slice(0, 30);
-    const st = Object.keys(data).slice(0, 60).map(k => env.DB.prepare(`INSERT OR REPLACE INTO fs_reads (sid, k, day, who, view, docs, opened, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(sid, String(k).slice(0, 80), day, who, view, Math.max(0, Math.round(Number(data[k]) || 0)), opened, at));
-    if (st.length) await env.DB.batch(st);
-    if (Math.random() < 0.02) await env.DB.prepare(`DELETE FROM fs_reads WHERE day < ?`).bind(new Date(Date.now() + 9 * 3600e3 - 14 * 864e5).toISOString().slice(0, 10)).run();
+    await env.DB.prepare(`INSERT INTO fs_reads2 (sid, day, who, view, opened, at, data) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(sid) DO UPDATE SET view = excluded.view, at = excluded.at, data = excluded.data`).bind(sid, day, who, view, opened, at, JSON.stringify(clean)).run();
+    if (Math.random() < 0.01) await env.DB.prepare(`DELETE FROM fs_reads2 WHERE day < ?`).bind(new Date(Date.now() + 9 * 3600e3 - 14 * 864e5).toISOString().slice(0, 10)).run();
     return json({ ok: true });
   }
   const day = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("day") || "") ? url.searchParams.get("day") : kst();
-  const byK = await env.DB.prepare(`SELECT k, SUM(docs) AS docs, COUNT(DISTINCT sid) AS screens FROM fs_reads WHERE day = ? GROUP BY k ORDER BY docs DESC`).bind(day).all();
-  const byWho = await env.DB.prepare(`SELECT who, view, COUNT(DISTINCT sid) AS loads, SUM(docs) AS docs FROM fs_reads WHERE day = ? GROUP BY who, view ORDER BY docs DESC`).bind(day).all();
-  const tot = await env.DB.prepare(`SELECT SUM(docs) AS docs, COUNT(DISTINCT sid) AS loads FROM fs_reads WHERE day = ?`).bind(day).first();
-  return json({ day, total: tot, byCollection: byK.results, byScreen: byWho.results });
+  const rows = (await env.DB.prepare(`SELECT sid, who, view, data FROM fs_reads2 WHERE day = ?`).bind(day).all()).results || [];
+  const byK = {}, byS = {}; let docs = 0;
+  for (const r of rows) {
+    let d = {}; try { d = JSON.parse(r.data || "{}"); } catch (_) {}
+    const sk = r.who + "|" + r.view, s0 = byS[sk] || (byS[sk] = { who: r.who, view: r.view, loads: 0, docs: 0 }); s0.loads++;
+    for (const k of Object.keys(d)) { const n = Number(d[k]) || 0; const o = byK[k] || (byK[k] = { k, docs: 0, screens: 0 }); o.docs += n; o.screens++; s0.docs += n; docs += n; }
+  }
+  return json({ day, total: { docs, loads: rows.length }, byCollection: Object.values(byK).sort((x, y) => y.docs - x.docs), byScreen: Object.values(byS).sort((x, y) => y.docs - x.docs) });
 }
 async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebase ID 토큰> → 이메일 (Google 이 검증)
   const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
