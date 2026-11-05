@@ -6354,13 +6354,13 @@ async function runSelfTest(){
       {const _ib=waitIdleBg,_wr2=waitRooms.slice();try{waitRooms=[];toggleWaitView('__EXAM__');waitIdleBg='data:image/gif;base64,R0lGODlhAQABAAAAACw=';
         data=[mk('a','C-Arm','대기',1),mk('d','처치실','준비',4)];renderWaitScreen();
         const titles=[...document.querySelectorAll('#waitCols .wait-ct span')].map(x=>x.textContent);
-        eq('검사실 보기: 환자 없는 칸(Sono)은 숨김, 안내 문구 없음', [titles, document.querySelector('#waitCols .wait-empty')?1:0, waitIdle], [['실시간 영상유도하 주사','근전도검사, 처치'],0,false]);
+        eq('검사실 보기: 세 칸 고정 — 환자 없는 칸(Sono)도 보이고 "현재 대기 환자 없음" (2026-11-05)', [titles.length, document.querySelectorAll('#waitCols .wait-empty').length, waitIdle], [3,1,false]);
         data=[mk('a','C-Arm','대기',1)];renderWaitScreen();
-        eq('검사실 보기: 한 칸에만 있으면 그 칸만', [...document.querySelectorAll('#waitCols .wait-col')].length, 1);
+        eq('검사실 보기: 한 칸에만 있어도 세 칸', [...document.querySelectorAll('#waitCols .wait-col')].length, 3);
         data=[];renderWaitScreen();const bgEl=document.getElementById('waitBg');
-        ok('검사실 보기: 세 칸 모두 비면 목록 없이 빈 화면 배경만(흐림 없이, 제목·안내 띠 숨김)', waitIdle&&!document.querySelector('#waitCols .wait-col')&&bgEl.classList.contains('idle')&&/R0lGOD/.test(bgEl.style.backgroundImage)&&document.getElementById('waitScreen').classList.contains('idle'));
+        ok('검사실 보기: 세 칸 모두 비어도 빈 화면 배경 대신 세 칸 그대로', !waitIdle&&document.querySelectorAll('#waitCols .wait-col').length===3&&!bgEl.classList.contains('idle')&&!document.getElementById('waitScreen').classList.contains('idle'));
         data=[mk('b','Sono','진행',2)];renderWaitScreen();
-        ok('검사실 보기: 환자가 다시 오면 평소 배경으로 복귀', !waitIdle&&!bgEl.classList.contains('idle'));
+        ok('검사실 보기: 환자가 오면 그대로 평소 배경', !waitIdle&&!bgEl.classList.contains('idle'));
        }finally{waitIdleBg=_ib;waitIdle=false;applyWaitBg();waitRooms=_wr2;}}
       data=[mk('a','C-Arm','대기',1),mk('b','Sono','진행',2),mk('c','근전도검사','대기',3),mk('d','처치실','준비',4),mk('e','x-ray실','대기',5)];
       waitRooms=['x-ray실'];toggleWaitView('__EXAM__');
@@ -8505,18 +8505,30 @@ function waitSubFit(){const ws=document.getElementById('waitScreen');if(!ws)retu
 function waitTickerFit(){const t=document.getElementById('waitTicker');if(!t)return;const items=t.querySelectorAll('.wt-item');if(items.length<3)return;
   const P=items[0].getBoundingClientRect().width;   // 주기 = 문장 폭 + 50vw 여백 (항목이 모두 같음)
   /* 폭이 그대로면 손대지 않는다 — 값을 다시 쓰면 흐르던 글이 튄다. 띠가 숨겨진 동안(폭 0)도 건너뜀 (2026-09-24) */
-  if(!P||Math.abs(P-(parseFloat(t.dataset.p)||0))<1)return; t.dataset.p=P; wtP=P; wtPos=wtPos%P;
+  if(!P||Math.abs(P-(parseFloat(t.dataset.p)||0))<1)return; t.dataset.p=P; wtP=P; wtPos=wtPos%P; wtAnimSet(t,P);
   t.style.setProperty('--wt-half',P+'px');t.style.setProperty('--wt-dur',Math.max(6,P/WT_SPEED)+'s');
   /* 두 번째 문장이 화면 오른쪽 끝에서 시작하도록 트랙을 놓는다(첫 문장은 그보다 P 앞 = 이미 지나가는 중인 꼬리). 한 주기 뒤 상태가 시작 상태와 같아 이음새가 없다 */
   t.style.marginLeft=(window.innerWidth-P)+'px';}
 /* 전광판 흐름: requestAnimationFrame 으로 초당 WT_SPEED px 씩 왼쪽으로, 한 주기(P)를 넘으면 나머지만 남긴다(같은 문장 3개라 이음새 없음).
    폭이 바뀌어도(글꼴 늦게 도착·창 크기) 위치를 이어 가므로 처음으로 되돌아가지 않는다. 띠가 숨겨진 동안은 멈춰 있다가 이어서 흐른다 */
 let wtP=0, wtPos=0, wtLast=0, wtRaf=null;
+/* 2026-11-05 제보: 하단 글이 가끔 멈춘다 — 매 프레임 JS 로 옮기면 보드 그리기 등으로 화면이 바쁠 때 멈칫했다.
+   이제 브라우저 애니메이션(Web Animations — 화면 그리기와 따로 도는 합성 스레드)으로 흐른다. 폭이 바뀌면 지금 위치를 이어서 새로 건다.
+   이 기능이 없는 브라우저만 예전처럼 매 프레임 옮긴다(wtFrame) */
+let wtAnim=null;
+function wtAnimSet(t,P){if(!t||!t.animate||!(P>0))return;
+  let pos=wtPos;try{if(wtAnim&&wtAnim._P){pos=((Number(wtAnim.currentTime)||0)/wtAnim._dur%1)*wtAnim._P;wtAnim.cancel();}}catch(e){}
+  t.style.transform='';const dur=P/WT_SPEED*1000;
+  wtAnim=t.animate([{transform:'translateX(0px)'},{transform:'translateX('+(-P)+'px)'}],{duration:dur,iterations:Infinity});
+  wtAnim._P=P;wtAnim._dur=dur;wtAnim.currentTime=(((pos%P)+P)%P)/WT_SPEED*1000;
+  if(!wtRaf||!wtShouldRun())wtAnim.pause();}
+function wtShouldRun(){return waitOpen&&(!waitIdle||waitIdleSoft);}   // 띠가 보이는 동안만
 function wtFrame(ts){
   if(!waitOpen){wtRaf=null;return;}
   const dt=wtLast?Math.min(100,ts-wtLast):0; wtLast=ts;   // 탭이 잠들었다 깨면 큰 dt 는 100ms 로 잘라 점프 방지
   const t=document.getElementById('waitTicker');
-  if(t&&wtP>0&&!waitIdle){wtPos=(wtPos+WT_SPEED*dt/1000)%wtP;t.style.transform='translateX('+(-wtPos).toFixed(2)+'px)';}
+  if(wtAnim){const run=wtShouldRun();if(run&&wtAnim.playState!=='running')wtAnim.play();else if(!run&&wtAnim.playState==='running')wtAnim.pause();}
+  else if(t&&wtP>0&&wtShouldRun()){wtPos=(wtPos+WT_SPEED*dt/1000)%wtP;t.style.transform='translateX('+(-wtPos).toFixed(2)+'px)';}   /* 일반 방이 비어 그림만 돌 때(idle-soft)도 띠는 보이므로 흐른다 */
   try{wsScrollStep(dt);}catch(e){}
   wtRaf=requestAnimationFrame(wtFrame);}
 /* 대기 목록 자동 스크롤 (2026-10-18 요청: 주사 대기가 많으면 아래 환자가 잘려 '이름이 없다'는 분이 늘었다).
@@ -8577,7 +8589,7 @@ function wsScrollStep(dt){
     L.classList.toggle('ws-end',st.pos>=max-1);
     if(Math.abs(L.scrollTop-st.pos)>=1)L.scrollTop=Math.round(st.pos);});}
 function wtStart(){if(wtRaf)return;wtLast=0;wtRaf=requestAnimationFrame(wtFrame);}
-function wtStop(){if(wtRaf)cancelAnimationFrame(wtRaf);wtRaf=null;}
+function wtStop(){if(wtRaf)cancelAnimationFrame(wtRaf);wtRaf=null;try{if(wtAnim)wtAnim.pause();}catch(e){}}
 window.addEventListener('resize',()=>{if(waitOpen){waitTickerFit();waitSubFit();}});
 /* 글꼴(Noto Sans KR)이 나중에 내려오면 문장 폭이 달라져 한 바퀴 끝에서 글이 멈췄다 되돌아가듯 튄다 → 글꼴이 준비되면 다시 잰다 (2026-09-24) */
 try{if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(waitOpen){waitTickerFit();waitSubFit();}});}catch(e){}
@@ -8681,14 +8693,14 @@ function renderWaitScreen(){
   const inRooms=(p,rooms)=>{if(p.discharged||p.out||!p.route.length)return false;const cr=curRoom(p);return rooms.some(r=>r===cr||mirroredHere(p,r));};
   const viewCnt=k=>{const vc=waitViewCol(k);if(!vc)return 1;return data.filter(p=>inRooms(p,vc.rooms)).length;};
   const hadView=showRs.some(k=>!!waitViewCol(k));
-  if(hadView)showRs=showRs.filter(k=>viewCnt(k)>0);
+  /* 2026-11-05 요청: 검사실 보기는 환자가 없어도 세 칸을 늘 고정해 보인다(빈 칸은 '현재 대기 환자 없음'). 예전(09-15)에는 빈 칸을 숨기고 셋 다 비면 빈 화면 배경만 */
   /* 빈 화면 판정 (2026-09-24 확장): ① 검사실 보기의 칸이 모두 비었을 때(예전 규칙) ② 그 밖의 보기라도 고른 방 전부에 환자가 0명이고 빈 화면 배경이 있을 때.
      시트 칸(4층 예약표)은 환자 목록이 아니므로 '비어 있음'으로 치지 않는다 */
   const roomCnt=k=>{if(sheetGroupOf(k))return 1;const vc=waitViewCol(k);const rooms=vc?vc.rooms:[k];
     return data.filter(p=>inRooms(p,rooms)).length;};
   const allEmpty=showRs.length>0&&showRs.every(k=>roomCnt(k)===0);
-  const idleHard=hadView&&showRs.length===0;                       // 검사실 보기: 그림만(제목·시계·띠 숨김 — 2026-09-15 지시)
-  waitIdleSoft=!idleHard&&allEmpty&&waitIdleList().length>0;       // 일반 방이 비었을 때: 그림을 돌리되 제목·시계·하단 안내 띠는 그대로
+  const idleHard=false; /* 검사실 보기의 '그림만' 빈 화면은 없앴다(2026-11-05 — 세 칸 고정) */                      // 검사실 보기: 그림만(제목·시계·띠 숨김 — 2026-09-15 지시)
+  waitIdleSoft=!hadView&&allEmpty&&waitIdleList().length>0;       // 일반 방이 비었을 때: 그림을 돌리되 제목·시계·하단 안내 띠는 그대로
   waitIdle=idleHard||waitIdleSoft;applyWaitBg();
   if(!waitIdle)requestAnimationFrame(waitTickerFit);   // 띠가 다시 보이면(빈 화면 뒤) 폭을 다시 잰다 — 같으면 손대지 않음
   if(waitIdle){cols.innerHTML=dotsHtml;return;}
