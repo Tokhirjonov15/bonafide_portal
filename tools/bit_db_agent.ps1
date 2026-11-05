@@ -36,6 +36,7 @@ param(
   [int]$ResvEvery = 2,                      # 예약은 몇 주기마다 읽을지(2 = 8초). 바뀐 날짜의 문서만 다시 쓴다
   [int]$RxMonthMin = 30,                    # 재고 통계표용 한 달 처방 합계(코드별 건수·총투여량)를 몇 분마다 다시 셀지. 0 = 끔 (db1.4)
   [int]$RxEvery = 3,                        # 처방(OdrInf)을 몇 주기마다 읽을지(3 = 12초). 0 = 처방 연동 끔. 바뀐 접수건만 다시 쓴다
+  [int]$NoteEvery = 3,                      # 원장님 차팅(EmrInf → 슬립 bitNote)을 몇 주기마다 읽을지(3 = 12초). 0 = 끔 (db2.5)
   [switch]$RxAlways,
   [switch]$PayAlways,                       # 대기(standby)여도 처방 금액(pay)은 쓴다 — 접수 PC 가 db1.2 전인 동안 개발 PC 에서 (2026-10-01)                        # 대기(standby)여도 처방 문서는 쓴다 — 담당 PC 가 처방 기능이 없는 옛 버전인 동안
   [switch]$ResvAlways,                      # 대기(standby)여도 예약 문서는 쓴다 — 담당 PC 의 에이전트가 예약 기능이 없는 옛 버전인 동안 임시로(관리 PC 용)
@@ -55,7 +56,8 @@ $script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgen
 $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
 if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db2.4'   # 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
+$VER = 'db2.5'   # 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
+# 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
 # 2.3: 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
 # 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
 # $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
@@ -147,6 +149,10 @@ function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는
   $mask = ($fields.Keys | ForEach-Object { 'updateMask.fieldPaths=' + [Uri]::EscapeDataString($_) }) -join '&'
   $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 14 -Compress
   $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+function FsGet($path) {   # 문서 하나 읽기 → fields(PSObject) 또는 $null(없음)
+  try { $r = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "$DocBase/$path" -Headers @{ Authorization = "Bearer $(FbToken)" }; return $r.fields }
+  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $null }; throw }
 }
 function FsPatchNested($path, $key, $fields) {   # bitStatus/_all 의 'PC이름' 맵 필드만 갱신
   $mask = 'updateMask.fieldPaths=' + [Uri]::EscapeDataString('`' + $key + '`')
@@ -641,6 +647,104 @@ function PollRx() {
   if ($ownN) { Log "본인부담: $ownN 건 갱신" }
 }
 
+# ── 원장님 차팅(EmrInf) → 슬립 문서 bitNote/{날짜}_{차트번호} (db2.5, 2026-11-05) ──
+#  슬립은 진료실 PC 감시 프로그램이 외래진료실 화면에서 읽어 보냈다. 그 PC 감시가 꺼져 있거나 처방을 보내지 않는 PC(C-Arm 방·접수 등)에서
+#  차팅하면 슬립이 안 떴다(2026-11-05 강원종 33482: 11:57 비트 저장, 12:10 까지 슬립 없음 · 2026-11-01 최하은 32753: 다른 PC 에서 고친 기록이 슬립에 안 옴).
+#  비트에 저장된 차팅 = EmrInf (EmrShtTyp 'S', EmrShtCod 'C.C', 한 줄 = 한 행, EmrShtSeq 순, 저장 시각 EmrUpdDtm 은 분까지).
+#  저장 시각·내용이 바뀐 접수만 그 문서를 한 번 읽어 비교한다:
+#   · 문서가 없다 → 만든다(pc = '비트 기록')
+#   · 비트 저장이 문서보다 나중(같은 분 포함)이고 내용이 다르다 → 처방·차팅을 고친다(rev+1 → 이미 인쇄한 슬립은 '처방 바뀜')
+#   · 문서가 더 나중(화면에서 고치고 아직 저장 전)이거나 내용이 같다 → 내용은 두고 emr* 칸만 적는다(동선관리가 '비트 기록과 같음'을 안다)
+#  보험별 칸(v_…)이 있는 문서는 진료실 감시 프로그램에 맡긴다. 한 환자에 오늘 차팅 있는 접수가 둘이면 가장 늦게 저장된 것.
+#  1진료실(OS)은 저장이 평균 3시간 넘게 늦어(2026-11-04 측정) 그동안은 지금처럼 감시 프로그램 문서가 쓰인다.
+$NOTE_QUERY = @"
+SELECT RTRIM(e.EmrOcmNum) AS k, LTRIM(RTRIM(m.OcmChtNum)) AS mrn, e.EmrShtSeq AS seq, e.EmrShtVal AS v, RTRIM(e.EmrUpdDtm) AS upd,
+       RTRIM(p.PbsPatNam) AS name, RTRIM(p.PbsResNum) AS rrn, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex
+FROM EmrInf e WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = e.EmrOcmNum
+LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = m.OcmChtNum
+WHERE e.EmrOcmDte = '{0}' AND e.EmrShtTyp = 'S' AND e.EmrShtCod = 'C.C' AND m.OcmComStt <> 'CN'
+ORDER BY e.EmrOcmNum, e.EmrShtSeq
+"@
+$RX_HEAD = '^\s*med\b'   # bitplus_watcher.ps1 과 같은 규칙 — 맨 위 'med' 줄부터 끝까지가 처방, 그 위가 차팅
+function NoteRxOf($text) {   # = bitplus_watcher.ps1 ExtractRx
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
+  if ($end -lt 0) { return @{ lines = @(); marker = $false } }
+  $start = -1; for ($i = 0; $i -le $end; $i++) { if ($lines[$i] -match $RX_HEAD) { $start = $i; break } }
+  if ($start -lt 0) { return @{ lines = @(); marker = $false } }
+  $out = @(); for ($i = $start; $i -le $end; $i++) { if ($lines[$i].Trim()) { $out += ($lines[$i].Trim() -replace '\s{2,}', ' ') } }
+  if ($out.Count -gt 300) { $out = @($out[0..299]) }
+  return @{ lines = $out; marker = $true }
+}
+function NoteChartOf($text) {   # = bitplus_watcher.ps1 ExtractChart
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $stop = $lines.Count; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match $RX_HEAD) { $stop = $i; break } }
+  $out = @(); $blank = $false
+  for ($i = 0; $i -lt $stop; $i++) { $t = $lines[$i].Trim(); if (-not $t) { if ($out.Count -and -not $blank) { $out += ''; $blank = $true }; continue }; $out += $t; $blank = $false }
+  while ($out.Count -and -not $out[$out.Count - 1]) { $out = @($out[0..($out.Count - 2)]) }
+  $txt = ($out -join "`n"); if ($txt.Length -gt 8000) { $txt = $txt.Substring(0, 8000) }
+  return $txt
+}
+function DtmTime($s) { $s = [string]$s; if ($s.Length -lt 12) { return $null }
+  try { return [DateTime]::ParseExact($s.Substring(0, 12), 'yyyyMMddHHmm', [Globalization.CultureInfo]::InvariantCulture) } catch { return $null } }
+$script:NoteHash = @{}; $script:NoteDay = ''
+function PollNote() {
+  if ($NoteEvery -le 0) { return }
+  $ymd = (Get-Date).ToString('yyyyMMdd'); $day = (Get-Date).ToString('yyyy-MM-dd')
+  if ($script:NoteDay -ne $day) { $script:NoteDay = $day; $script:NoteHash = @{} }
+  $rows = SqlRows ($NOTE_QUERY -f $ymd) 20
+  $byOcm = [ordered]@{}
+  foreach ($r in $rows.Rows) {
+    $key = ([string]$r.k -replace '\D', ''); $mrn = ([string]$r.mrn -replace '\D', ''); if (-not $key -or -not $mrn) { continue }
+    if (-not $byOcm.Contains($key)) { $byOcm[$key] = @{ mrn = $mrn; upd = ''; L = (New-Object System.Collections.ArrayList); name = ([string]$r.name).Trim(); rrn7 = (Rrn7 $r.rrn $r.bir $r.sex) } }
+    [void]$byOcm[$key].L.Add([string]$(if ($r.v -is [DBNull]) { '' } else { $r.v }))
+    $u = ([string]$r.upd).Trim(); if ($u -gt $byOcm[$key].upd) { $byOcm[$key].upd = $u }
+  }
+  $byMrn = @{}   # 차트번호 → 가장 늦게 저장된 접수
+  foreach ($key in $byOcm.Keys) { $v = $byOcm[$key]; if (-not $byMrn.ContainsKey($v.mrn) -or $v.upd -gt $byMrn[$v.mrn].upd) { $byMrn[$v.mrn] = $v } }
+  $can = $script:IsLeader -or $RxAlways -or $PayAlways
+  $made = 0; $fixed = 0; $same = 0
+  foreach ($mrn in ($byMrn.Keys | Sort-Object)) {
+    $v = $byMrn[$mrn]; $text = ($v.L -join "`n"); $hm = ($v.upd -replace '^\d{8}', '')
+    $ex = NoteRxOf $text; $rx = ($ex.lines -join "`n"); $chart = NoteChartOf $text
+    if (-not $rx -and -not $chart) { continue }
+    $h = "$($v.upd)|$rx|$chart"
+    if ($script:NoteHash[$mrn] -eq $h) { continue }
+    if ($DryRun -or -not $can) { $script:NoteHash[$mrn] = $h; continue }
+    $id = "${day}_$mrn"; $updT = DtmTime $v.upd
+    $emr = @{ emrRx = $rx; emrChart = $chart; emrUpd = $(if ($updT) { $updT.ToString('yyyy-MM-ddTHH:mm:00.000zzz') } else { '' }); emrAt = (NowIso); emrPc = $Pc }
+    try {
+      $f = FsGet "bitNote/$id"
+      $vks = @(); if ($f) { $vks = @($f.PSObject.Properties.Name | Where-Object { $_ -like 'v_*' -and $f.$_.mapValue }) }
+      if ($vks.Count -ge 2) { $script:NoteHash[$mrn] = $h; continue }   # 보험이 둘 이상(슬립 2장) — 감시 프로그램에 맡김. 하나면 그 칸도 같이 고친다(감시 v3.7 은 보험 칸을 늘 하나 남긴다)
+      $docRx = if ($f -and $f.rx) { [string]$f.rx.stringValue } else { '' }
+      $docChart = if ($f -and $f.chart) { [string]$f.chart.stringValue } else { '' }
+      $docT = $null; if ($f -and $f.updatedAt) { try { $docT = [DateTimeOffset]::Parse([string]$f.updatedAt.stringValue).LocalDateTime } catch {} }
+      $rev = 0; if ($f -and $f.rev) { [void][int]::TryParse([string]$f.rev.integerValue, [ref]$rev) }
+      if (-not $f -or (-not $docRx -and -not $docChart)) {   # 문서 없음(또는 비워진 문서) → 만든다
+        $nf = @{ date = $day; mrn = $mrn; rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; rev = [int]($rev + 1); updatedAt = (NowIso) } + $emr
+        if (-not $f -or -not $f.firstAt) { $nf.firstAt = (NowIso) }
+        if (-not $f -or -not $f.pc -or -not $f.pc.stringValue) { $nf.pc = '비트 기록' }
+        if ($v.name -and (-not $f -or -not $f.name -or -not $f.name.stringValue)) { $nf.name = $v.name }
+        if ($v.rrn7 -and (-not $f -or -not $f.rrn7 -or -not $f.rrn7.stringValue)) { $nf.rrn7 = $v.rrn7 }
+        FsPatch "bitNote/$id" $nf; $made++
+        Log "슬립(비트 기록): 차트번호 $mrn 문서 만듦 ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 저장 $hm)"
+      } elseif (($docRx -ne $rx -or $docChart -ne $chart) -and $updT -and (-not $docT -or $updT -ge $docT.Date.AddHours($docT.Hour).AddMinutes($docT.Minute))) {   # 비트 저장이 나중(같은 분 포함) + 내용 다름 → 고침
+        FsPatch "bitNote/$id" (@{ rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; rev = [int]($rev + 1); updatedAt = (NowIso) } + $emr); $fixed++
+        if ($vks.Count -eq 1) {   # 보험 칸 하나 — 맵을 통째로 다시 쓰므로 ins·pc·firstAt 은 그대로 옮긴다
+          $vk = $vks[0]; $sf = $f.$vk.mapValue.fields; $sub = @{ rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; updatedAt = (NowIso) }
+          foreach ($k in 'ins', 'pc', 'firstAt') { if ($sf -and $sf.$k -and $sf.$k.stringValue) { $sub[$k] = [string]$sf.$k.stringValue } }
+          $srev = 0; if ($sf -and $sf.rev) { [void][int]::TryParse([string]$sf.rev.integerValue, [ref]$srev) }; $sub.rev = [int]($srev + 1)
+          FsPatchNested "bitNote/$id" $vk $sub }
+        Log "슬립(비트 기록): 차트번호 $mrn 비트 저장($hm)이 화면 전송보다 나중 + 내용 다름 → 고침 ($($ex.lines.Count)줄, ${rev}→$($rev + 1)회차)"
+      } else { FsPatch "bitNote/$id" $emr; $same++ }
+      $script:NoteHash[$mrn] = $h
+    } catch { Log "슬립(비트 기록) 전송 오류 ${mrn}: $($_.Exception.Message)" }
+  }
+  if ($made -or $fixed) { Log "슬립(비트 기록): $made 건 만듦, $fixed 건 고침, $same 건 확인 (오늘 차팅 저장 $($byMrn.Count)명)" }
+}
+
 # ── 한 달 처방 합계 → bitRx/_month_YYYY-MM (db1.4, 2026-10-04) ──
 #  재고 통계표의 '처방량' 칸(처방코드별)을 채운다. 코드별 건수(n)와 총투여량(tot = 수량×횟수×일수)만 — 환자 정보는 없다.
 #  이번 달은 RxMonthMin 분마다 다시 세고(final=false), 달이 바뀌면 지난달을 한 번 더 세어 final=true 로 쓴다(마지막 날 진료 마감까지 전부).
@@ -759,6 +863,7 @@ while ($true) {
     $script:LastDbOk = Get-Date
     if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
     if ($RxEvery -gt 0 -and ($RxEvery -le 1 -or ($cyc % $RxEvery) -eq 0)) { try { PollRx } catch { Log "처방 조회 오류: $($_.Exception.Message)" } }
+    if ($NoteEvery -gt 0 -and ($NoteEvery -le 1 -or ($cyc % $NoteEvery) -eq 1)) { try { PollNote } catch { Log "차팅(슬립) 조회 오류: $($_.Exception.Message)" } }   # db2.5 — 처방과 다른 주기에(부하 분산)
     try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
     try { PollJabo } catch { Log "자보 도수 조회 오류: $($_.Exception.Message)" }   # db2.1
     try { AnswerAsks } catch { Log "내원 날짜 요청 확인 오류: $($_.Exception.Message)" }   # 서류 발급 태블릿 (db1.9)
