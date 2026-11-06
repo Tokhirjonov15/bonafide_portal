@@ -6632,6 +6632,10 @@ async function runSelfTest(){
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
       const _v=VISITS;let dr=false;try{VISITS=[{name:'다',mrn:'1',dischargedAt:new Date().toISOString(),rxDc:{k:{cod:'C-ARM',nam:'C-ARM'}},rooms:[{room:'C-Arm',doctor:'김현우'}]}];const R=docStatRooms();dr=R.length===1&&(R[0].dc===rxItemRooms({cod:'C-ARM',nam:'C-ARM'}).includes('C-Arm'));}finally{VISITS=_v;}
       ok('원장님·시술: 처방 D/C 한 술기는 원장님·직원 건수에서 빼고 D/C 건수만(진료는 그대로)', JSON.stringify(c.byDoc)==='[["김현우",1]]'&&c.dcSkip===1&&JSON.stringify(d.clinic)==='[["김현우",1]]'&&dr,JSON.stringify(c.byDoc)+' '+c.dcSkip);}
+     {const _v=VISITS,_d=data;let R=[];const t=m=>new Date(Date.now()-m*60000).toISOString();   // 한 내원에 C-Arm 두 번 (2026-11-06 18145·33667)
+      try{data=[];VISITS=[{id:'w1',name:'두번',mrn:'18145',dischargedAt:t(0),rooms:[{room:'C-Arm',doctor:'',enteredAt:t(30),leftAt:t(29)},{room:'수납대기',enteredAt:t(29),leftAt:t(25)},{room:'C-Arm',doctor:'김현우',rad:'',enteredAt:t(25),leftAt:t(10)}]},
+        {id:'w2',name:'다른날',mrn:'18145',dischargedAt:t(1),rooms:[{room:'C-Arm',doctor:'김현우',enteredAt:t(40),leftAt:t(35)}]}];R=docStatRooms().filter(r=>r.room==='C-Arm');}finally{VISITS=_v;data=_d;}
+      ok('원장님·시술: 한 내원에 같은 술기 방을 두 번 거쳐도 1건(오래 머문 칸 기준), 다른 내원은 따로', R.length===2&&R.every(r=>r.doctor==='김현우'),JSON.stringify(R.map(r=>[r.vk,r.doctor,r.dur])));}
      {const _sr=STAFF_ROSTER;STAFF_ROSTER=Object.assign(JSON.parse(JSON.stringify(staffRoster())),{'방사선사':['조선형'],'간호사':['곽민솔']});
       const a=[docStatStaff('C-Arm','조선형',''),docStatStaff('C-Arm','','곽민솔'),docStatStaff('C-Arm','곽민솔',''),docStatStaff('Sono','','곽민솔')];STAFF_ROSTER=_sr;
       ok('C-Arm 직원별: 방사선사만(간호 담당·간호사 이름은 방사선사 미지정)', a.join(',')==='조선형,(방사선사 미지정),(방사선사 미지정),곽민솔',a.join(','));}
@@ -11786,11 +11790,20 @@ function docStatRooms(){
   const day=d=>{try{return d?localYMD(new Date(d)):'';}catch(e){return '';}};
   /* D/C 한 처방이 가는 방 (2026-10-27 요청: 주사 D/C 한 환자가 C-Arm 술기 통계에 잡혀 있었다) — 처방내역에서 D/C 체크한 처방 → 처방→방 규칙의 방 */
   const dcRooms=x=>{const s=new Set();try{Object.values((x&&x.rxDc)||{}).forEach(d=>{if(d)rxItemRooms(d).forEach(r=>s.add(r));});}catch(e){}return s;};
-  statsVis().forEach(v=>{const dc=dcRooms(v);(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({dc:dc.has(r.room),room:r.room,doctor:String(r.doctor||'').trim(),seen:String(r.seenDoc||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse),name:v.name||'',mrn:v.mrn||'',date:day(r.leftAt||r.enteredAt||v.dischargedAt)});});});
+  const ms=(a,b)=>{const x=new Date(a||0).getTime(),y=new Date(b||0).getTime();return x&&y?Math.max(0,y-x):0;};
+  statsVis().forEach(v=>{const dc=dcRooms(v);(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({vk:'v:'+(v.id||v.mrn+'|'+v.dischargedAt),dur:ms(r.enteredAt,r.leftAt),dc:dc.has(r.room),room:r.room,doctor:String(r.doctor||'').trim(),seen:String(r.seenDoc||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse),name:v.name||'',mrn:v.mrn||'',date:day(r.leftAt||r.enteredAt||v.dischargedAt)});});});
   data.filter(p=>p&&!p._viewOnly&&!p.discharged&&!isTestPatient(p)).forEach(p=>{const dc=dcRooms(p);(p.visits||[]).forEach(v=>{
     if(!v||!v.room)return;if((statsDate||statsDays)&&!statInRange(v.leftAt||v.enteredAt))return;
-    out.push({dc:dc.has(v.room),room:v.room,doctor:String(docFor(p,v.room)||'').trim(),seen:String((isProcRoom(v.room)?seenDocFor(p,v.room):'')||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room)),name:p.name||'',mrn:p.mrn||'',date:day(v.leftAt||v.enteredAt)});});});
-  return out;}
+    out.push({vk:'p:'+p.id,dur:ms(v.enteredAt,v.leftAt||new Date().toISOString()),dc:dc.has(v.room),room:v.room,doctor:String(docFor(p,v.room)||'').trim(),seen:String((isProcRoom(v.room)?seenDocFor(p,v.room):'')||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room)),name:p.name||'',mrn:p.mrn||'',date:day(v.leftAt||v.enteredAt)});});});
+  /* 술기 방(C-Arm·Sono·근전도)은 한 내원에 한 번만 (2026-11-06 요청: C-Arm 직원별에 같은 환자가 두 번 — 11/1 C-Arm → 4층 대기실 3분 → 다시 C-Arm,
+     11/2 C-Arm 1분(잘못 보냄) → 수납 → 다시 C-Arm). 가장 오래 머문 칸을 남기고, 그 칸에 없는 원장님·담당 직원은 다른 칸에서 채운다 */
+  const keep=[],best={};
+  out.forEach(r=>{if(!DOC_STAT_PROC.includes(r.room)){keep.push(r);return;}const k=r.vk+'|'+r.room,b=best[k];
+    if(!b){best[k]=r;keep.push(r);return;}
+    const win=r.dur>b.dur?r:b,lose=win===r?b:r,m=Object.assign({},win);
+    if(!m.doctor)m.doctor=lose.doctor;if(!m.seen)m.seen=lose.seen;if(!m.staff||/미지정/.test(m.staff))m.staff=(lose.staff&&!/미지정/.test(lose.staff))?lose.staff:m.staff;m.dc=b.dc||r.dc;
+    keep[keep.indexOf(b)]=m;best[k]=m;});
+  return keep;}
 function docStatData(){
   /* 2026-10-25 요청: 술기 의사(담당 직원) 조합 말고 원장님 한 분이 한 총 건수, 직원 한 명이 맡은 총 건수도 따로 */
   /* 2026-10-25 요청: 원장님별 진료·원장님별 술기에는 의사만 — 진료실 담당으로 간호사·물리치료사가 찍힌 기록은 원장님 칸에서 빼고 건수만 알린다 */
