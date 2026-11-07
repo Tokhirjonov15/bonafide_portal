@@ -4952,7 +4952,7 @@ async function shiftSeqAfter(seq){
     /* 접수 문서에 적어 둔 번호도 같이 당긴다 — 나중에 이 환자가 취소될 때 카드가 없어도 맞는 번호로 당기도록 (문서 id = 날짜_ocm접수번호) */
     const ocm=String((p.bit&&p.bit.ocmNum)||'').replace(/[^\di]/g,'');
     if(ocm&&cloud.intakeCol)jobs.push(cloud.intakeCol.doc(today+'_ocm'+ocm).update({seq:p.seq}).catch(()=>{}));});
-  vis.forEach(v=>{v.seq=v.seq-1;if(cloud.visitsCol&&v.id)jobs.push(cloud.visitsCol.doc(v.id).update({seq:v.seq}).catch(e=>console.warn('seq shift visit',v.id,e&&e.code)));});
+  vis.forEach(v=>{v.seq=v.seq-1;if(cloud.visitsCol&&v.id)jobs.push(cloud.visitsCol.doc(v.id).update({seq:v.seq,syncAt:new Date().toISOString()}).catch(e=>console.warn('seq shift visit',v.id,e&&e.code)));});
   await Promise.all(jobs);
   seqNext=Math.max(1,maxSeqToday()+1);seqDate=today;
   lsSet("patientBoard_seq",String(seqNext));lsSet("patientBoard_seqdate",today);
@@ -5000,7 +5000,7 @@ async function healSeqGaps(){
       if(r.kind==='p'){jobs.push(cloud.patientsCol.doc(r.id).update({seq:ns}).catch(()=>{}));
         if(r.ocm&&cloud.intakeCol)jobs.push(cloud.intakeCol.doc(t+'_ocm'+r.ocm).update({seq:ns}).catch(()=>{}));
         const lp=data.find(x=>x.id===r.id);if(lp)lp.seq=ns;}
-      else{jobs.push(cloud.visitsCol.doc(r.id).update({seq:ns}).catch(()=>{}));const lv=VISITS.find(x=>x.id===r.id);if(lv)lv.seq=ns;}});
+      else{jobs.push(cloud.visitsCol.doc(r.id).update({seq:ns,syncAt:new Date().toISOString()}).catch(()=>{}));const lv=VISITS.find(x=>x.id===r.id);if(lv)lv.seq=ns;}});
     await Promise.all(jobs);
     seqNext=distinct.length+1;seqDate=t;lsSet("patientBoard_seq",String(seqNext));lsSet("patientBoard_seqdate",t);
     saveLocal();cloudSaveConfig();renderThrottled();
@@ -6892,8 +6892,9 @@ function cloudPatientTxn(pid,mutate,opts){
   }).catch(e=>{syncFail('카드 수정',e);return false;});
 }
 function cloudDelPatient(pid){if(cloud.active&&cloud.patientsCol&&pid)cloud.patientsCol.doc(pid).delete().catch(e=>console.error(e));}
-function cloudAddVisit(v){if(cloud.active&&cloud.visitsCol&&v.id)cloud.visitsCol.doc(v.id).set(jclone(v)).catch(e=>console.error(e));}
-function cloudAddStat(s){if(cloud.active&&cloud.statsCol&&s.id)cloud.statsCol.doc(s.id).set(jclone(s)).catch(e=>console.error(e));}
+/* syncAt = 서버에 쓴 시각 — 다른 PC 가 '새 것만' 받을 때 기준 (bigSync v2, 2026-11-07) */
+function cloudAddVisit(v){if(cloud.active&&cloud.visitsCol&&v.id)cloud.visitsCol.doc(v.id).set(Object.assign(jclone(v),{syncAt:new Date().toISOString()})).catch(e=>console.error(e));}
+function cloudAddStat(s){if(cloud.active&&cloud.statsCol&&s.id)cloud.statsCol.doc(s.id).set(Object.assign(jclone(s),{syncAt:new Date().toISOString()})).catch(e=>console.error(e));}
 /* ── 접근/활동 로그(감사 추적): 누가 언제 무엇을 — append-only ── */
 function audit(action,target){
   try{
@@ -7282,16 +7283,19 @@ async function bigPut(k,v){try{const db=await bigIdb();await new Promise(res=>{c
 /* col 의 전체 문서(data 배열). field = 기록 시각(ISO 문자열) — 이 값으로 새 것만 골라 받는다 */
 async function bigSync(kind,col,field){
   const key=kind+'|'+((cloud.ref&&cloud.ref.path)||''),c=await bigGet(key),now=Date.now();
-  const full=!c||!Array.isArray(c.ids)||!Array.isArray(c.rows)||c.ids.length!==c.rows.length||now-(c.fullAt||0)>BIG_FULL_MS||!c.maxT;
+  /* v2 (2026-11-07): 기록 시각(field)이 쓴 시각보다 이른 기록 — 밤새 남은 카드를 다음 날 아침 자동 마감하면 전날 23:59 로 쓰인다 — 은 '새 것만' 창 밖이라 빠졌다
+     (11/3 내원 환자가 통계에 없음). 이제 쓸 때 syncAt(쓴 시각)을 함께 남기고 그것으로도 받는다. 옛 캐시는 한 번 전체를 다시 받는다 */
+  const full=!c||c.v!==2||!Array.isArray(c.ids)||!Array.isArray(c.rows)||c.ids.length!==c.rows.length||now-(c.fullAt||0)>BIG_FULL_MS||!c.maxT;
   let ids,rows;
   if(full){const s=await col.get();ids=s.docs.map(d=>d.id);rows=s.docs.map(d=>d.data());}
   else{const since=new Date(Date.parse(c.maxT)-BIG_OVERLAP_MS).toISOString();
-    const s=await col.where(field,'>=',since).get();
-    ids=[];rows=[];c.ids.forEach((id,i)=>{const v=c.rows[i];if(!(v&&String(v[field]||'')>=since)){ids.push(id);rows.push(v);}});   // 이틀 창 안의 옛 것은 버리고 서버 것으로
+    const sinceS=new Date(Date.parse(c.maxS||c.maxT)-BIG_OVERLAP_MS).toISOString();
+    const [s,s2]=await Promise.all([col.where(field,'>=',since).get(),col.where('syncAt','>=',sinceS).get()]);
+    ids=[];rows=[];c.ids.forEach((id,i)=>{const v=c.rows[i];if(!(v&&String(v[field]||'')>=since)){ids.push(id);rows.push(v);}});   // 창 안의 옛 것은 버리고 서버 것으로
     const pos=new Map(ids.map((id,i)=>[id,i]));
-    s.docs.forEach(d=>{const i=pos.get(d.id);if(i!=null)rows[i]=d.data();else{ids.push(d.id);rows.push(d.data());}});}
-  let maxT='';rows.forEach(v=>{const t=String((v&&v[field])||'');if(t>maxT&&t<='9')maxT=t;});
-  bigPut(key,{ids,rows,maxT,fullAt:full?now:c.fullAt,at:now});
+    s.docs.concat(s2.docs).forEach(d=>{const i=pos.get(d.id);if(i!=null)rows[i]=d.data();else{pos.set(d.id,ids.length);ids.push(d.id);rows.push(d.data());}});}
+  let maxT='',maxS='';rows.forEach(v=>{const t=String((v&&v[field])||'');if(t>maxT&&t<='9')maxT=t;const u=String((v&&v.syncAt)||'');if(u>maxS&&u<='9')maxS=u;});
+  bigPut(key,{v:2,ids,rows,maxT,maxS:maxS||maxT,fullAt:full?now:c.fullAt,at:now});
   try{console.info('[bigSync]',kind,full?'전체':'새 것만',rows.length+'건');}catch(e){}
   return rows;}
 async function loadVisitsFull(){
@@ -10898,7 +10902,7 @@ function fixAutoClosedDates(){
       v.dischargedAt=a.toISOString();v.totalMs=Math.max(0,a-new Date(v.arrivedAt));});
     localStorage.setItem(VISIT_STORE,JSON.stringify(VISITS));
     let batch=cloud.db.batch(),n=0;
-    bad.forEach(v=>{batch.update(cloud.visitsCol.doc(v.id),{dischargedAt:v.dischargedAt,totalMs:v.totalMs});
+    bad.forEach(v=>{batch.update(cloud.visitsCol.doc(v.id),{dischargedAt:v.dischargedAt,totalMs:v.totalMs,syncAt:new Date().toISOString()});
       if(++n>=400){batch.commit().catch(()=>{});batch=cloud.db.batch();n=0;}});
     if(n>0)batch.commit().catch(()=>{});
     console.log('자동 마감 날짜 정리',bad.length+'건');
