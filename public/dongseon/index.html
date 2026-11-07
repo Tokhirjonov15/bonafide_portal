@@ -211,6 +211,9 @@
   .wait-list{flex:1;display:flex;flex-direction:column;gap:3px;padding:10px 12px;min-height:0;overflow:auto}
   /* 대기자가 많으면 칸이 화면 아래로 잘려 이름이 안 보였다 (2026-10-18) → 칸 높이를 화면 안으로 묶고, 넘치면 목록이 천천히 위아래로 흐른다(wsScrollStep) */
   .wait-cols>.wait-col:not(.wait-sheetcol){max-height:100%}
+  /* 검사실 보기 세 칸 — 칸 최대 너비(540px)를 풀고 화면 너비를 똑같이 나눠 꽉 채운다 (2026-11-07 요청) */
+  .wait-cols.exam3{flex-wrap:nowrap;align-items:stretch;gap:22px;padding:18px 24px 22px}
+  .wait-cols.exam3>.wait-col{flex:1 1 0;max-width:none;min-width:0}
   .wait-col:not(.wait-sheetcol) .wait-list{scrollbar-width:none}
   .wait-col:not(.wait-sheetcol) .wait-list::-webkit-scrollbar{display:none}
   .wait-list.ws-more{-webkit-mask-image:linear-gradient(#000 calc(100% - 46px),transparent);mask-image:linear-gradient(#000 calc(100% - 46px),transparent)}
@@ -8714,6 +8717,7 @@ function renderWaitScreen(){
   const inRooms=(p,rooms)=>{if(p.discharged||p.out||!p.route.length)return false;const cr=curRoom(p);return rooms.some(r=>r===cr||mirroredHere(p,r));};
   const viewCnt=k=>{const vc=waitViewCol(k);if(!vc)return 1;return data.filter(p=>inRooms(p,vc.rooms)).length;};
   const hadView=showRs.some(k=>!!waitViewCol(k));
+  cols.classList.toggle('exam3',showRs.length>1&&showRs.every(k=>!!waitViewCol(k)));   // 검사실 보기 세 칸만 → 화면 너비를 꽉 채운다 (2026-11-07 요청)
   /* 2026-11-05 요청: 검사실 보기는 환자가 없어도 세 칸을 늘 고정해 보인다(빈 칸은 '현재 대기 환자 없음'). 예전(09-15)에는 빈 칸을 숨기고 셋 다 비면 빈 화면 배경만 */
   /* 빈 화면 판정 (2026-09-24 확장): ① 검사실 보기의 칸이 모두 비었을 때(예전 규칙) ② 그 밖의 보기라도 고른 방 전부에 환자가 0명이고 빈 화면 배경이 있을 때.
      시트 칸(4층 예약표)은 환자 목록이 아니므로 '비어 있음'으로 치지 않는다 */
