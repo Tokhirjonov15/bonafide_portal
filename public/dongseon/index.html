@@ -8297,6 +8297,7 @@ function renderDischargedBoard(board,q){
   wrap.innerHTML=`
     <div class="vlist-head">
       <span class="vl-title"><i data-lucide="clipboard-list"></i> 내원 목록 <b>${vlHeadCount(rows)}</b>명${vlSeqWarn(rows)}</span>
+      ${(()=>{const M=statsMissingDay(ymd);return M.length?`<button class="btn sm" style="color:var(--red);border-color:var(--red)" title="${esc(M.map(x=>(x.v.name||'')+' — '+x.miss.map(r=>r.room).join(', ')).join('\n'))}" onclick="statsRestoreDay('${ymd}')">⚠ 통계에 빠진 내원 ${M.length}명 → 통계로 옮기기</button>`:'';})()}
       <div class="vl-date">
         <button class="vl-nav" title="이전 날" onclick="visitDateShift(-1)">◀</button>
         <input type="date" value="${ymd}" max="${localYMD(new Date())}" onchange="setVisitDate(this.value)">
@@ -10125,7 +10126,7 @@ function completeVisit(p,finalStatus){
   const rec={id:'s'+id(),patientId:p.id,mrn:p.mrn,name:p.name,room,enteredAt,leftAt,
     durationMs:waitMs+prepMs+activeMs,waitMs,prepMs,activeMs,proc:procSel(p,room).join(', '),finalStatus:finalStatus||'종결'};
   if(isProcRoom(room)){rec.doctor=docFor(p,room);rec.seenDoc=seenDocFor(p,room);}   // 시술 방: 술기 의사 · 진료본 의사 (2026-10-06)
-  if(!p.visits)p.visits=[];p.visits.push(rec);STATS.push(rec);if(STATS.length>5000)STATS=STATS.slice(-5000);
+  if(!p.visits)p.visits=[];p.visits.push(rec);STATS.push(rec);   // 2026-11-07: 5,000건 자르기 뺐다 — 지난 기록 전체를 들고 있어(bigSync) 자르면 종결 한 번에 옛 기간 통계가 사라졌다
   cloudAddStat(rec);
   if(!p.autoClosed)roomNotify(p,room,'out',{waitMs,prepMs,activeMs,finalStatus:rec.finalStatus});   // 자동 마감(밤 정리)은 알리지 않음
 }
@@ -10934,7 +10935,7 @@ function archiveVisit(p){
     smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[],
     bit:(p.bit&&typeof p.bit==='object')?{ocmNum:String(p.bit.ocmNum||''),auto:!!p.bit.auto,pc:p.bit.pc||'',chojae:p.bit.chojae||''}:null   // 비트 접수번호·초재구분 — 수납취소 복귀, 접수 구분 통계용
   };
-  VISITS.push(rec);if(VISITS.length>3000)VISITS=VISITS.slice(-3000);
+  VISITS.push(rec);   // 2026-11-07: 3,000건 자르기 뺐다 (위 STATS 와 같은 이유)
   cloudAddVisit(rec);
 }
 
@@ -11480,6 +11481,35 @@ window.openStatRec=function(sid,pid,mrn,name){
   try{document.getElementById('historyModal').classList.add('show');}catch(e){}
 };
 function statsRecs(){let recs=STATS.filter(r=>!isTestPatient(r));   /* 테스트 환자는 통계에서 뺀다 (2026-10-03) */if(statsDate||statsDays)recs=recs.filter(r=>statInRange(r.leftAt||r.enteredAt||r.at));return recs;}
+/* ═════ 통계 누락 검사 (2026-11-07 요청: 내원 목록에는 있는데 방별 통계에 안 잡힌 환자 — 내원 목록에서 통계로 옮기는 장치) ═════
+   내원 기록(VISITS)의 방마다(rooms: 방·들어간/나간 시각·대기·준비·진행·처치·의사)가 체류 기록(STATS)과 같은 것 — 방·나간 시각이 같은 체류 기록이 없으면 누락.
+   옮기기 = 그 방 기록으로 체류 기록을 다시 만든다(recovered:true, 같은 기록을 두 번 만들지 않음) */
+const statKeyOf=(room,leftAt)=>String(room||'')+'|'+String(leftAt||'');
+function statsMissingFor(vlist){const have=new Set((STATS||[]).map(r=>statKeyOf(r.room,r.leftAt)));const out=[];
+  /* 가장 오래된 체류 기록보다 앞선 내원은 보지 않는다 — '체류 시간만 초기화'로 지운 옛 기록을 누락으로 보지 않게 */
+  let min='';(STATS||[]).forEach(r=>{const t=String((r&&r.leftAt)||'');if(t&&(!min||t<min))min=t;});if(!min)return out;
+  (vlist||[]).forEach(v=>{if(!v||isTestPatient(v)||String(v.dischargedAt||'')<min)return;const miss=(Array.isArray(v.rooms)?v.rooms:[]).filter(r=>r&&r.room&&r.leftAt&&!have.has(statKeyOf(r.room,r.leftAt)));if(miss.length)out.push({v,miss});});
+  return out;}
+async function statsRestore(list){let n=0;const have=new Set((STATS||[]).map(r=>statKeyOf(r.room,r.leftAt)));
+  /* 서버에 이미 있는지 한 번 더 (이 PC 에만 안 온 경우 — 서버 것을 받아 넣고 새로 만들지 않는다) */
+  if(cloud.active&&cloud.statsCol){const ts=[...new Set((list||[]).flatMap(x=>x.miss.map(r=>r.leftAt)))];
+    for(const t of ts){try{const q=await cloud.statsCol.where('leftAt','==',t).get();q.docs.forEach(d=>{const x=d.data()||{};const k=statKeyOf(x.room,x.leftAt);if(!have.has(k)){have.add(k);STATS.push(Object.assign({id:d.id},x));}});}catch(e){console.warn('stat check',e);return -1;}}}
+  (list||[]).forEach(({v,miss})=>miss.forEach(r=>{const k=statKeyOf(r.room,r.leftAt);if(have.has(k))return;have.add(k);
+    const w=r.waitMs||0,p=r.prepMs||0,a=r.activeMs||0;
+    const rec={id:'s'+id(),patientId:'v:'+v.id,mrn:v.mrn||'',name:v.name||'',room:r.room,enteredAt:r.enteredAt||r.leftAt,leftAt:r.leftAt,durationMs:w+p+a,waitMs:w,prepMs:p,activeMs:a,proc:r.proc||'',finalStatus:'종결',recovered:true};
+    if(isProcRoom(r.room)){rec.doctor=r.doctor||'';rec.seenDoc=r.seenDoc||'';}
+    STATS.push(rec);cloudAddStat(rec);n++;}));
+  if(n){statsLocalSave();try{audit('통계 누락 옮기기',(list||[]).map(x=>(x.v.name||'')+(x.v.mrn?'('+x.v.mrn+')':'')).join(', ')+' · 방 '+n+'건');}catch(e){}}
+  return n;}
+/* 화면을 자주 다시 그리므로(1~2초) 기록 수가 그대로면 지난 결과를 쓴다 */
+let _smC={k:'',L:[]};
+function statsMissingDay(ymd){const k=ymd+'|'+(STATS||[]).length+'|'+(VISITS||[]).length;if(_smC.k!==k)_smC={k,L:statsMissingFor(VISITS.filter(v=>localYMD(v.dischargedAt)===ymd))};return _smC.L;}
+window.statsRestoreDay=async function(ymd){const L=statsMissingFor(VISITS.filter(v=>localYMD(v.dischargedAt)===ymd));if(!L.length){alert('통계에 빠진 내원이 없습니다.');return;}
+  if(!confirm(`${ymd} 내원 목록에는 있는데 방별 통계에 빠진 환자 ${L.length}명(방 ${L.reduce((s,x)=>s+x.miss.length,0)}건)을 통계로 옮길까요?\n\n${L.map(x=>'· '+(x.v.name||'')+(x.v.mrn?' ('+x.v.mrn+')':'')+' — '+x.miss.map(r=>r.room).join(', ')).join('\n')}`))return;
+  const n=await statsRestore(L);if(n<0){alert('서버 확인에 실패했습니다. 잠시 뒤 다시 눌러 주세요.');return;}toast(`통계에 넣었습니다 — 방 ${n}건 (서버에 이미 있던 것은 받아만 왔습니다)`);try{render();}catch(e){}try{const sm=document.getElementById('statsModal');if(sm&&sm.classList.contains('show'))renderStats();}catch(e){}};
+window.statsRestoreRange=async function(){const L=statsMissingFor(statsVis());if(!L.length){alert('통계에 빠진 내원이 없습니다.');return;}
+  if(!confirm(`이 기간 내원 기록에는 있는데 방별 통계에 빠진 환자 ${L.length}명(방 ${L.reduce((s,x)=>s+x.miss.length,0)}건)을 통계로 옮길까요?\n\n${L.slice(0,30).map(x=>'· '+localYMD(x.v.dischargedAt)+' '+(x.v.name||'')+' — '+x.miss.map(r=>r.room).join(', ')).join('\n')}${L.length>30?'\n… 외 '+(L.length-30)+'명':''}`))return;
+  const n=await statsRestore(L);if(n<0){alert('서버 확인에 실패했습니다. 잠시 뒤 다시 눌러 주세요.');return;}toast(`통계에 넣었습니다 — 방 ${n}건 (서버에 이미 있던 것은 받아만 왔습니다)`);renderStats();};
 function statsVis(){let vis=VISITS.filter(v=>!isTestPatient(v));if(statsDate||statsDays)vis=vis.filter(v=>statInRange(v.dischargedAt));return vis;}
 /* ── 방별 대기 통계 (2026-09-22): 중앙값·평균·P90·최대·장기대기·대기 점유·준비/진행 중앙값·유형
    · 배제: 체류가 3시간 넘거나 5초 미만인 기록(내보내기를 잊은 카드·잘못 옮긴 카드)은 계산에서 뺀다 — 건수 옆 '배제 n' 으로 표시
@@ -11587,6 +11617,7 @@ function renderStats(){
   if(statsTab==='doc'){content.innerHTML=docStatHtml();return;}
   if(statsTab==='consult'){content.innerHTML=consultLogHtml();return;}
   if(statsTab==='chojae'){content.innerHTML=chojaeHtml();loadChojae();return;}
+  {const M=statsMissingFor(vis);if(M.length)html+=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px 10px;border:1px solid var(--red);border-radius:8px;color:var(--red)">⚠ 이 기간 내원 기록에는 있는데 방별 통계에 빠진 환자 <b>${M.length}</b>명 (${esc(M.slice(0,5).map(x=>x.v.name||'').join(', '))}${M.length>5?' 외':''})<button class="btn sm" style="margin-left:auto" onclick="statsRestoreRange()">통계로 옮기기</button></div>`;}
   html+=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
       <span class="hint" style="margin-left:auto">완료 내원 <b>${vis.length}</b>건 · 평균 원내 <b style="color:var(--orange)">${fmtClock(visAvg)}</b></span></div>
     <div class="hint" style="margin:-2px 0 10px">방 종결 ${totalVisits}건 · 환자 ${uniq}명 · 총 <span style="color:var(--t-amber)">대기 ${fmtClock(totalW)}</span>${anyPrep?` · 총 <span style="color:var(--t-sky)">준비 ${fmtClock(totalP)}</span>`:''} · 총 <span style="color:var(--red)">진행 ${fmtClock(totalA)}</span></div>`;
