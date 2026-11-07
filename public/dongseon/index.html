@@ -2786,7 +2786,7 @@ const ROUTE_RX_RULES=[
   {room:'CT실',       cod:/^ct$/i, any:/(^|[^a-z])ct($|[^a-z])/i},            // INJECTION 같은 단어 속 'ct' 는 제외
   {room:'C-Arm',      codes:new Set(['c-arm','carm','g0400']), any:/c\s*-?\s*arm/i},
   {room:'Sono',       codes:new Set(['sono','c010','c8140010','aatri','ssyno','hran','prolo']), any:/sono/i},
-  {room:'처치실',      codes:RX_TREAT_CODES, any:/처치|봉합술|부목|splint|메디폼|cbc/i, notCod:/^g\d/i},   // 촬영 지시문의 'splint풀고'는 처치가 아님
+  {room:'처치실',      codes:RX_TREAT_CODES, cod:/^a8$/i, nam:/박씨그리프|인플루엔자|독감/, any:/처치|봉합술|부목|splint|메디폼|cbc/i, notCod:/^g\d/i},   // 촬영 지시문의 'splint풀고'는 처치가 아님 · 유료 독감(A8 박씨그리프주) → 처치실 (2026-11-07 오효순·김경민)
   {room:'근전도검사',   cod:/^emg$/i, any:/근전도|(^|[^a-z])emg($|[^a-z])/i},
   {room:'충격파',      cod:/es\d/i, nam:/체외충격파(?!\s*상담)/},   // 2026-10-14 시트: 처방코드에 ES 가 들어가면(ES10·EES10 등) 충격파 — 뒤에 숫자(처치 코드 dressing 은 아님)
   {room:'신장분사',     cod:/cryo/i, nam:/신장분사치료\s*\d/},      // 2026-10-14 시트: CRYO 가 들어가면
