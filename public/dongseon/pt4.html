@@ -394,8 +394,10 @@ const CODE_LIST=["CRYO10","ES9","ES10","ES14","ES15","ES19","ES20","ES24","ES25"
   "EES35","EES40","EES45","EES50","CRYO15","CRYO20","CRYO25","CRYO30","CM9","CM10","CM14","CM15","CM19","CM20","CM24","CM25","CM29","CM30","CM35","CM40","CM45","CM50",
   "CME9","CME10","CME14","CME15","CME19","CME20","CME24","CME25","CME29","CME30","CME35","CME40","CME45","CME50","CE9","CE10","CE14","CE15","CE19","CE20","CE24","CE25","CE29","CE30","CE35","CE40","CE45","CE50"];
 const normalizeCode=c=>String(c||'').replace(/\s+/g,'').toUpperCase();
-/* Manual Tx 건수 표에 늘 보일 이름 (stats.config.json manualTherapists, 시트 순서) */
-const MANUAL_FIXED=["NULL","서효성","김지은","허빈","한상훈","조현신","이세영","황지현","김건휘","김재하","신소현","고민정","박승규","임현주"];
+/* Manual Tx 건수 표에 늘 보일 이름 (stats.config.json manualTherapists, 시트 순서).
+   2026-11-07 요청: 동선관리 직원 목록(staffRoster)의 '물리치료사' 순서를 따라간다 — 신규 입사자는 목록에 넣으면 생기고, 퇴사자는 빼면 사라진다(그달 쓴 이름은 아래에 그대로).
+   목록을 못 읽으면 아래 기본 순서 */
+let MANUAL_FIXED=["NULL","서효성","김지은","허빈","한상훈","조현신","이세영","황지현","김건휘","김재하","신소현","고민정","박승규","임현주"];
 
 /* ═════════ 공통 ═════════ */
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -432,7 +434,8 @@ AUTH.onAuthStateChanged(async u=>{
   }catch(e){console.warn('acl',e);}
   if(!ok){document.getElementById('lgMsg').textContent='이 계정은 접근 권한이 없습니다. 관리자에게 문의하세요.';try{await AUTH.signOut();}catch(e){}return;}
   ME={name:name||u.email,email:u.email,role,pt:false};
-  myIsPt(u.email).then(v=>{ME.pt=v;if(v)safeRender();});   // 물리치료 직원 → [가져오기] 열림 (2026-10-08)
+  myIsPt(u.email).then(v=>{ME.pt=v;if(v)safeRender();});
+  loadManualRoster();   // 물리치료 직원 → [가져오기] 열림 (2026-10-08)
   document.getElementById('login').hidden=true;document.getElementById('app').hidden=false;
   C.meta.onSnapshot(s=>{const d=s.exists?s.data():{};
     META={therapists:Array.isArray(d.therapists)?d.therapists:[],consults:d.consults||{},dataDays:Array.isArray(d.dataDays)?d.dataDays.slice().sort():[],manualNames:d.manualNames||{},nextTid:d.nextTid||0,txMinutes:d.txMinutes||{},docDuty:(d.docDuty&&typeof d.docDuty==='object')?d.docDuty:{}};
@@ -443,6 +446,10 @@ const isAdmin=()=>!!(ME&&ME.role==='admin');
 /* 가져오기 = 관리자 + 물리치료 직원 (2026-10-08 요청). 물리치료 직원 = 동선관리 직원 목록(설정 staffRoster)의 '물리치료사' 파트 — 동선관리 partOf 와 같은 기준:
    명단에서 이름(한글·영문·'한글 (영문)')을 먼저 찾고, 명단에 없으면 계정의 팀. 동선관리 안에서 열렸으면 그 화면의 partOf 를 그대로 쓴다 */
 const canImport=()=>isAdmin()||!!(ME&&ME.pt);
+async function loadManualRoster(){try{let ro=null;try{if(window.parent!==window&&typeof window.parent.staffRoster==='function')ro=window.parent.staffRoster();}catch(e){}
+    if(!ro){const c=await DB.collection('patientboard_v3').doc('반듯한정형외과').get();ro=c.exists?c.data().staffRoster:null;}
+    const L=((ro&&ro['물리치료사'])||[]).map(e=>{const m=/^(.*?)\s*\(.*\)\s*$/.exec(String(e||''));return String(m?m[1]:e||'').replace(/\s+/g,'');}).filter(Boolean);
+    if(L.length){MANUAL_FIXED=['NULL',...new Set(L)];safeRender();}}catch(e){console.warn('roster',e);}}
 async function myIsPt(email){
   try{const a=await DB.collection('acl').doc('main').get();const mem=((a.exists?a.data():{}).members||[]).find(x=>x.email===email);if(!mem)return false;
     try{if(window.parent!==window&&typeof window.parent.partOf==='function')return window.parent.partOf(mem)==='물리치료사';}catch(e){}
