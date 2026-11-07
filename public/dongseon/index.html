@@ -3847,7 +3847,8 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v3.8',agent:'db2.4'};   // db2.4: 처방 문서에 그 접수의 보험(insNm) — 예상 본인부담 계산용(2026-11-03 정혁).
+const BIT_LATEST={watcher:'v3.8',agent:'db2.5'};   // db2.5: 비트 저장 차팅(EmrInf)으로 슬립 채우기·고치기 (2026-11-05)
+  //   // db2.4: 처방 문서에 그 접수의 보험(insNm) — 예상 본인부담 계산용(2026-11-03 정혁).
   // db2.3: 처방 줄마다 비트 구분(itm·sot) — 동의서 처방내역이 먹는 약을 비트 @투약으로 가림(2026-11-02). db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
 function bitStatusRows(){const now=Date.now();
