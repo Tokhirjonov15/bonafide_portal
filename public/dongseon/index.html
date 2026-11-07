@@ -14794,8 +14794,33 @@ function rosterPart(name){const k=String(name||'').replace(/\s+/g,'').toLowerCas
 /* 계정을 만들 때 파트를 고르면 직원 목록 그 파트에도 넣는다 (2026-10-30: 진료지원 이주영 계정을 만들었는데 직원 목록에 없던 것) — 이미 어느 파트에 있으면 그대로 */
 function rosterAutoAdd(list){const R=staffRoster();let n=0;
   (list||[]).forEach(m=>{const g=staffPart(m&&m.team),nm=String((m&&m.name)||'').trim();if(!g||!nm||rosterPart(nm))return;
-    const ks=rosterKeys(nm);FORMER_EXTRA=(FORMER_EXTRA||[]).filter(f=>!rosterKeys(f.n).some(k=>ks.includes(k)));R[g].push(nm);n++;try{audit('직원 추가',g+' · '+nm+' (계정 추가)');}catch(e){}});
+    const ks=rosterKeys(nm);FORMER_EXTRA=(FORMER_EXTRA||[]).filter(f=>!rosterKeys(f.n).some(k=>ks.includes(k)));R[g].push(nm);n++;try{audit('직원 추가',g+' · '+nm+' (계정 추가)');}catch(e){}
+    if(g==='물리치료사')pt4Join(nm);});
   if(n){cloudSaveConfig();try{if(document.getElementById('offModal').classList.contains('show'))renderStaffDir();}catch(e){}}}
+/* 물리치료사 입사 → 4층 비급여 스케줄에도 (2026-11-07 요청: 직원 목록에 넣으면 예약표 맨 오른쪽 칸 + Manual 건수 목록에 자동).
+   ① 4층 치료사(pt4Meta.therapists): 칸 이름은 영문(예약표가 영문 칸) — '한글 (영문)' 이 아니면 물어본다. 같은 이름(영문·한글)이 이미 있으면(예: 먼저 임의로 넣은 Sera) 새로 만들지 않고 그 칸을 쓴다(숨김이면 다시 보이게)
+   ② 오늘과 이미 만들어진 앞날의 하루 문서(pt4Day) 치료사 순서 맨 끝에 넣고, 그날 다른 치료사와 같은 점심 칸도 넣는다 — 지난 날은 건드리지 않는다(통계는 칸이 있는 날부터)
+   ③ Manual 건수 목록은 직원 목록을 그대로 따라가므로(pt4 loadManualRoster) 따로 할 일 없음 */
+async function pt4Join(entry){if(!cloud.pt4MetaRef||!cloud.pt4Col||!cloud.db)return;
+  const R=staffRoster(),L=R['물리치료사']||[];let e=String(entry||'').trim();const m=/^(.*?)\s*\((.*)\)\s*$/.exec(e);const ko=(m?m[1]:e).trim();let en=m?m[2].trim():'';
+  if(!en){const a=prompt(`'${ko}' 님의 4층 비급여 예약표 칸 이름(영문)을 입력하세요. 예) Sera\n이미 예약표에 칸이 있으면 그 이름 그대로 쓰면 그 칸으로 이어집니다.\n(취소하면 4층 예약표에는 넣지 않습니다 — 4층 화면에서 직접 추가)`,'');
+    if(a==null)return;en=String(a).trim();
+    if(en&&!/^[가-힣]/.test(en)){const i=L.indexOf(e);if(i>=0){L[i]=ko+' ('+en+')';cloudSaveConfig();try{renderStaffDir();}catch(_){}}}}   // 직원 목록도 '한글 (영문)' 으로
+  const keys=[ko,en].map(x=>String(x||'').replace(/\s+/g,'').toLowerCase()).filter(Boolean);const colName=en||ko;
+  try{const tid=await cloud.db.runTransaction(async t=>{const sn=await t.get(cloud.pt4MetaRef);const md=sn.exists?(sn.data()||{}):{};const th=Array.isArray(md.therapists)?md.therapists.slice():[];
+      let x=th.find(o=>keys.includes(String(o.name||'').replace(/\s+/g,'').toLowerCase()));
+      if(x){if(x.active===false){const i=th.indexOf(x);th[i]=x=Object.assign({},x,{active:true});}}
+      else{const id=Math.max(Number(md.nextTid)||0,0,...th.map(o=>Number(o.id)||0))+1;x={id,name:colName,color:'',single:false,inStats:true,active:true,sortOrder:Math.max(0,...th.map(o=>Number(o.sortOrder)||0))+1};th.push(x);
+        t.set(cloud.pt4MetaRef,{therapists:th,nextTid:id},{merge:true});return id;}
+      t.set(cloud.pt4MetaRef,{therapists:th},{merge:true});return x.id;});
+    const today=localYMD(new Date());const s=await cloud.pt4Col.where('date','>=',today).get();let nd=0;
+    for(const d0 of s.docs){await cloud.db.runTransaction(async t=>{const sn=await t.get(d0.ref);if(!sn.exists)return;const d=sn.data()||{};const ids=Array.isArray(d.th)?d.th.slice():[];if(!ids.length||ids.includes(tid))return;
+      ids.push(tid);const blocks=Array.isArray(d.blocks)?d.blocks.slice():[];let nid=Number(d.nid)||0;
+      const lu=blocks.find(b=>b&&b.therapistId===ids[0]&&b.kind==='off'&&b.text==='점심');   // 그날 첫 치료사의 점심과 같은 시간 (주말·공휴일엔 점심 칸이 없음)
+      if(lu)blocks.push({id:++nid,therapistId:tid,startMin:lu.startMin,endMin:lu.endMin,kind:'off',text:'점심',color:lu.color||'#999999',note:'',updatedBy:'auto'});
+      t.set(d0.ref,{th:ids,blocks,nid,updatedAt:new Date().toISOString(),updatedBy:(currentUser&&currentUser.name)||'auto'},{merge:true});nd++;});}
+    audit('4층 치료사 추가',ko+' → 예약표 칸 '+colName+' (오늘부터 '+nd+'일)');toast(`4층 예약표에 '${colName}' 칸을 넣었습니다 (오늘부터)`);}
+  catch(err){console.warn('pt4 join',err);alert('4층 예약표에 넣지 못했습니다 — 4층 화면의 치료사 설정에서 직접 추가해 주세요.');}}
 /* 직원 목록을 열 때: 파트가 정해진 계정인데 목록에 없는 사람을 자동으로 넣는다 (2026-10-30: 이주영처럼 먼저 만든 계정도).
    퇴사자는 넣지 않는다 — 퇴사자 명단(FORMER_*)에 있거나, 처음 명단(STAFF_ROSTER_DEFAULT)에 있었는데 지금 빠진 이름(예전에 ✕ 로 뺀 사람) */
 function rosterBackfill(){if(!isAdmin()&&!isChief())return;
@@ -14840,6 +14865,7 @@ window.rosterAdd=function(gi){if(!isAdmin()&&!isChief()){alert('명단 수정은
    if(FORMER_EXTRA.length!==was)audit('재입사(퇴사자 명단에서 뺌)',n);
    if(FORMER_BASE.some(f=>rosterKeys(f.n).some(k=>ks.includes(k))))alert(n+' 님은 퇴사자로 고정돼 있어 고르는 칸에 나오지 않습니다 — 재입사라면 관리 담당자에게 말씀해 주세요.');}   // 재입사 (2026-10-28)
   R[g].push(n);audit('직원 추가',g+' · '+n);cloudSaveConfig();renderStaffDir();try{renderStaffList();}catch(e){}
+  if(g==='물리치료사')pt4Join(n);   // 4층 예약표 칸 (2026-11-07)
   const ni=document.getElementById('sdirIn'+gi);if(ni)ni.focus();};
 /* 퇴사 정리 한 번에 (2026-10-11 요청: 퇴사자가 많아 여러 곳을 따로 고치기 힘들다) — 직원 목록에서 ✕ 하면
    ① 모든 방의 진료의·간호사·방사선·담당자 ② 진료의 목록 ③ (물리치료사면) 4층 비급여 스케줄 치료사(숨김 = 퇴사, 예전 기록은 그대로) 에서도 함께 뺀다.
