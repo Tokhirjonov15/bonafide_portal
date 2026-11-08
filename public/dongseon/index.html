@@ -10300,12 +10300,8 @@ function renderBonusSection(){
     <div class="bn-btns">${BONUS_ITEMS.map(it=>`<button type="button" class="btn sm${i.left?' bn-go':''}" ${i.left?'':'disabled'} onclick="bonusUse('${it}')"><i data-lucide="gift"></i> ${it} 무료</button>`).join('')}</div>
     ${usesHtml}`;
   if(BONUS_PID){   /* 혜택 관리(환자용) — 안내 문구 + 흰색 [리뷰 확인] 버튼. 직원용 상세는 아래 '직원용' 접기 칸 (2026-10-06 요청) */
-    box.innerHTML=`<div class="bk-wrap">${b.review
-        ?`<div class="bk-msg">네이버 리뷰 확인이<br>완료되었습니다.</div><div class="bk-sub">소중한 리뷰 감사합니다.</div>`
-        :`<div class="bk-msg">네이버 리뷰를 준비해 주시고,<br><b>리뷰 확인</b> 버튼을 눌러 주세요.</div><div class="bk-sub">AI가 확인하겠습니다.</div>
-          <button type="button" class="bk-btn" onclick="pbOpen('review')"><i data-lucide="camera"></i> 리뷰 확인</button>`}
-      ${(b.review&&i.left)?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button>`:''}
-      ${(!b.review||i.left)?`<button type="button" class="bk-skip" onclick="bonusSkip()">혜택 안 받기</button>`
+    /* 2026-11-08 요청: 리뷰 확인(카메라 사진 검사) 단계를 뺐다 — 받을 수 있는 무료 치료가 있으면 [치료 고르기], 없으면 바로 [다음: 치료 동의]. 리뷰 기록은 직원 환자 정보 창의 [네이버 리뷰 확인] */
+    box.innerHTML=`<div class="bk-wrap">${i.left?`<div class="bk-left">받으실 수 있는 무료 치료 <b>${i.left}회</b></div><button type="button" class="bk-btn bk-btn2" onclick="pbOpen('choose')"><i data-lucide="gift"></i> 치료 고르기</button><button type="button" class="bk-skip" onclick="bonusSkip()">혜택 안 받기</button>`
         :`<button type="button" class="bk-btn bk-btn2 bk-next" onclick="c4Open(data.find(x=>x.id===BONUS_PID))">다음: 치료 동의 →</button>`}</div>`;}   /* 직원용 접기 칸은 없앰 (2026-10-06 요청) */
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
 let BK_STAFF_OPEN=false;
@@ -10550,7 +10546,6 @@ async function bonusUseFor(pid,mrn,name,item,by){const col=bonusCol();if(!col||!
 /* 보너스 칸 위 버튼 */
 function pbButtonsHtml(mrn){const i=bonusInfo(mrn);
   return `<div class="bn-btns bn-pb">
-    <button type="button" class="btn sm bn-cam" onclick="pbOpen('review')" title="환자가 네이버 리뷰 화면을 카메라에 보여 주면 '확인됨'으로 기록"><i data-lucide="camera"></i> 카메라 (리뷰 확인)</button>
     <button type="button" class="btn sm bn-pick" ${i.left?'':'disabled'} onclick="pbOpen('choose')" title="환자가 직접 SASO·아쿠아·롤러 중 하나를 고름"><i data-lucide="hand"></i> 환자 선택</button></div>`;}
 
 window.pbOpen=function(mode){const p=data.find(x=>x.id===bonusCurPid());const mrn=normMrn(p&&p.mrn);if(!p||!mrn||!bonusCol())return;
