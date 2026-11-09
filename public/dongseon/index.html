@@ -13856,7 +13856,7 @@ const CONSENT_ITEMS=[
   {key:'emg', name:'근전도·신경전도검사(EMG/NCV)', bit:{nam:/근전도|신경전도|emg|ncv/i},
    how:'바늘 전극과 전기 자극을 이용하여 신경·근육의 기능 상태를 확인하고 병변의 위치와 정도를 평가하는 검사입니다.', time:'20~40분',
    risk:'바늘 자입 시 통증·저림, 출혈·멍, 검사 후 일시적 근육통, 드물게 감염이나 기흉 등(검사 부위에 따라). 항응고제 복용·출혈 질환 시 주의가 필요합니다.'},
-  {key:'ct', name:'CT 촬영', sub:'비급여 영상검사', bit:{cod:/(^|[_\d])ct\d*$/i, nam:/전산화단층|\bct\b|cbct/i},   // 2026-11-02 정지수 33694: 3D_CT07 'Rt_Ankle_CBCT_3D' 를 못 찾았다
+  {key:'ct', name:'CT 촬영', sub:'비급여 영상검사', bit:null,   // 2026-11-09 요청: CT 는 비급여 항목이 아니라 동의서 항목에서 뺐다(예전 동의서 기록 보기용으로만 남김). 비트에서 비급여로 온 줄이면 '기타'로 보인다   // 2026-11-02 정지수 33694: 3D_CT07 'Rt_Ankle_CBCT_3D' 를 못 찾았다
    how:'X선을 이용하여 뼈·관절 구조를 단면 영상으로 확인하고 미세 골절, 골극, 석회화 병변 등을 평가합니다.', time:'5~10분',
    risk:'방사선 노출(저선량)이 있으며 **임신 중에는 원칙적으로 금기**입니다. 조영제를 사용하는 경우 알레르기 반응, 신장 기능 저하가 나타날 수 있습니다.'},
   {key:'us', name:'초음파 등 기타 영상검사', bit:{cod:/^sono\d+$/i, nam:/초음파/},
@@ -13885,7 +13885,10 @@ function consentBitAmounts(p){
     const cod=String(ln.cod||'').trim(), nam=String(ln.nam||'').trim();
     const i=CONSENT_ITEMS.findIndex(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(cod))||(it.bit.nam&&it.bit.nam.test(nam))));
     if(i>=0){byItem[i]+=amt;used.add(j);}});
-  const lines=pay.map((ln,j)=>Object.assign({j},ln)).filter(ln=>String(ln.ins||'').trim()!=='0'&&(Number(ln.amt)||0)>0);   // 비급여 줄(급여 '0' 이 아닌 것) — 비트 수납 비급여 합계
+  /* 물리치료(기본물리치료·물리치료 처방, 비트 급여구분 3 = 간섭파 등)는 비급여로 설명하지 않는다 — 비급여 줄에서 뺀다 (2026-11-09 요청) */
+  const isPt=ln=>{const c=String(ln.ins||'').trim(),cod=String(ln.cod||'').trim(),nam=String(ln.nam||'').trim();if(c==='3')return true;
+    return ROUTE_RX_RULES.some(r=>(r.room==='기본물리치료'||r.room==='물리치료')&&rxRuleHit(r,cod,nam));};
+  const lines=pay.map((ln,j)=>Object.assign({j},ln)).filter(ln=>String(ln.ins||'').trim()!=='0'&&(Number(ln.amt)||0)>0&&!isPt(ln));   // 비급여 줄(급여 '0' 이 아닌 것) — 비트 수납 비급여 합계
   return {byItem,used,lines,has:pay.length>0};
 }
 const CONSENT_NOTICE=[
