@@ -1893,7 +1893,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
     <button class="btn" id="docReqBtn" onclick="openDocReqs()" title="서류 발급 태블릿 신청 목록 — 신청이 오면 숫자·알림. 태블릿은 주소 끝에 ?docs"><i data-lucide="file-text"></i> 서류발급<span id="docReqCnt"></span></button>
-    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="이벤트 관리 — 주사를 맞은 지 3일 안(주사 날 포함)에 4층에 온 환자의 리뷰·주사 혜택 (이름은 가려서)"><i data-lucide="gift"></i> 이벤트 관리</button>
+    <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="물리치료 관리 — 4층 물리치료 접수: 환자가 이름을 누르고 생년월일 확인 뒤 치료 동의 (이름은 가려서)"><i data-lucide="gift"></i> 물리치료 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
     <button class="btn" id="supportBtn" onclick="openSupport()" title="오늘 처방 D/C 와 오늘 새로 쓴 차팅 — 환자별"><i data-lucide="clipboard-check"></i> 진료지원</button>
     <button class="btn" id="cdeskBtn" onclick="openConsentDesk()" title="오늘 비급여 처방이 나온 환자 — 동의서 받기 (처방 금액 자동 · 원장님 차팅 · 처방내역)"><i data-lucide="pen-line"></i> 동의서</button>
@@ -10476,9 +10476,11 @@ window.bvStaffPass=function(){if(!BV)return;const p=data.find(x=>x.id===BV.pid);
   if(!confirm('직원이 본인임을 확인했나요?'))return;try{audit('혜택 본인 확인(직원)',(p.name||'')+(p.mrn?' ('+p.mrn+')':''));}catch(e){}bonusMgrOpenOne(p);};
 document.addEventListener('keydown',e=>{const v=document.getElementById('bonusMgrVerify');if(!BV||!v||v.style.display==='none')return;
   if(/^\d$/.test(e.key)){e.preventDefault();bvKey(e.key);}else if(e.key==='Backspace'){e.preventDefault();bvKey('B');}});
+/* 2026-11-09: 리뷰·주사 혜택 이벤트 끝 — 생년월일 확인 뒤 혜택 화면(최근 3일 주사·치료 고르기) 없이 바로 치료 동의. 이벤트를 다시 하면 true 로 */
+const BONUS_EVENT_ON=false;
 function bonusMgrOpenOne(p){
   /* 주사 맞은 지 3일 안인 환자(2026-10-10): 보너스(리뷰·치료 고르기) 먼저 → 끝나면 치료 동의 (2026-10-06 요청). 주사 없는 환자는 바로 동의 */
-  if(!bmInjToday(p)){c4Open(p);return;}   // 2026-10-14: 물리치료 접수 = 늘 치료 동의 화면(오늘 이미 동의했어도)
+  if(!BONUS_EVENT_ON||!bmInjToday(p)){c4Open(p);return;}   // 2026-10-14: 물리치료 접수 = 늘 치료 동의 화면(오늘 이미 동의했어도)
   C4=null;BONUS_PID=p.id;BV=null;
   document.getElementById('bonusMgrVerify').style.display='none';
   document.getElementById('bonusMgrName').textContent=bonusMaskName(p.name)+' 님';   // 성함 뒤 '님' (2026-10-06 요청)
@@ -10488,7 +10490,7 @@ function renderBonusMgr(){const box=document.getElementById('bonusMgrList');if(!
   if(C4)return;   // 치료 동의 화면 — 체크 상태가 지워지지 않게 다시 그리지 않음
   if(BONUS_PID){const p=data.find(x=>x.id===BONUS_PID);if(!p||p.discharged){bonusMgrBack();return;}renderBonusSection();return;}
   const L=bonusMgrList();
-  box.innerHTML=L.length?L.map(p=>{const i=bonusInfo(p.mrn);
+  box.innerHTML=L.length?L.map(p=>{const i=BONUS_EVENT_ON?bonusInfo(p.mrn):{left:0};   // 이벤트가 끝나면 이름 옆 🎁 남은 횟수도 안 보임
       return `<button type="button" class="bm-item${i.left?' has':''}" onclick="bonusMgrPick('${esc(p.id)}')"><span class="bm-name">${esc(bonusMaskName(p.name))}</span>${i.left?`<span class="bm-left"><i data-lucide="gift"></i> ${i.left}</span>`:''}</button>`;}).join('')
     :'<div class="hint" style="padding:20px;font-size:20px;background:rgba(255,255,255,.8);border-radius:14px">지금 물리치료 접수할 환자가 없습니다.</div>';
   if(window.lucide)try{lucide.createIcons();}catch(e){}}
