@@ -15155,6 +15155,27 @@ window.supportOkDcAll=function(pid){const p=data.find(x=>x.id===pid);if(!p)retur
   apply(p);saveLocal();cloudPatientTxn(pid,apply);
   try{audit('D/C 모두 확인',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+ks.length+'건');}catch(e){}
   render();};
+/* D/C 사유 입력 (2026-11-09 요청: 비트에서 처방을 지우면 자동 D/C 라 사유를 못 넣는다 → 진료지원 창에서 넣고, 텔레그램(D/C 알림)에 사유를 한 번 더 알린다).
+   ks = 고칠 D/C 키들(같은 환자). 보드 카드는 카드 문서(트랜잭션), 내보낸 환자는 내원 기록(visits) 문서를 고친다 */
+const dcReasonNeeded=d=>!!(d&&(d.auto||!d.reason)&&!d.reasonAt);   // 아직 사람이 사유를 넣지 않은 D/C
+async function supportDcReasonSet(src,ks){const p=src.pid?data.find(x=>x.id===src.pid):(VISITS||[]).find(v=>v&&v.id===src.vid);if(!p||!ks.length)return;
+  const ds=ks.map(k=>(p.rxDc||{})[k]).filter(Boolean);if(!ds.length)return;
+  const labels=ds.map(d=>d.nam||d.cod||''),rooms=[...new Set(ds.flatMap(d=>{try{return rxItemRooms(d);}catch(e){return [];}}))];
+  const v=await askDcReason(labels.length===1?labels[0]:labels.length+'건',rooms);if(!v)return;
+  const who=(currentUser&&currentUser.name)||'',at=new Date().toISOString();
+  const apply=d=>{if(d.rxDc){d.rxDc=Object.assign({},d.rxDc);ks.forEach(k=>{if(d.rxDc[k])d.rxDc[k]=Object.assign({},d.rxDc[k],{reason:v,reasonBy:who,reasonAt:at});});}return d;};
+  apply(p);
+  if(src.pid){saveLocal();cloudPatientTxn(src.pid,apply);}
+  else if(cloud.active&&cloud.visitsCol){const up={syncAt:at};ks.forEach(k=>{if(p.rxDc&&p.rxDc[k])up['rxDc.'+k]=p.rxDc[k];});
+    /* 키에 '.' 이 있으면 필드 경로가 갈라지므로 통째로 */ if(ks.some(k=>/[.~*/\[\]]/.test(k)))cloud.visitsCol.doc(p.id).update({rxDc:p.rxDc,syncAt:at}).catch(e=>console.warn('dc reason visit',e));
+    else cloud.visitsCol.doc(p.id).update(up).catch(e=>console.warn('dc reason visit',e));}
+  roomNotify(p,'__all__','dc',Object.assign(labels.length===1?{item:labels[0]}:{list:labels},{by:'D/C 사유 입력'+(who?' · '+who:''),rooms:rooms.join(', '),reason:v}));
+  try{audit('D/C 사유 입력',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+labels.join(', ')+' · '+v);}catch(e){}
+  try{toast(`${dispName(p.name)} 님 D/C 사유 '${v}' → 모두에게 알림`);}catch(e){}
+  render();try{renderSupport();}catch(e){}}
+window.supportDcReason=function(pid,vid,kEnc){supportDcReasonSet({pid,vid},[decodeURIComponent(kEnc)]);};
+window.supportDcReasonAll=function(pid,vid){const p=pid?data.find(x=>x.id===pid):(VISITS||[]).find(v=>v&&v.id===vid);if(!p)return;
+  supportDcReasonSet({pid,vid},Object.keys(p.rxDc||{}).filter(k=>{const d=p.rxDc[k];return spIsToday(d&&d.at)&&dcReasonNeeded(d);}));};
 window.supportOkChart=function(pid,on){const p=data.find(x=>x.id===pid);if(!p)return;
   if(!on&&!confirm('차팅 확인을 취소할까요?'))return;
   const rec={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||'',chartAt:p.chartAt||''};
@@ -15164,10 +15185,10 @@ window.supportOkChart=function(pid,on){const p=data.find(x=>x.id===pid);if(!p)re
   render();};
 function supportRows(){
   const isT=spIsToday;
-  const src=[...data.filter(p=>p&&!p._viewOnly).map(p=>({p,live:!p.discharged})),...(VISITS||[]).filter(v=>v&&isT(v.dischargedAt)).map(p=>({p,live:false}))];
+  const src=[...data.filter(p=>p&&!p._viewOnly).map(p=>({p,live:!p.discharged})),...(VISITS||[]).filter(v=>v&&isT(v.dischargedAt)).map(p=>({p,live:false,vis:true}))];
   const by=new Map();
-  src.forEach(({p,live})=>{
-    const dcs=Object.entries(p.rxDc||{}).filter(([k,d])=>d&&isT(d.at)).map(([k,d])=>Object.assign({k,pid:live?p.id:''},d));
+  src.forEach(({p,live,vis})=>{
+    const dcs=Object.entries(p.rxDc||{}).filter(([k,d])=>d&&isT(d.at)).map(([k,d])=>Object.assign({k,pid:live?p.id:'',vid:vis?(p.id||''):''},d));
     const ch=(isT(p.chartAt)&&String(p.chart||'').trim())?{text:p.chart,at:p.chartAt,by:p.chartBy||'',ok:spChartOk(p)?p.chartOk:null,pid:live?p.id:''}:null;
     if(!dcs.length&&!ch)return;
     const k=pKey(p.mrn,p.name);let r=by.get(k);
@@ -15190,8 +15211,8 @@ function renderSupport(){
   const nDc=all.reduce((s,r)=>s+r.dcs.length,0),nCh=all.filter(r=>r.charts.length).length;
   const sum=document.getElementById('supportSum');if(sum)sum.textContent=`오늘 · D/C ${nDc}건 · 차팅 ${nCh}명`;
   box.innerHTML=rows.map(r=>`<div class="sp-card">
-      <div class="sp-head"${r.pid?` onclick="closeSupport();openEdit('${esc(r.pid)}')" title="누르면 환자 정보 창"`:''}><b>${esc(r.name)}</b> <span class="hint">${esc(r.mrn)}</span>${r.pid?'':' <span class="hint">(내보냄)</span>'}${(()=>{const n=r.dcs.filter(d=>!d.ok&&d.pid).length;return r.pid&&n>=2?`<button type="button" class="sp-ok" style="margin-left:8px" onclick="event.stopPropagation();supportOkDcAll('${esc(r.pid)}')">D/C ${n}건 모두 확인</button>`:'';})()}</div>
-      ${r.dcs.sort((a,b)=>String(a.at).localeCompare(String(b.at))).map(d=>`<div class="sp-dc">⛔ <b>${esc(d.nam||d.cod||'')}</b> D/C <span class="hint">${hhmm(d.at)}${d.by?' · '+esc(d.by):''}${d.reason?' · 사유 '+esc(d.reason):''}</span>${spOkBtn(d.ok,d.pid?`supportOkDc('${esc(d.pid)}','${encodeURIComponent(d.k)}',`:'')}</div>`).join('')}
+      <div class="sp-head"${r.pid?` onclick="closeSupport();openEdit('${esc(r.pid)}')" title="누르면 환자 정보 창"`:''}><b>${esc(r.name)}</b> <span class="hint">${esc(r.mrn)}</span>${r.pid?'':' <span class="hint">(내보냄)</span>'}${(()=>{const n=r.dcs.filter(d=>!d.ok&&d.pid).length;return r.pid&&n>=2?`<button type="button" class="sp-ok" style="margin-left:8px" onclick="event.stopPropagation();supportOkDcAll('${esc(r.pid)}')">D/C ${n}건 모두 확인</button>`:'';})()}${(()=>{const L=r.dcs.filter(d=>(d.pid||d.vid)&&dcReasonNeeded(d));if(L.length<2)return '';const d0=L[0];return `<button type="button" class="sp-ok" style="margin-left:8px" onclick="event.stopPropagation();supportDcReasonAll('${esc(d0.pid)}','${esc(d0.vid)}')" title="사유를 아직 안 넣은 D/C ${L.length}건에 같은 사유">D/C ${L.length}건 사유 한 번에</button>`;})()}</div>
+      ${r.dcs.sort((a,b)=>String(a.at).localeCompare(String(b.at))).map(d=>`<div class="sp-dc">⛔ <b>${esc(d.nam||d.cod||'')}</b> D/C <span class="hint">${hhmm(d.at)}${d.by?' · '+esc(d.by):''}${d.reason?' · 사유 '+(dcReasonNeeded(d)?esc(d.reason):'<b>'+esc(d.reason)+'</b>'+(d.reasonBy?' ('+esc(d.reasonBy)+')':'')):''}</span>${(d.pid||d.vid)?`<button type="button" class="sp-ok${dcReasonNeeded(d)?'':' on'}" style="margin-left:auto;margin-right:6px" onclick="event.stopPropagation();supportDcReason('${esc(d.pid)}','${esc(d.vid)}','${encodeURIComponent(d.k)}')" title="D/C 사유를 고르면 텔레그램에 사유를 한 번 더 알립니다">${dcReasonNeeded(d)?'사유 입력':'사유 변경'}</button>`:''}${spOkBtn(d.ok,d.pid?`supportOkDc('${esc(d.pid)}','${encodeURIComponent(d.k)}',`:'')}</div>`).join('')}
       ${r.charts.map(c=>`<div class="sp-ch"><div class="hint" style="display:flex;align-items:center;gap:6px">📝 오늘 차팅 ${hhmm(c.at)}${c.by?' · '+esc(c.by):''}${spOkBtn(c.ok,c.pid?`supportOkChart('${esc(c.pid)}',`:'')}</div><div class="sp-chtext">${esc(c.text)}</div></div>`).join('')}
     </div>`).join('')||`<p class="hint">${q?'검색 결과가 없습니다.':'오늘은 아직 D/C 나 새로 쓴 차팅이 없습니다.'}</p>`;
 }
