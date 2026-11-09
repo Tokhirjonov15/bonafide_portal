@@ -1087,6 +1087,20 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .wait-name{font-weight:700;color:#2c3e50;letter-spacing:.35em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .wait-cols.rot .wait-badge{font-size:clamp(18px,1.8vw,34px);min-width:clamp(90px,9vw,160px)}
   .wait-p .wait-room{font-size:.55em;font-weight:700;color:#5b6b83;background:rgba(91,107,131,.12);border-radius:6px;padding:.1em .5em;margin-left:.5em;white-space:nowrap}
+  /* 검사실 보기 세 칸 — 크게 (2026-11-09 요청: 빈 공간 없이 글자 다 키우고 줄 간격 넓게, 칸마다 6명 정도만 보여도 됨).
+     이름 크기는 화면 높이로 정한다: 목록 높이(≈ 화면 높이 − 머리글·칸 제목·안내 띠 430px)의 1/6 에 한 줄(이름 + 위아래 여백 + 줄 간격)이 들어가게.
+     더 많으면 목록이 지금처럼 천천히 위아래로 흐른다(wsScrollStep) */
+  .wait-screen.exam3v .wait-header{padding:16px 40px 2px}
+  .wait-screen.exam3v .wait-underline{margin-top:.5vw}
+  .wait-screen.exam3v .wait-cols.exam3{gap:18px;padding:14px 18px 14px}
+  .wait-screen.exam3v .wait-ct{font-size:clamp(26px,2.6vw,50px);padding:clamp(10px,1vh,18px) 18px;margin:16px 12px 4px}
+  .wait-screen.exam3v .wait-cnt-badge{font-size:clamp(16px,1.4vw,28px);padding:6px 18px;top:-16px}
+  .wait-screen.exam3v .wait-list{gap:10px;padding:8px 10px 10px}
+  .wait-screen.exam3v .wait-p{font-size:clamp(30px,min(3.1vw,calc((100vh - 430px) / 6 * .52)),62px);padding:.22em .45em;gap:.45em;border-radius:16px}
+  .wait-screen.exam3v .wait-name{font-size:1em;line-height:1.2;letter-spacing:.3em;font-weight:800}
+  .wait-screen.exam3v .wait-badge{font-size:.5em;min-width:4.6em;padding:.32em .8em}
+  .wait-screen.exam3v .wait-empty{font-size:clamp(22px,2vw,40px);padding:20px}
+  .wait-screen.exam3v .wait-foot{font-size:clamp(22px,2.4vw,46px);padding:14px 0}
   /* 진료실 관리·방 보기 설정: 내용이 길어 스크롤될 때 스크롤바가 모서리를 각지게 보이던 문제 — 바깥 상자는 둥근 모서리로 자르고 본문만 스크롤 */
   #roomsModal .modal,#viewModal .modal{overflow:hidden;display:flex;flex-direction:column}
   #roomsModal .body,#viewModal .body{overflow:auto;min-height:0;flex:1 1 auto}
@@ -8718,6 +8732,8 @@ function renderWaitScreen(){
   const viewCnt=k=>{const vc=waitViewCol(k);if(!vc)return 1;return data.filter(p=>inRooms(p,vc.rooms)).length;};
   const hadView=showRs.some(k=>!!waitViewCol(k));
   cols.classList.toggle('exam3',showRs.length>1&&showRs.every(k=>!!waitViewCol(k)));   // 검사실 보기 세 칸만 → 화면 너비를 꽉 채운다 (2026-11-07 요청)
+  {const ws=document.getElementById('waitScreen'),was=ws.classList.contains('exam3v'),on=cols.classList.contains('exam3');ws.classList.toggle('exam3v',on);   // 머리글·안내 띠까지 크게 (2026-11-09)
+   if(was!==on)requestAnimationFrame(()=>{try{waitTickerFit();}catch(e){}try{waitSubFit();}catch(e){}});}   // 띠 글자 크기가 바뀌면 폭을 다시 잰다
   /* 2026-11-05 요청: 검사실 보기는 환자가 없어도 세 칸을 늘 고정해 보인다(빈 칸은 '현재 대기 환자 없음'). 예전(09-15)에는 빈 칸을 숨기고 셋 다 비면 빈 화면 배경만 */
   /* 빈 화면 판정 (2026-09-24 확장): ① 검사실 보기의 칸이 모두 비었을 때(예전 규칙) ② 그 밖의 보기라도 고른 방 전부에 환자가 0명이고 빈 화면 배경이 있을 때.
      시트 칸(4층 예약표)은 환자 목록이 아니므로 '비어 있음'으로 치지 않는다 */
