@@ -15140,6 +15140,7 @@ function supportPending(p){if(!p)return [];const out=[];
   return out;}
 function spLocked(p){try{return !needsPay(p)&&supportPending(p).length>0;}catch(e){return false;}}
 window.supportOkDc=function(pid,kEnc,on){const p=data.find(x=>x.id===pid);if(!p)return;const k=decodeURIComponent(kEnc);
+  if(on&&dcReasonNeeded((p.rxDc||{})[k])){supportDcReasonSet({pid},[k],[k]);return;}   // 사유가 없으면 확인 전에 사유부터 (2026-11-09 요청: 확인하면 사유는 무조건)
   if(!on&&!confirm('D/C 확인을 취소할까요?'))return;
   const rec={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''};
   const apply=d=>{if(d.rxDc&&d.rxDc[k]){d.rxDc=Object.assign({},d.rxDc);d.rxDc[k]=Object.assign({},d.rxDc[k]);if(on)d.rxDc[k].ok=rec;else delete d.rxDc[k].ok;}return d;};
@@ -15149,6 +15150,7 @@ window.supportOkDc=function(pid,kEnc,on){const p=data.find(x=>x.id===pid);if(!p)
 /* 한 환자의 남은 D/C 확인을 한 번에 (2026-11-01 요청: 이정희님 D/C 15건을 하나씩 눌러야 했다) */
 window.supportOkDcAll=function(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   const ks=Object.keys(p.rxDc||{}).filter(k=>{const d=p.rxDc[k];return d&&spIsToday(d.at)&&!d.ok;});if(!ks.length)return;
+  {const need=ks.filter(k=>dcReasonNeeded(p.rxDc[k]));if(need.length){supportDcReasonSet({pid},need,ks);return;}}   // 사유 없는 D/C 는 사유 하나를 골라 한꺼번에 넣고 모두 확인 (2026-11-09)
   if(!confirm((p.name||'')+' 님 D/C '+ks.length+'건을 모두 확인할까요?'))return;
   const rec={at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''};
   const apply=d=>{if(d.rxDc){d.rxDc=Object.assign({},d.rxDc);ks.forEach(k=>{if(d.rxDc[k]&&!d.rxDc[k].ok)d.rxDc[k]=Object.assign({},d.rxDc[k],{ok:rec});});}return d;};
@@ -15158,19 +15160,22 @@ window.supportOkDcAll=function(pid){const p=data.find(x=>x.id===pid);if(!p)retur
 /* D/C 사유 입력 (2026-11-09 요청: 비트에서 처방을 지우면 자동 D/C 라 사유를 못 넣는다 → 진료지원 창에서 넣고, 텔레그램(D/C 알림)에 사유를 한 번 더 알린다).
    ks = 고칠 D/C 키들(같은 환자). 보드 카드는 카드 문서(트랜잭션), 내보낸 환자는 내원 기록(visits) 문서를 고친다 */
 const dcReasonNeeded=d=>!!(d&&(d.auto||!d.reason)&&!d.reasonAt);   // 아직 사람이 사유를 넣지 않은 D/C
-async function supportDcReasonSet(src,ks){const p=src.pid?data.find(x=>x.id===src.pid):(VISITS||[]).find(v=>v&&v.id===src.vid);if(!p||!ks.length)return;
+async function supportDcReasonSet(src,ks,okKs){   // okKs = 사유를 넣으며 함께 '확인' 할 D/C 키들
+  okKs=okKs||[];const p=src.pid?data.find(x=>x.id===src.pid):(VISITS||[]).find(v=>v&&v.id===src.vid);if(!p||!ks.length)return;
   const ds=ks.map(k=>(p.rxDc||{})[k]).filter(Boolean);if(!ds.length)return;
   const labels=ds.map(d=>d.nam||d.cod||''),rooms=[...new Set(ds.flatMap(d=>{try{return rxItemRooms(d);}catch(e){return [];}}))];
   const v=await askDcReason(labels.length===1?labels[0]:labels.length+'건',rooms);if(!v)return;
   const who=(currentUser&&currentUser.name)||'',at=new Date().toISOString();
-  const apply=d=>{if(d.rxDc){d.rxDc=Object.assign({},d.rxDc);ks.forEach(k=>{if(d.rxDc[k])d.rxDc[k]=Object.assign({},d.rxDc[k],{reason:v,reasonBy:who,reasonAt:at});});}return d;};
+  const okRec={at,by:who};
+  const apply=d=>{if(d.rxDc){d.rxDc=Object.assign({},d.rxDc);ks.forEach(k=>{if(d.rxDc[k])d.rxDc[k]=Object.assign({},d.rxDc[k],{reason:v,reasonBy:who,reasonAt:at});});
+    okKs.forEach(k=>{if(d.rxDc[k]&&!d.rxDc[k].ok)d.rxDc[k]=Object.assign({},d.rxDc[k],{ok:okRec});});}return d;};
   apply(p);
   if(src.pid){saveLocal();cloudPatientTxn(src.pid,apply);}
   else if(cloud.active&&cloud.visitsCol){const up={syncAt:at};ks.forEach(k=>{if(p.rxDc&&p.rxDc[k])up['rxDc.'+k]=p.rxDc[k];});
     /* 키에 '.' 이 있으면 필드 경로가 갈라지므로 통째로 */ if(ks.some(k=>/[.~*/\[\]]/.test(k)))cloud.visitsCol.doc(p.id).update({rxDc:p.rxDc,syncAt:at}).catch(e=>console.warn('dc reason visit',e));
     else cloud.visitsCol.doc(p.id).update(up).catch(e=>console.warn('dc reason visit',e));}
   roomNotify(p,'__all__','dc',Object.assign(labels.length===1?{item:labels[0]}:{list:labels},{by:'D/C 사유 입력'+(who?' · '+who:''),rooms:rooms.join(', '),reason:v}));
-  try{audit('D/C 사유 입력',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+labels.join(', ')+' · '+v);}catch(e){}
+  try{audit('D/C 사유 입력'+(okKs.length?' + 확인':''),(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' '+labels.join(', ')+' · '+v+(okKs.length?' · 확인 '+okKs.length+'건':''));}catch(e){}
   try{toast(`${dispName(p.name)} 님 D/C 사유 '${v}' → 모두에게 알림`);}catch(e){}
   render();try{renderSupport();}catch(e){}}
 window.supportDcReason=function(pid,vid,kEnc){supportDcReasonSet({pid,vid},[decodeURIComponent(kEnc)]);};
