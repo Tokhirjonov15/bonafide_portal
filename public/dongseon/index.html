@@ -6649,6 +6649,12 @@ async function runSelfTest(){
       rxAutoDcPlan(e,Object.assign(rxCurMap([A],'901'),rxCurMap([PT,B],'902')),yes,live);
       const q1=rxAutoDcPlan(e,rxCurMap([PT],'902'),yes,live);
       ok('접수가 취소돼 없어진 처방은 자동 D/C 하지 않음(남은 접수에서 지운 처방만)', q1&&q1.gone.length===1&&q1.gone[0].cod==='CRYO10'&&!e.rxDc[rxDcKey(A)],q1&&q1.gone.map(x=>x.cod).join());}
+      /* 2026-11-10 고정희: 멈춘 화면(옛 처방) ↔ 다른 화면이 D/C·풀기를 반복 */
+      const f={id:'f'};rxAutoDcPlan(f,rxCurMap([A,B]),yes,null,'2026-11-10T09:15:49');
+      const s1=rxAutoDcPlan(f,rxCurMap([B]),yes,null,'2026-11-10T09:03:00');   // 옛 처방을 가진 화면 → 손대지 않음
+      const g={id:'g'};rxAutoDcPlan(g,rxCurMap([A,B]),yes);let n=0;
+      for(let i=0;i<4;i++){const a=rxAutoDcPlan(g,rxCurMap([B]),yes);if(a&&a.gone.length)n++;rxAutoDcPlan(g,rxCurMap([A,B]),yes);}
+      ok('자동 D/C: 옛 처방을 가진 화면은 바꾸지 않고, D/C·다시 생김이 2번 반복되면 더 자동 D/C 하지 않음', s1===null&&!f.rxDc&&f.rxAt==='2026-11-10T09:15:49'&&n===2&&g.rxSeen['C-ARM'].bk===2,[s1,n,g.rxSeen['C-ARM'].bk].join());
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우'].includes(n);   // D/C 한 술기는 통계에서 뺌 (2026-10-27 현미정)
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'',name:'가'},{room:'C-Arm',doctor:'김현우',staff:'',name:'나',dc:true},{room:'진료실1',doctor:'김현우',staff:'',dc:true}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
@@ -13336,14 +13342,18 @@ function rxCurMapOf(rx){const os=(rx&&(rx.ocms||[rx.ocm]))||[];const cur={};
   os.forEach(o=>{const r=o&&BIT_RX[o];if(!r)return;const m=rxCurMap(r.items,o);Object.keys(m).forEach(c=>{if(!cur[c])cur[c]=m[c];});});
   return Object.keys(cur).length?cur:rxCurMap(rx&&rx.items);}
 function rxOcmAlive(o){const r=o&&BIT_RX[o];return !!(r&&Array.isArray(r.items)&&r.items.length);}
-function rxAutoDcPlan(d,cur,ready,alive){   // d = 카드(사본), cur = 지금 비트 처방(코드별), ready(코드) = 1분 넘게 없었나, alive(접수번호) = 그 접수에 아직 처방이 있나 → {gone,back} 또는 null(바꿀 것 없음)
+/* 2026-11-10 고정희 33457: 한 화면(한효주)의 비트 처방 구독이 멈춰 09:03 의 처방(2건)만 갖고 있었다 → 15초마다 13건 자동 D/C, 다른 화면들은 '다시 생김'으로 풀기를 15분 반복(텔레그램 수십 통).
+   ① at = 이 화면이 가진 비트 처방 시각 — 카드에 남은 시각(rxAt)보다 오래된 화면은 아무것도 바꾸지 않는다
+   ② bk = 자동 D/C 했다가 다시 생긴 횟수 — 2번이면 그 처방은 더 자동 D/C 하지 않는다(손 D/C 는 됨) */
+function rxAutoDcPlan(d,cur,ready,alive,at){   // d = 카드(사본), cur = 지금 비트 처방(코드별), ready(코드) = 1분 넘게 없었나, alive(접수번호) = 그 접수에 아직 처방이 있나 → {gone,back} 또는 null(바꿀 것 없음)
   const S2=Object.assign({},d.rxSeen||{}),R=Object.assign({},d.rxDc||{});const dcCods=new Set(Object.values(R).map(x=>String((x&&x.cod)||'').trim()));
   const out={gone:[],back:[]};let ch=false;
-  Object.keys(cur).forEach(c=>{if(!S2[c]||S2[c].dcd||(cur[c].ocm&&S2[c].ocm!==cur[c].ocm)){S2[c]=cur[c];ch=true;}});   // 다시 생기면 dcd(자동 D/C 함) 표시도 지운다
+  if(at&&d.rxAt&&String(at)<String(d.rxAt))return null;
+  Object.keys(cur).forEach(c=>{const o=S2[c];if(!o||o.dcd||(cur[c].ocm&&o.ocm!==cur[c].ocm)){const bk=(o&&o.bk||0)+(o&&o.dcd?1:0);S2[c]=bk?Object.assign({},cur[c],{bk}):cur[c];ch=true;}});   // 다시 생기면 dcd(자동 D/C 함) 표시도 지운다
   /* dcd: 이 처방은 이미 한 번 자동 D/C 했다 — 비트에 다시 생기기 전까지 또 하지 않는다 (2026-11-07: D/C 가 지워지거나 직원이 자동 D/C 를 취소하면 1분마다 다시 D/C·알림) */
-  Object.keys(S2).forEach(c=>{if(!cur[c]&&!S2[c].dcd&&!dcCods.has(c)&&ready(c)&&!(S2[c].ocm&&alive&&!alive(S2[c].ocm))){const s=S2[c];R[rxDcKey(s)]={at:new Date().toISOString(),by:'비트 처방 삭제(자동)',cod:s.cod,nam:s.nam,reason:'비트에서 처방 삭제',auto:true};S2[c]=Object.assign({},s,{dcd:true});out.gone.push(s);ch=true;}});
+  Object.keys(S2).forEach(c=>{if(!cur[c]&&!S2[c].dcd&&(S2[c].bk||0)<2&&!dcCods.has(c)&&ready(c)&&!(S2[c].ocm&&alive&&!alive(S2[c].ocm))){const s=S2[c];R[rxDcKey(s)]={at:new Date().toISOString(),by:'비트 처방 삭제(자동)',cod:s.cod,nam:s.nam,reason:'비트에서 처방 삭제',auto:true};S2[c]=Object.assign({},s,{dcd:true});out.gone.push(s);ch=true;}});
   Object.keys(R).forEach(k=>{const x=R[k];if(x&&x.auto&&cur[String(x.cod||'').trim()]){out.back.push(x);delete R[k];ch=true;}});
-  if(!ch)return null;d.rxSeen=S2;if(Object.keys(R).length)d.rxDc=R;else delete d.rxDc;return out;}
+  if(!ch)return null;d.rxSeen=S2;if(Object.keys(R).length)d.rxDc=R;else delete d.rxDc;if(at&&(!d.rxAt||String(at)>String(d.rxAt)))d.rxAt=String(at);return out;}
 function rxAutoDc(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_ROLE!=='staff'||!cloud.patientsCol)return;
   const today=localYMD(new Date()),now=Date.now();
   (data||[]).forEach(p=>{if(!p||p.discharged||p._viewOnly||!normMrn(p.mrn))return;if(localYMD(new Date(p.arrivedAt||p.enteredAt||0))!==today)return;
@@ -13351,9 +13361,10 @@ function rxAutoDc(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_
     const cur=rxCurMapOf(rx);
     Object.keys(p.rxSeen||{}).forEach(c=>{const k=p.id+'|'+c;if(cur[c])delete RXAD_GONE[k];else if(!RXAD_GONE[k])RXAD_GONE[k]=now;});
     const ready=c=>{const t=RXAD_GONE[p.id+'|'+c];return !!t&&now-t>=RX_AUTO_DC_MS;};
-    if(!rxAutoDcPlan(jclone(p),cur,ready,rxOcmAlive))return;   // 로컬로 먼저 따져 보고 바꿀 게 있을 때만 서버 트랜잭션
+    const at=String((rx&&rx.at)||'');
+    if(!rxAutoDcPlan(jclone(p),cur,ready,rxOcmAlive,at))return;   // 로컬로 먼저 따져 보고 바꿀 게 있을 때만 서버 트랜잭션
     let res=null;
-    cloudPatientTxn(p.id,d=>{res=rxAutoDcPlan(d,cur,ready,rxOcmAlive);return res?d:false;}).then(r=>{if(r!==true||!res)return;const q=data.find(x=>x.id===p.id)||p;
+    cloudPatientTxn(p.id,d=>{res=rxAutoDcPlan(d,cur,ready,rxOcmAlive,at);return res?d:false;}).then(r=>{if(r!==true||!res)return;const q=data.find(x=>x.id===p.id)||p;
       /* 텔레그램은 환자 한 명당 D/C 한 건·D/C 취소 한 건으로 묶는다 (2026-10-27: 처방을 고치면 한 환자에 십여 건씩 왔다). 감사 기록은 처방마다 */
       const uniq=a=>[...new Set(a.filter(Boolean))];
       if(res.gone.length){const labels=[],rooms=[];
