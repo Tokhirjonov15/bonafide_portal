@@ -11101,6 +11101,12 @@ function roomNotify(p,room,kind,extra){
     const send=()=>{try{const u=firebase.auth().currentUser;if(!u)return;
       u.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});}catch(e){}};
     /* "x-ray 나왔습니다" 는 방을 나가고 30초 뒤에 (2026-10-06 요청). 그 사이 카드가 x-ray실로 되돌아오면(잘못 옮겼다 되돌림) 보내지 않는다 */
+    /* x-ray 알림은 비트 처방에 엑스레이 오더가 있을 때만 (2026-11-10: 김향수 32973 — 오더가 없는데 카드가 x-ray실을 거쳐 '나왔습니다'가 갔다).
+       처방이 아직 안 왔으면(null) 알 수 없으므로 예전처럼 보낸다 */
+    if((kind==='out'||kind==='in')&&/x-?ray/i.test(room)){let has=null;
+      try{const rx=bitRxFor(p),its=rxLiveItems(p,rx&&rx.items),R=ROUTE_RX_RULES.find(r=>/x-?ray/i.test(r.room));
+        if(its.length&&R)has=its.some(it=>rxRuleHit(R,String(it.cod||'').trim(),String(it.nam||'').trim()));}catch(e){}
+      if(has===false){try{console.info('x-ray 알림 안 보냄(엑스레이 오더 없음)',p.name);}catch(e){}return;}}
     if(kind==='out'&&/x-?ray/i.test(room)){const pid=p.id;
       setTimeout(()=>{const q=data.find(x=>x.id===pid);if(q&&!q.discharged&&curRoom(q)===room)return;
         try{body.clinic=xrayClinicOf(q||p).room||'';}catch(e){}   // "… x-ray 나왔습니다 - 1진료실" (2026-10-14 요청) — 카드에 보이는 진료실과 같은 기준
