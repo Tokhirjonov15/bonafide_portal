@@ -3744,7 +3744,7 @@ function subscribeBitIntake(){
   }
   if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
-      BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));applySlipMarks();onBitNotes();
+      BIT_NOTES=s.docs.map(d=>noteRtfFix(Object.assign({docId:d.id},d.data())));applySlipMarks();onBitNotes();
       try{slipShotIndex(BIT_NOTES);slipShotBackfill();}catch(e){console.warn('slipShots',e);}   // 슬립 캡처를 환자별 영구 목록에 (2026-10-12)
     },err=>console.warn('bitNote',err));
     /* 인쇄됨·확인 표시는 우리 앱 문서 아래 slipMark 에 둔다 (2026-10-01) — bitNote 는 진료실 감시 스크립트 전용이라
@@ -4694,6 +4694,7 @@ function rtfToText(src){
       if(skipAt<0)flush();
       continue;
     }
+    if((c==='\r'||c==='\n')&&out.length&&out[out.length-1]==='\n'&&!bytes.length)continue;   // '\par' 뒤 원문 줄바꿈은 RTF 에선 뜻 없음 — 빈 줄이 두 배로 생겼다 (2026-11-11)
     if(skipAt<0){ flush(); out.push(c); }
   }
   flush();
@@ -4728,6 +4729,12 @@ function memoRtfClean(t){
   const head=lines.slice(0,k);const seen=new Set(head.map(l=>l.trim()).filter(Boolean));
   const add=conv.split(NL).filter(l=>!l.trim()||!seen.has(l.trim()));
   return head.concat(add).join(NL).replace(new RegExp(NL+'{3,}','g'),NL+NL).trim();}
+/* 진료실 차팅·med 가 RTF 원문({\rtf1… \'b1\'bc… \par)으로 올라오는 경우 — 동의서 창(태블릿)·슬립·4층 인쇄에 깨진 글자로 보였다 (2026-11-11 박철우 33782).
+   받자마자 글자로 풀어 둔다. 비트 저장 기록(emrChart·emrRx)도 같이 풀어야 슬립 '비트와 같음' 비교가 맞다 */
+function noteRtfFix(n){if(!n||typeof n!=='object')return n;
+  const isR=v=>typeof v==='string'&&/\\(rtf|par\b|pard|'[0-9a-f]{2})/i.test(v);
+  const fx=o=>{['chart','rx','emrChart','emrRx'].forEach(k=>{if(isR(o[k]))o[k]=memoRtfClean(o[k]);});};
+  fx(n);Object.keys(n).forEach(k=>{if(/^v_/.test(k)&&n[k]&&typeof n[k]==='object')fx(n[k]);});return n;}
 function bitMemoClean(t){   // RTF 면 글자만 뽑고, '+','-','.' 처럼 뜻 없는 줄은 버린다
   const junk=/^[\s+\-_.·ㆍ,~*]*$/;
   return stripRtfBlocks(t).split(/\r?\n/).filter(x=>!junk.test(x)).join('\n').trim();}
