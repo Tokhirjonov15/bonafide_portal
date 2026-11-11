@@ -3439,6 +3439,36 @@ let BIT_RX_DOCS=null,BIT_RX_CXSIG='';   // 처방 문서 원본(오늘) · 접�
 /* 처방 문서 → 접수번호별·병록번호별로 묶기. 2026-10-14 요청 '비트대로만': 비트에서 접수취소된 접수(bitIntake cancelled)의 처방은 뺀다
    (접수 PC 에이전트 db1.5 부터는 취소·전부 삭제된 접수의 처방을 비워 보내지만, 옛 에이전트·이미 올라온 문서도 화면에서 바로 빠지게) */
 function bitRxCancelled(){const s=new Set();(BIT_INTAKE||[]).forEach(x=>{if(x&&x.cancelled===true){const o=String(x.ocmNum||'').replace(/i\d+$/,'').replace(/\D/g,'')||String(x.docId||'').replace(/^.*_ocm/,'').replace(/\D/g,'');if(o)s.add(o);}});return s;}
+/* 비트가 원장님 차팅을 RTF 로 저장한 경우(2026-11-11 33782: 태블릿 동의서 화면에 {\rtf1… \'b0\'cb… \par 가 그대로) — 글자만 보여 준다.
+   에이전트 db2.6 부터는 글자로 바꿔 보내지만, 그 전에 온 문서·아직 바꾸지 않은 PC 몫도 화면에서 바꾼다. \'hh = CP949(euc-kr) 바이트 */
+const RTF_LIKE=/\\(rtf1|par\b|'[0-9a-f]{2})/i;
+let RTF_DEC=null;
+function rtfPlain(s){s=String(s==null?'':s);if(!RTF_LIKE.test(s))return s;
+  try{if(!RTF_DEC)RTF_DEC=new TextDecoder('euc-kr');}catch(e){return s;}
+  let out='',bytes=[];const flush=()=>{if(bytes.length){out+=RTF_DEC.decode(new Uint8Array(bytes));bytes=[];}};
+  const st=[];let skip=false,i=0;const n=s.length;
+  while(i<n){const c=s[i];
+    if(c==='{'){st.push(skip);i++;continue;}
+    if(c==='}'){skip=st.length?st.pop():false;i++;continue;}
+    if(c==='\r'||c==='\n'){i++;continue;}
+    if(c==='\\'){const d=s[i+1];
+      if(d==="'"){const h=s.substr(i+2,2);if(!skip&&/^[0-9a-f]{2}$/i.test(h))bytes.push(parseInt(h,16));i+=4;continue;}
+      if(d==='\\'||d==='{'||d==='}'){if(!skip){flush();out+=d;}i+=2;continue;}
+      if(d==='*'){skip=true;i+=2;continue;}
+      const m=/^([a-z]+)(-?\d+)? ?/i.exec(s.slice(i+1,i+41));
+      if(m){i+=1+m[0].length;const w=m[1];
+        if(/^(fonttbl|colortbl|stylesheet|info|pict|header|footer)$/.test(w))skip=true;
+        else if(!skip){if(w==='par'||w==='line'){flush();out+='\n';}else if(w==='tab'){flush();out+='\t';}
+          else if(w==='u'&&m[2]){flush();let u=+m[2];if(u<0)u+=65536;out+=String.fromCharCode(u);if(s[i]==='\\'&&s[i+1]==="'")i+=4;else if(i<n)i++;}}
+        continue;}
+      i+=2;continue;}
+    if(!skip){flush();out+=c;}i++;}
+  flush();
+  return out.split('\n').map(x=>x.replace(/\s+$/,'')).join('\n').replace(/\n{3,}/g,'\n\n').replace(/^\n+|\n+$/g,'');}
+function noteRtfFix(n){if(!n)return n;
+  ['rx','chart','emrRx','emrChart'].forEach(k=>{if(typeof n[k]==='string'&&RTF_LIKE.test(n[k]))n[k]=rtfPlain(n[k]);});
+  Object.keys(n).forEach(k=>{const v=n[k];if(/^v_/.test(k)&&v&&typeof v==='object')['rx','chart'].forEach(j=>{if(typeof v[j]==='string'&&RTF_LIKE.test(v[j]))v[j]=rtfPlain(v[j]);});});
+  return n;}
 function bitRxRebuild(){if(!BIT_RX_DOCS)return;const cx=bitRxCancelled();BIT_RX_CXSIG=[...cx].sort().join(',');
   BIT_RX={};BIT_RX_MRN={};
   BIT_RX_DOCS.forEach(v=>{const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
@@ -3744,7 +3774,7 @@ function subscribeBitIntake(){
   }
   if((role==='staff'||role==='slip')&&cloud.noteCol){   // 진료실 처방 목록(오늘) — 캐스트 기반 슬립 화면
     cloud.unsubNote=cloud.noteCol.where('date','==',today).onSnapshot(s=>{
-      BIT_NOTES=s.docs.map(d=>Object.assign({docId:d.id},d.data()));applySlipMarks();onBitNotes();
+      BIT_NOTES=s.docs.map(d=>noteRtfFix(Object.assign({docId:d.id},d.data())));applySlipMarks();onBitNotes();
       try{slipShotIndex(BIT_NOTES);slipShotBackfill();}catch(e){console.warn('slipShots',e);}   // 슬립 캡처를 환자별 영구 목록에 (2026-10-12)
     },err=>console.warn('bitNote',err));
     /* 인쇄됨·확인 표시는 우리 앱 문서 아래 slipMark 에 둔다 (2026-10-01) — bitNote 는 진료실 감시 스크립트 전용이라
@@ -6655,6 +6685,8 @@ async function runSelfTest(){
       const g={id:'g'};rxAutoDcPlan(g,rxCurMap([A,B]),yes);let n=0;
       for(let i=0;i<4;i++){const a=rxAutoDcPlan(g,rxCurMap([B]),yes);if(a&&a.gone.length)n++;rxAutoDcPlan(g,rxCurMap([A,B]),yes);}
       ok('자동 D/C: 옛 처방을 가진 화면은 바꾸지 않고, D/C·다시 생김이 2번 반복되면 더 자동 D/C 하지 않음', s1===null&&!f.rxDc&&f.rxAt==='2026-11-10T09:15:49'&&n===2&&g.rxSeen['C-ARM'].bk===2,[s1,n,g.rxSeen['C-ARM'].bk].join());
+      {const r=rtfPlain(String.raw`{\rtf1\ansi\ansicpg949\deff0{\fonttbl{\f0\fnil\fcharset129 \'b1\'bc\'b8\'b2;}}\viewkind4\uc1\pard\lang1042\f0\fs20 Nuchal pain \par\par X-ray \'c6\'c7\'b5\'b6\par med\par}`);   // 비트 RTF 차팅 (2026-11-11 33782)
+       ok('원장님 차팅: 비트가 RTF 로 저장해도 글자만(한글 포함), 보통 글은 그대로', r==='Nuchal pain\n\nX-ray 판독\nmed'&&rtfPlain('pnp +/+ med')==='pnp +/+ med',JSON.stringify(r));}
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우'].includes(n);   // D/C 한 술기는 통계에서 뺌 (2026-10-27 현미정)
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'',name:'가'},{room:'C-Arm',doctor:'김현우',staff:'',name:'나',dc:true},{room:'진료실1',doctor:'김현우',staff:'',dc:true}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
