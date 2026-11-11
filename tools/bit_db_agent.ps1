@@ -56,7 +56,7 @@ $script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgen
 $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
 if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db2.5'   # 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
+$VER = 'db2.6'   # 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
 # 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
 # 2.3: 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
 # 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
@@ -667,6 +667,42 @@ WHERE e.EmrOcmDte = '{0}' AND e.EmrShtTyp = 'S' AND e.EmrShtCod = 'C.C' AND m.Oc
 ORDER BY e.EmrOcmNum, e.EmrShtSeq
 "@
 $RX_HEAD = '^\s*med\b'   # bitplus_watcher.ps1 과 같은 규칙 — 맨 위 'med' 줄부터 끝까지가 처방, 그 위가 차팅
+# 비트가 차팅을 RTF 로 저장한 경우(2026-11-11 33782: 태블릿 동의서 화면에 {\rtf1… \'b0\'cb… \par 가 그대로) → 글자만 (db2.6)
+#  \'hh = CP949 바이트, \par·\line = 줄바꿈, \uN = 유니코드, {\fonttbl…}·{\*…} 묶음은 버린다. RTF 가 아니면 그대로
+function RtfLike($s) { return ([string]$s) -match '\\(rtf1|par\b|''[0-9a-fA-F]{2})' }
+function RtfPlain($s) {
+  $s = [string]$s; if (-not (RtfLike $s)) { return $s }
+  $enc = [Text.Encoding]::GetEncoding(949); $sb = New-Object Text.StringBuilder; $bytes = New-Object System.Collections.Generic.List[byte]
+  $flush = { if ($bytes.Count) { [void]$sb.Append($enc.GetString($bytes.ToArray())); $bytes.Clear() } }
+  $st = New-Object System.Collections.Generic.Stack[bool]; $skip = $false; $i = 0; $n = $s.Length
+  while ($i -lt $n) {
+    $c = $s[$i]
+    if ($c -eq '{') { $st.Push($skip); $i++; continue }
+    if ($c -eq '}') { if ($st.Count) { $skip = $st.Pop() } else { $skip = $false }; $i++; continue }
+    if ($c -eq "`r" -or $c -eq "`n") { $i++; continue }
+    if ($c -eq '\') {
+      $d = if ($i + 1 -lt $n) { $s[$i + 1] } else { '' }
+      if ($d -eq "'") { $h = if ($i + 3 -lt $n) { $s.Substring($i + 2, 2) } else { '' }
+        if (-not $skip -and $h -match '^[0-9a-fA-F]{2}$') { $bytes.Add([Convert]::ToByte($h, 16)) }; $i += 4; continue }
+      if ($d -eq '\' -or $d -eq '{' -or $d -eq '}') { if (-not $skip) { & $flush; [void]$sb.Append($d) }; $i += 2; continue }
+      if ($d -eq '*') { $skip = $true; $i += 2; continue }
+      $m = [regex]::Match($s.Substring($i + 1, [Math]::Min(40, $n - $i - 1)), '^([a-zA-Z]+)(-?\d+)? ?')
+      if ($m.Success) { $i += 1 + $m.Length; $w = $m.Groups[1].Value
+        if ($w -match '^(fonttbl|colortbl|stylesheet|info|pict|header|footer)$') { $skip = $true }
+        elseif (-not $skip) {
+          if ($w -eq 'par' -or $w -eq 'line') { & $flush; [void]$sb.Append("`n") }
+          elseif ($w -eq 'tab') { & $flush; [void]$sb.Append("`t") }
+          elseif ($w -eq 'u' -and $m.Groups[2].Success) { & $flush; $u = [int]$m.Groups[2].Value; if ($u -lt 0) { $u += 65536 }; [void]$sb.Append([char]$u)
+            if ($i -lt $n -and $s[$i] -eq '\' -and $i + 1 -lt $n -and $s[$i + 1] -eq "'") { $i += 4 } elseif ($i -lt $n) { $i++ } } }
+        continue }
+      $i += 2; continue }
+    if (-not $skip) { & $flush; [void]$sb.Append($c) }
+    $i++
+  }
+  & $flush
+  $lines = @(($sb.ToString() -split "`n") | ForEach-Object { $_.TrimEnd() })
+  return (($lines -join "`n") -replace "`n{3,}", "`n`n").Trim("`n")
+}
 function NoteRxOf($text) {   # = bitplus_watcher.ps1 ExtractRx
   $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
   $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
@@ -706,7 +742,7 @@ function PollNote() {
   $can = $script:IsLeader -or $RxAlways -or $PayAlways
   $made = 0; $fixed = 0; $same = 0
   foreach ($mrn in ($byMrn.Keys | Sort-Object)) {
-    $v = $byMrn[$mrn]; $text = ($v.L -join "`n"); $hm = ($v.upd -replace '^\d{8}', '')
+    $v = $byMrn[$mrn]; $text = RtfPlain ($v.L -join "`n"); $hm = ($v.upd -replace '^\d{8}', '')
     $ex = NoteRxOf $text; $rx = ($ex.lines -join "`n"); $chart = NoteChartOf $text
     if (-not $rx -and -not $chart) { continue }
     $h = "$($v.upd)|$rx|$chart"
@@ -721,6 +757,7 @@ function PollNote() {
       $docRx = if ($f -and $f.rx) { [string]$f.rx.stringValue } else { '' }
       $docChart = if ($f -and $f.chart) { [string]$f.chart.stringValue } else { '' }
       $docT = $null; if ($f -and $f.updatedAt) { try { $docT = [DateTimeOffset]::Parse([string]$f.updatedAt.stringValue).LocalDateTime } catch {} }
+      $docRtf = (RtfLike $docRx) -or (RtfLike $docChart)   # 예전 에이전트가 RTF 그대로 보낸 문서 → 시각과 관계없이 고친다 (db2.6)
       $rev = 0; if ($f -and $f.rev) { [void][int]::TryParse([string]$f.rev.integerValue, [ref]$rev) }
       if (-not $f -or (-not $docRx -and -not $docChart)) {   # 문서 없음(또는 비워진 문서) → 만든다
         $nf = @{ date = $day; mrn = $mrn; rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; rev = [int]($rev + 1); updatedAt = (NowIso) } + $emr
@@ -730,7 +767,7 @@ function PollNote() {
         if ($v.rrn7 -and (-not $f -or -not $f.rrn7 -or -not $f.rrn7.stringValue)) { $nf.rrn7 = $v.rrn7 }
         FsPatch "bitNote/$id" $nf; $made++
         Log "슬립(비트 기록): 차트번호 $mrn 문서 만듦 ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 저장 $hm)"
-      } elseif (($docRx -ne $rx -or $docChart -ne $chart) -and $updT -and (-not $docT -or $updT -ge $docT.Date.AddHours($docT.Hour).AddMinutes($docT.Minute))) {   # 비트 저장이 나중(같은 분 포함) + 내용 다름 → 고침
+      } elseif (($docRx -ne $rx -or $docChart -ne $chart) -and ($docRtf -or ($updT -and (-not $docT -or $updT -ge $docT.Date.AddHours($docT.Hour).AddMinutes($docT.Minute))))) {   # 비트 저장이 나중(같은 분 포함) + 내용 다름 → 고침
         FsPatch "bitNote/$id" (@{ rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; rev = [int]($rev + 1); updatedAt = (NowIso) } + $emr); $fixed++
         if ($vks.Count -eq 1) {   # 보험 칸 하나 — 맵을 통째로 다시 쓰므로 ins·pc·firstAt 은 그대로 옮긴다
           $vk = $vks[0]; $sf = $f.$vk.mapValue.fields; $sub = @{ rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; updatedAt = (NowIso) }
