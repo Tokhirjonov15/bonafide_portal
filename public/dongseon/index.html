@@ -11094,6 +11094,18 @@ function bitComplainCheck(){const today=localYMD(new Date()),now=Date.now();
     const at=Date.parse(r.registeredAt||r.seenAt||'');if(!at||now-at>30*60000)return;
     const key=today+'|'+(normMrn(r.mrn)||r.docId);if(CMP_SENT.has(key))return;CMP_SENT.add(key);
     roomNotify({name:'',mrn:''},'__cmp__','cmp',{key,birth:b,clinic:String(r.dep||'').trim()});});}
+/* x-ray '나왔습니다' 대기열 (2026-11-11) — localStorage 에 두어 새로고침해도 남는다. 30초가 지나면 보낸다(그 사이 카드가 x-ray실로 되돌아왔으면 버림). 10분 넘게 묵은 것은 버림 */
+const XR_PEND_KEY='pb_xrPend';
+function xrPendGet(){try{const a=JSON.parse(localStorage.getItem(XR_PEND_KEY)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
+function xrPendPut(a){try{localStorage.setItem(XR_PEND_KEY,JSON.stringify(a));}catch(e){}}
+function xrPendAdd(x){const a=xrPendGet().filter(y=>!(y.pid===x.pid&&y.room===x.room));a.push(x);xrPendPut(a);setTimeout(xrPendRun,30500);}
+function xrPendRun(){try{const u=window.firebase&&firebase.auth&&firebase.auth().currentUser;if(!u)return;const now=Date.now();let a=xrPendGet();if(!a.length)return;
+  const keep=[],go=[];a.forEach(x=>{if(now-x.due>600000)return;if(now<x.due)keep.push(x);else go.push(x);});
+  xrPendPut(keep);   // 보내기 전에 먼저 지운다 — 같은 PC 의 다른 창이 또 보내지 않게
+  go.forEach(x=>{const q=(data||[]).find(y=>y.id===x.pid);if(q&&!q.discharged&&curRoom(q)===x.room)return;   // 다시 x-ray실 — 보내지 않음
+    const body=Object.assign({},x.body);try{if(q)body.clinic=xrayClinicOf(q).room||'';}catch(e){}   // "… x-ray 나왔습니다 - 1진료실" (2026-10-14 요청)
+    u.getIdToken().then(tok=>fetch('/api/dongseon/notify',{method:'POST',headers:{'authorization':'Bearer '+tok,'content-type':'application/json'},body:JSON.stringify(body)})).catch(()=>{});});}catch(e){}}
+setInterval(xrPendRun,10000);
 function roomNotify(p,room,kind,extra){
   try{
     if(!p||!room||!(window.firebase&&firebase.auth)||!firebase.auth().currentUser)return;
@@ -11105,12 +11117,11 @@ function roomNotify(p,room,kind,extra){
        처방이 아직 안 왔으면(null) 알 수 없으므로 예전처럼 보낸다 */
     if((kind==='out'||kind==='in')&&/x-?ray/i.test(room)){let has=null;
       try{const rx=bitRxFor(p),its=rxLiveItems(p,rx&&rx.items),R=ROUTE_RX_RULES.find(r=>/x-?ray/i.test(r.room));
-        if(its.length&&R)has=its.some(it=>rxRuleHit(R,String(it.cod||'').trim(),String(it.nam||'').trim()));}catch(e){}
+        /* 2026-11-11: 목록(XRAY_CODES)에 없는 촬영 코드(김범준 30652·이경은 33063 1진 발목)까지 막혀 '나왔습니다'가 안 갔다 → 비트 영상 코드(G+숫자)도 오더로 본다 */
+        if(its.length&&R)has=its.some(it=>{const cod=String(it.cod||'').trim();return /^g\d/i.test(cod)||rxRuleHit(R,cod,String(it.nam||'').trim());});}catch(e){}
       if(has===false){try{console.info('x-ray 알림 안 보냄(엑스레이 오더 없음)',p.name);}catch(e){}return;}}
-    if(kind==='out'&&/x-?ray/i.test(room)){const pid=p.id;
-      setTimeout(()=>{const q=data.find(x=>x.id===pid);if(q&&!q.discharged&&curRoom(q)===room)return;
-        try{body.clinic=xrayClinicOf(q||p).room||'';}catch(e){}   // "… x-ray 나왔습니다 - 1진료실" (2026-10-14 요청) — 카드에 보이는 진료실과 같은 기준
-        send();},30000);return;}
+    /* "나왔습니다"는 30초 뒤 — 그 사이 화면이 새로고침(업데이트 자동 새로고침 등)되면 사라졌다 (2026-11-11) → 이 기기에 적어 두고 xrPendRun 이 보낸다 */
+    if(kind==='out'&&/x-?ray/i.test(room)){xrPendAdd({pid:p.id,room,body,due:Date.now()+30000});return;}
     send();
   }catch(e){}
 }
