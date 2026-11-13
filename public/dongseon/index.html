@@ -3825,6 +3825,20 @@ function mrnTwins(p){const m=normMrn(p&&p.mrn);if(!m)return false;
   if(MRN_TW_ON){if(!MRN_TW){MRN_TW=new Map();data.forEach(x=>{if(x.discharged)return;const k=normMrn(x.mrn);if(k)MRN_TW.set(k,(MRN_TW.get(k)||0)+1);});}return (MRN_TW.get(m)||0)>1;}
   return data.filter(x=>!x.discharged&&normMrn(x.mrn)===m).length>1;}
 function bitOnBoard(r){return !!bitCardFor(r);}
+/* 카드 차트번호 ≠ 그 카드를 만든 비트 접수(같은 접수번호)의 차트번호 (2026-11-13 이정희: 33742 로 접수된 카드가 동명이인 2277 로 바뀌어
+   동의서 창에 차팅이 안 나오고 슬립은 '카드 없음'). 비트 접수가 원본이므로 경고 + [비트 차트번호로 고치기] */
+function cardIntakeOf(p){const o=String((p&&p.bit&&p.bit.ocmNum)||'').trim();if(!o)return null;
+  return (BIT_INTAKE||[]).find(r=>r&&String(r.ocmNum||'').trim()===o&&!(r.status==='취소'||r.cancelled))||null;}
+function cardMrnMismatch(p){if(!p)return null;const r=cardIntakeOf(p);if(!r)return null;const a=normMrn(r.mrn).replace(/^0+/,''),b=normMrn(p.mrn).replace(/^0+/,'');return a&&a!==b?r:null;}
+function cardMrnFixBtn(p){const r=cardMrnMismatch(p);return r?`<button type="button" class="btn sm" style="margin-left:6px" onclick="event.stopPropagation();cardMrnFix('${esc(p.id)}')">비트 차트번호 ${esc(normMrn(r.mrn))}로 고치기</button>`:'';}
+window.cardMrnFix=function(pid){const p=(data||[]).find(x=>x.id===pid);const r=cardMrnMismatch(p);if(!r)return;
+  const mrn=normMrn(r.mrn),rp=r.rrn7?parseRRN(r.rrn7):null;
+  if(!confirm(`${p.name||''} 카드 차트번호 ${p.mrn||'(없음)'} → ${mrn} (비트 접수${r.name?' '+r.name:''}${rp?' · '+rp.birth:''}) 로 고칠까요?`))return;
+  const top={mrn};if(rp){top.birth=rp.birth;top.sex=rp.sex;}
+  cardPatch(p,top,null);try{regUpsert(mrn,p.name,top.birth||p.birth,top.sex||p.sex);}catch(e){}
+  try{audit('카드 차트번호 → 비트 접수대로',(p.name||'')+' '+(p.mrn||'')+'→'+mrn);}catch(e){}
+  toast('차트번호를 '+mrn+'(으)로 고쳤습니다');try{render();renderSlipScreen();}catch(e){}
+  try{renderConsentDesk();}catch(e){}};
 /* 취소 처리(status='취소')된 문서가 다시 살아남 — 비트는 접수 수정·보류를 '접수취소 → 접수' 쌍으로, 예약 환자를 '예약접수 → 접수취소 → 사전예약'으로 보낸다.
    감시 스크립트는 취소 뒤에 환자가 살아 있음을 뜻하는 캐스트(접수·사전예약·호출·수납대기 등)가 오면 cancelled=false 로 되돌리므로,
    cancelled=false 인 등록 문서는 살아난 것으로 보고 다시 자동 생성 대상으로 삼는다 */
@@ -4078,6 +4092,7 @@ function slipNoCardWhy(it){const m=normMrn(it&&it.mrn).replace(/^0+/,''),today=l
   if(v)return `오늘 ${hm(v.dischargedAt)} 에 이미 내보냈습니다${typeof v.seq==='number'?' (#'+v.seq+')':''}`;
   const nm=String((it&&it.name)||'').replace(/\s+/g,'');
   const c=nm&&(data||[]).find(x=>!x.discharged&&String(x.name||'').replace(/\s+/g,'')===nm);
+  if(c){const r=cardMrnMismatch(c);if(r&&normMrn(r.mrn).replace(/^0+/,'')===m)return `<b>카드${typeof c.seq==='number'?' #'+c.seq:''}의 차트번호가 '${esc(c.mrn||'(비어 있음)')}'로 바뀌어 있습니다 — 비트 접수는 ${esc(it.mrn)}</b> (동명이인 차트가 들어간 것) ${cardMrnFixBtn(c)}`;}
   if(c)return `<b>같은 이름 카드${typeof c.seq==='number'?' #'+c.seq:''}의 차트번호가 '${esc(c.mrn||'(비어 있음)')}'로 슬립(${esc(it.mrn)})과 다릅니다</b> — 그 카드 [수정]에서 차트번호를 확인해 주세요`;
   const r=(BIT_INTAKE||[]).filter(x=>x&&normMrn(x.mrn).replace(/^0+/,'')===m).sort((a,b)=>String(b.seenAt||'').localeCompare(String(a.seenAt||'')))[0];
   if(r){let w='';try{w=bitWhy(r).txt;}catch(e){}return `오늘 비트 접수 기록: ${esc(w||r.status||'확인 필요')} — 환자 관리 [🔍 비트 접수 찾기]에서 바로 카드를 만들 수 있습니다`;}
@@ -9911,6 +9926,7 @@ function cardEl(p,colRoom){
       <button class="st-btn ${last?((needsPay(p)||needsPayDone(p))?'fin':'exit'):'fin'}${(last&&spLocked(p))?' sp-locked':''}" title="${(last&&spLocked(p))?'진료지원 창에서 D/C·차팅 확인이 필요합니다 — ':''}${last?exitTitle(p):_mir?esc(_chipRoom)+'만 종결 — 나머지 칸은 그대로':'현재 방 종결 후 다음 방으로'}" onclick="event.stopPropagation();if(!clinicLeaveOk('${p.id}','','${_mir?esc(_chipRoom):''}'))return;${last?`finishPatient('${p.id}')`:_mir?`cardFinish('${p.id}','${esc(_chipRoom)}')`:`nextStep('${p.id}')`}">${last?exitLabel(p):'종결'}</button>
     </div>
     ${rxHtml}
+    ${(function(){const r=cardMrnMismatch(p);return r?`<div style="color:#dc2626;font-weight:800;font-size:12px;margin-top:4px">⚠ 차트번호가 비트 접수(${esc(normMrn(r.mrn))})와 다릅니다 ${cardMrnFixBtn(p)}</div>`:'';})()}
     ${(function(){const n=bitNoteFor(p);if(!n)return '';const rp=rxParse(n.rx);if(!rp.valid||!rp.lines.length)return '';const ls=rp.lines;
       return `<div class="slip-sum" onclick="event.stopPropagation();openSlipScreen('${esc(p.mrn||String(n.mrn||''))}')" title="진료실 처방 목록 ${ls.length}줄 (클릭: 슬립 화면·인쇄)"><i data-lucide="pill"></i> 처방 <b>${ls.length}줄</b>${rp.badges.length?' · <b>'+esc(rp.badges.join(' · '))+'</b>':''}</div>`;})()}
     ${procHtml}
@@ -15124,7 +15140,7 @@ function rxIsOral(x){const itm=String((x&&x.itm)||'').trim(),sot=String((x&&x.so
   return /\/\s*[\d.]*\s*(정|캡슐|포)\)\s*$/.test(n)||/[가-힣](정|캡슐|시럽|과립)(\d|\(|$)/.test(h);}
 function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?consentSaved(mrn):{};
   const ex=r.extras||[];const total=r.items.reduce((a,x)=>a+x.amt,0)+ex.reduce((a,x)=>a+x.amt,0);const lastToday=(r.today||[]).slice(-1)[0];
-  const cons=`<div class="cd-sect"><div class="cd-h"><i data-lucide="file-pen-line"></i> 동의서 <span class="hint">비트 처방에서 자동</span></div>
+  const mm=cardMrnMismatch(p);const cons=`${mm?`<div class="cd-sect" style="border:2px solid #dc2626"><div style="color:#dc2626;font-weight:800">⚠ 이 카드 차트번호(${esc(p.mrn||'없음')})가 비트 접수(${esc(normMrn(mm.mrn))}${mm.name?' '+esc(mm.name):''})와 다릅니다 — 동명이인 차트가 들어갔을 수 있어 원장님 차팅이 안 보입니다</div>${cardMrnFixBtn(p)}</div>`:''}<div class="cd-sect"><div class="cd-h"><i data-lucide="file-pen-line"></i> 동의서 <span class="hint">비트 처방에서 자동</span></div>
     ${r.rooms.length?`<div class="cd-rooms">시술·처치 처방: ${r.rooms.map(x=>`<span class="cd-rm">${esc(x)}</span>`).join(' ')}${r.items.length||ex.length?'':' <span class="hint">(비급여 항목 없음 — 동의서에서 기타에 적거나 해당 항목을 체크)</span>'}</div>`:''}
     ${r.today.length?`<div class="cd-rooms">오늘 서명: ${r.today.map(c=>consentSavedTag(c)).join(' ')}</div>`:''}
     ${r.items.length||ex.length?'':'<!--'}<table class="cd-tbl"><thead><tr><th>비급여 항목</th><th class="r">금액(비트)</th><th>서명</th></tr></thead><tbody>
