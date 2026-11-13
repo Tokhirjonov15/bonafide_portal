@@ -5295,6 +5295,14 @@ function bitBackfillMrn(){
     try{if(r.memoCont)setRegCont(mrn,p.name,r.memoCont);const sp=bitMemoKeep(r.memoRx);if(sp&&!regMemo(mrn))setRegMemo(mrn,p.name,sp);}catch(e){}
     render();console.log('비트 차트번호 보충',ocm);
   });
+  /* 이미 잘못 들어간 카드는 저절로 바로잡는다 (2026-11-13): 비트 DB 에이전트 접수(src='db')와 이름이 같은데 차트번호만 다르면 비트대로.
+     이름까지 다르면 무엇이 맞는지 모르므로 카드 경고 + [고치기] 버튼만 */
+  (data||[]).forEach(p=>{if(!p||p.discharged||p._viewOnly)return;const r=cardMrnMismatch(p);if(!r||r.src!=='db')return;
+    const nn=x=>String(x||'').replace(/\s+/g,'');if(!nn(r.name)||nn(r.name)!==nn(p.name))return;
+    const mrn=normMrn(r.mrn),old=p.mrn||'',top={mrn};const rp=r.rrn7?parseRRN(r.rrn7):null;if(rp){top.birth=rp.birth;top.sex=rp.sex;}
+    cardPatch(p,top,null,d=>normMrn(d.mrn)!==mrn);try{regUpsert(mrn,p.name,top.birth||p.birth,top.sex||p.sex);}catch(e){}
+    try{audit('카드 차트번호 자동 바로잡음(비트 접수대로)',(p.name||'')+' '+old+'→'+mrn);}catch(e){}
+    try{render();}catch(e){}console.log('비트 차트번호 바로잡음',old,'→',mrn);});
 }
 async function bitClaimAndCreate(r,name,reg){
   BIT_CLAIMING[r.docId]=1;
@@ -13758,6 +13766,12 @@ function onReloadPick(){const v=document.getElementById("f_reload").value.trim()
     if(b){const reg=regFind(b.mrn);r=Object.assign({},reg||{},{mrn:b.mrn,name:b.name});}}
   /* 오늘 보드에 있는 환자면 그 카드의 환자 정보 창으로 바꿔 연다 (2026-10-05 요청 — 동선·처방내역까지 그대로) */
   if(r&&normMrn(r.mrn)){const bc=data.find(x=>!x._viewOnly&&!x.discharged&&normMrn(x.mrn)===normMrn(r.mrn));if(bc){openEdit(bc.id);return;}}
+  /* [수정] 창(이미 있는 카드)에서 검색으로 다른 환자를 고르면 이 카드의 차트번호·주민번호를 그 환자로 덮어썼다 → 동명이인이 섞였다 (2026-11-13 이정희).
+     비트 접수로 만든 카드는 덮어쓰지 않는다 */
+  if(r&&editId&&!document.getElementById('modal').classList.contains('adding')){const cp=data.find(x=>x.id===editId);const ib=cp&&cardIntakeOf(cp);
+    if(ib&&normMrn(ib.mrn)&&normMrn(ib.mrn).replace(/^0+/,'')!==normMrn(r.mrn).replace(/^0+/,'')){
+      alert(`${r.name||''}(${r.mrn||''})은(는) 이 카드 환자가 아닙니다 — 이 카드는 비트에서 ${normMrn(ib.mrn)}${ib.name?' '+ib.name:''}로 접수됐습니다.\n동명이인일 수 있어 바꾸지 않았습니다.`);
+      document.getElementById('f_reload').value='';return;}}
   if(r){set("f_mrn",r.mrn||"");set("f_name",r.name||"");set("f_rrn",rrnFromBirth(r.birth,r.sex));onRRNInput();fillPmemo(r.mrn||"");fillCalls(r.mrn||"");if(!editId)try{fillRxHist({mrn:r.mrn||""},'rxHistAdd');}catch(e){}fillEditChart({mrn:r.mrn||"",name:r.name||"",chart:document.getElementById('f_chart').value});addLoadFull(r);}if(reloadHistOpen)renderReloadHistory();}
 /* 환자 추가 창 — 재진 환자를 고르면 환자 정보 창의 2·3단을 그 환자 것으로 채워 펼친다 (2026-10-05 요청).
    각 칸이 editId 로 환자를 찾으므로 보기용 임시 카드(_viewOnly — 서버·보드에 안 나감)에 담는다. [저장]은 그대로 새 카드 추가(savePatient) */
@@ -14579,6 +14593,10 @@ function savePatient(){
   const _vc=(editId&&VIEW_CARD&&VIEW_CARD.id===editId&&document.getElementById('modal').classList.contains('adding'))?VIEW_CARD:null;   // 추가 창에서 재진 환자 정보를 펼친 임시 카드 — 수정이 아니라 새 카드 추가
   if(editId&&!_vc){
     const p=data.find(x=>x.id===editId);
+    /* 비트 접수로 만든 카드는 차트번호를 비트 접수와 다르게 바꿀 수 없다 (2026-11-13 이정희 33742 → 동명이인 2277 로 바뀜) — 비트에서 고치면 따라온다 */
+    {const r=cardIntakeOf(p),bm=r?normMrn(r.mrn):'';if(bm&&mrn.replace(/^0+/,'')!==bm.replace(/^0+/,'')){
+      alert(`이 카드는 비트에서 차트번호 ${bm}${r.name?' ('+r.name+')':''}로 접수된 환자입니다.\n\n${mrn||'(빈칸)'}(으)로 바꾸면 차팅·슬립·동의서가 다른 환자 것과 섞입니다 — 차트번호는 ${bm} 그대로 둡니다.\n(비트 접수가 잘못됐으면 비트에서 고치면 여기도 따라옵니다)`);
+      set('f_mrn',bm);return;}}
     if(mrn&&mrn!==p.mrn){const c=mrnConflict(mrn,name);if(c){alert(`병록번호 ${mrn}는 이미 '${c.name}'님으로 등록되어 있습니다. 다른 번호를 사용하세요.`);return;}}
     const sameStart=p.route[p.step];const _oldRoute=p.route.slice();
     if((p.extraFee||0)!==extra)p.paid=false;  // 금액 바뀌면 수납완료 해제
