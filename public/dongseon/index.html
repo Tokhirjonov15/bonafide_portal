@@ -6717,6 +6717,12 @@ async function runSelfTest(){
       ok('자동 D/C: 옛 처방을 가진 화면은 바꾸지 않고, D/C·다시 생김이 2번 반복되면 더 자동 D/C 하지 않음', s1===null&&!f.rxDc&&f.rxAt==='2026-11-10T09:15:49'&&n===2&&g.rxSeen['C-ARM'].bk===2,[s1,n,g.rxSeen['C-ARM'].bk].join());
       {const r=rtfPlain(String.raw`{\rtf1\ansi\ansicpg949\deff0{\fonttbl{\f0\fnil\fcharset129 \'b1\'bc\'b8\'b2;}}\viewkind4\uc1\pard\lang1042\f0\fs20 Nuchal pain \par\par X-ray \'c6\'c7\'b5\'b6\par med\par}`);   // 비트 RTF 차팅 (2026-11-11 33782)
        ok('원장님 차팅: 비트가 RTF 로 저장해도 글자만(한글 포함), 보통 글은 그대로', r==='Nuchal pain\n\nX-ray 판독\nmed'&&rtfPlain('pnp +/+ med')==='pnp +/+ med',JSON.stringify(r));}
+      {const F='녹음 2026-11-10 홍길동 710403 진료실1 09시09분00초~';   // 녹음 삭제 (2026-11-15)
+       const s1=recFileStem(F+'녹음중.webm'),s2=recFileStem(F+'09시20분10초.webm'),s3=recFileStem('녹음 2026-10-14 홍길동 900101 진료실1 1856.chrome.txt');
+       const dels=[{key:'2026-11-10T00:09:00.000Z|진료실1',stems:[s1]}];
+       ok('녹음 삭제: 끝 시각·확장자가 달라도 같은 녹음으로 보고, 다른 녹음은 남김', s1===F&&s2===F&&s3==='녹음 2026-10-14 홍길동 900101 진료실1 1856'
+         &&recDelHit(dels,{file:F+'09시20분10초.webm'})&&recDelHit(dels,{startedAt:'2026-11-10T00:09:00.000Z',room:'진료실1',file:'x'})
+         &&!recDelHit(dels,{startedAt:'2026-11-10T00:30:00.000Z',room:'진료실1',file:'녹음 2026-11-10 홍길동 710403 진료실1 09시30분00초~녹음중.webm'}),[s1,s2,s3].join(' / '));}
      {const _sr=window.docStatRooms,_dd=window.docStatIsDoctor;window.docStatIsDoctor=()=>n=>['김현우'].includes(n);   // D/C 한 술기는 통계에서 뺌 (2026-10-27 현미정)
       window.docStatRooms=()=>[{room:'C-Arm',doctor:'김현우',staff:'',name:'가'},{room:'C-Arm',doctor:'김현우',staff:'',name:'나',dc:true},{room:'진료실1',doctor:'김현우',staff:'',dc:true}];
       let d=null;try{d=docStatData();}finally{window.docStatRooms=_sr;window.docStatIsDoctor=_dd;}const c=d.proc.find(x=>x.room==='C-Arm');
@@ -13178,8 +13184,42 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
         [...byF.values()].map(G=>recItemHtml(G)).join('')+'</details>';}).join('');
     box._list=L;if(window.lucide)try{lucide.createIcons();}catch(e){}recAudioLoad(box);};
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
-  cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));   // 개수 제한 없이 (2026-10-12)
+  recFetch(mrn).then(L=>{   // 개수 제한 없이 (2026-10-12)
     recTextCache[mrn]={at:Date.now(),list:L};draw(L);}).catch(e=>console.warn('recText get',e));}
+/* ═ 녹음 삭제 (2026-11-15 요청: 원장님 전화 통화가 환자 녹음에 같이 들어간 경우 지운다) — 원장님·관리자만 ═
+   한 녹음(같은 시작 시각·진료실) = 소리(Firebase 저장소 rec_audio/…) + 받아쓴 글(recText 문서 여럿).
+   지우면 recDel 에 '지운 녹음' 표시를 남긴다:
+    · 늦게 끝난 받아쓰기·소리 올리기가 다시 올리지 않는다(올리기 전에 확인)
+    · 녹음한 진료실 PC(외장하드 폴더를 가진 동선관리 화면)가 보고 외장하드의 녹음·.txt 를 지운다 */
+function canRecDelete(){return !!(currentUser&&(currentUser.role==='doctor'||currentUser.role==='admin'||currentUser.super));}
+const recKeyOf=r=>(r&&r.startedAt?r.startedAt+'|'+(r.room||''):'')||(r&&r.file)||'';
+/* 파일 이름에서 녹음 한 건을 가리키는 앞부분 — '녹음 2026-11-10 홍길동 710403 진료실1 09시09분00초~' (끝 시각·확장자·.chrome.txt 등은 뺀다) */
+const recFileStem=f=>{const s=String(f||'');const i=s.indexOf('~');return i>0?s.slice(0,i+1):s.replace(/(\.(chrome|openai|clova))?\.(webm|wav|txt)$/i,'');};
+function recDelHit(dels,r){const k=recKeyOf(r),st=recFileStem(r&&r.file);return (dels||[]).some(x=>(x.key&&x.key===k)||(st&&(x.stems||[]).includes(st)));}
+async function recDelOf(mrn){try{const s=await cloud.ref.collection('recDel').where('mrn','==',String(mrn||'').trim()).get();return s.docs.map(d=>d.data()||{});}catch(e){console.warn('recDel',e);return [];}}
+/* 이 녹음이 지워졌나 — 받아쓰기·소리를 올리기 직전에 (지워졌으면 올리지 않는다) */
+window.recIsDeleted=async m=>{if(!m||!m.mrn||!(cloud.active&&cloud.ref))return false;return recDelHit(await recDelOf(m.mrn),{startedAt:m.at||m.startedAt,room:m.room,file:m.file});};
+async function recFetch(mrn){const [s,dels]=await Promise.all([cloud.ref.collection('recText').where('mrn','==',mrn).get(),recDelOf(mrn)]);
+  return s.docs.map(d=>Object.assign({_id:d.id},d.data())).filter(r=>!recDelHit(dels,r)).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));}
+const REC_GRP={};   // 화면에 그린 녹음 묶음 — 삭제 버튼이 가리킨다
+window.recDelete=async function(id){const L=REC_GRP[id];if(!L||!L.length)return;
+  if(!canRecDelete()){alert('녹음 삭제는 원장님·관리자만 할 수 있습니다.');return;}
+  if(!(cloud.active&&cloud.ref)){alert('클라우드에 연결된 뒤 다시 해 주세요.');return;}
+  const f=L[0],mrn=String(f.mrn||'').trim(),key=recKeyOf(f);
+  const d=new Date(f.startedAt||'');const when=isNaN(d)?String(f.date||''):localYMD(d)+' '+hhmm(d.toISOString());
+  if(!confirm(`${f.name||''} 님 ${when} ${f.room||''} 녹음을 삭제할까요?\n\n소리와 받아쓴 글이 모두 지워지며 되돌릴 수 없습니다.\n녹음한 진료실 PC 외장하드의 파일도 그 PC 의 동선관리 화면이 지웁니다.`))return;
+  const stems=[...new Set(L.map(r=>recFileStem(r.file)).filter(Boolean))],errs=[];
+  try{await cloud.ref.collection('recDel').doc(('d_'+mrn+'_'+key).replace(/[\/#?\[\]*]/g,'_').slice(0,140)).set({mrn,key,stems,files:[...new Set(L.map(r=>r.file).filter(Boolean))],
+      room:f.room||'',startedAt:f.startedAt||'',date:String(f.date||f.startedAt||'').slice(0,10),name:f.name||'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});}
+  catch(e){errs.push('삭제 표시 저장 실패('+(e.code||e.message||e)+') — 외장하드 파일은 지워지지 않을 수 있습니다');}
+  for(const r of L){
+    if(r.audio&&cloud.storage){try{await cloud.storage.ref(r.audio).delete();delete REC_AUDIO_URL[r.audio];}catch(e){if(e.code!=='storage/object-not-found')errs.push('소리 파일 삭제 실패('+(e.code||e.message||e)+')');}}
+    if(r._id){try{await cloud.ref.collection('recText').doc(r._id).delete();}catch(e){errs.push('받아쓴 글 삭제 실패('+(e.code||e.message||e)+')');}}}
+  try{audit('진료 녹음 삭제',(f.name||'')+(mrn?' ('+mrn+')':'')+' · '+(f.room||'')+' '+when+(errs.length?' · 일부 실패':''));}catch(e){}
+  delete recTextCache[mrn];
+  try{if(editId){const p=data.find(x=>x.id===editId);if(p)fillRecTextBox(p);}}catch(e){}
+  try{if(histView==='rec')renderHistory();}catch(e){}
+  if(errs.length)alert('녹음 삭제 중 문제가 있었습니다:\n· '+[...new Set(errs)].join('\n· '));else toast('녹음을 삭제했습니다');};
 /* 녹음 한 건(같은 파일) — 재생 막대(음성 메시지처럼) + 받아쓴 글은 접어서 (2026-10-16) */
 const REC_SRC_L={chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
 function recDurTxt(s){s=Math.round(Number(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
@@ -13197,7 +13237,9 @@ function recItemHtml(G,dl){const first=G[0][0];const au=G.find(([r])=>r.src==='a
   const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>${r.lvl?` <span class="hint" title="녹음된 소리 크기(진료실 PC 녹음 프로그램이 잼) — 작으면 키워서 받아쓴다">🎤 ${esc(r.lvl)}</span>`:''}${r.lvlPeak!=null&&Number(r.lvlPeak)<10?' <b style="color:#dc2626">⚠ 마이크 소리가 아주 작게 녹음됨</b>':''}
       <button type="button" class="btn sm" onclick="recTextCopyEl(this)"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
   const main=tx.length?one(tx[0]):'',rest=tx.slice(1).map(one).join('');
-  return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':(G.some(([r])=>String(r.by||'').startsWith('녹음('))?' <span class="hint">(소리 파일은 진료실 PC 외장하드에)</span>':' <span class="hint">(소리 없음 — 글만)</span>')}</div>${player}
+  let del='';if(canRecDelete()){const gid=String(first.mrn||'').trim()+'§'+recKeyOf(first);REC_GRP[gid]=G.map(([r])=>r);
+    del=`<button type="button" class="btn sm rt-del" title="이 녹음 삭제 (소리·받아쓴 글 모두 — 원장님 통화 등이 들어간 경우)" onclick="recDelete(this.dataset.g)" data-g="${esc(gid)}"><i data-lucide="trash-2"></i> 삭제</button>`;}   // 녹음 삭제 (2026-11-15)
+  return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':(G.some(([r])=>String(r.by||'').startsWith('녹음('))?' <span class="hint">(소리 파일은 진료실 PC 외장하드에)</span>':' <span class="hint">(소리 없음 — 글만)</span>')}${del}</div>${player}
     ${main}${rest?`<details class="rt-txt"><summary>다른 받아쓰기 ${tx.length-1}개 (${esc(tx.slice(1).map(([r])=>REC_SRC_L[r.src||'local']||r.src).join('·'))})</summary>${rest}</details>`:''}</div>`;}
 const REC_AUDIO_URL={};
 function recAudioLoad(box){try{if(!cloud.storage||!box)return;box.querySelectorAll('audio[data-path]').forEach(a=>{if(a.getAttribute('src'))return;const p=a.dataset.path;
@@ -13205,7 +13247,7 @@ function recAudioLoad(box){try{if(!cloud.storage||!box)return;box.querySelectorA
 /* 환자 관리의 '녹음 기록' — recText 를 차트번호로(녹음기록 칸과 같은 캐시). 없으면 불러온 뒤 다시 그린다. {n, days, g:{날짜:[녹음 묶음]}} */
 function histRecList(mrn){mrn=String(mrn||'').trim();const c=recTextCache[mrn];
   if(!c||Date.now()-c.at>60000){if(!(cloud.active&&cloud.ref))return null;if(!histRecList.busy){histRecList.busy=true;
-    cloud.ref.collection('recText').where('mrn','==',mrn).get().then(s=>{const L=s.docs.map(d=>d.data()).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));
+    recFetch(mrn).then(L=>{
       recTextCache[mrn]={at:Date.now(),list:L};}).catch(e=>console.warn('hist rec',e)).finally(()=>{histRecList.busy=false;try{renderHistory();}catch(e){}});}
     if(!c)return null;}
   const g={},by=new Map();c.list.forEach((r,i)=>{const k=(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file||String(i);if(!by.has(k))by.set(k,[]);by.get(k).push([r,i]);});
@@ -15766,6 +15808,7 @@ boot();
   .rt-src{font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;background:#e2e8f0;color:#334155}.rt-src.rt-chrome{background:#dbeafe;color:#1d4ed8}.rt-src.rt-openai{background:#dcfce7;color:#15803d}.rt-src.rt-clova{background:#fef3c7;color:#92400e}
   .rt-day{margin-top:6px;border:1px solid var(--line);border-radius:10px;padding:4px 8px;background:var(--panel)}.rt-day.rt-new{border:2px solid #f59e0b;background:rgba(245,158,11,.10)}.rt-day.rt-new>summary{color:#b45309}   /* 초진·90일초진 날 (2026-11-02) */
  .rt-day>summary{cursor:pointer;font-weight:800;font-size:14px;padding:4px 2px}.rt-day .rt-item{background:var(--panel2)}
+  .rt-head .rt-del{float:right;color:#dc2626;border-color:#fca5a5;margin-left:6px}   /* 녹음 삭제 (2026-11-15) */
   .rt-text{white-space:pre-wrap;font-size:13.5px;line-height:1.55;max-height:260px;overflow:auto;margin-top:4px;color:var(--text)}   /* 녹음기록 (2026-10-12) */
   .rx-dcgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
   .rx-dcgrp .btn{color:#b91c1c;border-color:#fca5a5}
@@ -16045,6 +16088,7 @@ boot();
   async function recUploadAudio(rec){
     try{if(!(typeof cloud!=='undefined'&&cloud.active&&cloud.storage&&cloud.ref)||!rec.meta)return;
       const f=await rec.fh.getFile();if(!f||!f.size)return;const m=rec.meta;
+      if(await window.recIsDeleted(m))return;   // 녹음이 끝나기 전에 지웠으면 올리지 않는다 (2026-11-15)
       const path='rec_audio/'+pmKey(m.mrn||'_')+'/rec_'+String(m.at).replace(/\D/g,'').slice(0,14)+'_'+pmKey(m.room||'')+'.webm';
       await cloud.storage.ref(path).put(f,{contentType:'audio/webm'});
       await cloud.ref.collection('recText').doc(recDocId(m.file)+'__audio').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
@@ -16079,6 +16123,7 @@ boot();
   const recDocId=file=>file.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
   async function sttSave(rec,final){const st=rec.stt;if(!st||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref))return;
     const text=st.lines.join('\n');if(!final&&text===st.saved)return;st.saved=text;const m=st.meta;
+    if(st.deleted||await window.recIsDeleted(m)){st.deleted=true;return;}   // 녹음 중에 지웠으면 더 올리지 않는다 (2026-11-15)
     try{await cloud.ref.collection('recText').doc(recDocId(m.file)+'__chrome').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
         text:text||(final?'(받아쓴 말이 없습니다)':''),src:'chrome',live:!final,sttLog:st.log.join(' / ').slice(0,4000),restarts:st.restarts,at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
       if(window.recTextCache)delete window.recTextCache[m.mrn];
@@ -16113,6 +16158,7 @@ boot();
   /* 유료 음성인식 (2026-10-12) — 녹음이 끝나면 파일을 포털 서버(/api/dongseon/stt)로 보내고, 서버가 키로 OpenAI·클로바에 넘겨 글을 받아 온다 */
   const STT_LABEL={chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
   async function cloudStt(rec,pv){const m=rec.meta;try{
+      if(await window.recIsDeleted(m))return;   // 지운 녹음 (2026-11-15)
       const file=await rec.fh.getFile();const u=firebase.auth().currentUser;if(!u)return;const tok=await u.getIdToken();
       const r=await fetch('/api/dongseon/stt',{method:'POST',headers:{authorization:'Bearer '+tok,'x-provider':pv,'content-type':'audio/webm'},body:file});
       const j=await r.json().catch(()=>({}));if(!r.ok){toast(STT_LABEL[pv]+' 받아쓰기 실패: '+(j.error||r.status),6000);return;}
@@ -16140,6 +16186,7 @@ boot();
       const txt=x.file.replace(/\.webm$/i,'.txt');let text=null;
       try{const fh=await DIR.getFileHandle(txt);text=await (await fh.getFile()).text();}catch(e){}
       if(text==null){if(Date.now()-new Date(x.at).getTime()<3*864e5)keep.push(x);continue;}
+      if(await window.recIsDeleted(x))continue;   // 지운 녹음 — 글을 올리지 않고 대기 목록에서도 뺀다 (2026-11-15)
       try{const id=x.file.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
         await cloud.ref.collection('recText').doc(id).set({mrn:x.mrn,pid:x.pid,name:x.pname,room:x.room,startedAt:x.at,date:String(x.at).slice(0,10),file:x.file,
           text:String(text).trim().slice(0,200000),at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
@@ -16166,6 +16213,7 @@ boot();
         const hit=[...new Map(people.filter(q=>q&&normMrn(q.mrn)&&norm(q.name)===nmK&&(!b6||String(q.birth||'').replace(/\D/g,'').slice(2,8)===b6)).map(q=>[normMrn(q.mrn),q])).values()];
         if(hit.length!==1)continue;   // 못 찾거나 동명이인 — 올리지 않는다
         let text='';try{text=await (await h.getFile()).text();}catch(e){continue;}
+        if(await window.recIsDeleted({mrn:normMrn(hit[0].mrn),room:m[4],file:webm,at:''})){upAdd(webm);continue;}   // 지운 녹음 (2026-11-15)
         const at=new Date(m[1]+'T'+m[5]+':'+m[6]+':00').toISOString(),mrn=normMrn(hit[0].mrn);
         const id=webm.replace(/\.webm$/i,'').replace(/[\/#?\[\]*]/g,'_').slice(0,140);
         try{await cloud.ref.collection('recText').doc(id).set({mrn,pid:hit[0].id||'',name:hit[0].name||m[2],room:m[4],startedAt:at,date:m[1],file:webm,
@@ -16176,6 +16224,28 @@ boot();
     catch(e){console.warn('rec backfill',e);}
     BF_BUSY=false;}
   setInterval(recBackfill,300000);setTimeout(recBackfill,20000);
+  /* 지운 녹음을 외장하드에서도 지운다 (2026-11-15) — 녹음 폴더를 가진 화면(진료실 PC)만 recDel(최근 30일)을 듣는다.
+     파일 이름 앞부분('녹음 날짜 이름 생년월일 진료실 시작시각~')이 같은 것 = 녹음(.webm)·받아쓴 글(.txt·.chrome.txt …). 지금 녹음 중인 파일은 끝난 뒤에.
+     폴더 권한이 없으면 다음에 다시. 이 PC 에서 처리한 표시는 localStorage(dsRecDelDone) */
+  const LS_DELDONE='dsRecDelDone';const delDone=()=>{try{return new Set(JSON.parse(localStorage.getItem(LS_DELDONE)||'[]'));}catch(e){return new Set();}};
+  let DEL_UNSUB=null,DEL_LIST=[],DEL_BUSY=false;
+  async function recDelLocal(){if(DEL_BUSY||!DIR||!DEL_LIST.length)return;const done=delDone();const todo=DEL_LIST.filter(x=>x.id&&!done.has(x.id));if(!todo.length)return;
+    if(!(await perm(false)))return;DEL_BUSY=true;
+    try{const names=[];for await(const [nm,h] of DIR.entries()){if(h.kind==='file')names.push(nm);}
+      for(const x of todo){const stems=(x.stems||[]).filter(s=>/^녹음 \d{4}-\d{2}-\d{2} /.test(s)&&s.length>=20);   // 엉뚱한 파일을 지우지 않게 — 녹음 이름 모양일 때만
+        if(REC&&stems.some(s=>REC.name.startsWith(s)))continue;   // 아직 녹음 중
+        let n=0,bad=0;
+        for(const nm of names){if(!stems.some(s=>nm.startsWith(s)))continue;try{await DIR.removeEntry(nm);n++;}catch(e){if(e&&e.name!=='NotFoundError'){bad++;console.warn('rec del local',nm,e);}}}
+        if(bad)continue;   // 다음에 다시
+        pendSet(pendGet().filter(p=>!stems.some(s=>String(p.file||'').startsWith(s))));
+        done.add(x.id);try{localStorage.setItem(LS_DELDONE,JSON.stringify([...done].slice(-500)));}catch(e){}
+        if(n)try{audit('진료 녹음 삭제(외장하드)',(x.name||'')+(x.mrn?' ('+x.mrn+')':'')+' · 파일 '+n+'개');}catch(e){}}}
+    catch(e){console.warn('rec del local',e);}
+    DEL_BUSY=false;}
+  function recDelSub(){if(DEL_UNSUB||!DIR||!(typeof cloud!=='undefined'&&cloud.active&&cloud.ref)||!currentUser)return;
+    DEL_UNSUB=cloud.ref.collection('recDel').where('at','>=',new Date(Date.now()-30*864e5).toISOString()).onSnapshot(s=>{DEL_LIST=s.docs.map(d=>Object.assign({id:d.id},d.data()||{}));recDelLocal();},
+      e=>{console.warn('recDel sub',e);DEL_UNSUB=null;});}
+  setInterval(()=>{try{recDelSub();recDelLocal();}catch(e){}},60000);setTimeout(()=>{try{recDelSub();}catch(e){}},15000);
   window.addEventListener('beforeunload',e=>{if(REC){e.preventDefault();e.returnValue='녹음 중입니다';}});
   /* 설정 창 */
   window.recListMics=async ask=>{const sel=document.getElementById('recMicSel');if(!sel)return;
