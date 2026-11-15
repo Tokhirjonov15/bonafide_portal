@@ -1,0 +1,750 @@
+﻿# ─────────────────────────────────────────────────────────────
+#  비트플러스 접수 감시 스크립트 v3 (반듯한정형외과 동선관리 연동)
+#
+#  세 채널을 합친다 (①②는 접수 PC, ③은 진료실 PC — 같은 스크립트가 열린 창을 보고 스스로 판단한다):
+#   ① BITCast (TCP 9000) — 비트 환경설정 › 기타사항 › 전광판IP 세팅에 이 PC IP를 등록하면
+#      모든 접수 PC의 비트가 접수/취소/호출 이벤트를 이 PC로 보낸다.
+#      메시지: "Command|이름|진료실|분(0시 기준)|메모|담당의|이전방|접수번호|"
+#      Command: 2=접수  3=접수취소  1/0=응급·예약접수  -1=환자호출  7=수납대기  8=수납완료  13=보류 … ($CMD_NAMES, cLBITCastInfo.Enum_Command)
+#      ※ 접수 수정·보류는 '접수취소 → 접수' 쌍으로 온다 → 동선관리가 6초 유예 후 여전히 취소일 때만 카드를 지운다.
+#      ※ 차트번호는 메시지에 없다 → ②의 인적정보 캐시로 채운다.
+#   ② 접수 창 인적정보 패널(UIAutomation, 2초) — 조회된 환자의 차트번호·주민번호7·보험·메모 등을 캐시.
+#      비트에는 아무것도 입력·클릭하지 않는다. 주민번호 뒷자리·전화·주소는 읽지 않는다.
+#   ③ 외래진료실 창(BITDoctorOrder, Win32, 2초) — 진료실 PC에서 의사가 '증상' 칸 맨 아래에 적는 약·주사 목록과 '특이사항' 칸을 읽는다.
+#      맨 아래에서 위로 올라가며 처음 만나는 'med' 로 시작하는 줄($RX_HEAD)부터 끝까지를 원문 그대로 보낸다. 해석(아래에 neuropathic pain 이 있어야 처방,
+#      med 줄의 g/gp/@/(prone) 표시)은 동선관리가 한다 → 원내 표기 규칙이 바뀌어도 PC 재설치 없이 웹만 고치면 된다. 전체 진료 기록은 보내지 않는다. 특이사항은 동선관리가 환자 명단의 특이사항(영구)에 덧붙인다 — 진료 뒤에 적혀도 다음 내원 때 보임.
+#      2번 연속 같은 값일 때만 전송, 바뀌면 다시 전송.
+#
+#  Firestore:  bitIntake/{날짜}_ocm{접수번호}  ← 접수 이벤트(등록/취소).  같은 문서에 여러 PC가 merge 로 쓴다.
+#              bitNote/{날짜}_{차트번호}       ← 진료실 처방 목록(슬립용). 동선관리 '슬립 화면'이 차트번호로 카드와 연결한다.
+#              bitLookup/{날짜}_{차트번호}     ← 접수 창에서 조회된 인적정보(어느 PC든). 동선관리가 차트번호 없는 캐스트 카드를 이름으로 뒤늦게 채운다.
+#              bitStatus/{PC}                 ← 하트비트 (bitOpen=접수 창, doctorOpen=외래진료실 창)
+#  동선관리는 registered=true 문서를 확인 없이 3층 대기실 카드로 만든다.
+#
+#  설치: 1) C:\bitplus\bitplus_watcher.ps1 로 복사  2) 같은 폴더 bitplus_watcher.secret 첫 줄에 bitbot 비밀번호
+#        3) powershell -ExecutionPolicy Bypass -File C:\bitplus\bitplus_watcher.ps1 -Pc 접수1
+#        4) 비트 환경설정 › 기타사항 › 전광판IP 세팅에 이 PC IP 등록 (구분: 접수BitCast)
+# ─────────────────────────────────────────────────────────────
+param(
+  [string]$Pc = $env:COMPUTERNAME,   # 동선관리에 표시될 이 PC 이름 (예: 접수1)
+  [int]$CastPort = 9000,             # BITCast PORT_NUM (BITCast.dll 고정값)
+  [switch]$NoNote,                   # v3.7 (2026-10-27): 처방을 내지 않는 PC(진료실4 — 간호 선생님들이 비트 열람용으로 씀)는 외래진료실 처방 칸을 보내지 않는다(슬립 섞임·열람만 슬립·덮어쓰기 방지)
+  [switch]$NoteGlp,                  # v3.7 (2026-10-27): 진료실4 는 마운자로·위고비 처방만 낸다 — 처방(med 아래)에 그 이름이 있을 때만 보낸다
+  [int]$PollSec = 2,                 # 인적정보 화면 읽기 주기(초)
+  [int]$HeartbeatSec = 300           # 하트비트 주기(초) — 2026-09-14 읽기 한도 사고 뒤 60→300: 하트비트 1건은 듣고 있는 화면 수만큼 읽기로 계산된다(6대×1,440×10화면=86,000/일). 동선관리 BIT_STALE_SEC=750 과 짝
+)
+$ErrorActionPreference = 'Continue'
+# v3.8 한 번만 실행 (2026-11-02) — 자동 시작 작업 말고 다른 길(남은 시작 프로그램 .vbs·직접 실행)로 하나 더 떠도 바로 끝난다.
+#  설치가 옛 프로세스를 강제로 끄면 잠금은 '버려진' 상태가 되는데, 그때는 새 프로세스가 잠금을 넘겨받는다(AbandonedMutexException)
+$script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideBitPlusWatcher')
+$own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
+if (-not $own) { exit }
+# ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
+$ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
+$ProjectId = 'bonafide-dongseon-108e2'
+$BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'bitbot'의 내부 이메일
+$SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret'
+if (-not (Test-Path $SecretFile)) { Write-Host "비밀번호 파일이 없습니다: $SecretFile  (첫 줄에 bitbot 비밀번호)"; exit 1 }
+$BotPassword = (Get-Content $SecretFile -Encoding UTF8 -TotalCount 1).Trim()
+$LogDir = Join-Path $env:LOCALAPPDATA 'bitplus_watcher'; New-Item -ItemType Directory -Force $LogDir | Out-Null
+$LogFile = Join-Path $LogDir 'watcher.log'
+$script:StartedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'); $script:LastErr = ''; $script:LastErrAt = ''; $script:CycMax = 0   # 하트비트에 실어 보내는 자가 진단 (원격에서 로그 없이 상태 파악)
+function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write-Host $line; try { Add-Content $LogFile $line -Encoding UTF8 } catch {}
+  if ($m -match '오류|실패|못 찾음') { $script:LastErr = $m; $script:LastErrAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') } }
+function LogTail($n = 5) { try { return ((Get-Content $LogFile -Tail $n -Encoding UTF8 -ErrorAction Stop) -join "`n") } catch { return '' } }
+function TrimLog() { try { if ((Get-Item $LogFile -ErrorAction SilentlyContinue).Length -gt 2MB) { Get-Content $LogFile -Tail 2000 | Set-Content $LogFile -Encoding UTF8 } } catch {} }
+
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+# Win32 창 열거/텍스트 읽기 (원외처방 창용). 비트는 원외처방 창을 닫아도 화면 밖(-32000,-32000)에 세워 두는데, 그 상태에서는 UIAutomation 이
+# 자식 요소를 주지 않으므로 EnumChildWindows + WM_GETTEXT 로 읽는다 (읽기 전용 — 아무것도 보내거나 바꾸지 않음)
+Add-Type -Namespace BitW -Name U32 -UsingNamespace System.Collections.Generic, System.Text -MemberDefinition @'
+public delegate bool EnumProc(IntPtr h, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr l);
+[DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc cb, IntPtr l);
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+// WM_GETTEXT 를 SendMessageTimeout 으로 보낸다: 비트 창의 UI 스레드가 멈춰 있어도(모달 대화상자 등) 감시 스크립트가 함께 멈추지 않도록 500ms 안에 응답 없으면 포기(SMTO_ABORTIFHUNG)
+[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, StringBuilder s, uint flags, uint timeout, out IntPtr res);
+[DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint flags, uint timeout, out IntPtr res);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
+public static List<IntPtr> Tops() { var l = new List<IntPtr>(); EnumWindows((h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
+public static List<IntPtr> Children(IntPtr p) { var l = new List<IntPtr>(); EnumChildWindows(p, (h, x) => { l.Add(h); return true; }, IntPtr.Zero); return l; }
+public static string Text(IntPtr h) {
+  IntPtr res;
+  if (SendMessageTimeout(h, 0x000E, IntPtr.Zero, IntPtr.Zero, 0x0002, 500, out res) == IntPtr.Zero) return "";  // WM_GETTEXTLENGTH
+  int n = (int)res; if (n <= 0) return "";
+  var sb = new StringBuilder(n + 2);
+  if (SendMessageTimeout(h, 0x000D, (IntPtr)(n + 1), sb, 0x0002, 500, out res) == IntPtr.Zero) return "";  // WM_GETTEXT
+  return sb.ToString();
+}
+public static string Cls(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
+public static int Pid(IntPtr h) { uint p; GetWindowThreadProcessId(h, out p); return (int)p; }
+'@
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$Cp949 = [System.Text.Encoding]::GetEncoding(949)
+
+# ── Firebase 로그인 / Firestore REST ──
+$script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null
+# 세션 유지: 로그인에 성공하면 refresh 토큰을 옆 파일에 저장해 두고, 재시작 때는 비밀번호 로그인 대신 토큰 갱신으로 이어간다.
+# (비밀번호 로그인은 실패가 잦으면 병원 IP 전체가 차단되지만, 토큰 갱신은 그 차단과 무관) → 재시작·재설치가 차단 상태에서도 바로 살아난다
+$TokenFile = Join-Path $PSScriptRoot 'bitplus_watcher.token'
+function SaveRefresh($rt) { try { if ($rt) { [IO.File]::WriteAllText($TokenFile, $rt, (New-Object Text.UTF8Encoding $false)); icacls $TokenFile /inheritance:r /grant:r "$($env:USERNAME):M" | Out-Null } } catch {} }
+if (Test-Path $TokenFile) { try { $script:Refresh = (Get-Content $TokenFile -TotalCount 1 -ErrorAction Stop).Trim() } catch { $script:Refresh = $null } }
+$script:LoginFailAt = [DateTime]::MinValue; $script:LoginBackoff = 60
+function FbLogin() {
+  # 실패 뒤에는 바로 재시도하지 않는다 — Firebase 는 실패가 잦으면 그 공인 IP(병원 전체)의 로그인을 잠시 차단하고, 차단 중 시도는 차단을 연장한다.
+  # 차단(TOO_MANY_ATTEMPTS) → 10분, 비밀번호 오류 → 5분(사람이 고쳐야 함), 그 외(네트워크 등) → 60초
+  if (((Get-Date) - $script:LoginFailAt).TotalSeconds -lt $script:LoginBackoff) { throw "Firebase 로그인 대기 중(최근 실패, $([int]($script:LoginBackoff - ((Get-Date) - $script:LoginFailAt).TotalSeconds))초 후 재시도)" }
+  $body = @{ email = $BotEmail; password = $BotPassword; returnSecureToken = $true } | ConvertTo-Json -Compress
+  try {
+    $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  } catch {
+    $script:LoginFailAt = Get-Date
+    $code = ''; try { $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $code = ((($sr.ReadToEnd() | ConvertFrom-Json).error.message) -split ' ')[0] } catch {}
+    $script:LoginBackoff = 60
+    $hint = switch -Wildcard ($code) {
+      'INVALID_LOGIN_CREDENTIALS' { $script:LoginBackoff = 300; "bitbot 비밀번호가 틀림 → 설치 스크립트를 -ResetPw 로 다시 실행해 비밀번호 재입력 (5분마다 재시도)" }
+      'INVALID_PASSWORD'          { $script:LoginBackoff = 300; "bitbot 비밀번호가 틀림 → 설치 스크립트를 -ResetPw 로 다시 실행해 비밀번호 재입력 (5분마다 재시도)" }
+      'TOO_MANY_ATTEMPTS*'        { $script:LoginBackoff = 600; "실패가 잦아 Firebase 가 이 병원 IP를 잠시 차단함(비밀번호 문제 아닐 수 있음) → 10분 뒤 자동 재시도, 아무것도 안 해도 됨" }
+      'EMAIL_NOT_FOUND'           { $script:LoginBackoff = 600; "bitbot 계정이 없음 → 동선관리 계정 관리에서 bitbot 생성" }
+      default                     { "" }
+    }
+    throw "Firebase 로그인 실패 [$code] $hint"
+  }
+  $script:Tok = $r.idToken; $script:Refresh = $r.refreshToken; $script:TokExp = (Get-Date).AddSeconds([int]$r.expiresIn - 300)
+  SaveRefresh $script:Refresh
+  Log "Firebase 로그인 성공"
+}
+function FbToken() {
+  if ($script:Tok -and (Get-Date) -lt $script:TokExp) { return $script:Tok }
+  if ($script:Refresh) {
+    try {
+      $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://securetoken.googleapis.com/v1/token?key=$ApiKey" -ContentType 'application/x-www-form-urlencoded' -Body "grant_type=refresh_token&refresh_token=$($script:Refresh)"
+      $script:Tok = $r.id_token; $script:Refresh = $r.refresh_token; $script:TokExp = (Get-Date).AddSeconds([int]$r.expires_in - 300)
+      SaveRefresh $script:Refresh
+      return $script:Tok
+    } catch { Log "토큰 갱신 실패 → 비밀번호로 재로그인: $($_.Exception.Message)"; $script:Refresh = $null; try { Remove-Item $TokenFile -Force -ErrorAction SilentlyContinue } catch {} }
+  }
+  FbLogin; return $script:Tok
+}
+$DocBase = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents"
+function FsFields($h) {   # 해시테이블 → Firestore 필드 표현 (문자열/불리언/정수)
+  $f = @{}
+  foreach ($k in $h.Keys) { $v = $h[$k]
+    if ($v -is [bool]) { $f[$k] = @{ booleanValue = $v } }
+    elseif ($v -is [int] -or $v -is [long]) { $f[$k] = @{ integerValue = [string]$v } }
+    else { $f[$k] = @{ stringValue = [string]$v } } }
+  return $f
+}
+function FsExists($path) {
+  try { $null = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "$DocBase/$path" -Headers @{ Authorization = "Bearer $(FbToken)" }; return $true }
+  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $false }; throw }
+}
+function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는 문서는 생성
+  $mask = ($fields.Keys | ForEach-Object { 'updateMask.fieldPaths=' + [Uri]::EscapeDataString($_) }) -join '&'
+  $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 6 -Compress
+  $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+function FsPatchNested($path, $key, $fields) {   # 문서의 맵 필드 하나만 갱신(merge) — bitStatus/_all 의 'PC이름' 필드. 필드 경로는 백틱으로 감싼다(한글·하이픈 허용)
+  $mask = 'updateMask.fieldPaths=' + [Uri]::EscapeDataString('`' + $key + '`')
+  $body = @{ fields = @{ $key = @{ mapValue = @{ fields = (FsFields $fields) } } } } | ConvertTo-Json -Depth 8 -Compress
+  $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
+function Today { return (Get-Date).ToString('yyyy-MM-dd') }
+function FsFindDocByMrn($mrn) {   # 오늘 접수 문서 중 차트번호가 같은 것의 id (다른 PC에서 접수돼 이 PC가 문서 id 를 모를 때)
+  $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'bitIntake' }); limit = 5
+          where = @{ compositeFilter = @{ op = 'AND'; filters = @(
+            @{ fieldFilter = @{ field = @{ fieldPath = 'date' }; op = 'EQUAL'; value = @{ stringValue = (Today) } } },
+            @{ fieldFilter = @{ field = @{ fieldPath = 'mrn' }; op = 'EQUAL'; value = @{ stringValue = [string]$mrn } } }) } } } } | ConvertTo-Json -Depth 12 -Compress
+  $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "$DocBase`:runQuery" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+  $ids = @($r | Where-Object { $_.document } | ForEach-Object { ($_.document.name -split '/')[-1] })
+  if ($ids.Count) { return ($ids | Sort-Object | Select-Object -Last 1) }   # 같은 환자가 오늘 두 번 접수됐으면 접수번호가 큰 쪽
+  return $null
+}
+
+# ── ① 비트플러스 접수 창 인적정보 읽기 (UIAutomation) ──
+function FindBitWindow() {   # '접수' 제목의 최상위 창 핸들 (원외처방 등 다른 창이 앞에 와도 접수 창을 고른다)
+  $proc = Get-Process -Name BITRegistrations -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $proc) { return $null }
+  $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ProcessIdProperty), $proc.Id
+  $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $cond)
+  foreach ($w in $wins) { if ((([string]$w.Current.Name) -replace '\s', '') -eq '접수') { return @{ proc = $proc; el = $w } } }
+  if ($proc.MainWindowHandle -ne 0) { return @{ proc = $proc; el = [System.Windows.Automation.AutomationElement]::FromHandle($proc.MainWindowHandle) } }
+  return $null
+}
+function FindRxWindow($procId) {   # 원외처방 창 HWND — 한 번 열리면 닫아도 화면 밖에 남아 있으므로(마지막에 연 환자) 계속 읽힌다
+  foreach ($h in [BitW.U32]::Tops()) { if ([BitW.U32]::Pid($h) -ne $procId) { continue }
+    $t = ([BitW.U32]::Text($h)) -replace '\s', ''; if ($t -like '원외처방*') { return $h } }
+  return $null
+}
+# v3.9 (2026-11-15) 수납 창 — 제목 '[챠트번호 : 33862] [환자이름 : …]' 인 비트 접수 프로그램 창. 라벨(STATIC) 바로 오른쪽 같은 줄의 칸(EDIT) 값을 읽는다(읽기 전용).
+#  계산 전 '얼마예요' 금액은 비트 DB 에 없고(수납 저장 때 들어감) 이 창에만 있다 → 동의서 창의 본인부담액을 이 창과 똑같이 (bitLookup/{날짜}_{차트번호} 의 pay* 칸)
+function PayNum($s) { $d = ([string]$s) -replace '[^\d\-]', ''; if ($d -match '^-?\d+$') { return [int64]$d }; return $null }
+function ReadPayWin($procId) {
+  foreach ($h in [BitW.U32]::Tops()) {
+    if ([BitW.U32]::Pid($h) -ne $procId -or -not [BitW.U32]::IsWindowVisible($h)) { continue }
+    $t = [BitW.U32]::Text($h); if ($t -notmatch '[챠차]트번호\s*:\s*(\d+)') { continue }
+    $mrn = $Matches[1]; $labs = New-Object System.Collections.ArrayList; $eds = New-Object System.Collections.ArrayList
+    foreach ($k in [BitW.U32]::Children($h)) {
+      $c = [BitW.U32]::Cls($k); $isL = $c -match '\.STATIC\.'; $isE = $c -match '\.EDIT\.'; if (-not ($isL -or $isE)) { continue }
+      $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($k, [ref]$r)
+      $o = @{ tx = [BitW.U32]::Text($k); L = $r.L; Y = $r.T; R = $r.R; W = $r.R - $r.L }
+      if ($isL) { [void]$labs.Add($o) } else { [void]$eds.Add($o) } }
+    $f = @{}
+    foreach ($l in $labs) { $n = ([string]$l.tx) -replace '\s', ''; if (-not $n) { continue }; $best = $null
+      foreach ($e in $eds) { $gap = $e.L - $l.R
+        if ([Math]::Abs($e.Y - $l.Y) -le 4 -and $e.L -gt ($l.L + 10) -and $gap -ge -10 -and $gap -le 40) { if (-not $best -or $e.L -lt $best.L) { $best = $e } } }
+      if ($best) { if (-not $f.ContainsKey($n)) { $f[$n] = New-Object System.Collections.ArrayList }; [void]$f[$n].Add($best) } }
+    if (-not $f.ContainsKey('총본인부담')) { continue }   # 수납 창이 아님
+    $one = { param($k) if ($f.ContainsKey($k)) { return (PayNum $f[$k][0].tx) }; return $null }
+    $wide = { param($k) if (-not $f.ContainsKey($k)) { return $null }; $b = $f[$k] | Sort-Object { $_.W } -Descending | Select-Object -First 1; return (PayNum $b.tx) }   # 같은 이름 칸이 여럿(수납내역·할인설정 옆·아래 총액 칸) → 가장 넓은 칸 = 할인설정 옆 받을 금액
+    $own = & $one '총본인부담'; if ($null -eq $own) { continue }
+    $cash = & $wide '현금'; $card = & $wide '카드'; $acct = & $wide '계좌'
+    return @{ mrn = $mrn; payOwn = $own; payPrev = (& $one '기수납액'); payG = (& $one '급여본인부담'); payNon = (& $one '비급여총액'); payFull = (& $one '전액본인부담'); payTotal = (& $one '총진료비')
+              payCash = $cash; payCard = $card; payAcct = $acct; payNow = ([int64]$cash + [int64]$card + [int64]$acct) }
+  }
+  return $null
+}
+# v3.9 자동 업데이트 (2026-11-15) — PC 를 돌며 USB 로 다시 설치하지 않게. 30분마다 동선관리 사이트의 watcher.json(ver·sha256)을 보고,
+#  버전이 다르면 새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 버전 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고 같은 인수로 다시 시작한다.
+#  비밀번호(.secret)·토큰은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만)
+$MyVer = 'v3.9'
+$UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit'
+$script:UpdAt = (Get-Date).AddMinutes(-28)   # 시작 2분 뒤 첫 확인
+function SelfUpdate() {
+  if (((Get-Date) - $script:UpdAt).TotalMinutes -lt 30) { return }; $script:UpdAt = Get-Date
+  $j = Invoke-RestMethod -TimeoutSec 20 -Uri "$UpdBase/watcher.json?t=$([DateTime]::Now.Ticks)"
+  if (-not $j.ver -or -not $j.sha256 -or $j.ver -eq $MyVer) { return }
+  $tmp = Join-Path $PSScriptRoot 'bitplus_watcher.new'
+  Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$UpdBase/bitplus_watcher.ps1?v=$($j.ver)" -OutFile $tmp
+  $hash = (Get-FileHash $tmp -Algorithm SHA256).Hash
+  if ($hash -ne ([string]$j.sha256).ToUpper()) { Log "자동 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
+  if ($pe.Count -or $txt -notmatch ("\`$MyVer = '" + [regex]::Escape([string]$j.ver) + "'")) { Log "자동 업데이트 건너뜀: 받은 파일이 올바르지 않음 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $me = $PSCommandPath; Copy-Item $me "$me.bak" -Force -ErrorAction SilentlyContinue; Move-Item $tmp $me -Force
+  Log "자동 업데이트: $MyVer → $($j.ver) — 다시 시작합니다"
+  $cl = [string](Get-CimInstance Win32_Process -Filter "ProcessId=$PID").CommandLine
+  $m = [regex]::Match($cl, '^\s*("[^"]+"|\S+)\s*(.*)$')
+  try { $script:Mtx.ReleaseMutex() } catch {}
+  if ($m.Success) { Start-Process -FilePath ($m.Groups[1].Value.Trim('"')) -ArgumentList $m.Groups[2].Value -WindowStyle Hidden }   # 실패해도 작업 스케줄러가 5분 안에 다시 띄운다
+  exit 0
+}
+$script:PayLast = ''; $script:PaySent = @{}
+function PayWinTick($procId) {
+  $p = ReadPayWin $procId; if (-not $p) { $script:PayLast = ''; return }
+  $h = (($p.Keys | Sort-Object | ForEach-Object { "$_=$($p[$_])" }) -join '|')
+  if ($h -ne $script:PayLast) { $script:PayLast = $h; return }   # 두 번 연속 같은 값(계산·입력 중 아님)일 때만
+  if ($script:PaySent[$p.mrn] -eq $h) { return }
+  $fs = @{ date = (Today); payAt = (NowIso); payPc = $Pc }
+  foreach ($k in $p.Keys) { if ($k -ne 'mrn' -and $null -ne $p[$k]) { $fs[$k] = [string]$p[$k] } }
+  FsPatch "bitLookup/$(Today)_$($p.mrn)" $fs; $script:PaySent[$p.mrn] = $h
+  Log "수납 창: 차트번호 $($p.mrn) 총 본인부담 $($p.payOwn) · 받을 금액 $($p.payNow) → bitLookup"
+}
+function ReadRx($hwnd) {   # 차트번호 칸(라벨 오른쪽) + 특이사항 칸(라벨 아래 RichEdit) — Win32 좌표/텍스트
+  $els = @()
+  foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch 'STATIC|EDIT|RichEdit|RICHEDIT') { continue }
+    $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
+    $els += [pscustomobject]@{ x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
+  }
+  $lblMrn = $els | Where-Object { $_.cls -match 'STATIC' -and (($_.name -replace '\s', '') -eq '차트번호') } | Select-Object -First 1
+  $lblMemo = $els | Where-Object { $_.cls -match 'STATIC' -and (($_.name -replace '\s', '') -eq '특이사항') } | Select-Object -First 1
+  if (-not $lblMrn -or -not $lblMemo) { return $null }
+  $edits = $els | Where-Object { $_.cls -match 'EDIT|RichEdit|RICHEDIT' }
+  $mrnEl = $edits | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 80) } | Sort-Object x | Select-Object -First 1
+  $memoEl = $edits | Where-Object { $_.y -ge ($lblMemo.y + $lblMemo.h - 6) -and $_.y -le ($lblMemo.y + $lblMemo.h + 60) -and $_.x -le ($lblMemo.x + 40) -and ($_.x + $_.w) -ge $lblMemo.x } | Sort-Object y | Select-Object -First 1
+  $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
+  $memo = if ($memoEl) { $memoEl.name.Trim() } else { '' }
+  return @{ mrn = $mrn; memoRx = $memo; found = ($null -ne $memoEl) }
+}
+# ── ③ 외래진료실 창(진료실 PC) — 증상 칸 맨 아래의 약·주사 목록 ──
+$RX_HEAD = '^\s*med\b'   # 처방 블록 머리글(줄 시작, 대소문자 무시). 이 줄부터 끝까지 원문을 보내고 해석은 동선관리가 한다
+$RX_MAX_LINES = 300        # 안전 상한 — 사실상 전부 보냄 (2026-09-28: 20줄에서 긴 처방의 꼬리가 잘렸다. 문서 크기 여유 충분)
+function FindDoctorWindow() {   # '외래진료실 …' 제목의 최상위 창 (BITDoctorOrder.exe). 없으면 $null (접수 PC에서는 보통 없음)
+  $proc = Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $proc) { return $null }
+  foreach ($h in [BitW.U32]::Tops()) { if ([BitW.U32]::Pid($h) -ne $proc.Id) { continue }
+    if ((([BitW.U32]::Text($h)) -replace '\s', '') -like '외래진료실*') { return $h } }
+  return $null
+}
+function InsText($t) {   # 보험유형 칸 글자 → 보험 이름(공백 제거). 보험 이름이 아니면 ''
+  $s = ([string]$t -replace '\s', ''); if ($s.Length -gt 20) { return '' }
+  if ($s -match '^(일반|국민|건강|건보|자보|자동차|공상|산재|보호|의료급여|행여|보훈)') { return $s }; return '' }
+function Rrn7($t) { $m = [regex]::Match([string]$t, '^\s*(\d{6})-?(\d)'); if ($m.Success) { return $m.Groups[1].Value + '-' + $m.Groups[2].Value } else { return '' } }
+function SexOf($t) { if ([string]$t -match '^\s*\(M/') { return '남' } elseif ([string]$t -match '^\s*\(F/') { return '여' } else { return '' } }
+$script:DocCache = $null   # 외래진료실 컨트롤 핸들 캐시: @{ hwnd; mrn; name; note; memo } — 한 번 찾은 뒤에는 4개 칸만 읽는다 (수백 개 컨트롤을 매번 읽으면 비트가 바쁠 때 주기가 10초 넘게 늘어남)
+function ReadDoctor($hwnd) {   # 차트번호(라벨 오른쪽 EDIT) · 수진자명(라벨 오른쪽 라벨) · 증상(가장 위쪽의 넓은 RichEdit) · 특이사항(증상 오른쪽 RichEdit) — 읽기 전용
+  $c = $script:DocCache
+  $okH = { param($h) ($null -eq $h) -or [BitW.U32]::IsWindow($h) }   # 없는 칸($null)은 통과, 있던 칸은 아직 살아 있어야
+  if ($c -and $c.hwnd -eq [IntPtr]$hwnd -and [BitW.U32]::IsWindow($c.mrn) -and [BitW.U32]::IsWindow($c.note) -and (& $okH $c.memo) -and (& $okH $c.name) -and (& $okH $c.rrn) -and (& $okH $c.sex) -and (& $okH $c.ins)) {
+    # 빈 창(환자 없음)일 때 만든 캐시라 이름·성별·주민·특이사항 칸을 못 찾았으면, 환자가 올라온 뒤 몇 번 더 찾아본다(그래도 없으면 이 창 구성에는 그 칸이 없는 것)
+    $missing = ($null -eq $c.name) -or ($null -eq $c.rrn) -or ($null -eq $c.sex) -or ($null -eq $c.memo)
+    $hasPt = ((([BitW.U32]::Text($c.mrn)) -replace '\D', '') -ne '')
+    if ($missing -and $script:DocRetry -lt 5 -and $hasPt) { $script:DocRetry++; $script:DocCache = $null }
+    elseif ($null -eq $c.ins -and $script:InsRetry -lt 3 -and $hasPt) { $script:InsRetry++; $script:DocCache = $null }   # 보험유형 칸(v3.7)은 따로 3번까지
+    else { return @{ mrn = (([BitW.U32]::Text($c.mrn)) -replace '\D', ''); ins = $(if ($null -ne $c.ins) { InsText ([BitW.U32]::Text($c.ins)) } else { '' }); name = $(if ($null -ne $c.name) { ([BitW.U32]::Text($c.name)).Trim() } else { '' })
+              note = [BitW.U32]::Text($c.note); memo = $(if ($null -ne $c.memo) { [BitW.U32]::Text($c.memo) } else { '' })
+              rrn7 = (Rrn7 $(if ($null -ne $c.rrn) { [BitW.U32]::Text($c.rrn) } else { '' })); sex = (SexOf $(if ($null -ne $c.sex) { [BitW.U32]::Text($c.sex) } else { '' })); found = $true } }
+  }
+  $script:DocCache = $null
+  $els = @()
+  foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
+    # WinForms 클래스명은 'WindowsForms10.<종류>.app…' 꼴 → 종류만 본다 (라벨=Window/STATIC, 차트번호=EDIT, 증상=RichEdit20W). 숨은 탭·패널의 컨트롤은 제외
+    $cls = [BitW.U32]::Cls($h); if ($cls -notmatch '\.(Window|STATIC|EDIT|COMBOBOX|RichEdit\w*|RICHEDIT\w*)\.') { continue }   # COMBOBOX: 보험유형 (v3.7)
+    if (-not [BitW.U32]::IsWindowVisible($h)) { continue }
+    $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($h, [ref]$r)
+    if (($r.R - $r.L) -le 0) { continue }
+    $els += [pscustomobject]@{ hw = $h; x = $r.L; y = $r.T; w = ($r.R - $r.L); h = ($r.B - $r.T); cls = $cls; name = [BitW.U32]::Text($h) }
+  }
+  $lblMrn = $els | Where-Object { (($_.name -replace '\s', '') -eq '차트번호') -and $_.w -lt 120 } | Select-Object -First 1
+  $lblName = $els | Where-Object { (($_.name -replace '\s', '') -eq '수진자명') -and $_.w -lt 120 } | Select-Object -First 1
+  if (-not $lblMrn) { return $null }
+  $mrnEl = $els | Where-Object { $_.cls -match 'EDIT' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.x -ge ($lblMrn.x + $lblMrn.w - 8) -and $_.x -le ($lblMrn.x + $lblMrn.w + 60) } | Sort-Object x | Select-Object -First 1
+  # 차트번호 줄의 라벨은 '수진자명' 오른쪽으로 이름(80px) → 성별/나이 '(M/26세…' (120px) → 주민번호 '######-#######' (115px) → '보험유형' 순으로 빈틈없이 붙어 있다.
+  # 환자를 아직 안 불렀을 때는 텍스트가 비어 있으므로 텍스트가 아니라 자리(앞 라벨의 오른쪽 끝에 붙은 라벨)로 찾는다. 주민번호는 앞 7자리(YYMMDD-S)만 쓴다(카드가 없어도 슬립에 생년월일을 찍기 위함)
+  $rowLbl = @($els | Where-Object { $_.cls -match '\.(Window|STATIC)\.' -and [Math]::Abs($_.y - $lblMrn.y) -le 10 } | Sort-Object x)
+  $nextOf = { param($e) $rowLbl | Where-Object { $_.hw -ne $e.hw -and [Math]::Abs($_.x - ($e.x + $e.w)) -le 8 } | Sort-Object x | Select-Object -First 1 }
+  $nameEl = $null; $sexEl = $null; $rrnEl = $null
+  if ($lblName) {
+    $nameEl = & $nextOf $lblName
+    if ($nameEl) { $sexEl = & $nextOf $nameEl }
+    if ($sexEl) { $rrnEl = & $nextOf $sexEl }
+    # 텍스트가 있는데 모양이 다르면(창 구성이 다른 경우) 자리로 찾은 것을 버리고 텍스트로 다시 찾는다
+    if ($nameEl -and (($nameEl.name -replace '\s', '') -in @('보험유형','특이사항','조합기호','증번호'))) { $nameEl = $null; $sexEl = $null; $rrnEl = $null }
+    if ($sexEl -and $sexEl.name.Trim() -and $sexEl.name -notmatch '^\s*\((M|F)/') { $sexEl = $null }
+    if ($rrnEl -and $rrnEl.name.Trim() -and $rrnEl.name -notmatch '^\s*\d{6}-') { $rrnEl = $null }
+  }
+  if (-not $nameEl -and $lblName) { $nameEl = $els | Where-Object { $_.hw -ne $lblName.hw -and [Math]::Abs($_.y - $lblName.y) -le 10 -and $_.x -ge ($lblName.x + $lblName.w - 8) -and $_.x -le ($lblName.x + $lblName.w + 60) -and $_.name.Trim() } | Sort-Object x | Select-Object -First 1 }
+  if (-not $rrnEl) { $rrnEl = $els | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.name -match '^\s*\d{6}-\d' } | Select-Object -First 1 }
+  if (-not $sexEl) { $sexEl = $els | Where-Object { [Math]::Abs($_.y - $lblMrn.y) -le 10 -and $_.name -match '^\s*\((M|F)/' } | Select-Object -First 1 }
+  # 증상 칸: 차트번호 줄보다 아래에 있는 RichEdit 중 화면에서 가장 위(y 최소)이면서 폭 200 이상인 것 (주호소/현병력 소형 칸·특이사항·과거내역 칸 제외)
+  $noteEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_.w -ge 200 -and $_.h -ge 60 -and $_.y -gt $lblMrn.y } | Sort-Object y, @{ Expression = { -($_.w * $_.h) } } | Select-Object -First 1
+  # 특이사항 칸: 증상 칸 오른쪽(증상 오른 끝 근처부터 시작)에서 증상 칸 세로 범위 안에 있는 RichEdit (환자에게 따라다니는 메모 — 진료 뒤에 적힘)
+  $memoEl = $null
+  if ($noteEl) { $memoEl = $els | Where-Object { $_.cls -match 'RichEdit|RICHEDIT' -and $_ -ne $noteEl -and $_.w -ge 150 -and $_.h -ge 60 -and $_.x -ge ($noteEl.x + $noteEl.w - 20) -and $_.y -ge $noteEl.y -and $_.y -le ($noteEl.y + $noteEl.h + 120) } | Sort-Object x, y | Select-Object -First 1 }
+  # 보험유형 (v3.7, 2026-10-26: 일반·건강보험 두 접수의 슬립을 나누려고): 차트번호 줄의 '보험유형' 라벨 오른쪽 칸, 없으면 차트번호 줄 근처에서 보험 이름 글자인 칸
+  $insEl = $null
+  $lblIns = $els | Where-Object { (($_.name -replace '\s', '') -eq '보험유형') -and $_.w -lt 120 -and [Math]::Abs($_.y - $lblMrn.y) -le 40 } | Select-Object -First 1
+  if ($lblIns) { $insEl = $els | Where-Object { $_.hw -ne $lblIns.hw -and [Math]::Abs($_.y - $lblIns.y) -le 10 -and $_.x -ge ($lblIns.x + $lblIns.w - 8) -and $_.x -le ($lblIns.x + $lblIns.w + 40) -and $_.cls -notmatch 'RichEdit|RICHEDIT' } | Sort-Object x | Select-Object -First 1
+    if ($insEl -and $insEl.name.Trim() -and -not (InsText $insEl.name)) { $insEl = $null } }
+  if (-not $insEl) { $insEl = $els | Where-Object { $_.y -ge ($lblMrn.y - 12) -and $_.y -le ($lblMrn.y + 60) -and $_.cls -notmatch 'RichEdit|RICHEDIT' -and $_.name.Trim().Length -le 20 -and (InsText $_.name) } | Sort-Object y, x | Select-Object -First 1 }
+  if ($insEl) { $script:InsRetry = 0 }
+  $mrn = if ($mrnEl) { ($mrnEl.name -replace '\D', '') } else { '' }
+  if ($mrnEl -and $noteEl) {   # 다음 주기부터는 이 핸들들만 읽는다 (비트가 화면을 다시 만들면 IsWindow 가 false → 다시 탐색)
+    $script:DocCache = @{ hwnd = [IntPtr]$hwnd; mrn = $mrnEl.hw; note = $noteEl.hw; name = $(if ($nameEl) { $nameEl.hw } else { $null }); memo = $(if ($memoEl) { $memoEl.hw } else { $null }); rrn = $(if ($rrnEl) { $rrnEl.hw } else { $null }); sex = $(if ($sexEl) { $sexEl.hw } else { $null }); ins = $(if ($insEl) { $insEl.hw } else { $null }) }
+    if ($nameEl -and $rrnEl -and $sexEl -and $memoEl) { $script:DocRetry = 0 }
+  }
+  return @{ mrn = $mrn; ins = $(if ($insEl) { InsText $insEl.name } else { '' }); name = $(if ($nameEl) { $nameEl.name.Trim() } else { '' }); note = $(if ($noteEl) { $noteEl.name } else { '' }); memo = $(if ($memoEl) { $memoEl.name } else { '' }); rrn7 = (Rrn7 $(if ($rrnEl) { $rrnEl.name } else { '' })); sex = (SexOf $(if ($sexEl) { $sexEl.name } else { '' })); found = ($null -ne $noteEl) }
+}
+function CleanMemo($text) {   # 특이사항: 비트가 넣는 빈 표시 줄('+', '-', '.')과 빈 줄을 빼고 나머지 줄만 (없으면 '')
+  $out = @(); foreach ($l in (($text -replace "`r`n", "`n") -split "[`r`n]")) { $t = $l.Trim(); if ($t -and $t -notmatch '^[\s+\-_.·ㆍ,~*]*$') { $out += ($t -replace '\s{2,}', ' ') } }
+  return ($out -join "`n")
+}
+function ExtractChart($text) {   # 증상 칸에서 맨 위 'med' 줄보다 위(차팅). 'med' 줄이 없으면 전체. 빈 줄은 한 줄로 줄임 (2026-10-07: 슬립 [전체보기])
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $stop = $lines.Count; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match $RX_HEAD) { $stop = $i; break } }
+  $out = @(); $blank = $false
+  for ($i = 0; $i -lt $stop; $i++) { $t = $lines[$i].Trim(); if (-not $t) { if ($out.Count -and -not $blank) { $out += ''; $blank = $true }; continue }; $out += $t; $blank = $false }
+  while ($out.Count -and -not $out[$out.Count - 1]) { $out = @($out[0..($out.Count - 2)]) }
+  $txt = ($out -join "`n"); if ($txt.Length -gt 8000) { $txt = $txt.Substring(0, 8000) }
+  return $txt
+}
+function ExtractRx($text) {   # 증상 전체 → 처방 블록(맨 위 'med' 줄부터 끝까지, 빈 줄 제외, 원문 그대로). 'med' 줄이 없으면 처방 없음
+  # 2026-10-06 요청: med 가 위아래 두 번 있으면 아래 것부터만 잡혀 위쪽 처방이 빠졌다 → 맨 위 med 줄부터 긁는다
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
+  if ($end -lt 0) { return @{ lines = @(); marker = $false } }
+  $start = -1; for ($i = 0; $i -le $end; $i++) { if ($lines[$i] -match $RX_HEAD) { $start = $i; break } }
+  if ($start -lt 0) { return @{ lines = @(); marker = $false } }
+  $out = @(); for ($i = $start; $i -le $end; $i++) { if ($lines[$i].Trim()) { $out += ($lines[$i].Trim() -replace '\s{2,}', ' ') } }
+  if ($out.Count -gt $RX_MAX_LINES) { $out = @($out[0..($RX_MAX_LINES - 1)]) }
+  return @{ lines = $out; marker = $true }
+}
+
+$LABELS = @{   # 화면 라벨(공백 제거) → 필드 키
+  '차트번호(F1)(엔터)' = 'mrn'; '수진자명(F1)' = 'name'; '주민번호' = 'rrn'; '전진료실' = 'prevRoomDoc'; '전진료일' = 'prevVisit'
+  '다음예약일' = 'nextResv'; '가입자성명' = 'guardian'; '최초내원일' = 'firstVisit'; '관계' = 'relation'; '보험유형' = 'ins'
+  '초/재진' = 'chojae'; '접수메모(당일)' = 'memoToday'; '접수메모(연속)' = 'memoCont'
+}
+function ReadPanel($rootEl) {
+  $all = $rootEl.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  # 주의: PowerShell 변수명은 대소문자를 구분하지 않으므로 $labels 를 쓰면 $LABELS(해시)가 가려진다 → $found
+  $found = @(); $vals = @()
+  foreach ($el in $all) {
+    $c = $el.Current; $rc = $c.BoundingRectangle
+    if ($rc.IsEmpty -or [double]::IsInfinity($rc.X)) { continue }
+    $cls = [string]$c.ClassName; $nm = [string]$c.Name
+    $o = [pscustomobject]@{ x = [int]$rc.X; y = [int]$rc.Y; w = [int]$rc.Width; h = [int]$rc.Height; name = $nm; cls = $cls }
+    if ($cls -match '\.STATIC\.') { $key = ($nm -replace '\s', ''); if ($LABELS.ContainsKey($key)) { $found += [pscustomobject]@{ key = $LABELS[$key]; el = $o } } }
+    elseif ($cls -match '\.EDIT\.|\.COMBOBOX\.') { $vals += $o }
+  }
+  if (-not $found.Count) { return $null }
+  $rec = @{}
+  foreach ($L in $found) {
+    $lx = $L.el.x + $L.el.w; $ly = $L.el.y
+    $cand = $vals | Where-Object { [Math]::Abs($_.y - $ly) -le 8 -and $_.x -ge ($lx - 8) -and $_.x -le ($lx + 60) } | Sort-Object x | Select-Object -First 1
+    $rec[$L.key] = if ($cand) { ($cand.name -replace "\s+$", '') } else { '' }
+  }
+  return $rec
+}
+function Normalize($rec) {
+  $out = [ordered]@{}
+  $out.mrn = (([string]$rec.mrn) -replace '\D', '')
+  $out.name = ([string]$rec.name).Trim()
+  $m = [regex]::Match([string]$rec.rrn, '^(\d{6})-?(\d)')           # 생년월일 6자리 + 성별 1자리만 — 나머지는 읽지 않음
+  $out.rrn7 = if ($m.Success) { $m.Groups[1].Value + '-' + $m.Groups[2].Value } else { '' }
+  $pr = ([string]$rec.prevRoomDoc).Trim(); $parts = $pr -split '/', 2
+  $out.prevRoom = $parts[0].Trim(); $out.doctor = if ($parts.Count -gt 1) { $parts[1].Trim() } else { '' }
+  foreach ($k in 'prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont') { $out[$k] = ([string]$rec[$k]).Trim() }
+  $out.memoRx = ''
+  return $out
+}
+function Hash($o) { return (($o.Keys | ForEach-Object { "$_=$($o[$_])" }) -join '|') }
+
+# ── ② BITCast TCP 수신 ──
+function CastParse($text, $fromIp) {
+  # "2|테스트1|1진료실|672||김현우||    193428|"  → Command|Patname|Room|Hour|Memo|Dtrname|Beforeroom|OcmNum  (cLBITCastInfo.PatientData)
+  $f = $text.TrimEnd("`r", "`n", "`0") -split '\|'
+  if ($f.Count -lt 8) { return $null }
+  $cmd = 0; if (-not [int]::TryParse($f[0].Trim(), [ref]$cmd)) { return $null }
+  $ocm = ($f[7] -replace '\D', '')
+  if (-not $ocm) { return $null }
+  $hour = 0; [void][int]::TryParse($f[3].Trim(), [ref]$hour)
+  return [ordered]@{ command = $cmd; name = $f[1].Trim(); room = $f[2].Trim(); hourMin = $hour; memo = $f[4].Trim(); doctor = $f[5].Trim(); beforeRoom = $f[6].Trim(); ocmNum = $ocm; fromIp = $fromIp }
+}
+# cLBITCastInfo.Enum_Command 전체 (0/1 은 Enum_Command 와 Enum_Command_New 에서 예약/응급이 뒤바뀌어 있어 둘 다 '접수'로 취급)
+# 관찰: 접수 수정·보류 때 비트는 같은 접수번호로 '접수취소(3) → 접수(2)'를 1초 안에 연달아 보낸다. 진료실 PC는 5(보류재호출)·11(초기화접수)·7·8 을 보낸다.
+$CMD_NAMES = @{ -3 = '지원호출'; -2 = '임시'; -1 = '환자호출'; 0 = '예약·응급접수'; 1 = '예약·응급접수'; 2 = '접수'; 3 = '접수취소'; 4 = '재호출'; 5 = '보류재호출'; 6 = '초기화'
+                7 = '수납대기'; 8 = '수납완료'; 9 = '진료건너뜀'; 10 = '수납취소'; 11 = '초기화접수'; 12 = '초기화응급'; 13 = '보류'; 14 = '보류건너뜀'; 15 = '진료실변경'
+                18 = '사전예약'; 21 = '진료중변경'; 22 = '보류지원'; 23 = '보류취소'; 24 = '초기화보류'; 25 = '접수보류' }
+function CastDrain($listener) {   # 대기 중인 접속을 모두 받아 메시지 목록으로 (각 접속 = 메시지 1개, 짧음)
+  $msgs = @()
+  while ($listener.Pending()) {
+    $cli = $null
+    try {
+      $cli = $listener.AcceptTcpClient(); $cli.ReceiveTimeout = 800
+      $ip = ($cli.Client.RemoteEndPoint.ToString() -split ':')[0]
+      $st = $cli.GetStream(); $ms = New-Object System.IO.MemoryStream; $buf = New-Object byte[] 4096
+      $t0 = Get-Date
+      while (((Get-Date) - $t0).TotalMilliseconds -lt 800) {
+        if ($st.DataAvailable) { $r = $st.Read($buf, 0, $buf.Length); if ($r -le 0) { break }; $ms.Write($buf, 0, $r) }
+        elseif ($ms.Length -gt 0) { Start-Sleep -Milliseconds 40; if (-not $st.DataAvailable) { break } }
+        else { Start-Sleep -Milliseconds 40; if ($cli.Client.Poll(0, [System.Net.Sockets.SelectMode]::SelectRead) -and $cli.Client.Available -eq 0) { break } }
+      }
+      $bytes = $ms.ToArray()
+      if ($bytes.Length -gt 0) { $msgs += [pscustomobject]@{ ip = $ip; text = $Cp949.GetString($bytes) } }
+    } catch { Log "cast 수신 오류: $($_.Exception.Message)" }
+    finally { if ($cli) { try { $cli.Close() } catch {} } }
+  }
+  return $msgs
+}
+
+# ── 캐시: 인적정보 조회 (이름/차트번호 → 상세) — 캐스트 메시지에 차트번호가 없으므로 이름으로 매칭 ──
+$script:LookupByName = @{}     # 이름 → @( @{ rec; at } … ) 차트번호별 최근 조회 (동명이인 구분용)
+$script:CastDocByName = @{}    # 이름 → 오늘 이 이름으로 보낸 캐스트 문서 id (접수 뒤에 인적정보·원외처방 특이사항이 바뀌면 그 문서를 보충)
+$script:SentHash = @{}         # 문서 id → 마지막으로 보낸 인적정보 해시
+$script:SentMrn = @{}          # 문서 id → 보낸 차트번호 (한 번 보낸 차트번호는 다른 환자 조회로 바뀌지 않는다)
+$script:DocByMrn = @{}         # 차트번호 → 오늘 문서 id (원외처방 특이사항을 패널과 무관하게 바로 보충할 때)
+$script:RxSent = @{}; $script:RxNoDoc = @{}; $script:RxLast = ''; $script:RxCount = 0   # 원외처방 특이사항 전송 상태
+$script:NoteSent = @{}; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteRev = @{}   # ③ 진료실 처방 목록 전송 상태 (차트번호 → 보낸 목록 / 갱신 횟수)
+# v3.7 (2026-10-26: 박상하·조현진 슬립에 같은 차팅) — 환자를 바꿀 때 비트는 차트번호를 먼저 바꾸고 증상 칸은 조금 늦게 바꾼다.
+#   그 사이(1초 넘게) 읽으면 '새 차트번호 + 앞 환자 차팅'이 2번 연속 같아 그대로 보내졌고, 새 환자 칸이 비어 있으면 끝까지 덮이지 않았다.
+#   ① 차트번호가 바뀌고 3초 동안은 보내지 않는다 ② 3번 연속 같아야 보낸다 ③ 읽기 앞뒤의 차트번호가 다르면 버린다
+#   ④ 이 PC에서 다른 환자로 읽힌 차팅·특이사항과 똑같으면 보내지 않는다(앞 환자 내용이 남은 것) ⑤ 보낸 뒤 그 환자 칸이 10초 넘게 비어 있으면 문서도 비운다
+$script:NoteMrn = ''; $script:NoteMrnAt = Get-Date; $script:NoteSeen = @{}; $script:NoteStaleLog = ''; $script:NoteEmptyAt = $null
+$script:NoteTopIns = @{}; $script:NoteFirst = @{}; $script:InsLogged = ''; $script:InsRetry = 0   # 보험별 슬립 (v3.7)
+# v3.8 (2026-11-01 강원종 33482: 슬립 '처방 목록이 오지 않았어요') — 예전엔 다른 환자와 차팅(med 위)이나 특이사항만 같아도 2시간 동안 보내지 않았다.
+#  원장님이 같은 문구(템플릿)를 쓰면 그 환자 슬립이 영영 안 갔고, 바로 앞뒤 환자가 차팅·처방까지 똑같을 수도 있어 내용으로는 '앞 환자 내용이 남음'을 가릴 수 없다.
+#  → 다른 환자와 같아도 보낸다. 동선관리 슬립이 같은 PC·20분 안·차팅+처방이 똑같은 것을 빨간 경고 + [비트에서 확인함] 전까지 인쇄 막음으로 잡는다(slipDupOf).
+#  같은 환자의 다른 보험 접수끼리만 칸 전체가 같으면 보내지 않는다(v3.7 그대로 — 보험별 슬립이 똑같이 두 장 생기지 않게)
+function NoteStaleOf($key, $mrn, $chart, $memo, $raw) {   # 같은 환자의 다른 보험 접수에서 읽힌 같은 내용이 있으면 그 키, 없으면 ''
+  foreach ($k in @($script:NoteSeen.Keys)) { if ($k -eq $key) { continue }; $s = $script:NoteSeen[$k]
+    if (((Get-Date) - $s.at).TotalMinutes -gt 120) { $script:NoteSeen.Remove($k); continue }
+    if ($s.mrn -eq $mrn -and $raw -and $raw.Length -ge 8 -and $s.raw -eq $raw) { return $k } }
+  return '' }
+# 처방 문서 보내기 — $p = @{ nkey; insK; dr; ex; rx; memo; chart }. 이미 보낸 내용이면 보내지 않는다
+function SendNote($p, $why) {
+  $dr = $p.dr; $nkey = $p.nkey; $insK = $p.insK; $ex = $p.ex
+  if ($script:NoteSent[$nkey] -eq "$($p.rx)|$($p.memo)|$($p.chart)") { return }
+  # rev = 오늘 이 PC에서 이 환자 문서를 보낸 횟수. 비트가 지난 진료의 문구를 미리 채워 두므로 1회차는 '이전 처방'일 수 있다 → 동선관리가 갱신 횟수·시각을 보여 준다
+  $rev = [int]$script:NoteRev[$dr.mrn] + 1; $script:NoteRev[$dr.mrn] = $rev
+  $nf = @{ date = (Today); mrn = $dr.mrn; name = $dr.name; pc = $Pc; rx = $p.rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; memo = $p.memo; chart = $p.chart; rrn7 = $dr.rrn7; sex = $dr.sex; rev = $rev; updatedAt = (NowIso); ins = $insK }
+  if ($rev -eq 1) { $nf.firstAt = (NowIso) }
+  FsPatch "bitNote/$(Today)_$($dr.mrn)" $nf
+  if ($insK) {   # 보험별 칸 — 동선관리는 보험이 둘 이상 쌓이면 슬립을 보험마다 따로 만든다
+    $srev = [int]$script:NoteRev[$nkey] + 1; $script:NoteRev[$nkey] = $srev
+    $sf = @{ ins = $insK; rx = $p.rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $p.chart; rev = $srev; updatedAt = (NowIso); pc = $Pc }
+    if (-not $script:NoteFirst[$nkey]) { $script:NoteFirst[$nkey] = (NowIso) }; $sf.firstAt = $script:NoteFirst[$nkey]
+    FsPatchNested "bitNote/$(Today)_$($dr.mrn)" "v_$insK" $sf
+    $script:NoteTopIns[$dr.mrn] = $insK }
+  $script:NoteSent[$nkey] = "$($p.rx)|$($p.memo)|$($p.chart)"
+  Log "처방 전송$(if ($why) { "($why)" }): 차트번호 $($dr.mrn)$(if ($insK) { " · $insK" }) ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 주민앞자리 $(if ($dr.rrn7) { '있음' } else { '없음' }), 특이사항 $(if ($p.memo) { '있음' } else { '없음' }), ${rev}회차)" }
+# v3.8 (2026-11-01 최하은 32753: 슬립이 10:47 내용, 비트 기록부는 그 뒤에 고친 내용) — 3번 연속(약 6초) 같아야 보내므로, 마지막으로 고친 뒤
+#  6초 안에 다음 환자로 넘어가면 마지막 수정이 영영 안 갔다. 2번 연속 같게 읽힌 내용을 들고 있다가 환자를 바꾸거나 창을 닫을 때 보낸다.
+#  (1번만 읽힌 내용은 보내지 않는다 — 환자를 바꾸는 찰나에 다음 환자 글이 앞 환자 차트번호로 읽힐 수 있다)
+$script:NotePend = $null
+function NoteFlush() { $p = $script:NotePend; $script:NotePend = $null
+  if ($p) { try { SendNote $p '환자 바꿈 — 마지막 수정' } catch { Log "처방 전송 오류(마지막 수정): $($_.Exception.Message)" } } }
+$script:LookupSent = @{}       # 차트번호 → bitLookup 으로 보낸 인적정보 해시 (조회 내용이 바뀔 때만 다시 씀)
+$LOOKUP_KEYS = 'mrn','rrn7','prevRoom','prevVisit','nextResv','guardian','firstVisit','relation','ins','chojae','memoToday','memoCont','memoRx'
+$LOOKUP_HOURS = 6              # 조회 캐시 유효 시간
+$DUP_MIN = 15                  # 같은 이름·다른 차트번호가 이 시간 안에 함께 조회됐으면 동명이인으로 보고 차트번호를 붙이지 않는다
+function CacheLookup($rec) {
+  if (-not $rec.mrn -or -not $rec.name) { return }
+  $list = @($script:LookupByName[$rec.name] | Where-Object { $_ -and $_.rec.mrn -ne $rec.mrn })
+  $list += @{ rec = $rec; at = (Get-Date) }
+  $script:LookupByName[$rec.name] = $list
+}
+function LookupState($name) {   # 최근 6시간 안에 이 PC에서 조회된 같은 이름의 환자 → @{ rec; dup }. 동명이인이 15분 안에 함께 조회됐으면 rec=$null, dup=$true
+  $now = Get-Date
+  $c = @($script:LookupByName[$name] | Where-Object { $_ -and ($now - $_.at).TotalHours -lt $LOOKUP_HOURS } | Sort-Object { $_.at } -Descending)
+  if (-not $c.Count) { return @{ rec = $null; dup = $false } }
+  if ($c.Count -ge 2 -and ($now - $c[1].at).TotalMinutes -lt $DUP_MIN) { return @{ rec = $null; dup = $true; count = $c.Count } }
+  return @{ rec = $c[0].rec; dup = $false }
+}
+function MatchLookup($name) { return (LookupState $name).rec }
+$script:MyIps = @()
+try { $script:MyIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }) } catch {}
+
+# ── DB 에이전트(bit_db_agent.ps1) 우선 (v3.5, 2026-09-16) ──
+#  비트 DB 를 직접 읽는 에이전트가 정상이면 캐스트로는 bitIntake 에 쓰지 않는다(에이전트가 같은 문서 id 로 쓴다 → Firestore 쓰기·읽기 절감).
+#  확인은 LAN 상태 포트(TCP 9001)로만 한다(Firestore 비용 없음): 이 PC(127.0.0.1) 와 bitplus_peers.txt 의 IP 중 하나라도 "OK…" 로 답하면 정상.
+#  에이전트가 없거나 모두 응답이 없으면(꺼짐·DB 서버 불통) 지금까지처럼 캐스트로 직접 전송한다 → 접수 PC 3대가 그대로 예비 경로.
+#  이중 안전: 접수 캐스트는 에이전트에 맡긴 뒤 15초 후 문서에 src=db 가 있는지 1회 읽어 확인하고, 없으면 직접 전송한다.
+$AgentPort = 9001
+$PeersFile = Join-Path $PSScriptRoot 'bitplus_peers.txt'
+$script:AgentHosts = @('127.0.0.1')
+if (Test-Path $PeersFile) { $script:AgentHosts += @(Get-Content $PeersFile -Encoding UTF8 | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' }) }
+$script:AgentHosts = @($script:AgentHosts | Select-Object -Unique)
+$script:AgentOkAt = [DateTime]::MinValue; $script:AgentOk = $false; $script:AgentWho = ''
+function AgentAlive() {   # 3초 캐시(캐스트가 몰려도 매번 묻지 않음). 호스트 중 하나라도 'OK' 면 살아 있음
+  if (((Get-Date) - $script:AgentOkAt).TotalSeconds -lt 3) { return $script:AgentOk }
+  $ok = $false; $who = ''
+  foreach ($ip in $script:AgentHosts) { $cli = New-Object System.Net.Sockets.TcpClient
+    try { $ar = $cli.BeginConnect($ip, $AgentPort, $null, $null); if (-not $ar.AsyncWaitHandle.WaitOne(300)) { continue }; $cli.EndConnect($ar); $cli.ReceiveTimeout = 500
+      $line = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if ($line -and $line.StartsWith('OK')) { $ok = $true; $who = "$ip $line"; break } }
+    catch {} finally { try { $cli.Close() } catch {} } }
+  if ($ok -ne $script:AgentOk) { Log $(if ($ok) { "DB 에이전트 정상($who) → 캐스트는 bitIntake 에 쓰지 않음(에이전트가 씀)" } else { "DB 에이전트 응답 없음 → 캐스트로 직접 전송" }) }
+  $script:AgentOk = $ok; $script:AgentOkAt = Get-Date; $script:AgentWho = $who; return $ok
+}
+$script:PendingVerify = @{}   # 문서 id → @{ at; m } : 에이전트에 맡긴 접수 캐스트, 15초 뒤 확인
+function FsHasDbSrc($docId) {
+  try { $r = Invoke-RestMethod -TimeoutSec 15 -Method Get -Uri "$DocBase/bitIntake/$docId`?mask.fieldPaths=src" -Headers @{ Authorization = "Bearer $(FbToken)" }; return ($r.fields.src.stringValue -eq 'db') }
+  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $false }; throw }
+}
+function VerifyPending() {
+  foreach ($id in @($script:PendingVerify.Keys)) { $pv = $script:PendingVerify[$id]; if (((Get-Date) - $pv.at).TotalSeconds -lt 15) { continue }
+    $script:PendingVerify.Remove($id)
+    try { if (FsHasDbSrc $id) { Log "확인: $id 에이전트가 전송함" } else { Log "확인: $id 에이전트 전송 없음 → 캐스트로 직접 전송"; HandleCast $pv.m $true } }
+    catch { Log "확인 오류 $id → 캐스트로 직접 전송: $($_.Exception.Message)"; try { HandleCast $pv.m $true } catch { Log "cast 처리 오류: $($_.Exception.Message)" } } }
+}
+
+function HandleCast($m, $force = $false) {
+  $cname = if ($CMD_NAMES.ContainsKey($m.command)) { $CMD_NAMES[$m.command] } else { "cmd$($m.command)" }
+  $docId = "$(Today)_ocm$($m.ocmNum)"
+  if (-not $force -and (AgentAlive)) {   # DB 에이전트가 정상 → 캐스트로는 쓰지 않는다. 문서 id 매핑만 기억해 두어 뒤따르는 인적정보·원외처방 보충은 그 문서로 간다
+    if ($m.command -in 2, 1, 0) { $script:CastDocByName[$m.name] = $docId; $script:PendingVerify[$docId] = @{ at = (Get-Date); m = $m } }
+    Log "cast $cname 접수번호 $($m.ocmNum): DB 에이전트 정상 → 생략$(if ($m.command -in 2, 1, 0) { ' (15초 뒤 확인)' })"
+    return
+  }
+  $local = ($script:MyIps -contains $m.fromIp)
+  $fields = @{ pc = $Pc; castIp = $m.fromIp; lastSeenAt = (NowIso); date = (Today); ocmNum = $m.ocmNum; command = [int]$m.command; commandName = $cname
+               name = $m.name; room = $m.room; doctor = $m.doctor; castMemo = $m.memo; hourMin = [int]$m.hourMin; beforeRoom = $m.beforeRoom }
+  switch ($m.command) {
+    { $_ -in 2, 1, 0 } {   # 접수(일반/응급/예약) → 등록
+      # 예약(0/1)인데 시각이 지금보다 30분 넘게 뒤면 아직 오지 않은 예약 등록으로 보고 등록하지 않는다 (관찰상 예약 등록은 캐스트가 없지만 안전장치)
+      $nowMin = (Get-Date).Hour * 60 + (Get-Date).Minute
+      if ($m.command -ne 2 -and ($m.hourMin - $nowMin) -gt 30) {
+        $fields.event = "$cname(미도착)"; $fields.eventAt = (NowIso)
+        Log "cast $cname 접수번호 $($m.ocmNum): 예약 시각 $([int]($m.hourMin / 60)):$('{0:00}' -f ($m.hourMin % 60)) 이 미래 → 등록하지 않음(기록만)"
+        break
+      }
+      # status 는 건드리지 않는다: 여러 PC가 같은 문서에 쓰므로, 동선관리가 먼저 '자동접수'로 바꾼 뒤 늦게 도착한 쓰기가 되돌리면 안 됨
+      $fields.registered = $true; $fields.registeredAt = (NowIso); $fields.cancelled = $false
+      $fields.seenAt = (NowIso)
+      $ls = LookupState $m.name
+      $script:CastDocByName[$m.name] = $docId
+      if ($ls.dup) { $fields.nameDup = $true; Log "cast $cname 접수번호 $($m.ocmNum): 동명이인 주의 — 같은 이름 차트번호 $($ls.count)개가 $DUP_MIN 분 안에 조회됨 → 차트번호 없이 전송(직원 확인)" }
+      elseif ($ls.rec) { foreach ($k in $LOOKUP_KEYS) { if ($ls.rec[$k]) { $fields[$k] = $ls.rec[$k] } }; $fields.lookupPc = $Pc; $script:SentHash[$docId] = (Hash $ls.rec); $script:SentMrn[$docId] = $ls.rec.mrn; $script:DocByMrn[$ls.rec.mrn] = $docId }
+      elseif (-not $local) { Log "cast $cname 접수번호 $($m.ocmNum): 다른 PC($($m.fromIp))의 접수 — 인적정보 캐시 없음(이름만 전송)" }
+      else { Log "cast $cname 접수번호 $($m.ocmNum): 인적정보 캐시 없음(이름만 전송)" }
+    }
+    3 {  # 접수취소
+      $fields.cancelled = $true; $fields.cancelledAt = (NowIso)
+    }
+    default {   # 호출·보류·사전예약·수납대기 등: 기록. 접수취소 뒤에 이런 캐스트가 오면 환자가 살아 있다는 뜻 → 취소 해제
+      # (예약 환자: 예약접수(0/1) → 3초 뒤 접수취소(3) → 사전예약(18)/진료중변경(21) 순으로 온다. 이 취소는 진짜 취소가 아님)
+      $fields.event = $cname; $fields.eventAt = (NowIso)
+      if ($m.command -notin 8, 10) { $fields.cancelled = $false }
+    }
+  }
+  FsPatch "bitIntake/$docId" $fields
+  Log "전송: $docId $cname (이름 $($m.name.Length)자, 진료실 $($m.room), 차트번호 $(if ($fields.mrn) { '있음' } else { '없음' }), from $($m.fromIp))"
+}
+
+# ── 메인 루프 ──
+Log "시작 $($MyVer): PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
+$listener = $null
+try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
+catch { Log "TCP $CastPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 캐스트 없이 패널만 감시"; $listener = $null }
+$stableHash = ''; $stableCount = 0
+$lastPanel = [DateTime]::MinValue; $lastBeat = [DateTime]::MinValue; $lastOpen = $null; $lastDocOpen = $null
+$recent = @{}          # 중복 캐스트 억제: key → 시각 (전광판IP + 캐스트IP 가 같으면 같은 메시지가 2번 온다)
+$rxWarned = $false; $rxCache = @{}; $noteWarned = $false
+$sentDay = (Today)
+while ($true) {
+  $cycStart = Get-Date
+  try {
+    if ($sentDay -ne (Today)) { $sentDay = (Today); $script:LookupByName = @{}; $script:CastDocByName = @{}; $script:SentHash = @{}; $script:SentMrn = @{}; $script:DocByMrn = @{}; $script:RxSent = @{}; $script:RxNoDoc = @{}; $script:NoteSent = @{}; $script:NoteRev = @{}; $script:NoteTopIns = @{}; $script:NoteFirst = @{}; $script:LookupSent = @{}; $recent = @{}; $rxCache = @{}; TrimLog }
+    # ── ② 캐스트 수신 (0.5초 간격) ──
+    if ($listener) {
+      foreach ($raw in (CastDrain $listener)) {
+        $m = CastParse $raw.text $raw.ip
+        if (-not $m) { Log "cast 해석 불가(len $($raw.text.Length)) from $($raw.ip)"; continue }
+        $key = "$($m.command)|$($m.ocmNum)|$($m.name)"
+        $now = Get-Date
+        if ($recent.ContainsKey($key) -and ($now - $recent[$key]).TotalSeconds -lt 8) { continue }
+        $recent[$key] = $now
+        try { HandleCast $m } catch { Log "cast 처리 오류: $($_.Exception.Message)" }
+      }
+      foreach ($k in @($recent.Keys)) { if (((Get-Date) - $recent[$k]).TotalMinutes -gt 30) { $recent.Remove($k) } }
+      if ($script:PendingVerify.Count) { try { VerifyPending } catch { Log "확인 처리 오류: $($_.Exception.Message)" } }   # 에이전트에 맡긴 접수 캐스트 15초 뒤 확인
+    }
+    # ── ① 인적정보 패널 (PollSec 간격) + 하트비트 ──
+    if (((Get-Date) - $lastPanel).TotalSeconds -ge $PollSec) {
+      $lastPanel = Get-Date
+      $bw = FindBitWindow
+      $open = ($null -ne $bw)
+      $dw = $null; try { $dw = FindDoctorWindow } catch { Log "외래진료실 창 찾기 오류: $($_.Exception.Message)" }
+      $docOpen = ($null -ne $dw)
+      if ($open) { try { PayWinTick $bw.proc.Id } catch { Log "수납 창 읽기 오류: $($_.Exception.Message)" } }   # v3.9 수납 창 금액
+      # 비트 창이 하나도 안 열린 PC(대부분의 진료·치료실 PC)는 30분에 한 번만 — 창이 열리거나 닫히면 즉시. 동선관리 BIT_STALE_IDLE_SEC=2100 과 짝
+      $hbSec = if ($open -or $docOpen) { $HeartbeatSec } else { [Math]::Max($HeartbeatSec, 1800) }
+      if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
+        # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
+        $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
+                 ver = $MyVer; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
+        # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
+        try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
+        catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
+      }
+      # ── ③ 외래진료실 증상 칸 맨 아래 처방 목록 (진료실 PC) ──
+      if ($docOpen -and -not $NoNote) {   # -NoNote: 처방을 내지 않는 PC는 보내지 않음 (v3.7)
+        try {
+          $dr = ReadDoctor $dw
+          if ($dr -and -not $dr.found -and -not $noteWarned) { Log "외래진료실 창은 찾았지만 증상 칸을 못 찾음"; $noteWarned = $true }
+          # v3.7 ③ 읽는 동안 환자가 바뀌었으면(앞뒤 차트번호가 다름) 이번 읽기는 버린다
+          if ($dr -and $dr.mrn -and $script:DocCache -and [BitW.U32]::IsWindow($script:DocCache.mrn)) {
+            $mrn2 = (([BitW.U32]::Text($script:DocCache.mrn)) -replace '\D', ''); if ($mrn2 -ne $dr.mrn) { $dr = $null } }
+          # v3.7 보험별 (2026-10-26: 일반·건강보험 두 접수인데 슬립이 하나) — 같은 환자도 보험이 다르면 다른 접수로 따로 센다(nkey). 보험유형을 못 읽으면 예전처럼 차트번호 하나
+          $insK = if ($dr) { ([string]$dr.ins -replace '\s', '') } else { '' }
+          $nkey = if ($dr) { "$($dr.mrn)|$insK" } else { '' }
+          if ($dr -and $nkey -ne $script:NoteMrn) { NoteFlush; $script:NoteMrn = $nkey; $script:NoteMrnAt = Get-Date; $script:NoteLast = ''; $script:NoteCount = 0; $script:NoteEmptyAt = $null
+            if ($insK -and $script:InsLogged -ne $nkey) { $script:InsLogged = $nkey; Log "보험유형 읽음: 차트번호 $($dr.mrn) · $insK" } }
+          if ($dr -and $dr.mrn -and ((Get-Date) - $script:NoteMrnAt).TotalSeconds -ge 3) {   # v3.7 ① 환자(또는 보험)를 바꾸고 3초 뒤부터
+            $ex = if ($dr.note.Trim()) { ExtractRx $dr.note } else { @{ lines = @(); marker = $false } }
+            $rxText = ($ex.lines -join "`n")
+            $chartText = if ($dr.note.Trim()) { ExtractChart $dr.note } else { '' }
+            $memo = CleanMemo $dr.memo
+            $rawNote = ($dr.note -replace '\s+', ' ').Trim()
+            if ($NoteGlp -and $rxText -notmatch '(?i)마운자로|위고비|mounjaro|wegovy|tirzepatide|semaglutide') { $rxText = ''; $chartText = ''; $memo = '' }   # -NoteGlp: 마운자로·위고비가 아니면 보내지 않음(비운 것으로 보지도 않게 아래 ⑤는 이 PC가 보낸 것만)
+            # v3.7 ⑤ 보낸 뒤 칸이 10초 넘게 비어 있으면(지웠거나 앞 환자 내용이 잘못 갔던 것) 문서도 비운다
+            if (-not ($rxText -or $memo -or $chartText)) {
+              if ($script:NoteSent[$nkey] -and $script:NoteSent[$nkey] -ne '||') {
+                if (-not $script:NoteEmptyAt) { $script:NoteEmptyAt = Get-Date }
+                elseif (((Get-Date) - $script:NoteEmptyAt).TotalSeconds -ge 10) {
+                  $clr = @{ rx = ''; rxMarker = $false; rxLines = 0; chart = ''; clearedAt = (NowIso); pc = $Pc; updatedAt = (NowIso) }
+                  if ($insK) { FsPatchNested "bitNote/$(Today)_$($dr.mrn)" "v_$insK" ($clr + @{ ins = $insK }) }
+                  if (-not $insK -or $script:NoteTopIns[$dr.mrn] -eq $insK) { FsPatch "bitNote/$(Today)_$($dr.mrn)" ($clr + @{ memo = '' }) }   # 맨 위 칸은 그 보험이 마지막으로 쓴 것일 때만
+                  $script:NoteSent[$nkey] = '||'; $script:NoteSeen.Remove($nkey); $script:NoteEmptyAt = $null
+                  Log "처방 비움: 차트번호 $($dr.mrn)$(if ($insK) { " · $insK" }) — 진료실 칸이 비어 있어 문서 내용을 지움" }
+              }
+            } else { $script:NoteEmptyAt = $null }
+            # v3.7 ④ 다른 환자(또는 같은 환자의 다른 보험 접수)에서 읽힌 내용과 같으면 보내지 않는다
+            $staleOf = if ($rxText -or $memo -or $chartText) { NoteStaleOf $nkey $dr.mrn $chartText $memo $rawNote } else { '' }
+            if ($staleOf) {
+              if ($script:NoteStaleLog -ne "$nkey>$staleOf") { $script:NoteStaleLog = "$nkey>$staleOf"; Log "보내지 않음: $nkey 칸 내용이 같은 환자의 다른 보험 접수($staleOf)와 같음" }
+              $script:NoteLast = ''; $script:NoteCount = 0; $script:NotePend = $null
+            }
+            elseif ($rxText -or $memo -or $chartText) {
+              $nk = "$nkey|$rxText|$memo|$chartText"
+              if ($nk -eq $script:NoteLast) { $script:NoteCount++ } else { $script:NoteLast = $nk; $script:NoteCount = 1; $script:NotePend = $null }
+              if ($script:NoteCount -ge 3) { $script:NoteSeen[$nkey] = @{ mrn = $dr.mrn; chart = $chartText; memo = $memo; raw = $rawNote; at = (Get-Date) } }   # 이 접수 것으로 확인된 내용
+              if ($script:NoteCount -ge 2 -and $script:NoteSent[$nkey] -ne "$rxText|$memo|$chartText") {   # v3.8: 2번 연속 같으면 들고 있다가 환자를 바꿀 때 보낸다
+                $script:NotePend = @{ nkey = $nkey; insK = $insK; dr = $dr; ex = $ex; rx = $rxText; memo = $memo; chart = $chartText } }
+              if ($script:NoteCount -eq 3 -and $script:NotePend) {   # 3번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용 (v3.7: 2번 → 3번)
+                SendNote $script:NotePend ''; $script:NotePend = $null
+              }
+            } else { $script:NotePend = $null }
+          }
+        } catch { Log "외래진료실 읽기 오류: $($_.Exception.Message)" }
+      } elseif ($script:NotePend) { NoteFlush }   # v3.8 외래진료실 창을 닫았으면 들고 있던 마지막 수정을 보낸다
+      if ($open) {
+        try {
+          $rw = FindRxWindow $bw.proc.Id
+          if ($rw) { $rx = ReadRx $rw
+            if ($rx -and -not $rx.found -and -not $rxWarned) { Log "원외처방 창은 찾았지만 특이사항 칸을 못 찾음"; $rxWarned = $true }
+            if ($rx -and $rx.mrn -and $rx.memoRx) {
+              $rxCache[$rx.mrn] = $rx.memoRx
+              # 원외처방 특이사항은 진료가 끝난 뒤(수납 무렵) 입력·열람되므로 패널에 그 환자가 떠 있지 않아도 차트번호로 오늘 문서를 찾아 바로 보충.
+              # 2번 연속 같은 값(입력 중 아님)이고 아직 보내지 않은 내용일 때만.
+              $rk = "$($rx.mrn)|$($rx.memoRx)"
+              if ($rk -eq $script:RxLast) { $script:RxCount++ } else { $script:RxLast = $rk; $script:RxCount = 1 }
+              if ($script:RxCount -eq 2 -and $script:RxSent[$rx.mrn] -ne $rx.memoRx) {
+                $d = $script:DocByMrn[$rx.mrn]
+                if (-not $d -and -not ($script:RxNoDoc[$rx.mrn] -and ((Get-Date) - $script:RxNoDoc[$rx.mrn]).TotalMinutes -lt 5)) {
+                  $d = FsFindDocByMrn $rx.mrn
+                  if ($d) { $script:DocByMrn[$rx.mrn] = $d } else { $script:RxNoDoc[$rx.mrn] = Get-Date; Log "원외처방 특이사항: 차트번호 $($rx.mrn) 의 오늘 접수 문서 없음(5분 뒤 재확인)" }
+                }
+                if ($d) { FsPatch "bitIntake/$d" @{ memoRx = $rx.memoRx; rxPc = $Pc; lastSeenAt = (NowIso) }; $script:RxSent[$rx.mrn] = $rx.memoRx; Log "보충: $d 원외처방 특이사항 (차트번호 $($rx.mrn))" }
+              }
+            } }
+        } catch { Log "원외처방 읽기 오류: $($_.Exception.Message)" }
+        $raw = ReadPanel $bw.el
+        if ($raw) {
+          $rec = Normalize $raw
+          if ($rec.mrn -and $rxCache.ContainsKey($rec.mrn)) { $rec.memoRx = $rxCache[$rec.mrn] }
+          $h = Hash $rec
+          if ($h -eq $stableHash) { $stableCount++ } else { $stableHash = $h; $stableCount = 1 }
+          if ($stableCount -eq 2 -and $rec.mrn -and $rec.name) {   # 2번 연속 같은 값(입력 중 아님)일 때 캐시
+            CacheLookup $rec
+            # 조회된 인적정보를 bitLookup/{날짜}_{차트번호} 에도 남긴다 — 아래의 이름→캐스트 문서 매칭은 이 스크립트 메모리에만 있어서
+            # 스크립트가 재시작되거나 접수가 다른 PC에서 됐으면 놓친다. 동선관리가 이 문서로 차트번호 없는 캐스트 카드를 이름으로 뒤늦게 채운다(오늘 그 이름이 하나일 때만)
+            try {
+              if ($script:LookupSent[$rec.mrn] -ne $h) {
+                $lf = @{ date = (Today); pc = $Pc; at = (NowIso); name = $rec.name; doctor = $rec.doctor }
+                foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $lf[$k] = $rec[$k] } }
+                FsPatch "bitLookup/$(Today)_$($rec.mrn)" $lf; $script:LookupSent[$rec.mrn] = $h
+                Log "조회 기록: 차트번호 $($rec.mrn) (이름 $($rec.name.Length)자) → bitLookup"
+              }
+            } catch { Log "조회 기록 실패: $($_.Exception.Message)" }
+            # 이미 접수(캐스트)된 환자의 인적정보·원외처방 특이사항이 그 뒤에 읽히거나 바뀌면 → 보낸 문서를 보충(merge)
+            $d = $script:CastDocByName[$rec.name]
+            if ($d -and $script:SentHash[$d] -ne $h) {
+              $sent = $script:SentMrn[$d]
+              if ($sent -and $sent -ne $rec.mrn) { Log "보충 건너뜀: $d 는 이미 다른 차트번호로 전송됨(동명이인 조회)"; $script:SentHash[$d] = $h }
+              elseif (-not $sent -and (LookupState $rec.name).dup) { Log "보충 보류: $d 동명이인 후보가 여럿(직원 확인)"; $script:SentHash[$d] = $h }
+              else {
+                $f = @{ lookupPc = $Pc; lastSeenAt = (NowIso); nameDup = $false }
+                foreach ($k in $LOOKUP_KEYS) { if ($rec[$k]) { $f[$k] = $rec[$k] } }
+                FsPatch "bitIntake/$d" $f; $script:SentHash[$d] = $h; $script:SentMrn[$d] = $rec.mrn; $script:DocByMrn[$rec.mrn] = $d
+                Log "보충: $d 인적정보 (차트번호 있음, 연속메모 $(if ($rec.memoCont) { '있음' } else { '없음' }), 원외처방 특이사항 $(if ($rec.memoRx) { '있음' } else { '없음' }))"
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch { Log "오류: $($_.Exception.Message)"; Start-Sleep 5 }
+  # 한 주기가 오래 걸리면(창 읽기·네트워크 지연) 하트비트가 늦어져 pill 이 회색이 된다 → 원인 추적용 기록
+  $cycMs = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($cycMs -gt $script:CycMax) { $script:CycMax = $cycMs }
+  if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
+  try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }
+  Start-Sleep -Milliseconds 500
+}

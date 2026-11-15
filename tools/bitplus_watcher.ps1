@@ -209,6 +209,30 @@ function ReadPayWin($procId) {
   }
   return $null
 }
+# v3.9 자동 업데이트 (2026-11-15) — PC 를 돌며 USB 로 다시 설치하지 않게. 30분마다 동선관리 사이트의 watcher.json(ver·sha256)을 보고,
+#  버전이 다르면 새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 버전 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고 같은 인수로 다시 시작한다.
+#  비밀번호(.secret)·토큰은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만)
+$MyVer = 'v3.9'
+$UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit'
+$script:UpdAt = (Get-Date).AddMinutes(-28)   # 시작 2분 뒤 첫 확인
+function SelfUpdate() {
+  if (((Get-Date) - $script:UpdAt).TotalMinutes -lt 30) { return }; $script:UpdAt = Get-Date
+  $j = Invoke-RestMethod -TimeoutSec 20 -Uri "$UpdBase/watcher.json?t=$([DateTime]::Now.Ticks)"
+  if (-not $j.ver -or -not $j.sha256 -or $j.ver -eq $MyVer) { return }
+  $tmp = Join-Path $PSScriptRoot 'bitplus_watcher.new'
+  Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$UpdBase/bitplus_watcher.ps1?v=$($j.ver)" -OutFile $tmp
+  $hash = (Get-FileHash $tmp -Algorithm SHA256).Hash
+  if ($hash -ne ([string]$j.sha256).ToUpper()) { Log "자동 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
+  if ($pe.Count -or $txt -notmatch ("\`$MyVer = '" + [regex]::Escape([string]$j.ver) + "'")) { Log "자동 업데이트 건너뜀: 받은 파일이 올바르지 않음 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $me = $PSCommandPath; Copy-Item $me "$me.bak" -Force -ErrorAction SilentlyContinue; Move-Item $tmp $me -Force
+  Log "자동 업데이트: $MyVer → $($j.ver) — 다시 시작합니다"
+  $cl = [string](Get-CimInstance Win32_Process -Filter "ProcessId=$PID").CommandLine
+  $m = [regex]::Match($cl, '^\s*("[^"]+"|\S+)\s*(.*)$')
+  try { $script:Mtx.ReleaseMutex() } catch {}
+  if ($m.Success) { Start-Process -FilePath ($m.Groups[1].Value.Trim('"')) -ArgumentList $m.Groups[2].Value -WindowStyle Hidden }   # 실패해도 작업 스케줄러가 5분 안에 다시 띄운다
+  exit 0
+}
 $script:PayLast = ''; $script:PaySent = @{}
 function PayWinTick($procId) {
   $p = ReadPayWin $procId; if (-not $p) { $script:PayLast = ''; return }
@@ -563,7 +587,7 @@ function HandleCast($m, $force = $false) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.9: PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 $($MyVer): PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
@@ -604,7 +628,7 @@ while ($true) {
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.9'; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = $MyVer; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
@@ -721,5 +745,6 @@ while ($true) {
   # 한 주기가 오래 걸리면(창 읽기·네트워크 지연) 하트비트가 늦어져 pill 이 회색이 된다 → 원인 추적용 기록
   $cycMs = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($cycMs -gt $script:CycMax) { $script:CycMax = $cycMs }
   if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
+  try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }
   Start-Sleep -Milliseconds 500
 }
