@@ -8960,7 +8960,11 @@ let PT4_AUTO_BUSY=false;const PT4_AUTO_DONE={};
 function pt4AutoCand(){const today=localYMD(new Date());const doc=PT4_DAYS[today];if(!doc||!Array.isArray(doc.th)||!doc.th.length)return [];
   const have=new Set([...(doc.bookings||[]),...(doc.cancels||[])].map(b=>normMrn(b.mrn)).concat(doc.autoNo||[]).filter(Boolean));const out=[];   // 예약·취소/변경에 있거나 오늘 지운 환자는 빼기
   data.forEach(p=>{if(!p||p._viewOnly||p.discharged||curRoom(p)!=='신장분사')return;const m=normMrn(p.mrn);if(!m||have.has(m)||PT4_AUTO_DONE[m]===today)return;
-    const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;const cods=((rx&&rx.items)||[]).map(x=>String(x.cod||'').replace(/\s+/g,'').toUpperCase()).filter(c=>/^CRYO\d+$/.test(c));
+    /* 2026-11-14 박경희 22942·강시훈 29472·한누리 9784: 전날 저녁 신장분사 방에 남아 있던 카드(내보내지 않음)로 다음 날 아침 9:00 에 예약이 잡혔다
+       → 오늘 온 카드만, 처방도 오늘 받은 것만 */
+    if(localYMD(new Date(p.arrivedAt||p.enteredAt||0))!==today)return;
+    const rx=(typeof bitRxFor==='function')?bitRxFor(p):null;if(!rx||String(rx.at||'').slice(0,10)!==today)return;
+    const cods=((rx&&rx.items)||[]).map(x=>String(x.cod||'').replace(/\s+/g,'').toUpperCase()).filter(c=>/^CRYO\d+$/.test(c));
     const real=cods.filter(c=>c!=='CRYO3');if(!real.length)return;   // CRYO3 만 = 급여 → 넣지 않음. 처방이 아직 안 왔으면 CRYO3 인지 몰라서 기다린다 (2026-10-09: 처방 전에 들어온 CRYO3 환자가 잡혔다)
     out.push({p,mrn:m,code:real[0]});});
   return out;}
