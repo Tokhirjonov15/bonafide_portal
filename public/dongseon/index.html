@@ -3103,6 +3103,7 @@ function mirroredHere(p, room){
     if(room==='진료보류'&&!isClinicRoom(cr))return false;
     return true;}
   if(room===F4_MOVE_ROOM&&p.f4Move&&cr!==room)return true;  // 3,4층 이동 유령 카드 (2026-10-14)
+  if(room===F4_GHOST_WAIT&&p.f4Move&&cr!==room&&meta(cr).group!=='4층')return true;   // 2026-11-15 요청: 4층 대기실에도 같은 유령 카드 (3층 Sono·C-Arm 카드는 그대로)
   return MIRROR_RULES.some(r=>r.from===cr&&r.to===room&&(!r.when||r.when(p)));
 }
 const isPayRoom = r => /수납/.test(r||'');
@@ -5098,7 +5099,7 @@ function ensureHoldRooms(){let ch=false;
 /* ═════ 3,4층 이동 (2026-10-14 요청) ═════
    3층이 붐빌 때 C-Arm 전에 4층 물리치료를 먼저 보내는 일이 많다 — 3층 카드의 [4층] 체크를 누르면 4층의 '3,4층 이동' 칸에 그 환자의 유령 카드(접수보류처럼).
    카드는 옮기지 않는다(실제 위치 그대로). 4층 칸의 [✕ 해제]·3층 카드 체크 해제·환자가 실제로 4층 방에 들어가면 사라진다. 카드 문서 f4Move = {at, by} */
-const F4_MOVE_ROOM='3,4층 이동';
+const F4_MOVE_ROOM='3,4층 이동',F4_GHOST_WAIT='4층 대기실';
 function f4MoveChk(p,room){if(!ROOMS.includes(F4_MOVE_ROOM)||!room||meta(room).group==='4층'||/^4층/.test(room)||room===F4_MOVE_ROOM||isPayRoom(room))return '';
   return `<label class="f4mv-chk${p.f4Move?' on':''}" onclick="event.stopPropagation()" title="4층에 '3,4층 이동' 유령 카드 만들기 — 4층 물리치료를 먼저 보낼 때"><input type="checkbox" ${p.f4Move?'checked':''} onchange="setF4Move('${p.id}',this.checked)"> 4층</label>`;}
 /* 기록 f4Log = {go:{by,at}, back:{by,at}} — 3층 카드에 '4층감: 체크한 사람 · 4층갔다옴: 4층에서 [3층] 누른 사람' (2026-10-14 요청).
@@ -8191,7 +8192,7 @@ function renderBoard(){
       (_ss?[...list,...mirrors].sort(viewSort(room)):[...list,...mirrors]).forEach(p=>{
         if(!_mset.has(p)){body.appendChild(cardEl(p));return;}
         if(HOLD_ROOMS.includes(room)&&p.bitHold===room){body.appendChild(holdCardEl(p,room));return;}   // 비트 보류 방: 버튼 없는 간단한 카드
-        if(room===F4_MOVE_ROOM&&p.f4Move){body.appendChild(f4MoveCardEl(p,room));return;}   // 3,4층 이동 유령 카드 (2026-10-14)
+        if((room===F4_MOVE_ROOM||room===F4_GHOST_WAIT)&&p.f4Move){body.appendChild(f4MoveCardEl(p,room));return;}   // 3,4층 이동 유령 카드 (2026-10-14)
         const el=cardEl(p,room);el.classList.add('mirror');
         const same=isSameSpace(curRoom(p),room);
         const tag=document.createElement('div');tag.className='mirror-tag'+(same?' samespace':'');
