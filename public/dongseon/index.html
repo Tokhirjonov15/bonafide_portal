@@ -3444,14 +3444,14 @@ function bitRxRebuild(){if(!BIT_RX_DOCS)return;const cx=bitRxCancelled();BIT_RX_
   BIT_RX_DOCS.forEach(v=>{const ocm=String(v.ocm||'').trim(),mrn=String(v.mrn||'').trim();
     if(ocm&&cx.has(ocm.replace(/\D/g,'')))return;   // 접수취소된 접수의 처방
     const ownN=(v.own==null||v.own==='')?null:Number(String(v.own).replace(/[^\d.-]/g,''));   // 총 본인부담(비트 수납 창, 에이전트 db2.0 — 2026-10-28). 계산 전이면 없음
-    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim(),own:(ownN!=null&&isFinite(ownN))?ownN:null,ownAt:v.ownAt||'',payAt:v.payAt||'',insNm:String(v.insNm||'').trim()};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
+    const rec={ocm,mrn,items:Array.isArray(v.items)?v.items:[],at:v.updatedAt||'',pay:Array.isArray(v.pay)?v.pay:[],nfs:String(v.nfs==null?'':v.nfs).trim(),own:(ownN!=null&&isFinite(ownN))?ownN:null,ownAt:v.ownAt||'',payAt:v.payAt||'',insNm:String(v.insNm||'').trim(),fre:String(v.fre==null?'':v.fre).trim()};   // nfs: 초/재진 코드(에이전트 db1.3)   // pay: 금액 있는 줄(cod·nam·prc·amt·ins) — 에이전트 db1.2 (2026-10-01)
     if(ocm)BIT_RX[ocm]=rec;
     /* 같은 환자가 오늘 비트에 접수가 둘 이상이면(과·담당의 바꿔 재접수 등) 처방을 모두 합친다 (2026-10-01: 한 접수분만 보였다) */
     if(mrn){const o=BIT_RX_MRN[mrn];
       if(!o)BIT_RX_MRN[mrn]=rec;
       else{const tk=x=>String(x.t||'');BIT_RX_MRN[mrn]={ocm:o.ocm,ocms:[...(o.ocms||[o.ocm]),ocm],mrn,
         items:o.items.concat(rec.items).sort((a,b)=>tk(a).localeCompare(tk(b))),at:(o.at>rec.at?o.at:rec.at),pay:o.pay.concat(rec.pay),nfs:o.nfs||rec.nfs,
-          own:(o.own==null&&rec.own==null)?null:(o.own||0)+(rec.own||0),ownAt:(o.ownAt>rec.ownAt?o.ownAt:rec.ownAt),payAt:(o.payAt>rec.payAt?o.payAt:rec.payAt),insNm:o.insNm||rec.insNm};}}});}   // 접수가 둘이면 본인부담도 합계
+          own:(o.own==null&&rec.own==null)?null:(o.own||0)+(rec.own||0),ownAt:(o.ownAt>rec.ownAt?o.ownAt:rec.ownAt),payAt:(o.payAt>rec.payAt?o.payAt:rec.payAt),insNm:o.insNm||rec.insNm,fre:o.fre||rec.fre};}}});}   // 접수가 둘이면 본인부담도 합계
 /* 접수 목록이 바뀌어 취소된 접수가 달라지면 처방을 다시 묶는다 */
 function bitRxCancelSync(){if(!BIT_RX_DOCS)return;const sig=[...bitRxCancelled()].sort().join(',');if(sig===BIT_RX_CXSIG)return;
   bitRxRebuild();try{render();}catch(e){}if(typeof editId!=='undefined'&&editId){const p=data.find(x=>x.id===editId);if(p)try{fillRxBox(p);}catch(e){}}}
@@ -6121,6 +6121,9 @@ async function runSelfTest(){
       const ok2=isFormerStaff('홍원장')&&isFormerStaff('홍원장 (Hong)')&&isFormerStaff('김치료')&&!isFormerStaff('김현우')&&docStatIsDoctor()('홍원장')&&!docStatIsDoctor()('김치료')&&!staffOpts('',['김치료','서효성'],'').includes('김치료')&&cfgBundle().formerStaff.length===2;
       FORMER_EXTRA=_fx;
       ok('직원 목록 ✕(퇴사): 퇴사자 명단에 남아 고르는 칸에서 빠지고, 원장님이었으면 지난 통계는 원장님, 설정에 저장', ok2);}
+     {const L=[{cod:'LA359',amt:'267750',ins:'0'},{cod:'AL801',amt:'220',ins:'0'},{cod:'AA254',amt:'13370',ins:'0'}],L0=L.filter(x=>x.cod!=='AL801');   // 의료급여 정액 = OcmFreRsn + AL (2026-11-14 강원종 33482)
+      ok('예상 본인부담액: 의료급여 1·2종은 비트 OcmFreRsn Y 면 1,000원, N + AL(원내 주사·약)이면 1,500원, N 인데 AL 없으면 1,000원, 모르면 예전 규칙',
+        ownCalc(L,'보호1종',69,{_fre:'N'})===1500&&ownCalc(L,'보호1종',69,{_fre:'Y'})===1000&&ownCalc(L,'보호2종',50,{_fre:'N'})===1500&&ownCalc(L0,'보호2종',50,{_fre:'N'})===1000&&ownCalc(L,'보호1종',69,{})===1000);}
      {const L=[{amt:'140000',ins:'2'},{amt:'20000',ins:'0'}],L2=[{amt:'10000',ins:'0'}];   // 예상 본인부담액 (2026-10-28)
       ok('예상 본인부담액: 비급여 100% + 급여 30%(100원 절사), 65세 이상 1.5만 이하 1,500원, 자보 급여 0, 일반 100%',
         ownCalc(L,'국민건강보험',40,{})===146000&&ownCalc(L2,'국민건강보험',70,{})===1500&&ownCalc(L,'자보',40,{})===140000&&ownCalc(L,'일반',40,{})===160000&&ownCalc([],'국민건강보험',40,{})===null
@@ -15158,6 +15161,9 @@ function ownParts(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':
   if(/일반/.test(k))gOwn=g0;
   else if(/자보|자동차|산재|공상/.test(k))gOwn=0;
   /* 의료급여(보호)는 의원 외래 정액 — 물리치료 등 다른 급여 코드도 정액에 포함(oth 0). 2종 1,500원 (2026-10-28 신주아님으로 확인), 1종 1,000원(아직 확인 전) */
+  /* 2026-11-14 강원종 33482(1종 1,500원·예상 1,000원): 1·2종 모두 비트 접수의 OcmFreRsn 이 Y 면 1,000원, N 이고 처방에 AL(외래환자 의약품관리료 — 원내 주사·약)이 있으면 1,500원, N 인데 AL 이 없으면(물리치료·촬영만) 1,000원 (10/1~11/14 의료급여 접수 전체로 확인 · 1종 0원 환자·CT 는 따로 — 예상과 다를 수 있음) — 에이전트 db2.7 이 처방 문서에 fre 로 보낸다.
+     fre 가 없으면(옛 에이전트) 예전 규칙 */
+  else if(/보호|의료급여|[12]종/.test(k)&&rates&&(rates._fre==='Y'||rates._fre==='N')){const al=(lines||[]).some(x=>/^AL/i.test(String((x&&x.cod)||'').trim()));gOwn=(g0+oth)>0?(rates._fre==='N'&&al?1500:1000):0;oth=0;}
   else if(/보호\s*1|의료급여\s*1|1종/.test(k)){gOwn=(g0+oth)>0?1000:0;oth=0;}
   /* 2종 정액: 의원 외래 1,000원(2026-11-03 최수비 20462 비트 1,000원). 10-28 신주아님은 1,500원 — 오늘 비트 금액이 온 2종 환자가 있으면 그것에 맞춘다(rates._m2, ownCalibrate) */
   else if(/보호\s*2|의료급여\s*2|2종/.test(k)){gOwn=(g0+oth)>0?(rates&&rates._m2!=null?rates._m2:1000):0;oth=0;}
@@ -15195,8 +15201,8 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
 function ownEstimate(p,rx){if(!rx||!Array.isArray(rx.pay)||!rx.pay.length)return null;try{ownCalibrate();}catch(e){}
   /* 오늘 접수가 둘 이상(ocms)이면 접수마다 그 접수의 보험으로 계산해 더한다 (2026-11-03) */
   if(Array.isArray(rx.ocms)&&rx.ocms.length>1){const parts=rx.ocms.map(o=>BIT_RX[o]).filter(r=>r&&Array.isArray(r.pay)&&r.pay.length);
-    if(parts.length&&parts.every(r=>r.insNm)){const a=ownAgeOf(p&&p.birth);return parts.reduce((t,r)=>t+(ownCalc(r.pay,r.insNm,a,OWN_RATES)||0),0);}}
-  const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,(rx.insNm)||bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),OWN_RATES);}   // 처방 문서의 그 접수 보험(db2.4)이 먼저
+    if(parts.length&&parts.every(r=>r.insNm)){const a=ownAgeOf(p&&p.birth);return parts.reduce((t,r)=>t+(ownCalc(r.pay,r.insNm,a,Object.assign({},OWN_RATES,{_fre:r.fre}))||0),0);}}
+  const c=ownCtxOf(p&&p.mrn);return ownCalc(rx.pay,(rx.insNm)||bitInsOf(p)||(p&&p.ins)||c.ins,ownAgeOf(p&&p.birth),Object.assign({},OWN_RATES,{_fre:rx.fre}));}   // 처방 문서의 그 접수 보험(db2.4)이 먼저
 /* 먹는 약(정·캡슐·시럽·포) — 비트 약 이름은 '아클펜정(아세클로페낙)_(0.1g/1정)' 처럼 끝 괄호에 1회 단위가 붙는다. 주사(…주_(…/20mL))는 제외 */
 /* 2026-11-02: 에이전트 db2.3 부터 비트 구분이 온다 — itm(OdrItmCod) 03… = 비트 '@투약'(의약품관리료는 01…), 없으면 sot(OdrSotCod) MED. 옛 처방 문서만 아래 이름 규칙 */
 function rxIsOral(x){const itm=String((x&&x.itm)||'').trim(),sot=String((x&&x.sot)||'').trim().toUpperCase();if(itm)return /^03/.test(itm);if(sot)return sot==='MED';
@@ -15229,7 +15235,7 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     /* payOf 는 금액 줄을 한 번씩만 내준다(같은 처방 두 줄 짝짓기) — 줄마다 한 번만 불러 PM 에 둔다 (2026-11-03: 두 번 불러 동의서 창이 멈췄다) */
     const PM=new Map();its.forEach(x=>PM.set(x,payOf(x)));
     const OL=new Map();its.forEach(x=>{const y=PM.get(x);if(y)OL.set(x,ownLineAmt(y,oIns,oAge,oG0));});
-    {const vs=[...OL.values()],tot=ownCalc(rx.pay,oIns,oAge,OWN_RATES);if(tot!=null&&vs.length&&vs.every(v=>v!=null)){const d=tot-vs.reduce((t,v)=>t+v,0);let big=null;OL.forEach((v,x)=>{const y=PM.get(x),c=String(y.ins==null?'':y.ins).trim();if((c===''||c==='0')&&(!big||v>OL.get(big)))big=x;});if(d&&big&&Math.abs(d)<=300)OL.set(big,OL.get(big)+d);}}
+    {const vs=[...OL.values()],tot=ownCalc(rx.pay,oIns,oAge,Object.assign({},OWN_RATES,{_fre:rx.fre}));if(tot!=null&&vs.length&&vs.every(v=>v!=null)){const d=tot-vs.reduce((t,v)=>t+v,0);let big=null;OL.forEach((v,x)=>{const y=PM.get(x),c=String(y.ins==null?'':y.ins).trim();if((c===''||c==='0')&&(!big||v>OL.get(big)))big=x;});if(d&&big&&Math.abs(d)<=300)OL.set(big,OL.get(big)+d);}}
     rxh=`<table class="cd-tbl"><thead><tr><th>처방명칭</th><th class="r" title="환자가 내는 금액 — 비급여는 전액, 급여는 보험·나이 부담률. 줄 합은 위 본인부담액과 조금 다를 수 있습니다">본인부담</th><th class="r">횟수·일수</th><th>급/비</th></tr></thead><tbody>${its.map(x=>{const pay=PM.get(x),ib=rxInsLabel((pay&&pay.ins)||x.ins);const hit=CONSENT_ITEMS.some(it=>it.bit&&((it.bit.cod&&it.bit.cod.test(String(x.cod||'').trim()))||(it.bit.nam&&it.bit.nam.test(String(x.nam||'').trim()))))||ROUTE_RX_RULES.some(rl=>CD_ROOMS.includes(rl.room)&&rxRuleHit(rl,String(x.cod||'').trim(),String(x.nam||'').trim()));
       return `<tr${hit?' class="cd-hit"':''}><td title="${esc(String(x.cod||'').trim())}">${esc(String(x.nam||'').trim())}</td><td class="r">${pay?(()=>{const o=OL.has(x)?OL.get(x):ownLineAmt(pay,oIns,oAge,oG0);return o==null?'<span class="hint" title="정액 — 위 본인부담액에 포함">정액</span>':esc(rxWon(o));})():''}</td><td class="r">${rxIsOral(x)?(String(x.day||'').trim()?esc(String(x.day).trim())+'일':''):esc(String(x.tms||'').trim())}</td><td>${ib?`<span class="rx-ib ${ib.cls}">${esc(ib.txt)}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`;}
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
