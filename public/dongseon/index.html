@@ -4939,6 +4939,9 @@ async function bitAutoProcess(){
      그때도 여전히 cancelled 이면 진짜 취소로 본다 (PC 간 시계 차이에 영향 없도록 문서의 시각은 쓰지 않음) */
 const BIT_CANCEL_GRACE=6000;
 const BIT_CANCEL_SEEN={};   // docId → 취소를 처음 본 시각(로컬)
+const BIT_CANCEL_HOLD={};   // docId → 캐스트 취소를 DB 상태 때문에 보류했음(콘솔 한 번만)
+/* DB 에이전트(전송 담당)가 살아 있나 — bitStatus 하트비트(5분마다)가 15분 안에 있으면 */
+function bitDbAgentAlive(){try{return Object.values(BIT_STATUS||{}).some(st=>st&&(st.src==='db'||/^db/.test(String(st.ver||'')))&&st.leader&&Date.now()-new Date(st.lastSeen||0).getTime()<15*60000);}catch(e){return false;}}
 let _bitCancelT=null;
 function bitApplyCancels(){
   if(!currentUser||!cloud.intakeCol)return;
@@ -4950,6 +4953,13 @@ function bitApplyCancels(){
       return;}
     if(BIT_CLAIMING[r.docId])return;
     const done=r.status==='취소';
+    /* 2026-11-14 이혜민 33858: 진료실1 비트가 '진료보류' 무렵 캐스트로 '접수취소'만 보내고 다시 '접수'를 보내지 않았다 → 6초 뒤 진행 중이던 카드가 지워졌다.
+       비트 DB 에서는 접수가 한 번도 취소되지 않았다(같은 접수번호가 끝까지 수납완료).
+       → DB 에이전트가 이 접수의 비트 상태(stt)를 보내 왔고 그게 'CN'(접수취소)이 아니면, 캐스트 취소만으로는 지우지 않고 DB 를 기다린다.
+         진짜 취소면 DB 에이전트가 몇 초 안에 stt 'CN' 을 보내고 그때 지운다. DB 에이전트가 멈춘 것 같으면(하트비트 15분 없음) 예전처럼 캐스트만 보고 지운다 */
+    if(!done&&r.stt&&String(r.stt).trim()!=='CN'&&bitDbAgentAlive()){
+      if(!BIT_CANCEL_HOLD[r.docId]){BIT_CANCEL_HOLD[r.docId]=1;console.warn('비트 캐스트 접수취소 — 비트 DB 상태는 '+r.stt+' 라서 카드를 지우지 않음',r.docId);}
+      return;}
     if(!done){
       const seen=BIT_CANCEL_SEEN[r.docId]||(BIT_CANCEL_SEEN[r.docId]=Date.now());
       if(Date.now()-seen<BIT_CANCEL_GRACE){clearTimeout(_bitCancelT);_bitCancelT=setTimeout(bitApplyCancels,BIT_CANCEL_GRACE+500);return;}
@@ -7651,6 +7661,27 @@ function compressImage(file,maxDim,quality){return new Promise((res,rej)=>{
     c.toBlob(b=>b?res(b):rej(new Error('변환 실패')),'image/jpeg',quality);};
   img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('이미지를 읽을 수 없습니다(HEIC 등 미지원 형식일 수 있음 — 카메라로 다시 촬영하세요)'));};
   img.src=url;});}
+/* 병원 서버 사진 저장 (2026-11-15) — Worker /api/dongseon/files/ → Cloudflare Tunnel → 비트 서버 디스크.
+   서버가 꺼졌거나 아직 설정 전(503)이면 예전처럼 Firebase Storage 에 저장. 사진 기록의 srv:1 = 서버에 있음 */
+const FILES_API='/api/dongseon/files/';
+let FILES_OK=null,FILES_AT=0;const FILE_URL={};
+function filesFetch(path,init,ms){const ac=new AbortController();const t=setTimeout(()=>ac.abort(),ms||20000);
+  const u=window.firebase&&firebase.auth&&firebase.auth().currentUser;if(!u){clearTimeout(t);return Promise.reject(new Error('로그인이 필요합니다.'));}
+  return u.getIdToken().then(tok=>fetch(FILES_API+path,Object.assign({},init||{},{signal:ac.signal,headers:Object.assign({authorization:'Bearer '+tok},(init&&init.headers)||{})}))).finally(()=>clearTimeout(t));}
+async function filesReady(){
+  if(FILES_OK!==null&&Date.now()-FILES_AT<(FILES_OK?5:2)*60000)return FILES_OK;
+  try{const r=await filesFetch('_health',{},6000);const j=await r.json().catch(()=>({}));FILES_OK=!!(r.ok&&j.ok&&j.canWrite!==false);}catch(e){FILES_OK=false;}
+  FILES_AT=Date.now();return FILES_OK;}
+async function filesPut(path,blob){
+  const r=await filesFetch(path,{method:'PUT',headers:{'content-type':blob.type||'image/jpeg'},body:blob},30000);
+  if(!r.ok){FILES_OK=null;const j=await r.json().catch(()=>({}));throw new Error((j&&j.error)||('서버 저장 실패 '+r.status));}}
+async function filesDel(path){const r=await filesFetch(path,{method:'DELETE'},15000);if(!r.ok)throw new Error('서버 삭제 실패 '+r.status);}
+function photoUrl(path,srv){   // 사진 주소: 서버 사진은 로그인 토큰으로 받아 blob 주소로, 예전 사진은 Firebase 주소
+  if(!path)return Promise.reject(new Error('경로 없음'));
+  if(srv){if(FILE_URL[path])return Promise.resolve(FILE_URL[path]);
+    return filesFetch(path,{},20000).then(r=>{if(!r.ok)throw new Error('서버 사진 '+r.status);return r.blob();}).then(b=>(FILE_URL[path]=URL.createObjectURL(b)));}
+  if(!cloud.storage)return Promise.reject(new Error('클라우드 미연결'));
+  return cloud.storage.ref(path).getDownloadURL();}
 async function onPhotoPicked(ev){
   const file=ev.target.files&&ev.target.files[0];if(!file||!_photoTarget)return;
   const {mrn,name}=_photoTarget;
@@ -7661,14 +7692,18 @@ async function onPhotoPicked(ev){
   if(grid&&!document.getElementById('phLoading'))grid.insertAdjacentHTML('afterbegin','<div class="ph-item ph-loading" id="phLoading">업로드 중…</div>');
   try{
     const blob=await compressImage(file,1600,0.8);
-    if(!cloud.active||!cloud.storage)throw new Error('클라우드 미연결');
+    if(!cloud.active)throw new Error('클라우드 미연결');
     const id='ph'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     const path='patient_photos/'+pmKey(mrn)+'/'+id+'.jpg';
-    const task=cloud.storage.ref(path).put(blob,{contentType:'image/jpeg'});
-    await Promise.race([task,new Promise((_,rej)=>setTimeout(()=>{try{task.cancel();}catch(e){}rej(new Error('저장소 응답 없음(30초) — Firebase Storage가 아직 설정되지 않았을 수 있습니다. 관리자에게 문의하세요.'));},30000))]);
+    let srv=false;
+    if(await filesReady()){try{await filesPut(path,blob);srv=true;}catch(e){console.warn('병원 서버 저장 실패 → Firebase 로',e);}}
+    if(!srv){
+      if(!cloud.storage)throw new Error('클라우드 미연결');
+      const task=cloud.storage.ref(path).put(blob,{contentType:'image/jpeg'});
+      await Promise.race([task,new Promise((_,rej)=>setTimeout(()=>{try{task.cancel();}catch(e){}rej(new Error('저장소 응답 없음(30초) — Firebase Storage가 아직 설정되지 않았을 수 있습니다. 관리자에게 문의하세요.'));},30000))]);}
     {const l=document.getElementById('phLoading');if(l)l.remove();}
     const cur=PMEMO[mrn]||{};if(!Array.isArray(cur.photos))cur.photos=[];
-    const ph={id,path,at:Date.now(),by:(currentUser&&currentUser.name)||''};if(note)ph.note=note;
+    const ph={id,path,at:Date.now(),by:(currentUser&&currentUser.name)||''};if(note)ph.note=note;if(srv)ph.srv=1;
     cur.photos.push(ph);
     if(name&&!cur.name)cur.name=name;
     PMEMO[mrn]=cur;pmemoSave(mrn);
@@ -7701,15 +7736,15 @@ function renderPhotos(mrn){
   if(!list.length){box.innerHTML='<div class="hint">아직 사진이 없습니다. 아래 버튼으로 촬영·추가하세요.</div>';return;}
   const canDel=!!currentUser;   // 일반 직원(로그인 멤버)도 삭제 가능(삭제는 감사 로그에 남음)
   box.innerHTML=list.slice().reverse().map(p=>`<div class="ph-item" title="${esc(new Date(p.at).toLocaleString('ko-KR'))}${p.by?' · '+esc(p.by):''}${p.note?'\n📝 '+esc(p.note):''}">
-    <img class="ph-thumb" data-path="${esc(p.path)}" onclick="viewPhoto('${esc(p.path)}','${esc(mrn)}')" alt="환자 사진">
+    <img class="ph-thumb" data-path="${esc(p.path)}"${p.srv?' data-srv="1"':''} onclick="viewPhoto('${esc(p.path)}','${esc(mrn)}')" alt="환자 사진">
     ${canDel?`<button type="button" class="ph-del" title="사진 삭제" onclick="event.stopPropagation();delPatientPhoto('${esc(mrn)}','${esc(p.id)}')">✕</button>`:''}
     <div class="ph-meta${p.note?' has-note':''}">${p.note?'📝 '+esc(p.note):esc(new Date(p.at).toLocaleDateString('ko-KR'))}</div></div>`).join('');
-  [...box.querySelectorAll('.ph-thumb')].forEach(im=>{if(!cloud.storage)return;
-    cloud.storage.ref(im.dataset.path).getDownloadURL().then(u=>{im.src=u;}).catch(()=>{im.alt='로드 실패';im.classList.add('ph-fail');});});
+  [...box.querySelectorAll('.ph-thumb')].forEach(im=>{
+    photoUrl(im.dataset.path,im.dataset.srv==='1').then(u=>{im.src=u;}).catch(()=>{im.alt='로드 실패';im.classList.add('ph-fail');});});
 }
 let _lightList=[], _lightIdx=0, _lightMrn='';
 function viewPhoto(path,mrn){
-  if(!cloud.storage)return;mrn=(mrn||'').trim();_lightMrn=mrn;
+  mrn=(mrn||'').trim();_lightMrn=mrn;
   _lightList=regPhotos(mrn).slice().reverse();   // 갤러리와 같은 순서(최신 먼저)
   _lightIdx=Math.max(0,_lightList.findIndex(p=>p.path===path));
   const ov=document.getElementById('photoLightbox');if(!ov)return;
@@ -7724,8 +7759,8 @@ function lightShow(idx){
   if(!_lightList.length)return;
   _lightIdx=(idx%_lightList.length+_lightList.length)%_lightList.length;   // 순환
   const p=_lightList[_lightIdx],im=document.getElementById('photoLightImg');
-  if(im&&cloud.storage){im.src='';const want=p.path;
-    cloud.storage.ref(want).getDownloadURL().then(u=>{if(_lightList[_lightIdx]&&_lightList[_lightIdx].path===want)im.src=u;}).catch(()=>{im.alt='불러올 수 없습니다';});}
+  if(im){im.src='';const want=p.path;
+    photoUrl(want,!!p.srv).then(u=>{if(_lightList[_lightIdx]&&_lightList[_lightIdx].path===want)im.src=u;}).catch(()=>{im.alt='불러올 수 없습니다';});}
   const meta=document.getElementById('photoLightMeta');   // 메인 사진: 촬영자·시간
   if(meta)meta.textContent='📅 '+(p.at?new Date(p.at).toLocaleString('ko-KR'):'촬영일 미상')+(p.by?' · '+p.by:'')+'   ('+(_lightIdx+1)+' / '+_lightList.length+')';
   const nb=document.getElementById('photoLightNote');   // 주석 표시 + ✎ 수정
@@ -7737,9 +7772,8 @@ function lightShow(idx){
 function lightStep(d){lightShow(_lightIdx+d);}
 function renderLightStrip(){
   const strip=document.getElementById('photoLightStrip');if(!strip)return;
-  strip.innerHTML=_lightList.map((p,i)=>`<div class="pl-thumb" onclick="event.stopPropagation();lightShow(${i})"><img data-path="${esc(p.path)}"><div class="pl-tdate">${esc(p.at?new Date(p.at).toLocaleDateString('ko-KR'):'')}</div></div>`).join('');   // 썸네일: 촬영 날짜
-  if(!cloud.storage)return;
-  [...strip.querySelectorAll('img[data-path]')].forEach(im=>{cloud.storage.ref(im.dataset.path).getDownloadURL().then(u=>im.src=u).catch(()=>{});});
+  strip.innerHTML=_lightList.map((p,i)=>`<div class="pl-thumb" onclick="event.stopPropagation();lightShow(${i})"><img data-path="${esc(p.path)}"${p.srv?' data-srv="1"':''}><div class="pl-tdate">${esc(p.at?new Date(p.at).toLocaleDateString('ko-KR'):'')}</div></div>`).join('');   // 썸네일: 촬영 날짜
+  [...strip.querySelectorAll('img[data-path]')].forEach(im=>{photoUrl(im.dataset.path,im.dataset.srv==='1').then(u=>im.src=u).catch(()=>{});});
 }
 function closePhotoLight(){const ov=document.getElementById('photoLightbox');if(ov)ov.classList.remove('show');const im=document.getElementById('photoLightImg');if(im)im.src='';_lightList=[];}
 async function delPatientPhoto(mrn,id){
@@ -7747,7 +7781,7 @@ async function delPatientPhoto(mrn,id){
   mrn=(mrn||'').trim();const cur=PMEMO[mrn];if(!cur||!Array.isArray(cur.photos))return;
   const ph=cur.photos.find(x=>x.id===id);if(!ph)return;
   if(!confirm('이 사진을 삭제할까요? 되돌릴 수 없습니다.'))return;
-  try{if(cloud.storage)await cloud.storage.ref(ph.path).delete();}catch(e){console.warn('storage del',e);}
+  try{if(ph.srv)await filesDel(ph.path);else if(cloud.storage)await cloud.storage.ref(ph.path).delete();}catch(e){console.warn('storage del',e);}
   cur.photos=cur.photos.filter(x=>x.id!==id);PMEMO[mrn]=cur;pmemoSave(mrn);
   try{audit('환자사진삭제',(cur.name||'')+' ('+mrn+')');}catch(e){}
   renderPhotos(mrn);}

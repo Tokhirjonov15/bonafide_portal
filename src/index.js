@@ -972,6 +972,65 @@ async function fbEmailFromRequest(request) {   // Authorization: Bearer <Firebas
   const j = await r.json().catch(() => ({}));
   return (r.ok && j.users && j.users[0] && j.users[0].email) || "";
 }
+/* ============================================================
+   병원 서버 파일 저장 (2026-11-15) — 환자 사진을 Firebase 대신 병원 서버 디스크에
+   · 동선관리 → (Firebase 로그인 확인) 여기 → Cloudflare Tunnel(files.bonafide-portal.com) → 서버의 files_server.ps1
+   · Secrets: FILES_URL(예 https://files.bonafide-portal.com), FILES_KEY(서버 key 파일과 같은 값)
+   · 설정 전에는 503 → 화면은 예전처럼 Firebase 에 저장한다
+   ============================================================ */
+const FB_EMAIL_CACHE = new Map();   // ID 토큰 → { email, exp } — 사진 여러 장 열 때 매번 Google 에 묻지 않게(같은 isolate 안에서만)
+async function fbEmailCached(request) {
+  const m = /^Bearer\s+(.+)$/.exec(request.headers.get("authorization") || "");
+  if (!m) return "";
+  const hit = FB_EMAIL_CACHE.get(m[1]);
+  if (hit && hit.exp > Date.now()) return hit.email;
+  const email = await fbEmailFromRequest(request);
+  if (email) {
+    if (FB_EMAIL_CACHE.size > 500) FB_EMAIL_CACHE.clear();
+    FB_EMAIL_CACHE.set(m[1], { email, exp: Date.now() + 5 * 60000 });
+  }
+  return email;
+}
+const FILES_PATH_RE = /^patient_photos\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$/;
+async function dongseonFiles(request, env, url) {
+  const email = await fbEmailCached(request);
+  if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
+  if (!env.FILES_URL || !env.FILES_KEY) return json({ ok: false, error: "병원 서버 저장소가 아직 설정되지 않았습니다." }, 503);
+  const base = String(env.FILES_URL).replace(/\/+$/, "");
+  const hdr = { "x-files-key": env.FILES_KEY };
+  const rest = decodeURIComponent(url.pathname.slice("/api/dongseon/files/".length));
+  const call = async (path, init) => {
+    try { return await fetch(base + path, { ...init, headers: { ...hdr, ...(init && init.headers) }, signal: AbortSignal.timeout(25000) }); }
+    catch (e) { return json({ ok: false, error: "병원 서버에 연결할 수 없습니다: " + (e && e.message) }, 502); }
+  };
+  if (rest === "_health") {
+    const r = await call("/health", { method: "GET" });
+    const j = await r.json().catch(() => ({}));
+    return json({ ...j, ok: r.ok && !!j.ok }, r.ok ? 200 : 502);
+  }
+  if (!FILES_PATH_RE.test(rest)) return json({ error: "잘못된 파일 경로" }, 400);
+  const m = request.method;
+  if (m === "GET") {
+    const r = await call("/f/" + rest, { method: "GET" });
+    if (!r.ok) return json({ error: "파일 없음/서버 오류 " + r.status }, r.status === 404 ? 404 : 502);
+    return new Response(r.body, { status: 200, headers: { "content-type": r.headers.get("content-type") || "application/octet-stream", "cache-control": "private, max-age=86400" } });
+  }
+  if (m === "PUT") {
+    const ct = request.headers.get("content-type") || "";
+    if (!/^image\//.test(ct)) return json({ error: "사진만 저장할 수 있습니다." }, 415);
+    const body = await request.arrayBuffer();
+    if (!body.byteLength || body.byteLength > 20 * 1024 * 1024) return json({ error: "파일 크기 오류" }, 413);
+    const r = await call("/f/" + rest, { method: "PUT", headers: { "content-type": ct, "x-files-by": email }, body });
+    const j = await r.json().catch(() => ({}));
+    return json(j, r.ok ? 200 : (r.status === 507 ? 507 : 502));
+  }
+  if (m === "DELETE") {
+    const r = await call("/f/" + rest, { method: "DELETE", headers: { "x-files-by": email } });
+    const j = await r.json().catch(() => ({}));
+    return json(j, r.ok || r.status === 404 ? 200 : 502);
+  }
+  return json({ error: "method" }, 405);
+}
 function fmtMin(ms) { ms = Math.max(0, ms || 0); if (ms < 60000) return Math.round(ms / 1000) + "초"; const m = Math.round(ms / 60000); return m < 60 ? m + "분" : Math.floor(m / 60) + "시간 " + (m % 60) + "분"; }
 
 /* ============================================================
@@ -2316,6 +2375,9 @@ export default {
       const email = await fbEmailFromRequest(request);
       if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
       return dongseonRecSum(request, env);
+    }
+    if (url.pathname.startsWith("/api/dongseon/files/")) {   // 환자 사진 → 병원 서버 디스크 (2026-11-15)
+      return dongseonFiles(request, env, url);
     }
     if (url.pathname === "/api/dongseon/notify") {   // 동선관리 방 도착·퇴실 → 텔레그램(/room 구독자)
       return dongseonNotify(request, env);
