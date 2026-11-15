@@ -45,9 +45,9 @@ try {
     $kids = [PW]::Children($h)
     $txts = @($kids | ForEach-Object { [PW]::Text($_) })
     $title = [PW]::Text($h)
-    # 수납 창 = 제목이나 자식 글에 '차트번호'·'수납' 이 있고 '영수' 가 있는 창
+    # v2: 비트 프로그램(BIT…)의 보이는 창은 모두, 그 밖에는 제목·글에 '차트번호' 가 있는 창 — v1 은 '수납' 글자까지 요구해 수납 창을 건너뛰었다
     $all = ($title + ' ' + ($txts -join ' '))
-    if (-not ($all -match '차트번호' -and $all -match '수납')) { continue }
+    if (-not ($pn -match '^BIT' -or $all -match '차트번호')) { continue }
     $found++
     $r = New-Object PW+RECT; [void][PW]::GetWindowRect($h, [ref]$r)
     Say ""
@@ -57,6 +57,20 @@ try {
       $kr = New-Object PW+RECT; [void][PW]::GetWindowRect($k, [ref]$kr)
       $t = ([PW]::Text($k)) -replace "`r?`n", ' / '; if ($t.Length -gt 120) { $t = $t.Substring(0, 120) + '…' }
       Say ("{0},{1} | {2}x{3} | {4} | {5}" -f ($kr.L - $r.L), ($kr.T - $r.T), ($kr.R - $kr.L), ($kr.B - $kr.T), [PW]::Cls($k), $t)
+    }
+    # v2: 그림으로 그린 칸(일반 방식으로 글이 안 읽히는 칸)은 UI Automation 으로 이름·값을 한 번 더 — 큰 메인 창(자식 300개 이상)은 건너뜀
+    if ($kids.Count -lt 300) {
+      try {
+        Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+        $el = [System.Windows.Automation.AutomationElement]::FromHandle($h)
+        $els = $el.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+        Say ("--- UIA 요소 {0}개 (종류 | 이름 | 값 | x,y)" -f $els.Count)
+        foreach ($e in $els) { $c = $e.Current; $v = ''
+          try { $vp = $e.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); if ($vp) { $v = $vp.Current.Value } } catch {}
+          $nm = [string]$c.Name; if (-not $nm -and -not $v) { continue }
+          $b = $c.BoundingRectangle
+          Say ("{0} | {1} | {2} | {3},{4}" -f $c.ControlType.ProgrammaticName.Replace('ControlType.', ''), ($nm -replace "`r?`n", ' / '), $v, [int]($b.X - $r.L), [int]($b.Y - $r.T)) }
+      } catch { Say "UIA 오류: $($_.Exception.Message)" }
     }
   }
   if (-not $found) { Say "수납 창을 찾지 못했습니다 — 비트 수납 창(카드·현금 칸이 있는 창)을 연 채로 다시 실행해 주세요." }
