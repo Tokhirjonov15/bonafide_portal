@@ -181,6 +181,45 @@ function FindRxWindow($procId) {   # 원외처방 창 HWND — 한 번 열리면
     $t = ([BitW.U32]::Text($h)) -replace '\s', ''; if ($t -like '원외처방*') { return $h } }
   return $null
 }
+# v3.9 (2026-11-15) 수납 창 — 제목 '[챠트번호 : 33862] [환자이름 : …]' 인 비트 접수 프로그램 창. 라벨(STATIC) 바로 오른쪽 같은 줄의 칸(EDIT) 값을 읽는다(읽기 전용).
+#  계산 전 '얼마예요' 금액은 비트 DB 에 없고(수납 저장 때 들어감) 이 창에만 있다 → 동의서 창의 본인부담액을 이 창과 똑같이 (bitLookup/{날짜}_{차트번호} 의 pay* 칸)
+function PayNum($s) { $d = ([string]$s) -replace '[^\d\-]', ''; if ($d -match '^-?\d+$') { return [int64]$d }; return $null }
+function ReadPayWin($procId) {
+  foreach ($h in [BitW.U32]::Tops()) {
+    if ([BitW.U32]::Pid($h) -ne $procId -or -not [BitW.U32]::IsWindowVisible($h)) { continue }
+    $t = [BitW.U32]::Text($h); if ($t -notmatch '[챠차]트번호\s*:\s*(\d+)') { continue }
+    $mrn = $Matches[1]; $labs = New-Object System.Collections.ArrayList; $eds = New-Object System.Collections.ArrayList
+    foreach ($k in [BitW.U32]::Children($h)) {
+      $c = [BitW.U32]::Cls($k); $isL = $c -match '\.STATIC\.'; $isE = $c -match '\.EDIT\.'; if (-not ($isL -or $isE)) { continue }
+      $r = New-Object BitW.U32+RECT; [void][BitW.U32]::GetWindowRect($k, [ref]$r)
+      $o = @{ tx = [BitW.U32]::Text($k); L = $r.L; Y = $r.T; R = $r.R; W = $r.R - $r.L }
+      if ($isL) { [void]$labs.Add($o) } else { [void]$eds.Add($o) } }
+    $f = @{}
+    foreach ($l in $labs) { $n = ([string]$l.tx) -replace '\s', ''; if (-not $n) { continue }; $best = $null
+      foreach ($e in $eds) { $gap = $e.L - $l.R
+        if ([Math]::Abs($e.Y - $l.Y) -le 4 -and $e.L -gt ($l.L + 10) -and $gap -ge -10 -and $gap -le 40) { if (-not $best -or $e.L -lt $best.L) { $best = $e } } }
+      if ($best) { if (-not $f.ContainsKey($n)) { $f[$n] = New-Object System.Collections.ArrayList }; [void]$f[$n].Add($best) } }
+    if (-not $f.ContainsKey('총본인부담')) { continue }   # 수납 창이 아님
+    $one = { param($k) if ($f.ContainsKey($k)) { return (PayNum $f[$k][0].tx) }; return $null }
+    $wide = { param($k) if (-not $f.ContainsKey($k)) { return $null }; $b = $f[$k] | Sort-Object { $_.W } -Descending | Select-Object -First 1; return (PayNum $b.tx) }   # 같은 이름 칸이 여럿(수납내역·할인설정 옆·아래 총액 칸) → 가장 넓은 칸 = 할인설정 옆 받을 금액
+    $own = & $one '총본인부담'; if ($null -eq $own) { continue }
+    $cash = & $wide '현금'; $card = & $wide '카드'; $acct = & $wide '계좌'
+    return @{ mrn = $mrn; payOwn = $own; payPrev = (& $one '기수납액'); payG = (& $one '급여본인부담'); payNon = (& $one '비급여총액'); payFull = (& $one '전액본인부담'); payTotal = (& $one '총진료비')
+              payCash = $cash; payCard = $card; payAcct = $acct; payNow = ([int64]$cash + [int64]$card + [int64]$acct) }
+  }
+  return $null
+}
+$script:PayLast = ''; $script:PaySent = @{}
+function PayWinTick($procId) {
+  $p = ReadPayWin $procId; if (-not $p) { $script:PayLast = ''; return }
+  $h = (($p.Keys | Sort-Object | ForEach-Object { "$_=$($p[$_])" }) -join '|')
+  if ($h -ne $script:PayLast) { $script:PayLast = $h; return }   # 두 번 연속 같은 값(계산·입력 중 아님)일 때만
+  if ($script:PaySent[$p.mrn] -eq $h) { return }
+  $fs = @{ date = (Today); payAt = (NowIso); payPc = $Pc }
+  foreach ($k in $p.Keys) { if ($k -ne 'mrn' -and $null -ne $p[$k]) { $fs[$k] = [string]$p[$k] } }
+  FsPatch "bitLookup/$(Today)_$($p.mrn)" $fs; $script:PaySent[$p.mrn] = $h
+  Log "수납 창: 차트번호 $($p.mrn) 총 본인부담 $($p.payOwn) · 받을 금액 $($p.payNow) → bitLookup"
+}
 function ReadRx($hwnd) {   # 차트번호 칸(라벨 오른쪽) + 특이사항 칸(라벨 아래 RichEdit) — Win32 좌표/텍스트
   $els = @()
   foreach ($h in [BitW.U32]::Children([IntPtr]$hwnd)) {
@@ -524,7 +563,7 @@ function HandleCast($m, $force = $false) {
 }
 
 # ── 메인 루프 ──
-Log "시작 v3.8: PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
+Log "시작 v3.9: PC=$Pc$(if ($NoNote) { '  (처방 보내기 끔 — 열람용 PC)' } elseif ($NoteGlp) { '  (마운자로·위고비 처방만 보냄)' })  cast TCP $CastPort  패널 주기=${PollSec}s  처방 머리글=$RX_HEAD  내 IP=$($script:MyIps -join ',')"
 try { $hadRt = [bool]$script:Refresh; $null = FbToken; if ($hadRt -and $script:Tok) { Log "저장된 세션(토큰)으로 시작 — 비밀번호 로그인 생략" } } catch { Log "$_"; Start-Sleep 30 }
 $listener = $null
 try { $listener = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $CastPort; $listener.Start(); Log "BITCast 수신 대기: TCP $CastPort" }
@@ -559,12 +598,13 @@ while ($true) {
       $open = ($null -ne $bw)
       $dw = $null; try { $dw = FindDoctorWindow } catch { Log "외래진료실 창 찾기 오류: $($_.Exception.Message)" }
       $docOpen = ($null -ne $dw)
+      if ($open) { try { PayWinTick $bw.proc.Id } catch { Log "수납 창 읽기 오류: $($_.Exception.Message)" } }   # v3.9 수납 창 금액
       # 비트 창이 하나도 안 열린 PC(대부분의 진료·치료실 PC)는 30분에 한 번만 — 창이 열리거나 닫히면 즉시. 동선관리 BIT_STALE_IDLE_SEC=2100 과 짝
       $hbSec = if ($open -or $docOpen) { $HeartbeatSec } else { [Math]::Max($HeartbeatSec, 1800) }
       if (((Get-Date) - $lastBeat).TotalSeconds -ge $hbSec -or $open -ne $lastOpen -or $docOpen -ne $lastDocOpen) {
         # 자가 진단 필드: ver·시작 시각·가동 시간·PID·마지막 오류·이번 구간 최장 주기·로그 끝 5줄 (이름은 로그에 없음) — 동선관리 pill 툴팁과 원격 점검용
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
-                 ver = 'v3.8'; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
+                 ver = 'v3.9'; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }

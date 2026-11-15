@@ -3882,7 +3882,7 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v3.8',agent:'db2.5'};   // db2.5: 비트 저장 차팅(EmrInf)으로 슬립 채우기·고치기 (2026-11-05)
+const BIT_LATEST={watcher:'v3.9',agent:'db2.5'};   // db2.5: 비트 저장 차팅(EmrInf)으로 슬립 채우기·고치기 (2026-11-05)
   //   // db2.4: 처방 문서에 그 접수의 보험(insNm) — 예상 본인부담 계산용(2026-11-03 정혁).
   // db2.3: 처방 줄마다 비트 구분(itm·sot) — 동의서 처방내역이 먹는 약을 비트 @투약으로 가림(2026-11-02). db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
@@ -15187,6 +15187,13 @@ function ownCtxOf(m){m=normMrn(m);const p=(data||[]).find(x=>normMrn(x.mrn)===m)
 /* 뜻을 모르는 급여구분 코드의 부담률: 오늘 비트 금액이 온 접수들로 0.3·0.5·0.8·1.0 중 가장 잘 맞는 값 (10분마다) */
 /* 계산 뒤 처방이 바뀜 (2026-11-01: 33581 허예나님 — 상담 전에 쿨밴드를 처방에서 뺐는데 동의서에 뺀 줄 금액이 그대로).
    비트 본인부담(OrpTotOwn)은 수납 창에서 다시 계산해야 바뀌고, 처방 금액 줄(pay)은 바로 바뀐다 → pay 가 own 보다 나중이면 own 은 옛 처방의 금액 */
+/* 비트 수납 창 금액 (감시 v3.9, 2026-11-15) — bitLookup/{오늘}_{차트번호} 의 payOwn(총 본인부담)·payPrev(기 수납액)·payNow(현금+카드+계좌 칸). 
+   수납 창을 읽은 뒤 처방 금액 줄이 바뀌었으면(rx.payAt 이 더 나중) 옛 처방 금액이라 쓰지 않는다 */
+function bitPayWinFor(p,rx){const m=normMrn(p&&p.mrn).replace(/^0+/,'');if(!m)return null;const today=localYMD(new Date());
+  const L=(BIT_LOOKUP||[]).filter(l=>l&&l.payAt&&l.payOwn!=null&&l.payOwn!==''&&String(l.date||'')===today&&normMrn(l.mrn||String(l.docId||'').split('_').pop()).replace(/^0+/,'')===m).sort((a,b)=>String(b.payAt).localeCompare(String(a.payAt)));
+  const l=L[0];if(!l)return null;if(rx&&rx.payAt&&String(rx.payAt)>String(l.payAt))return null;
+  const n=v=>{const x=Number(String(v==null?'':v).replace(/[^\d.-]/g,''));return String(v==null?'':v).trim()===''||!isFinite(x)?null:x;};
+  const own=n(l.payOwn);if(own==null)return null;return {own,prev:n(l.payPrev)||0,now:n(l.payNow),at:l.payAt,pc:l.payPc||''};}
 function ownStale(rx){return !!(rx&&rx.own!=null&&rx.payAt&&rx.ownAt&&String(rx.payAt)>String(rx.ownAt));}
 function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN_CAL_AT=Date.now();
   const cases=(BIT_RX_DOCS||[]).filter(v=>v&&v.own!=null&&v.own!==''&&Array.isArray(v.pay)&&v.pay.length&&!ownStale(v)).map(v=>{const o=Object.assign({mrn:normMrn(v.mrn),actual:Number(String(v.own).replace(/[^\d.-]/g,'')),pay:v.pay},ownCtxOf(v.mrn));if(v.insNm)o.ins=v.insNm;return o;});
@@ -15241,7 +15248,12 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
   /* 처방내역 위에 총금액 · 비급여 금액 (2026-10-14 요청) — 비트 금액 줄(pay) 합계, 비급여 = 급여구분 2 */
   /* 2026-10-28 요청: 동의서는 환자분께 '오늘 금액'을 알려 드리는 것 — 비트 수납 창의 '총 본인부담'(에이전트 db2.0)만 보인다.
      아직 비트에서 안 왔으면 아무것도 쓰지 않는다(총 진료비·비급여·'계산 전' 안내는 빼기로) */
-  let sumh='';{const stale=ownStale(rx);const own=rx&&rx.own!=null&&!stale?rx.own:null;const est=own==null?ownEstimate(p,rx):null;   // 계산 전(또는 계산 뒤 처방이 바뀜)에는 처방 금액으로 계산한 예상액 (2026-10-28 요청)
+  /* 2026-11-15: 비트 수납 창에 뜬 금액(감시 v3.9 → bitLookup pay*) — 계산 전 '얼마예요' 금액은 비트 DB 에 없고 그 창에만 있다. 수납 창을 연 뒤 처방이 안 바뀌었으면
+     그 금액을 그대로(수납 금액과 같음). 계산 뒤 금액(own)과 둘 다 있으면 나중 것 */
+  let sumh='';const pw=bitPayWinFor(p,rx);
+  if(pw&&!(rx&&rx.own!=null&&!ownStale(rx)&&rx.ownAt&&String(rx.ownAt)>String(pw.at))){
+    sumh=`<div class="cd-sum"><span title="비트 수납 창 금액 (${esc(hhmm(pw.at))}${pw.pc?' · '+esc(pw.pc):''})">본인부담액 <b style="font-size:17px">${esc(rxWon(pw.own))}원</b>${pw.prev>0?` <span class="hint">· 이미 낸 금액 ${esc(rxWon(pw.prev))}원 · 오늘 받을 금액 <b>${esc(rxWon(pw.now!=null?pw.now:pw.own-pw.prev))}원</b></span>`:''}</span>${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
+  else{const stale=ownStale(rx);const own=rx&&rx.own!=null&&!stale?rx.own:null;const est=own==null?ownEstimate(p,rx):null;   // 계산 전(또는 계산 뒤 처방이 바뀜)에는 처방 금액으로 계산한 예상액 (2026-10-28 요청)
     const amt=own!=null?`<span>본인부담액 <b style="font-size:17px">${esc(rxWon(own))}원</b></span>`:est!=null?`<span>본인부담액 <b style="font-size:17px">${esc(rxWon(est))}원</b> <span class="hint" title="${stale?`비트에서 계산한 뒤 처방이 바뀌었습니다(계산 금액 ${esc(rxWon(rx.own))}원은 바뀌기 전 처방). 바뀐 처방으로 계산한 예상 금액이며, 비트 수납 창에서 다시 계산하면 비트 금액으로 바뀝니다`:'비트에서 계산하기 전이라 처방 금액으로 계산한 예상 금액입니다. 비트에서 계산하면 비트 금액으로 바뀝니다'}">(예상)</span></span>`:'';
     if(amt||p.mrn)sumh=`<div class="cd-sum">${amt}${p.mrn?`<button type="button" class="btn sm cd-sign2" onclick="openConsent('${esc(p.id)}')">✍ 동의서 작성</button>`:''}</div>`;}
   const rxs=`<div class="cd-sect"><div class="cd-h"><i data-lucide="pill"></i> 처방내역 전체 <span class="hint">비트 · ${rx&&rx.items?rx.items.length:0}건 · 동의서 대상(시술·처치·비급여)은 노란 줄</span></div>${sumh}${rxh}</div>`;
