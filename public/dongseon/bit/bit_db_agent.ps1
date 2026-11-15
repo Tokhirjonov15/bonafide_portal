@@ -1,0 +1,949 @@
+﻿# ─────────────────────────────────────────────────────────────
+#  비트(Dr.BIT) DB 접수 감시 에이전트 v1.0 (반듯한정형외과 동선관리 연동)
+#
+#  비트 SQL Server(drbitpack)의 OcmInf(접수) 를 4초마다 읽기 전용 계정으로 SELECT 해서, 상태가 '접수 계열'로 처음 바뀐 순간을
+#  동선관리 Firestore bitIntake/{날짜}_ocm{접수번호} 문서로 올린다. 문서 형식은 bitplus_watcher.ps1(캐스트 채널)과 같아서
+#  동선관리 웹은 고치지 않아도 되고, 두 스크립트가 같은 문서에 merge 로 써도 충돌하지 않는다.
+#  (파트너 병원 문서 기술문서_유차트_접수데이터_수집.md 의 decide 알고리즘을 따른다)
+#
+#  읽기만 한다: dongseon_ro 는 db_datareader + INSERT/UPDATE/DELETE/EXECUTE 거부. 이 스크립트는 실행 전에 SQL 문을 검사해 SELECT 한 문장만 허용한다.
+#  주민번호는 앞 7자리(YYMMDD-S)만 만들어 보내고, 이름·주민번호는 로그에 남기지 않는다(차트번호만).
+#
+#  상태(OcmComStt) → 동선관리 command:
+#    WN/NN/WC/WT/SN/SC/ST(접수·대기)        → 2 접수           registered=true (첫 접수 계열 진입 때 한 번)
+#    HN/HC/HT(보류)                          → 13 보류
+#    TN/FN/TC/FC/TT(진료 완료 = 수납 대기)   → 7 수납대기       (카드는 그대로, 뒤늦게 만들면 3층 수납에서 시작)
+#    PN/PC/PT(수납 완료)                     → 8 수납완료       (동선관리가 카드를 3층 수납으로 옮기고 '비트 수납완료' 초록 표시 — 내보내기는 직원이 확인)
+#    수납 완료 뒤 다시 접수/진료 완료 계열   → 10 수납취소      (동선관리가 완료 목록에서 카드 복귀)
+#    CN(접수 취소)                            → 3 접수취소       cancelled=true (동선관리가 6초 뒤 손대지 않은 카드 제거)
+#    WR/NR/HR/TR/FR/PR/CR(예약만, 미도착)·O*/V*(입원) → 보내지 않음
+#
+#  실행:  powershell -ExecutionPolicy Bypass -File bit_db_agent.ps1 -DryRun          (전송 없이 로그만 — 처음엔 이걸로)
+#         powershell -ExecutionPolicy Bypass -File bit_db_agent.ps1                  (실전)
+#  비밀번호 파일(같은 폴더): bit_db_agent.sql.secret = dongseon_ro 비밀번호,  bit_db_agent.secret = 동선관리 bitbot 비밀번호(DryRun 이면 불필요)
+#  상태 파일: %LOCALAPPDATA%\bit_db_agent\state.json — 오늘 이미 보낸 접수번호(재시작 때 중복 전송 방지). 로그: 같은 폴더 agent.log
+# ─────────────────────────────────────────────────────────────
+param(
+  [string]$Pc = 'DB',                       # 동선관리 pill 에 표시될 이름
+  [string]$SqlServer = '192.168.0.250',
+  [string]$Database = 'drbitpack',
+  [string]$SqlUser = 'dongseon_ro',
+  [int]$PollSec = 4,                        # DB 조회 주기(초)
+  [int]$HeartbeatSec = 300,                 # 하트비트 주기(초) — 동선관리 BIT_STALE_SEC=750 과 짝
+  [int]$LeadMin = 5,                        # 접수 시각이 지금보다 이만큼 뒤면 아직 보내지 않음(사전 등록분)
+  [int]$RecentMin = 30,                     # 시작 스냅샷이라도 이 시간 안에 접수된 환자는 보낸다(아침에 PC 가 켜지기 전 접수된 환자가 빠지지 않도록, 2026-09-17). 0 = 끔
+  [int]$ResvDays = 7,                       # 진료 예약(RsvInf)을 오늘부터 며칠치 올릴지 → bitResv/{날짜}. 0 = 예약 연동 끔
+  [int]$ResvEvery = 2,                      # 예약은 몇 주기마다 읽을지(2 = 8초). 바뀐 날짜의 문서만 다시 쓴다
+  [int]$RxMonthMin = 30,                    # 재고 통계표용 한 달 처방 합계(코드별 건수·총투여량)를 몇 분마다 다시 셀지. 0 = 끔 (db1.4)
+  [int]$RxEvery = 3,                        # 처방(OdrInf)을 몇 주기마다 읽을지(3 = 12초). 0 = 처방 연동 끔. 바뀐 접수건만 다시 쓴다
+  [int]$NoteEvery = 3,                      # 원장님 차팅(EmrInf → 슬립 bitNote)을 몇 주기마다 읽을지(3 = 12초). 0 = 끔 (db2.5)
+  [switch]$RxAlways,
+  [switch]$PayAlways,                       # 대기(standby)여도 처방 금액(pay)은 쓴다 — 접수 PC 가 db1.2 전인 동안 개발 PC 에서 (2026-10-01)                        # 대기(standby)여도 처방 문서는 쓴다 — 담당 PC 가 처방 기능이 없는 옛 버전인 동안
+  [switch]$ResvAlways,                      # 대기(standby)여도 예약 문서는 쓴다 — 담당 PC 의 에이전트가 예약 기능이 없는 옛 버전인 동안 임시로(관리 PC 용)
+  [switch]$DryRun,                          # Firestore 에 쓰지 않고 로그만
+  [switch]$SendExistingOnStart,             # 시작 시 오늘 접수분을 전부 보냄(기본: 스냅샷만 찍고 보내지 않음)
+  [int]$Cycles = 0,                         # 0 = 무한, N = N번 조회 뒤 종료(시험용)
+  [string]$StateDir = (Join-Path $env:LOCALAPPDATA 'bit_db_agent'),
+  [int]$Priority = 1,                       # 여러 PC 에서 함께 돌 때 우선순위(큰 수가 우선). 가장 높은 '정상' 에이전트만 Firestore 에 쓰고 나머지는 대기(상태만 따라감)
+  [int]$HealthPort = 9001,                  # 감시 스크립트·다른 에이전트가 "살아 있나"를 묻는 TCP 포트(LAN 전용, Firestore 비용 없음). 0 = 끔
+  [string]$PeersFile = (Join-Path $PSScriptRoot 'bitplus_peers.txt'),   # 다른 에이전트 PC IP 목록(한 줄에 하나, # 뒤는 주석). 없으면 단독 운영
+  [int]$PeerPort = 0,                       # 동료 에이전트의 상태 포트(0 = HealthPort 와 같음). 한 PC 에서 두 인스턴스로 시험할 때만 다르게
+  [string]$UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit',   # db2.8 자동 업데이트: 여기의 agent.json·bit_db_agent.ps1
+  [switch]$UpdNow,                          # 시작하자마자 업데이트 확인(시험용)
+  [switch]$NoUpdate                         # 자동 업데이트 끔
+)
+if ($PeerPort -le 0) { $PeerPort = $HealthPort }
+$ErrorActionPreference = 'Continue'
+# 한 번만 실행 (2026-11-02) — 남은 시작 프로그램 .vbs·직접 실행으로 하나 더 떠도 바로 끝난다. 포트를 달리한 시험용 두 번째 인스턴스는 따로
+$script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgent_$HealthPort")
+$own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
+if (-not $own) { exit }
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
+$VER = 'db2.8'   # 2.8: 자동 업데이트 — 30분마다 사이트의 agent.json(ver·sha256)을 보고 새 버전이면 받아서 확인(sha256·문법·버전 표시) 뒤 스스로 바꾸고 다시 시작한다. 접수 PC 를 돌며 재설치하지 않게 (2026-11-15). 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
+# 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
+# 2.3: 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
+# 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
+# $VER 1.1   # 1.1: 전화번호(tel)·내원 횟수(visits)·접수메모·보험 포함. 하트비트 ver 로 접수 PC 가 옛 빌드인지 구분한다
+# ── 동선관리 Firebase (공개 웹 키 — 비밀 아님. 비밀번호는 .secret 파일) ──
+$ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
+$ProjectId = 'bonafide-dongseon-108e2'
+$BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'bitbot'의 내부 이메일
+
+New-Item -ItemType Directory -Force $StateDir | Out-Null
+$LogFile = Join-Path $StateDir 'agent.log'; $StateFile = Join-Path $StateDir 'state.json'
+$script:StartedAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz'); $script:LastErr = ''; $script:LastErrAt = ''; $script:CycMax = 0
+# 로그는 큐에 넣고 파일에 몰아서 쓴다: 다른 프로그램(tail -f 등)이 로그 파일을 잡고 있어 쓰기가 실패하면 줄을 버리지 않고 다음에 다시 쓴다 (2026-09-16 실제로 30분간 로그가 비었던 사고)
+$script:LogQ = New-Object System.Collections.Generic.List[string]
+function Log($m) { $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m"; Write-Host $line
+  $script:LogQ.Add($line); if ($script:LogQ.Count -gt 500) { $script:LogQ.RemoveRange(0, $script:LogQ.Count - 500) }
+  try { $fs = [IO.File]::Open($LogFile, [IO.FileMode]::Append, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite); $sw = New-Object IO.StreamWriter($fs, (New-Object Text.UTF8Encoding $false))
+        foreach ($l in $script:LogQ) { $sw.WriteLine($l) }; $sw.Close(); $script:LogQ.Clear() } catch {}
+  if ($m -match '오류|실패') { $script:LastErr = $m; $script:LastErrAt = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') } }
+function LogTail($n = 5) { try { return ((Get-Content $LogFile -Tail $n -Encoding UTF8 -ErrorAction Stop) -join "`n") } catch { return '' } }
+function TrimLog() { try { if ((Get-Item $LogFile -ErrorAction SilentlyContinue).Length -gt 2MB) { Get-Content $LogFile -Tail 2000 | Set-Content $LogFile -Encoding UTF8 } } catch {} }
+function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
+function Today { return (Get-Date).ToString('yyyy-MM-dd') }
+
+# ── 비밀번호 ──
+$SqlSecretFile = Join-Path $PSScriptRoot 'bit_db_agent.sql.secret'
+if (-not (Test-Path $SqlSecretFile) -and (Test-Path (Join-Path $HOME '.bit_db.secret'))) { $SqlSecretFile = Join-Path $HOME '.bit_db.secret' }
+if (-not (Test-Path $SqlSecretFile)) { Log "SQL 비밀번호 파일이 없습니다: $SqlSecretFile (첫 줄에 $SqlUser 비밀번호)"; exit 1 }
+$SqlPassword = (Get-Content $SqlSecretFile -Encoding UTF8 -TotalCount 1).Trim()
+$BotPassword = ''
+if (-not $DryRun) {
+  $SecretFile = Join-Path $PSScriptRoot 'bit_db_agent.secret'
+  if (-not (Test-Path $SecretFile) -and (Test-Path (Join-Path $PSScriptRoot 'bitplus_watcher.secret'))) { $SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret' }   # 감시 스크립트와 같은 폴더(C:\bitplus)면 그 bitbot 비밀번호를 같이 쓴다
+  if (-not (Test-Path $SecretFile)) { Log "bitbot 비밀번호 파일이 없습니다: $SecretFile (첫 줄에 bitbot 비밀번호). 전송 없이 시험하려면 -DryRun"; exit 1 }
+  $BotPassword = (Get-Content $SecretFile -Encoding UTF8 -TotalCount 1).Trim()
+}
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# ── Firebase 로그인 / Firestore REST (bitplus_watcher.ps1 과 동일) ──
+$script:Tok = $null; $script:TokExp = [DateTime]::MinValue; $script:Refresh = $null
+$TokenFile = Join-Path $PSScriptRoot 'bit_db_agent.token'
+function SaveRefresh($rt) { try { if ($rt) { [IO.File]::WriteAllText($TokenFile, $rt, (New-Object Text.UTF8Encoding $false)); icacls $TokenFile /inheritance:r /grant:r "$($env:USERNAME):M" | Out-Null } } catch {} }
+if (Test-Path $TokenFile) { try { $script:Refresh = (Get-Content $TokenFile -TotalCount 1 -ErrorAction Stop).Trim() } catch { $script:Refresh = $null } }
+$script:LoginFailAt = [DateTime]::MinValue; $script:LoginBackoff = 60
+function FbLogin() {
+  if (((Get-Date) - $script:LoginFailAt).TotalSeconds -lt $script:LoginBackoff) { throw "Firebase 로그인 대기 중(최근 실패, $([int]($script:LoginBackoff - ((Get-Date) - $script:LoginFailAt).TotalSeconds))초 후 재시도)" }
+  $body = @{ email = $BotEmail; password = $BotPassword; returnSecureToken = $true } | ConvertTo-Json -Compress
+  try {
+    $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$ApiKey" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+  } catch {
+    $script:LoginFailAt = Get-Date
+    $code = ''; try { $sr = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); $code = ((($sr.ReadToEnd() | ConvertFrom-Json).error.message) -split ' ')[0] } catch {}
+    $script:LoginBackoff = 60
+    $hint = switch -Wildcard ($code) {
+      'INVALID_LOGIN_CREDENTIALS' { $script:LoginBackoff = 300; "bitbot 비밀번호가 틀림 → bit_db_agent.secret 확인 (5분마다 재시도)" }
+      'INVALID_PASSWORD'          { $script:LoginBackoff = 300; "bitbot 비밀번호가 틀림 → bit_db_agent.secret 확인 (5분마다 재시도)" }
+      'TOO_MANY_ATTEMPTS*'        { $script:LoginBackoff = 600; "실패가 잦아 Firebase 가 이 병원 IP를 잠시 차단함 → 10분 뒤 자동 재시도" }
+      'EMAIL_NOT_FOUND'           { $script:LoginBackoff = 600; "bitbot 계정이 없음 → 동선관리 계정 관리에서 bitbot 생성" }
+      default                     { "" }
+    }
+    throw "Firebase 로그인 실패 [$code] $hint"
+  }
+  $script:Tok = $r.idToken; $script:Refresh = $r.refreshToken; $script:TokExp = (Get-Date).AddSeconds([int]$r.expiresIn - 300)
+  SaveRefresh $script:Refresh
+  Log "Firebase 로그인 성공"
+}
+function FbToken() {
+  if ($script:Tok -and (Get-Date) -lt $script:TokExp) { return $script:Tok }
+  if ($script:Refresh) {
+    try {
+      $r = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://securetoken.googleapis.com/v1/token?key=$ApiKey" -ContentType 'application/x-www-form-urlencoded' -Body "grant_type=refresh_token&refresh_token=$($script:Refresh)"
+      $script:Tok = $r.id_token; $script:Refresh = $r.refresh_token; $script:TokExp = (Get-Date).AddSeconds([int]$r.expires_in - 300)
+      SaveRefresh $script:Refresh
+      return $script:Tok
+    } catch { Log "토큰 갱신 실패 → 비밀번호로 재로그인: $($_.Exception.Message)"; $script:Refresh = $null; try { Remove-Item $TokenFile -Force -ErrorAction SilentlyContinue } catch {} }
+  }
+  FbLogin; return $script:Tok
+}
+$DocBase = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents"
+function FsVal($v) {   # PowerShell 값 → Firestore 값 (문자열/불리언/정수/배열/맵 — 예약 문서의 items 배열용)
+  if ($null -eq $v) { return @{ nullValue = $null } }
+  if ($v -is [bool]) { return @{ booleanValue = $v } }
+  if ($v -is [int] -or $v -is [long]) { return @{ integerValue = [string]$v } }
+  if ($v -is [System.Collections.IDictionary]) { $m = @{}; foreach ($k in $v.Keys) { $m[[string]$k] = FsVal $v[$k] }; return @{ mapValue = @{ fields = $m } } }
+  if (($v -is [System.Collections.IEnumerable]) -and -not ($v -is [string])) { return @{ arrayValue = @{ values = @(foreach ($x in $v) { FsVal $x }) } } }
+  return @{ stringValue = [string]$v }
+}
+function FsFields($h) { $f = @{}; foreach ($k in $h.Keys) { $f[$k] = FsVal $h[$k] }; return $f }
+function FsPatch($path, $fields) {   # 지정한 필드만 갱신(merge). 없는 문서는 생성. 배열 필드는 통째로 바뀐다
+  $mask = ($fields.Keys | ForEach-Object { 'updateMask.fieldPaths=' + [Uri]::EscapeDataString($_) }) -join '&'
+  $body = @{ fields = (FsFields $fields) } | ConvertTo-Json -Depth 14 -Compress
+  $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+function FsGet($path) {   # 문서 하나 읽기 → fields(PSObject) 또는 $null(없음)
+  try { $r = Invoke-RestMethod -TimeoutSec 20 -Method Get -Uri "$DocBase/$path" -Headers @{ Authorization = "Bearer $(FbToken)" }; return $r.fields }
+  catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) { return $null }; throw }
+}
+function FsPatchNested($path, $key, $fields) {   # bitStatus/_all 의 'PC이름' 맵 필드만 갱신
+  $mask = 'updateMask.fieldPaths=' + [Uri]::EscapeDataString('`' + $key + '`')
+  $body = @{ fields = @{ $key = @{ mapValue = @{ fields = (FsFields $fields) } } } } | ConvertTo-Json -Depth 8 -Compress
+  $null = Invoke-RestMethod -TimeoutSec 20 -Method Patch -Uri "$DocBase/$path`?$mask" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+}
+
+# ── SQL (읽기 전용) ──
+function AssertReadonlySql($sql) {
+  $u = $sql.ToUpperInvariant().Trim()
+  if (-not $u.StartsWith('SELECT')) { throw "읽기 전용 검사 실패: SELECT 로 시작하지 않음" }
+  if ($sql.Contains(';')) { throw "읽기 전용 검사 실패: 문장 구분자(;)" }
+  if ($u -match '\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|GRANT|REVOKE|INTO|BULK|OPENROWSET|XP_\w+|SP_\w+)\b') { throw "읽기 전용 검사 실패: 금지 단어 $($Matches[1])" }
+}
+function SqlRows($sql, $timeoutSec = 10) {   # 폴링마다 열고 닫음(연결 유지 안 함). NOLOCK + READ UNCOMMITTED + LOCK_TIMEOUT 3초 → 비트 작업을 기다리게 하지 않음
+  AssertReadonlySql $sql
+  $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$SqlPassword;Connect Timeout=8;ApplicationIntent=ReadOnly")
+  try {
+    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = $timeoutSec
+    $c.CommandText = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET LOCK_TIMEOUT 3000"; [void]$c.ExecuteNonQuery()
+    $c.CommandText = $sql; $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close(); return ,$t
+  } finally { $cn.Close() }
+}
+# 내원 횟수(2026-09-17): 이 차트번호의 접수 계열 행 수·최초·직전 내원일 — 등록 전송 때 1회(하루 ~100번, OcmChtNum 인덱스로 30ms). 차트번호는 매개변수로 넘긴다(가짜 차트 'Res_…' 등 문자 포함)
+function VisitStats($mrnRaw, $todayYmd) {
+  $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$SqlPassword;Connect Timeout=8;ApplicationIntent=ReadOnly")
+  try {
+    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = 10
+    $c.CommandText = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET LOCK_TIMEOUT 3000"; [void]$c.ExecuteNonQuery()
+    $c.CommandText = "SELECT COUNT(*) AS n, MIN(OcmAcpDtm) AS f, MAX(CASE WHEN LEFT(OcmAcpDtm,8) < @d THEN OcmAcpDtm END) AS p FROM OcmInf WITH (NOLOCK) WHERE OcmChtNum = @m AND OcmComStt IN ('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','WH','TN','FN','TC','FC','TT','PN','PC','PT')"
+    [void]$c.Parameters.AddWithValue('@m', [string]$mrnRaw); [void]$c.Parameters.AddWithValue('@d', [string]$todayYmd)
+    $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close()
+    $row = $t.Rows[0]; return @{ n = [int]$row.n; first = (DateOf $row.f); prev = (DateOf $row.p) }
+  } finally { $cn.Close() }
+}
+# ── 서류 발급 태블릿의 '내원하신 날' (db1.9, 2026-10-27) ──
+#  태블릿이 bitIntake/ask_… 문서(ask='wait', name, birth=YYMMDD)를 남기면, 전송 담당 에이전트가 12초마다 찾아
+#  그 이름·생년월일 환자의 접수 계열 날짜를 전부(최신순, 최대 400일) 읽어 dates 로 답한다(ask='done'). 같은 이름·생년월일이 여러 차트면 'multi', 없으면 'none'.
+#  SELECT 한 문장·매개변수만 쓴다. 이름은 로그에 남기지 않는다
+$script:AskAt = [DateTime]::MinValue
+function VisitDates($name, $b6) {
+  $sql = "SELECT DISTINCT LEFT(o.OcmAcpDtm, 8) AS d, RTRIM(o.OcmChtNum) AS m FROM OcmInf o WITH (NOLOCK) JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = o.OcmChtNum WHERE REPLACE(RTRIM(p.PbsPatNam), ' ', '') = @n AND (RIGHT(RTRIM(p.PbsBirDte), 6) = @b OR LEFT(RTRIM(p.PbsResNum), 6) = @b) AND o.OcmComStt IN ('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','WH','TN','FN','TC','FC','TT','PN','PC','PT')"
+  AssertReadonlySql $sql
+  $cn = New-Object System.Data.SqlClient.SqlConnection("Server=$SqlServer;Database=$Database;User ID=$SqlUser;Password=$SqlPassword;Connect Timeout=8;ApplicationIntent=ReadOnly")
+  try {
+    $cn.Open(); $c = $cn.CreateCommand(); $c.CommandTimeout = 15
+    $c.CommandText = "SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED; SET LOCK_TIMEOUT 3000"; [void]$c.ExecuteNonQuery()
+    $c.CommandText = $sql; [void]$c.Parameters.AddWithValue('@n', [string]$name); [void]$c.Parameters.AddWithValue('@b', [string]$b6)
+    $r = $c.ExecuteReader(); $t = New-Object Data.DataTable; $t.Load($r); $r.Close()
+  } finally { $cn.Close() }
+  $ms = @{}; $ds = @{}
+  foreach ($row in $t.Rows) { $ms[[string]$row.m] = 1; $d = DateOf $row.d; if ($d) { $ds[$d] = 1 } }
+  if ($ms.Count -gt 1) { return @{ st = 'multi'; dates = @() } }
+  if (-not $ds.Count) { return @{ st = 'none'; dates = @() } }
+  return @{ st = 'done'; dates = @($ds.Keys | Sort-Object -Descending | Select-Object -First 400) }
+}
+function AnswerAsks() {
+  $hr = (Get-Date).Hour; if ($hr -lt 7 -or $hr -ge 22) { return }   # 진료 시간 근처만(빈 조회도 읽기 1건 — 하루 약 4,500건)
+  if (-not $script:IsLeader -or $DryRun -or ((Get-Date) - $script:AskAt).TotalSeconds -lt 12) { return }
+  $script:AskAt = Get-Date
+  $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'bitIntake' }); where = @{ fieldFilter = @{ field = @{ fieldPath = 'ask' }; op = 'EQUAL'; value = @{ stringValue = 'wait' } } }; limit = 5 } } | ConvertTo-Json -Depth 12 -Compress
+  $res = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "$DocBase`:runQuery" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+  foreach ($x in @($res)) {
+    if (-not $x.document) { continue }
+    $nm = [string]$x.document.name; $id = $nm.Substring($nm.LastIndexOf('/') + 1); if ($id -notlike 'ask_*') { continue }
+    $f = $x.document.fields; $name = ([string]$f.name.stringValue -replace '\s', ''); $b = ([string]$f.birth.stringValue -replace '\D', ''); if ($b.Length -eq 8) { $b = $b.Substring(2) }
+    $out = @{ ask = 'none'; answeredAt = (NowIso); answeredPc = $Pc }
+    try { if ($name -and $b.Length -eq 6) { $vd = VisitDates $name $b; $out.ask = $vd.st; if ($vd.st -eq 'done') { $out.dates = @($vd.dates); $out.n = [int]$vd.dates.Count } } }
+    catch { $out.ask = 'err'; Log "내원 날짜 조회 오류: $($_.Exception.Message)" }
+    try { FsPatch "bitIntake/$id" $out; Log "내원 날짜 조회(서류 발급 태블릿): $id → $($out.ask)$(if ($out.n) { " $($out.n)일" })" } catch { Log "내원 날짜 답 전송 오류: $($_.Exception.Message)" }
+  }
+}
+# 오늘 접수분 전체(하루 수십~수백 행). OcmNum 은 char(10) 앞 공백 패딩 → 숫자만 남김. 예약 환자는 예약 시점에 이미 행이 있고(WR) 도착하면 같은 행이 WN 으로 바뀌며 OcmAcpDtm 이 실제 도착 시각으로 갱신된다.
+$QUERY = @"
+SELECT RTRIM(o.OcmNum) AS k, RTRIM(o.OcmComStt) AS stt, RTRIM(p.PbsPatNam) AS name, RTRIM(o.OcmChtNum) AS mrn,
+       RTRIM(p.PbsResNum) AS rrn, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex, RTRIM(p.PbsNewDte) AS newdte,
+       RTRIM(o.OcmAcpDtm) AS recv, RTRIM(u.UidNam) AS dr, RTRIM(o.OcmDepCod) AS dep, RTRIM(r.RsvDtm) AS rsvdtm,
+       RTRIM(o.OcmRefCmt) AS memo1, RTRIM(p.PbsRefCmt) AS memo2, CAST(m.PbsSpcCmt AS nvarchar(max)) AS memo3, o.OcmInsCod AS ins, o.OcmInsSeq AS insseq,
+       COALESCE(NULLIF(RTRIM(p.PbsCelPhn),''), RTRIM(p.PbsPhnNum)) AS tel
+FROM OcmInf o WITH (NOLOCK)
+LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = o.OcmChtNum
+LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OcmDtrCod
+LEFT JOIN RsvInf r WITH (NOLOCK) ON r.RsvOcmNum = o.OcmNum
+LEFT JOIN PbsCmtInf m WITH (NOLOCK) ON m.PbsChtNum = o.OcmChtNum
+WHERE LEFT(o.OcmAcpDtm, 8) = '{0}'
+ORDER BY o.OcmAcpDtm, o.OcmNum
+"@
+
+# ── 상태 코드 분류 (DtlMst COMSTT, 2026-09-16 실측 36개) ──
+$ACTIVE   = @('WN','NN','WC','WT','SN','SC','ST','HN','HC','HT','WH','TN','FN','TC','FC','TT','PN','PC','PT')   # 접수 계열(원내에 왔거나 왔다 간 환자)
+$RETAIN   = @('HN','HC','HT','WH')                  # 보류 (WH 는 COMSTT 표에 없지만 2026-09-16 실데이터에 나옴 — 접수 보류로 취급)
+$SKIP     = @('WR','NR','HR','TR','FR','PR','CR','SR')   # 예약만(미도착)·예약 취소 — 보내지 않음. O*/V* 입원도 보내지 않음
+$script:UnknownStt = @{}
+$DONEWAIT = @('TN','FN','TC','FC','TT')             # 진료 완료 = 수납 대기
+$PAID     = @('PN','PC','PT')                       # 수납 완료
+$CANCEL   = @('CN')
+$CMD_NAMES = @{ 2 = '접수'; 3 = '접수취소'; 7 = '수납대기'; 8 = '수납완료'; 10 = '수납취소'; 13 = '보류' }
+function CmdOf($stt, $prev) {
+  if ($PAID -contains $stt) { return 8 }
+  if ($prev -and ($PAID -contains $prev) -and ($ACTIVE -contains $stt)) { return 10 }   # 수납 완료였다가 되돌아감 = 수납취소
+  if ($DONEWAIT -contains $stt) { return 7 }
+  if ($RETAIN -contains $stt) { return 13 }
+  return 2
+}
+function Rrn7($rrn, $bir, $sex) {   # 주민번호 13자리 → 'YYMMDD-S' (앞 7자리만). 없으면 생년월일+성별로 만든다. 뒷자리는 절대 만들지 않음
+  $s = [string]$rrn -replace '\D', ''
+  if ($s.Length -ge 7) { return $s.Substring(0, 6) + '-' + $s.Substring(6, 1) }
+  $b = [string]$bir -replace '\D', ''
+  if ($b.Length -eq 8) {
+    $sx = ([string]$sex).Trim().ToUpperInvariant(); $m = ($sx -in 'M','1','3','남'); $f = ($sx -in 'F','2','4','여')
+    if ($m -or $f) { $d = if ($b.Substring(0, 2) -eq '19') { if ($m) { '1' } else { '2' } } else { if ($m) { '3' } else { '4' } }; return $b.Substring(2, 6) + '-' + $d }
+  }
+  return ''
+}
+# 메모·보험 (2026-09-17): 접수메모(당일)=OcmInf.OcmRefCmt, 접수메모(연속)=PbsInf.PbsRefCmt, 특이사항=PbsCmtInf.PbsSpcCmt — 감시 스크립트가 접수 창 인적정보에서 읽던 것과 같은 항목.
+# 비트의 빈 칸 표시('-', '.', '+')는 메모가 아니다. OcmBilCmt 는 의사 처방 메모라 보내지 않는다.
+function CleanMemo($t) { $s = ([string]$t).Trim(); if ($s -match '^[\s+\-_.·ㆍ,~*]*$') { return '' }; return $s }
+$INS_NAME = @{ 11 = '일반'; 21 = '자보-청구분'; 31 = '국민건강보험'; 38 = '공상'; 41 = '산재-공단분'; 51 = '보호1종'; 52 = '보호2종'; 54 = '행여' }   # DtlMst INSINF 코드 → 동선관리 보험 선택지(f_ins) 이름
+function InsName($cod) { $n = 0; if ([int]::TryParse([string]$cod, [ref]$n) -and $INS_NAME.ContainsKey($n)) { return $INS_NAME[$n] }; return '' }
+function HourMinOf($dtm) { $s = [string]$dtm; if ($s.Length -ge 12) { return [int]$s.Substring(8, 2) * 60 + [int]$s.Substring(10, 2) }; return -1 }
+function DtmOf($dtm) { $s = [string]$dtm; if ($s.Length -ge 12) { return $s.Substring(0, 4) + '-' + $s.Substring(4, 2) + '-' + $s.Substring(6, 2) + ' ' + $s.Substring(8, 2) + ':' + $s.Substring(10, 2) }; return '' }
+function DateOf($d) { $s = [string]$d; if ($s.Length -ge 8) { return $s.Substring(0, 4) + '-' + $s.Substring(4, 2) + '-' + $s.Substring(6, 2) }; return '' }
+
+# ── 상태 파일: { date, seen: {접수번호: 상태}, sent: {접수번호: 마지막 command} } ──
+function LoadState() {
+  try { if (Test-Path $StateFile) { $j = Get-Content $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+      if ($j.date -eq (Today)) { $seen = @{}; $sent = @{}
+        foreach ($p in $j.seen.PSObject.Properties) { $seen[$p.Name] = [string]$p.Value }
+        foreach ($p in $j.sent.PSObject.Properties) { $sent[$p.Name] = [int]$p.Value }
+        return @{ date = $j.date; seen = $seen; sent = $sent; fresh = $false } } } } catch { Log "상태 파일 읽기 오류(새로 시작): $($_.Exception.Message)" }
+  return @{ date = (Today); seen = @{}; sent = @{}; fresh = $true }
+}
+function SaveState($st) { try { @{ date = $st.date; seen = $st.seen; sent = $st.sent } | ConvertTo-Json -Compress -Depth 4 | Set-Content $StateFile -Encoding UTF8 } catch { Log "상태 파일 저장 오류: $($_.Exception.Message)" } }
+
+function Send($docId, $fields, $what) {
+  if ($DryRun) { Log "DRY 전송: $docId $what"; return }
+  if (-not $script:IsLeader) { Log "대기 중 — 생략(전송 담당: $($script:LeaderInfo)): $docId $what"; return }   # 상태는 보낸 것으로 기록 → 담당이 되는 순간부터 새 변화만 보낸다
+  FsPatch "bitIntake/$docId" $fields
+  if ($docId -match '_ocm(\w+)$') { $script:Conf[$Matches[1]] = 1 }   # 실제로 썼음(확인됨)
+  Log "전송: $docId $what"
+}
+
+# 새 접수 문서 내용 (보통 전송과 빠진 접수 보충이 같이 쓴다). $late = 보충: 접수 시각은 비트의 실제 접수 시각, late 표시(동선관리가 이미 다녀간 환자면 카드를 만들지 않게)
+function RegFields($r, $base, $cmd, $hm, $today8, $k, $late) {
+  $mrn = ([string]$r.mrn -replace '\D', ''); if (-not $mrn) { $mrn = ([string]$r.mrn).Trim() }
+  $name = ([string]$r.name).Trim()
+  $regAt = if ($late -and $hm -ge 0) { (Get-Date).Date.AddMinutes($hm).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') } else { NowIso }
+  $f = $base + @{ name = $name; mrn = $mrn; rrn7 = (Rrn7 $r.rrn $r.bir $r.sex); doctor = ([string]$r.dr).Trim(); dep = ([string]$r.dep).Trim(); hourMin = $hm
+                  command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; registered = $true; registeredAt = $regAt; cancelled = $false; seenAt = (NowIso) }
+  if ($late) { $f.late = $true }
+  $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }
+  $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
+  $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }   # 휴대폰(없으면 전화) 숫자만 — 카드의 전화 칸(문자 발송용). 2026-09-17 사용자 결정으로 추가
+  $fv = DateOf $r.newdte; if ($fv) { $f.firstVisit = $fv }
+  try { $vs = VisitStats ([string]$r.mrn).Trim() $today8; $f.visits = [int]$vs.n; if ($vs.prev) { $f.prevVisit = $vs.prev }; if ($vs.first -and -not $f.firstVisit) { $f.firstVisit = $vs.first } } catch { Log "내원 횟수 조회 오류 ocm${k}: $($_.Exception.Message)" }   # 오늘 포함 N회째, 직전 내원일
+  $rv = DtmOf $r.rsvdtm; if ($rv -and $rv.StartsWith((Today))) { $f.nextResv = $rv }
+  if ($f.rrn7 -eq '') { $f.Remove('rrn7') }
+  return $f
+}
+# ── 빠진 접수 보충 (db1.7, 2026-10-25) ──
+#  '보낸 것으로' 기록됐지만 이 에이전트가 직접 쓰지 않은 접수(시작 스냅샷, 대기 PC 일 때 넘긴 것)를 담당일 때 한 번 확인한다:
+#  Firestore 에 그 문서가 있으면 확인 완료, 없으면 지금 보낸다. 문서마다 하루 한 번만 읽는다(batchGet, 100건씩)
+$script:Conf = @{}; $script:RecFailAt = [DateTime]::MinValue; $script:TwinLogged = @{}
+function Reconcile($chk, $base, $today8) {
+  if (-not $chk.Count -or ((Get-Date) - $script:RecFailAt).TotalSeconds -lt 120) { return }
+  $root = "projects/$ProjectId/databases/(default)/documents/bitIntake/"
+  $miss = @()
+  try {
+    for ($i = 0; $i -lt $chk.Count; $i += 100) {
+      $part = @($chk[$i..([Math]::Min($i + 99, $chk.Count - 1))])
+      $body = @{ documents = @($part | ForEach-Object { $root + "$(Today)_ocm$($_.k)" }) } | ConvertTo-Json -Compress -Depth 4
+      $res = Invoke-RestMethod -TimeoutSec 30 -Method Post -Uri "$DocBase`:batchGet" -Headers @{ Authorization = "Bearer $(FbToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+      foreach ($x in @($res)) {
+        $nm = if ($x.found) { [string]$x.found.name } elseif ($x.missing) { [string]$x.missing } else { '' }
+        if ($nm -notmatch '_ocm(\w+)$') { continue }; $kk = $Matches[1]
+        if ($x.found) { $script:Conf[$kk] = 1 } else { $miss += $kk } }
+    }
+  } catch { $script:RecFailAt = Get-Date; Log "빠진 접수 확인 실패(2분 뒤 다시): $($_.Exception.Message)"; return }
+  foreach ($kk in $miss) { $c = $chk | Where-Object { $_.k -eq $kk } | Select-Object -First 1; if (-not $c) { continue }
+    $cmd = CmdOf $c.stt $null
+    $f = RegFields $c.r ($base + @{ stt = $c.stt; ocmNum = $kk }) $cmd $c.hm $today8 $kk $true
+    try { Send "$(Today)_ocm$kk" $f "빠진 접수 보충 $($CMD_NAMES[$cmd]) (접수 $([Math]::Floor($c.hm / 60)):$('{0:00}' -f ($c.hm % 60)))"; $script:Conf[$kk] = 1 } catch { Log "보충 전송 오류 ocm${kk}: $($_.Exception.Message)" } }
+}
+
+# ── 한 번의 폴링: 오늘 행 전체를 읽고 decide ──
+function Poll($st, $first) {
+  $today8 = (Get-Date).ToString('yyyyMMdd')
+  $rows = SqlRows ($QUERY -f $today8)
+  $now = Get-Date; $nowMin = $now.Hour * 60 + $now.Minute
+  $done = @{}; $n = 0; $chk = New-Object System.Collections.ArrayList
+  # db1.9: 같은 접수번호의 보험별 행 — 가장 작은 보험 코드 행이 접수번호 그대로, 다른 보험 행은 '접수번호i보험코드'(예 182357i31) 로 따로 보낸다.
+  #        보험 코드가 같은 행은 조인(예약·특이사항) 중복이라 하나만. 순서가 바뀌어도 같은 행이 같은 번호를 받도록 먼저 접수번호별 최소 보험 코드를 구한다
+  $minIns = @{}
+  foreach ($r in $rows.Rows) { $k0 = ([string]$r.k -replace '\D', ''); if (-not $k0) { continue }; $ic = ([string]$r.ins).Trim()
+    if (-not $minIns.ContainsKey($k0) -or ($ic -and (-not $minIns[$k0] -or [string]::CompareOrdinal($ic, $minIns[$k0]) -lt 0))) { $minIns[$k0] = $ic } }
+  foreach ($r in $rows.Rows) {
+    $k0 = ([string]$r.k -replace '\D', ''); if (-not $k0) { continue }
+    $ic = ([string]$r.ins).Trim(); $k = if (-not $ic -or $ic -eq $minIns[$k0]) { $k0 } else { "${k0}i$ic" }
+    if ($done.ContainsKey($k)) { continue }; $done[$k] = 1; $n++
+    if ($k -ne $k0 -and -not $script:TwinLogged.ContainsKey($k)) { $script:TwinLogged[$k] = 1; Log "보험 2번째 행: 접수번호 $k0 에 보험 $($minIns[$k0]) 외 $ic — ocm$k 로 따로 보냄" }   # OcmNum 은 char(10) 앞 공백 패딩('    182357') → 숫자만. 캐스트 채널(bitplus_watcher)과 같은 문서 id 가 된다. RsvInf 조인으로 같은 접수가 두 줄이면 첫 줄만
+    $stt = [string]$r.stt; $prev = $st.seen[$k]
+    $isActive = ($ACTIVE -contains $stt)
+    if (-not $isActive -and -not ($CANCEL -contains $stt) -and -not ($SKIP -contains $stt) -and $stt -notmatch '^[OV]' -and -not $script:UnknownStt.ContainsKey($stt)) {
+      $script:UnknownStt[$stt] = 1; Log "알 수 없는 상태 코드 '$stt' (ocm$k) — 보내지 않음. 필요하면 `$ACTIVE/`$SKIP 에 추가"   # 한 코드당 한 번만
+    }
+    if ($first -and -not $SendExistingOnStart) {   # 시작 스냅샷: 이미 접수된 건은 보낸 것으로 간주(재시작 때 오늘 접수분을 다시 올리지 않기 위해)
+      # 예외: 최근 $RecentMin 분 안에 접수됐고 아직 수납 전이면 보낸다 — 아침에 에이전트가 켜지기 전 접수된 환자가 빠지지 않도록. 같은 문서 id 로 merge 되므로 이미 카드가 있으면 동선관리가 무시한다
+      $hm0 = HourMinOf $r.recv
+      $recent = ($RecentMin -gt 0 -and $isActive -and $hm0 -ge 0 -and ($nowMin - $hm0) -ge (-$LeadMin) -and ($nowMin - $hm0) -le $RecentMin -and -not ($PAID -contains $stt))
+      if (-not $recent) { if ($isActive) { $st.sent[$k] = (CmdOf $stt $null) }; $st.seen[$k] = $stt; continue }
+      $script:SnapRecent++
+    }
+    $mrn = ([string]$r.mrn -replace '\D', ''); if (-not $mrn) { $mrn = ([string]$r.mrn).Trim() }
+    $name = ([string]$r.name).Trim()
+    $hm = HourMinOf $r.recv
+    $tag = "(이름 $($name.Length)자, 차트번호 $(if ($mrn) { '있음' } else { '없음' }), $stt$(if ($prev -and $prev -ne $stt) { " ← $prev" }), 접수 $([Math]::Floor($hm / 60)):$('{0:00}' -f ($hm % 60)))"
+    $base = @{ pc = $Pc; src = 'db'; date = (Today); ocmNum = $k; stt = $stt; lastSeenAt = (NowIso) }
+    if ($isActive) {
+      if (-not $st.sent.ContainsKey($k)) {
+        if ($hm -gt $nowMin + $LeadMin) { if ($prev -ne $stt) { Log "보류(사전 등록, 접수 시각이 미래): ocm$k $tag" }; $st.seen[$k] = $stt; continue }   # 그 시각이 되면 보냄
+        $cmd = CmdOf $stt $null
+        $f = RegFields $r $base $cmd $hm $today8 $k $false
+        try { Send "$(Today)_ocm$k" $f "$($CMD_NAMES[$cmd]) $tag"; $st.sent[$k] = $cmd } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
+      }
+      elseif ($prev -ne $stt) {   # 이미 보낸 접수의 상태 변화: 수납대기/수납완료/수납취소/보류/취소 후 재접수
+        $cmd = CmdOf $stt $prev
+        if ($cmd -ne $st.sent[$k] -or ($CANCEL -contains $prev)) {
+          $f = $base + @{ command = [int]$cmd; commandName = $CMD_NAMES[$cmd]; event = $CMD_NAMES[$cmd]; eventAt = (NowIso); cancelled = $false }
+          $m1 = CleanMemo $r.memo1; if ($m1) { $f.memoToday = $m1 }; $m2 = CleanMemo $r.memo2; if ($m2) { $f.memoCont = $m2 }; $m3 = CleanMemo $r.memo3; if ($m3) { $f.memoRx = $m3 }   # 접수 뒤에 적힌 메모도 상태가 바뀔 때 따라간다
+          $insN = InsName $r.ins; if ($insN) { $f.ins = $insN }
+          $tel = (([string]$r.tel) -replace '\D', ''); if ($tel.Length -ge 9) { $f.tel = $tel }
+          if ($CANCEL -contains $prev) { $f.registered = $true; $f.registeredAt = (NowIso); $f.seenAt = (NowIso) }   # 취소 뒤 재접수 → 동선관리가 다시 자동 생성
+          try { Send "$(Today)_ocm$k" $f "$($CMD_NAMES[$cmd]) $tag"; $st.sent[$k] = $cmd } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
+        }
+      }
+    }
+    elseif (($CANCEL -contains $stt) -and $st.sent.ContainsKey($k) -and $prev -ne $stt) {
+      $f = $base + @{ command = 3; commandName = '접수취소'; cancelled = $true; cancelledAt = (NowIso) }
+      try { Send "$(Today)_ocm$k" $f "접수취소 $tag"; $st.sent[$k] = 3 } catch { Log "전송 오류 ocm${k}: $($_.Exception.Message)" }
+    }
+    $st.seen[$k] = $stt
+    if ($isActive -and $st.sent.ContainsKey($k) -and -not $script:Conf.ContainsKey($k)) { $hmc = HourMinOf $r.recv; if ($hmc -le $nowMin + $LeadMin) { [void]$chk.Add(@{ k = $k; r = $r; stt = $stt; hm = $hmc }) } }
+  }
+  if ($script:IsLeader -and -not $DryRun -and $chk.Count) { Reconcile $chk @{ pc = $Pc; src = 'db'; date = (Today); lastSeenAt = (NowIso) } $today8 }
+  return $n
+}
+
+# ── 하트비트 (bitStatus/_all 의 $Pc 필드) — bitOpen = DB 연결 정상 ──
+function Heartbeat($sqlOk) {
+  $ips = @(); try { $ips = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.*' } | ForEach-Object { $_.IPAddress }) } catch {}
+  $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = [bool]$sqlOk; doctorOpen = $false; cast = $false; ip = ($ips -join ','); ver = $VER; startedAt = $script:StartedAt
+           uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID; lastErr = $script:LastErr; lastErrAt = $script:LastErrAt
+           cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5); src = 'db'; sqlServer = $SqlServer
+           priority = [int]$Priority; leader = [bool]$script:IsLeader; leaderInfo = [string]$script:LeaderInfo; peers = ($Peers -join ',') }
+  if ($DryRun) { Log "DRY 하트비트: sqlOk=$sqlOk"; return }
+  FsPatchNested "bitStatus/_all" $Pc $hb
+}
+
+# ── 상태 포트 / 다른 에이전트와의 우선순위 (LAN 만 사용, Firestore 비용 없음) ──
+#  · 이 에이전트는 TCP $HealthPort 에 "OK <우선순위> <PC> <leader|standby>" 한 줄로 답한다 — 단, 최근 30초 안에 DB 를 성공적으로 읽었을 때만. 아니면 "DOWN".
+#  · 감시 스크립트(bitplus_watcher.ps1)는 캐스트가 오면 이 포트에 물어 보고, 정상인 에이전트가 있으면 bitIntake 에 쓰지 않는다.
+#  · 여러 PC 에 에이전트가 있으면(bitplus_peers.txt) 매 주기 서로 물어 보고, 우선순위가 가장 높은 정상 에이전트만 전송한다. 그 PC 가 꺼지면 4~8초 안에 다음 순위가 이어받는다.
+$script:LastDbOk = [DateTime]::MinValue; $script:IsLeader = $true; $script:LeaderInfo = ''; $script:SnapRecent = 0
+$MyIps = @(); try { $MyIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | ForEach-Object { $_.IPAddress }) } catch {}
+$Peers = @()
+if (Test-Path $PeersFile) { $Peers = @(Get-Content $PeersFile -Encoding UTF8 | ForEach-Object { ($_ -split '#')[0].Trim() } | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' -and ($PeerPort -ne $HealthPort -or (($MyIps -notcontains $_) -and $_ -ne '127.0.0.1')) } | Select-Object -Unique) }   # 자기 자신은 뺀다(시험용 PeerPort 가 다르면 포함)
+function DbHealthy() { return (((Get-Date) - $script:LastDbOk).TotalSeconds -lt 30) }
+$health = $null
+if ($HealthPort -gt 0) {
+  try { $health = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Any), $HealthPort; $health.Start() }
+  catch { Log "TCP $HealthPort 열기 실패(다른 프로그램이 사용 중?): $($_.Exception.Message) — 다른 PC 가 이 에이전트를 확인할 수 없음"; $health = $null }
+}
+function HealthDrain() {   # 대기 중인 접속마다 한 줄 답하고 끊는다
+  if (-not $health) { return }
+  while ($health.Pending()) { $cli = $null
+    try { $cli = $health.AcceptTcpClient(); $cli.SendTimeout = 500
+      # 5번째 칸: 내가 아는 동료 IP 목록 — 묻는 쪽이 이를 합쳐 목록이 불완전해도(설치 때 -Peers 를 빠뜨려도) 서로를 알게 된다(전송 담당이 둘이 되는 일 방지)
+      $line = if (DbHealthy) { "OK $Priority $Pc $(if ($script:IsLeader) { 'leader' } else { 'standby' })" } else { "DOWN $Priority $Pc db" }
+      $line += ' ' + ((@($Peers) + @($MyIps | Where-Object { $_ -like '192.168.*' -or $_ -like '10.*' })) -join ',')
+      $b = [Text.Encoding]::UTF8.GetBytes($line + "`n"); $cli.GetStream().Write($b, 0, $b.Length) }
+    catch {} finally { if ($cli) { try { $cli.Close() } catch {} } } }
+}
+# ── 자동 업데이트 (db2.8, 2026-11-15) — bitplus_watcher.ps1 v3.9 SelfUpdate 와 같은 방식 ──
+#  30분마다(PC 마다 시작 시각을 흩뜨려 모든 접수 PC 가 한꺼번에 다시 시작하지 않게) agent.json 의 ver 가 내 $VER 와 다르면
+#  새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 $VER 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고(옛 파일은 .bak) 같은 인수로 다시 시작.
+#  비밀번호 파일·상태 파일은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만). 시험 실행(-Cycles)·-NoUpdate 는 하지 않음
+$script:UpdAt = if ($UpdNow) { [DateTime]::MinValue } else { (Get-Date).AddMinutes(-28 + (Get-Random -Minimum 0 -Maximum 12)) }   # 첫 확인: 시작 2~14분 뒤
+function SelfUpdate() {
+  if ($NoUpdate -or $Cycles -gt 0 -or -not $UpdBase) { return }
+  if (((Get-Date) - $script:UpdAt).TotalMinutes -lt 30) { return }; $script:UpdAt = Get-Date
+  $base = $UpdBase.TrimEnd('/')
+  $j = Invoke-RestMethod -TimeoutSec 8 -Uri "$base/agent.json?t=$([DateTime]::Now.Ticks)"
+  if (-not $j.ver -or -not $j.sha256 -or $j.ver -eq $VER) { return }
+  $tmp = Join-Path $PSScriptRoot 'bit_db_agent.new'
+  Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$base/bit_db_agent.ps1?v=$($j.ver)" -OutFile $tmp
+  $hash = (Get-FileHash $tmp -Algorithm SHA256).Hash
+  if ($hash -ne ([string]$j.sha256).ToUpper()) { Log "자동 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
+  if ($pe.Count -or $txt -notmatch ("\`$VER = '" + [regex]::Escape([string]$j.ver) + "'")) { Log "자동 업데이트 건너뜀: 받은 파일이 올바르지 않음 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $me = $PSCommandPath; Copy-Item $me "$me.bak" -Force -ErrorAction SilentlyContinue; Move-Item $tmp $me -Force
+  Log "자동 업데이트: $VER → $($j.ver) — 다시 시작합니다"
+  $cl = [string](Get-CimInstance Win32_Process -Filter "ProcessId=$PID").CommandLine
+  $m = [regex]::Match($cl, '^\s*("[^"]+"|\S+)\s*(.*)$')
+  try { if ($health) { $health.Stop() } } catch {}          # 상태 포트를 놓아 새 프로세스가 바로 열 수 있게
+  try { $script:Mtx.ReleaseMutex() } catch {}
+  if ($m.Success) { Start-Process -FilePath ($m.Groups[1].Value.Trim('"')) -ArgumentList $m.Groups[2].Value -WindowStyle Hidden }   # 실패해도 작업 스케줄러(5분 반복)가 다시 띄운다
+  exit 0
+}
+function ProbePeer($ip) {   # 300ms 안에 연결·응답이 없으면 죽은 것으로 본다. 반환 @{ ok; prio; pc } 또는 $null
+  $cli = New-Object System.Net.Sockets.TcpClient
+  try { $ar = $cli.BeginConnect($ip, $PeerPort, $null, $null); if (-not $ar.AsyncWaitHandle.WaitOne(300)) { return $null }; $cli.EndConnect($ar)
+    $cli.ReceiveTimeout = 500; $line = (New-Object IO.StreamReader($cli.GetStream())).ReadLine(); if (-not $line) { return $null }
+    $f = $line -split ' '; $pr = 0; [void][int]::TryParse($f[1], [ref]$pr)
+    $known = @(); if ($f.Count -gt 4) { $known = @($f[4] -split ',' | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' }) }
+    return @{ ok = ($f[0] -eq 'OK'); prio = $pr; pc = $(if ($f.Count -gt 2) { $f[2] } else { '' }); known = $known } }
+  catch { return $null } finally { try { $cli.Close() } catch {} }
+}
+# 2026-10-25: 접수1 의 IP 가 바뀌었는데(.16→.18) 접수2 는 옛 IP 만 알아 접수1 이 없는 줄 알고 둘 다 전송 담당이 됐다.
+#  동료가 있는 설정이면 10분마다 같은 망(내 IP 의 x.x.x.1~254)을 훑어 상태 포트가 열린 PC 를 동료 목록에 더한다(0.8초, LAN 만)
+$script:DiscAt = [DateTime]::MinValue
+function DiscoverPeers() {
+  if (-not @($Peers).Count -or ((Get-Date) - $script:DiscAt).TotalMinutes -lt 10) { return }
+  $script:DiscAt = Get-Date
+  # 훑을 망 = 이미 아는 동료의 망(VPN 등 다른 어댑터 주소를 고르지 않게). 없으면 내 192.168.* 주소의 망
+  $ref = @(@($Peers) + @($MyIps | Where-Object { $_ -like '192.168.*' }) | Where-Object { $_ -match '^\d+\.\d+\.\d+\.\d+$' }) | Select-Object -First 1; if (-not $ref) { return }
+  $pre = ($ref -replace '\.\d+$', '.'); $tries = @(); $new = @()
+  try {
+    foreach ($i in 1..254) { $h = "$pre$i"; if ($MyIps -contains $h -or @($Peers) -contains $h) { continue }
+      $c = New-Object Net.Sockets.TcpClient; try { $tries += @{ h = $h; c = $c; ar = $c.BeginConnect($h, $PeerPort, $null, $null) } } catch { $c.Close() } }
+    $end = (Get-Date).AddMilliseconds(1500); while ((Get-Date) -lt $end) { HealthDrain; Start-Sleep -Milliseconds 100 }
+    foreach ($t in $tries) { try { if ($t.ar.IsCompleted -and $t.c.Connected) { $new += $t.h } } catch {}; try { $t.c.Close() } catch {} }
+  } catch { Log "동료 찾기 오류: $($_.Exception.Message)" }
+  if ($new.Count) { $script:Peers = @($Peers) + $new; Log "동료 목록에 추가(망에서 찾음): $($new -join ', ') → $($script:Peers -join ', ')"
+    try { [IO.File]::WriteAllText($PeersFile, ("# DB 에이전트가 있는 다른 PC (망에서 찾아 갱신 $(Get-Date -Format 'yyyy-MM-dd HH:mm'))`r`n" + (@($script:Peers) -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false)) } catch {} }
+}
+function ElectLeader() {   # 나보다 우선순위가 높은(같으면 PC 이름이 앞선) 정상 에이전트가 하나라도 있으면 대기. 동료가 알려 준 IP 는 내 목록에 합친다
+  $lead = $true; $who = ''; $learned = @()
+  foreach ($ip in @($Peers)) { $p = ProbePeer $ip
+    if (-not $p) { continue }
+    foreach ($k in $p.known) { if (($Peers -notcontains $k) -and ($MyIps -notcontains $k) -and $k -ne '127.0.0.1' -and ($learned -notcontains $k)) { $learned += $k } }
+    if ($p.ok -and ($p.prio -gt $Priority -or ($p.prio -eq $Priority -and [string]::CompareOrdinal($p.pc, $Pc) -lt 0))) { $lead = $false; $who = "$($p.pc)@$ip(우선순위 $($p.prio))" } }
+  if ($learned.Count) { $script:Peers = @($Peers) + $learned; Log "동료 목록에 추가(다른 에이전트가 알려 줌): $($learned -join ', ') → $($script:Peers -join ', ')" }
+  if ($lead -ne $script:IsLeader) { Log $(if ($lead) { "→ 전송 담당(leader): 더 높은 우선순위의 정상 에이전트 없음" } else { "→ 대기(standby): $who 가 전송 담당" }); if ($lead) { $script:RsvHash = @{} } }   # 담당이 되면 예약 문서를 전부 다시 쓴다
+  $script:IsLeader = $lead; $script:LeaderInfo = $who
+}
+function IdleWait($ms) {   # 다음 주기까지 기다리는 동안에도 상태 포트에는 바로 답한다(감시 스크립트가 300ms 만 기다리므로)
+  $end = (Get-Date).AddMilliseconds($ms)
+  while ((Get-Date) -lt $end) { HealthDrain; Start-Sleep -Milliseconds 150 }
+}
+
+# ── 진료 예약(RsvInf) → bitResv/{날짜} (2026-09-17) ──
+#  접수 PC 가 비트 예약관리에서 예약을 넣거나 시각을 옮기거나 취소하면 RsvInf 가 바로 바뀐다. 오늘~ResvDays 일치를 ResvEvery 주기마다 읽어
+#  날짜별 해시가 바뀐 날만 문서를 다시 쓴다(items 배열 통째로). 담당(leader)만 쓴다. bitResv/_summary 에는 날짜별 건수만(동선관리 상단 7일 띠).
+#  항목: k(접수번호) t(HH:MM) room(진료실 이름) dr mrn name birth sex div(R/X/Z) sts(OS/OC) ostt(OcmInf 상태: WR 미도착, WN·TN·PN… 도착, CN 취소) acp(도착 HH:MM) memo by naver
+$RSV_QUERY = @"
+SELECT RTRIM(r.RsvOcmNum) AS k, RTRIM(r.RsvDtm) AS dtm, RTRIM(r.RsvSts) AS sts, RTRIM(r.RsvDivTyp) AS div, RTRIM(r.RsvDepCod) AS dep, RTRIM(r.RsvUidCod) AS uid,
+       RTRIM(r.RsvRefCmt) AS memo, COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), RTRIM(o.OcmChtNum)) AS mrn, RTRIM(p.PbsPatNam) AS name, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex,
+       RTRIM(u.UidNam) AS dr, RTRIM(o.OcmComStt) AS ostt, RTRIM(o.OcmAcpDtm) AS acp,
+       COALESCE(NULLIF(RTRIM(p.PbsCelPhn),''), RTRIM(p.PbsPhnNum)) AS tel
+FROM RsvInf r WITH (NOLOCK)
+LEFT JOIN OcmInf o WITH (NOLOCK) ON o.OcmNum = r.RsvOcmNum
+LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = COALESCE(NULLIF(RTRIM(r.RsvChtNum),''), o.OcmChtNum)
+LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = r.RsvDtrCod
+WHERE LEFT(r.RsvDtm, 8) BETWEEN '{0}' AND '{1}'
+ORDER BY r.RsvDtm, r.RsvOcmNum
+"@
+$script:RsvHash = @{}; $script:DepName = @{}
+function LoadDepNames() { try { foreach ($r in (SqlRows "SELECT RTRIM(DepCod) AS c, RTRIM(DepKorNam) AS n FROM DepMst WITH (NOLOCK)").Rows) { $script:DepName[[string]$r.c] = [string]$r.n } } catch { Log "진료과 이름표 읽기 오류: $($_.Exception.Message)" } }
+function PollResv() {
+  if ($ResvDays -le 0) { return }
+  $d0 = (Get-Date).ToString('yyyyMMdd'); $d1 = (Get-Date).AddDays($ResvDays).ToString('yyyyMMdd')
+  $rows = SqlRows ($RSV_QUERY -f $d0, $d1)
+  $byDay = @{}; for ($i = 0; $i -le $ResvDays; $i++) { $byDay[(Get-Date).AddDays($i).ToString('yyyy-MM-dd')] = New-Object System.Collections.ArrayList }
+  foreach ($r in $rows.Rows) {
+    $dtm = [string]$r.dtm; if ($dtm.Length -lt 12) { continue }
+    $day = $dtm.Substring(0, 4) + '-' + $dtm.Substring(4, 2) + '-' + $dtm.Substring(6, 2); if (-not $byDay.ContainsKey($day)) { continue }
+    $memo = ([string]$r.memo).Trim(); $dep = ([string]$r.dep).Trim()
+    $mrnRaw = ([string]$r.mrn).Trim(); $mrn = $mrnRaw   # 공백만 떼고 그대로 — 'Res_3457' 같은 가짜 차트에서 숫자만 남기면 실제 환자 번호와 겹친다(2026-09-17)
+    $nm = ([string]$r.name).Trim(); $sts = ([string]$r.sts).Trim(); $ostt = ([string]$r.ostt).Trim()
+    # 접수 PC 가 시간대를 막을 때 쓰는 가짜 환자 '예약금지'(차트 Res_NNNN): 살아 있는 것만 block 으로 보내고(마감·휴진 표시), 취소된 것은 풀린 자리라 보내지 않는다
+    $isBlock = ($nm -eq '예약금지' -or $mrnRaw -like 'Res_*')
+    if ($isBlock -and ($sts -eq 'OC' -or $ostt -eq 'CN')) { continue }
+    $it = [ordered]@{ k = ([string]$r.k -replace '\D', ''); t = $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2); room = $(if ($script:DepName.ContainsKey($dep)) { $script:DepName[$dep] } else { $dep })
+                      dr = ([string]$r.dr).Trim(); mrn = $mrn; name = $nm; birth = (DateOf $r.bir); sex = ([string]$r.sex).Trim()
+                      div = ([string]$r.div).Trim(); sts = $sts; ostt = $ostt; acp = ''; memo = $memo; by = ([string]$r.uid).Trim()
+                      naver = ($memo -match '네이버|naver'); block = [bool]$isBlock; tel = (([string]$r.tel) -replace '\D', '') }
+    if ($isBlock) { $it.name = '예약금지'; $it.birth = ''; $it.sex = ''; $it.tel = '' }
+    $a = [string]$r.acp; if ($it.ostt -and $it.ostt -ne 'WR' -and $it.ostt -ne 'CN' -and $a.Length -ge 12 -and $a.Substring(0, 8) -eq $dtm.Substring(0, 8)) { $it.acp = $a.Substring(8, 2) + ':' + $a.Substring(10, 2) }
+    [void]$byDay[$day].Add($it)
+  }
+  $changed = @()
+  foreach ($day in ($byDay.Keys | Sort-Object)) {
+    $h = (($byDay[$day] | ForEach-Object { "$($_.k)|$($_.t)|$($_.room)|$($_.mrn)|$($_.sts)|$($_.ostt)|$($_.acp)|$($_.memo)|$($_.div)|$($_.dr)" }) -join "`n")
+    if ($script:RsvHash[$day] -eq $h) { continue }
+    if ($DryRun) { Log "DRY 예약 문서: $day $($byDay[$day].Count)건"; $script:RsvHash[$day] = $h; $changed += $day; continue }
+    if (-not $script:IsLeader -and -not $ResvAlways) { $script:RsvHash[$day] = $h; continue }   # 대기 중엔 쓰지 않고 해시만 따라감(담당이 되면 해시를 비워 전부 다시 씀)
+    try {
+      FsPatch "bitResv/$day" @{ date = $day; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$byDay[$day].Count; items = @($byDay[$day]) }
+      $script:RsvHash[$day] = $h; $changed += $day
+      Log "예약 문서: $day $($byDay[$day].Count)건 (취소 $(@($byDay[$day] | Where-Object { $_.sts -eq 'OC' }).Count))"
+    } catch { Log "예약 문서 전송 오류 ${day}: $($_.Exception.Message)" }
+  }
+  if ($changed.Count -and -not $DryRun -and ($script:IsLeader -or $ResvAlways)) {   # 날짜별 요약(건수만) — 화면 상단 7일 띠용, 문서 1개
+    $days = @{}; foreach ($day in $byDay.Keys) { $L = @($byDay[$day] | Where-Object { -not $_.block }); $days[$day] = @{ n = [int]@($L | Where-Object { $_.sts -ne 'OC' }).Count; canc = [int]@($L | Where-Object { $_.sts -eq 'OC' }).Count; arrived = [int]@($L | Where-Object { $_.acp }).Count; naver = [int]@($L | Where-Object { $_.naver -and $_.sts -ne 'OC' }).Count } }   # 예약금지(block)는 건수에서 뺀다
+    try { FsPatch "bitResv/_summary" @{ updatedAt = (NowIso); pc = $Pc; days = $days } } catch { Log "예약 요약 전송 오류: $($_.Exception.Message)" }
+  }
+}
+
+# ── 처방(OdrInf) → bitRx/{날짜}_ocm{접수번호} (2026-09-23) ──
+#  비트 '처방내역' 창과 같은 자료: 처방코드·처방명칭·총투여량·횟수·일수·단위. 접수번호(OdrOcmNum)로 접수 문서와 이어진다.
+#  오늘 접수분만 RxEvery 주기마다 읽고, 접수건별 해시가 바뀐 건만 문서를 다시 쓴다. 지워진 줄(OdrDelFlg='C')은 빼고 보낸다. 담당(leader)만 쓴다.
+$RX_QUERY = @"
+SELECT RTRIM(o.OdrOcmNum) AS k, RTRIM(o.OdrChtNum) AS mrn, o.OdrSeq AS seq,
+       RTRIM(o.OdrCod) AS cod, RTRIM(o.OdrCodNam) AS nam,
+       o.OdrQty AS qty, o.OdrTms AS tms, o.OdrDay AS dys,
+       RTRIM(o.OdrUntCod) AS unt, RTRIM(u.UidNam) AS dr, RTRIM(o.OdrDtm) AS dtm,
+       o.OdrPrc AS prc, o.OdrAmt AS amt, RTRIM(o.OdrInsYon) AS ins, RTRIM(m.OcmDgsNfs) AS nfs,
+       RTRIM(o.OdrItmCod) AS itm, RTRIM(o.OdrSotCod) AS sot, m.OcmInsCod AS oins, RTRIM(m.OcmFreRsn) AS fre
+FROM OdrInf o WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+LEFT JOIN UidMst u WITH (NOLOCK) ON u.UidCod = o.OdrDtrCod
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}' AND o.OdrDelFlg <> 'C' AND m.OcmComStt NOT IN ('CN')
+ORDER BY o.OdrOcmNum, o.OdrSeq
+"@
+# 오늘 처방이 한 번이라도 있었던 접수(지운 줄·접수 취소 포함) — 위 목록에서 빠진 접수는 처방을 비워 보낸다 (db1.5, 2026-10-14:
+#  처방을 모두 지우거나 접수를 취소해도 동선관리에 옛 처방이 남았다 — 남은 줄이 있는 접수만 다시 썼기 때문)
+$RX_EVER_QUERY = @"
+SELECT DISTINCT RTRIM(o.OdrOcmNum) AS k
+FROM OdrInf o WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}'
+"@
+$script:RxHash = @{}
+$script:PayHash = @{}
+# 총 본인부담 (db2.0, 2026-10-28): 비트 수납 창의 '총 본인부담' = OrpInf.OrpTotOwn (접수번호 OrpOcmNum). 2026-10-28 차트 33341 수납 193,750원으로 확인(bit_db_find_amt v2).
+#  계산(수납 창)을 한 접수만 행이 있다. 같은 접수에 여러 행이면 가장 큰 값(재계산 기록이 남는 경우 대비) 과 행 수를 함께 보낸다
+$OWN_QUERY = @"
+SELECT RTRIM(p.OrpOcmNum) AS k, MAX(p.OrpTotOwn) AS own, COUNT(*) AS n
+FROM OrpInf p WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = p.OrpOcmNum
+WHERE LEFT(m.OcmAcpDtm, 8) = '{0}'
+GROUP BY p.OrpOcmNum
+"@
+$script:OwnHash = @{}
+function NumTxt($v) { if ($null -eq $v -or $v -is [DBNull]) { return '' }
+  $d = 0.0; if (-not [double]::TryParse([string]$v, [ref]$d)) { return ([string]$v).Trim() }
+  if ($d -eq [Math]::Floor($d)) { return [string][int]$d }
+  return ($d.ToString('0.####')) }
+function PollRx() {
+  if ($RxEvery -le 0) { return }
+  $ymd = (Get-Date).ToString('yyyyMMdd'); $day = (Get-Date).ToString('yyyy-MM-dd')
+  $rows = SqlRows ($RX_QUERY -f $ymd)
+  $byOcm = @{}
+  foreach ($r in $rows.Rows) {
+    $key = ([string]$r.k -replace '\D', ''); if (-not $key) { continue }
+    if (-not $byOcm.ContainsKey($key)) { $byOcm[$key] = @{ mrn = ([string]$r.mrn).Trim(); nfs = ([string]$r.nfs).Trim(); insNm = (InsName $r.oins); fre = ([string]$r.fre).Trim(); items = (New-Object System.Collections.ArrayList) } }   # nfs = 초/재진(OcmDgsNfs: 1 초진, 3 90일초진, 4 재진, 0 진찰료 산정, 7 물리치료내) — db1.3
+    $dtm = ([string]$r.dtm).Trim()
+    $it = [ordered]@{ cod = ([string]$r.cod).Trim(); nam = ([string]$r.nam).Trim()
+                      qty = (NumTxt $r.qty); tms = (NumTxt $r.tms); day = (NumTxt $r.dys)
+                      unt = ([string]$r.unt).Trim(); dr = ([string]$r.dr).Trim(); ins = ([string]$r.ins).Trim()   # 급여구분 — 금액이 아직 0원(계산 전)이어도 급/비가 보이게 (db1.6, 2026-10-14)
+                      t = $(if ($dtm.Length -ge 12) { $dtm.Substring(8, 2) + ':' + $dtm.Substring(10, 2) } else { '' })
+                      itm = ([string]$r.itm).Trim(); sot = ([string]$r.sot).Trim() }   # 비트 구분 (db2.3): itm 앞 두 자리 03 = @투약(먹는 약·외용약), 01 진찰·의약품관리료, 04 주사, 06 물리치료
+    [void]$byOcm[$key].items.Add($it)
+    # 금액(2026-10-01, db1.2): 단가·금액·급여구분(OdrInsYon: 2=비급여, 0=급여). 금액이 있는 줄만 — 비급여 동의서 금액 자동 채우기용.
+    #  items 와 따로 'pay' 필드로 쓴다: 옛 빌드 담당 PC 가 items 를 다시 써도 pay 는 지워지지 않는다(FsPatch 는 준 필드만 바꾼다)
+    $amtN = 0.0; [void][double]::TryParse([string]$r.amt, [ref]$amtN)
+    if ($amtN -gt 0) {
+      if (-not $byOcm[$key].pay) { $byOcm[$key].pay = (New-Object System.Collections.ArrayList) }
+      [void]$byOcm[$key].pay.Add([ordered]@{ cod = $it.cod; nam = $it.nam; t = $it.t; prc = (NumTxt $r.prc); amt = (NumTxt $r.amt); ins = ([string]$r.ins).Trim() })
+    }
+  }
+  $sent = 0
+  foreach ($key in ($byOcm.Keys | Sort-Object)) {
+    $v = $byOcm[$key]
+    # 금액(pay) — 자기 해시로 따로 쓴다. 담당이 아니어도 -PayAlways 면 쓴다(접수 PC 가 옛 빌드인 동안 개발 PC 가 채움)
+    $pay = @(); if ($v.pay) { $pay = @($v.pay) }
+    $ph = "nfs=$($v.nfs)`n" + (($pay | ForEach-Object { "$($_.cod)|$($_.prc)|$($_.amt)|$($_.ins)" }) -join "`n")
+    if ($script:PayHash[$key] -ne $ph) {
+      if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:PayHash[$key] = $ph }
+      else { try { FsPatch "bitRx/${day}_ocm$key" @{ pay = $pay; nfs = $v.nfs; payAt = (NowIso); payPc = $Pc }; $script:PayHash[$key] = $ph } catch { Log "처방 금액 전송 오류 ${key}: $($_.Exception.Message)" } }
+    }
+    $h = "ins=$($v.insNm)|fre=$($v.fre)`n" + (($v.items | ForEach-Object { "$($_.cod)|$($_.nam)|$($_.qty)|$($_.tms)|$($_.day)|$($_.unt)|$($_.ins)|$($_.itm)" }) -join "`n")
+    if ($script:RxHash[$key] -eq $h) { continue }
+    if ($DryRun) { $script:RxHash[$key] = $h; $sent++; continue }
+    if (-not $script:IsLeader -and -not $RxAlways) { $script:RxHash[$key] = $h; continue }   # 대기 중엔 해시만 따라감
+    try {
+      FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; mrn = $v.mrn; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = [int]$v.items.Count; items = @($v.items); nfs = $v.nfs; insNm = $v.insNm; fre = $v.fre; cleared = $false }
+      $script:RxHash[$key] = $h; $sent++
+    } catch { Log "처방 문서 전송 오류 ${key}: $($_.Exception.Message)" }
+  }
+  # 처방이 다 지워졌거나 접수가 취소된 접수 → 처방·금액을 빈 목록으로 (한 번만. 프로그램을 다시 켜면 한 번 더 — 같은 내용이라 무해)
+  $cleared = 0
+  try {
+    $ever = SqlRows ($RX_EVER_QUERY -f $ymd)
+    foreach ($r in $ever.Rows) {
+      $key = ([string]$r.k -replace '\D', ''); if (-not $key -or $byOcm.ContainsKey($key)) { continue }
+      if ($script:RxHash.ContainsKey($key) -and $script:RxHash[$key] -eq '' -and $script:PayHash[$key] -eq '') { continue }
+      if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways)) { $script:RxHash[$key] = ''; $script:PayHash[$key] = ''; continue }
+      try {
+        FsPatch "bitRx/${day}_ocm$key" @{ date = $day; ocm = $key; updatedAt = (NowIso); pc = $Pc; src = 'db'; count = 0; items = @(); pay = @(); payAt = (NowIso); cleared = $true }
+        $script:RxHash[$key] = ''; $script:PayHash[$key] = ''; $cleared++
+      } catch { Log "처방 비우기 오류 ${key}: $($_.Exception.Message)" }
+    }
+  } catch { Log "처방 비우기 조회 오류: $($_.Exception.Message)" }
+  if ($sent -or $cleared) { Log "처방 문서: $sent 건 갱신, $cleared 건 비움(처방 삭제·접수 취소) (오늘 접수 $($byOcm.Count)건 / 줄 $($rows.Rows.Count)개)" }
+  # 총 본인부담(db2.0) — 처방 문서에 own(원)·ownRows·ownAt. 값이 바뀔 때만
+  $ownN = 0
+  try {
+    $orows = SqlRows ($OWN_QUERY -f $ymd)
+    foreach ($r in $orows.Rows) {
+      $key = ([string]$r.k -replace '\D', ''); if (-not $key) { continue }
+      $own = NumTxt $r.own; $oh = "$own|$($r.n)"
+      if ($script:OwnHash[$key] -eq $oh) { continue }
+      if ($DryRun -or (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways)) { $script:OwnHash[$key] = $oh; continue }
+      try { FsPatch "bitRx/${day}_ocm$key" @{ own = $own; ownRows = [int]$r.n; ownAt = (NowIso) }; $script:OwnHash[$key] = $oh; $ownN++ } catch { Log "본인부담 전송 오류 ${key}: $($_.Exception.Message)" }
+    }
+  } catch { Log "본인부담 조회 오류: $($_.Exception.Message)" }
+  if ($ownN) { Log "본인부담: $ownN 건 갱신" }
+}
+
+# ── 원장님 차팅(EmrInf) → 슬립 문서 bitNote/{날짜}_{차트번호} (db2.5, 2026-11-05) ──
+#  슬립은 진료실 PC 감시 프로그램이 외래진료실 화면에서 읽어 보냈다. 그 PC 감시가 꺼져 있거나 처방을 보내지 않는 PC(C-Arm 방·접수 등)에서
+#  차팅하면 슬립이 안 떴다(2026-11-05 강원종 33482: 11:57 비트 저장, 12:10 까지 슬립 없음 · 2026-11-01 최하은 32753: 다른 PC 에서 고친 기록이 슬립에 안 옴).
+#  비트에 저장된 차팅 = EmrInf (EmrShtTyp 'S', EmrShtCod 'C.C', 한 줄 = 한 행, EmrShtSeq 순, 저장 시각 EmrUpdDtm 은 분까지).
+#  저장 시각·내용이 바뀐 접수만 그 문서를 한 번 읽어 비교한다:
+#   · 문서가 없다 → 만든다(pc = '비트 기록')
+#   · 비트 저장이 문서보다 나중(같은 분 포함)이고 내용이 다르다 → 처방·차팅을 고친다(rev+1 → 이미 인쇄한 슬립은 '처방 바뀜')
+#   · 문서가 더 나중(화면에서 고치고 아직 저장 전)이거나 내용이 같다 → 내용은 두고 emr* 칸만 적는다(동선관리가 '비트 기록과 같음'을 안다)
+#  보험별 칸(v_…)이 있는 문서는 진료실 감시 프로그램에 맡긴다. 한 환자에 오늘 차팅 있는 접수가 둘이면 가장 늦게 저장된 것.
+#  1진료실(OS)은 저장이 평균 3시간 넘게 늦어(2026-11-04 측정) 그동안은 지금처럼 감시 프로그램 문서가 쓰인다.
+$NOTE_QUERY = @"
+SELECT RTRIM(e.EmrOcmNum) AS k, LTRIM(RTRIM(m.OcmChtNum)) AS mrn, e.EmrShtSeq AS seq, e.EmrShtVal AS v, RTRIM(e.EmrUpdDtm) AS upd,
+       RTRIM(p.PbsPatNam) AS name, RTRIM(p.PbsResNum) AS rrn, RTRIM(p.PbsBirDte) AS bir, RTRIM(p.PbsSexTyp) AS sex
+FROM EmrInf e WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = e.EmrOcmNum
+LEFT JOIN PbsInf p WITH (NOLOCK) ON p.PbsChtNum = m.OcmChtNum
+WHERE e.EmrOcmDte = '{0}' AND e.EmrShtTyp = 'S' AND e.EmrShtCod = 'C.C' AND m.OcmComStt <> 'CN'
+ORDER BY e.EmrOcmNum, e.EmrShtSeq
+"@
+$RX_HEAD = '^\s*med\b'   # bitplus_watcher.ps1 과 같은 규칙 — 맨 위 'med' 줄부터 끝까지가 처방, 그 위가 차팅
+# 비트가 차팅을 RTF 로 저장한 경우(2026-11-11 33782: 태블릿 동의서 화면에 {\rtf1… \'b0\'cb… \par 가 그대로) → 글자만 (db2.6)
+#  \'hh = CP949 바이트, \par·\line = 줄바꿈, \uN = 유니코드, {\fonttbl…}·{\*…} 묶음은 버린다. RTF 가 아니면 그대로
+function RtfLike($s) { return ([string]$s) -match '\\(rtf1|par\b|''[0-9a-fA-F]{2})' }
+function RtfPlain($s) {
+  $s = [string]$s; if (-not (RtfLike $s)) { return $s }
+  $enc = [Text.Encoding]::GetEncoding(949); $sb = New-Object Text.StringBuilder; $bytes = New-Object System.Collections.Generic.List[byte]
+  $flush = { if ($bytes.Count) { [void]$sb.Append($enc.GetString($bytes.ToArray())); $bytes.Clear() } }
+  $st = New-Object System.Collections.Generic.Stack[bool]; $skip = $false; $i = 0; $n = $s.Length
+  while ($i -lt $n) {
+    $c = $s[$i]
+    if ($c -eq '{') { $st.Push($skip); $i++; continue }
+    if ($c -eq '}') { if ($st.Count) { $skip = $st.Pop() } else { $skip = $false }; $i++; continue }
+    if ($c -eq "`r" -or $c -eq "`n") { $i++; continue }
+    if ($c -eq '\') {
+      $d = if ($i + 1 -lt $n) { $s[$i + 1] } else { '' }
+      if ($d -eq "'") { $h = if ($i + 3 -lt $n) { $s.Substring($i + 2, 2) } else { '' }
+        if (-not $skip -and $h -match '^[0-9a-fA-F]{2}$') { $bytes.Add([Convert]::ToByte($h, 16)) }; $i += 4; continue }
+      if ($d -eq '\' -or $d -eq '{' -or $d -eq '}') { if (-not $skip) { & $flush; [void]$sb.Append($d) }; $i += 2; continue }
+      if ($d -eq '*') { $skip = $true; $i += 2; continue }
+      $m = [regex]::Match($s.Substring($i + 1, [Math]::Min(40, $n - $i - 1)), '^([a-zA-Z]+)(-?\d+)? ?')
+      if ($m.Success) { $i += 1 + $m.Length; $w = $m.Groups[1].Value
+        if ($w -match '^(fonttbl|colortbl|stylesheet|info|pict|header|footer)$') { $skip = $true }
+        elseif (-not $skip) {
+          if ($w -eq 'par' -or $w -eq 'line') { & $flush; [void]$sb.Append("`n") }
+          elseif ($w -eq 'tab') { & $flush; [void]$sb.Append("`t") }
+          elseif ($w -eq 'u' -and $m.Groups[2].Success) { & $flush; $u = [int]$m.Groups[2].Value; if ($u -lt 0) { $u += 65536 }; [void]$sb.Append([char]$u)
+            if ($i -lt $n -and $s[$i] -eq '\' -and $i + 1 -lt $n -and $s[$i + 1] -eq "'") { $i += 4 } elseif ($i -lt $n) { $i++ } } }
+        continue }
+      $i += 2; continue }
+    if (-not $skip) { & $flush; [void]$sb.Append($c) }
+    $i++
+  }
+  & $flush
+  $lines = @(($sb.ToString() -split "`n") | ForEach-Object { $_.TrimEnd() })
+  return (($lines -join "`n") -replace "`n{3,}", "`n`n").Trim("`n")
+}
+function NoteRxOf($text) {   # = bitplus_watcher.ps1 ExtractRx
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $end = $lines.Count - 1; while ($end -ge 0 -and -not $lines[$end].Trim()) { $end-- }
+  if ($end -lt 0) { return @{ lines = @(); marker = $false } }
+  $start = -1; for ($i = 0; $i -le $end; $i++) { if ($lines[$i] -match $RX_HEAD) { $start = $i; break } }
+  if ($start -lt 0) { return @{ lines = @(); marker = $false } }
+  $out = @(); for ($i = $start; $i -le $end; $i++) { if ($lines[$i].Trim()) { $out += ($lines[$i].Trim() -replace '\s{2,}', ' ') } }
+  if ($out.Count -gt 300) { $out = @($out[0..299]) }
+  return @{ lines = $out; marker = $true }
+}
+function NoteChartOf($text) {   # = bitplus_watcher.ps1 ExtractChart
+  $lines = @(($text -replace "`r`n", "`n") -split "[`r`n]" | ForEach-Object { $_.TrimEnd() })
+  $stop = $lines.Count; for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match $RX_HEAD) { $stop = $i; break } }
+  $out = @(); $blank = $false
+  for ($i = 0; $i -lt $stop; $i++) { $t = $lines[$i].Trim(); if (-not $t) { if ($out.Count -and -not $blank) { $out += ''; $blank = $true }; continue }; $out += $t; $blank = $false }
+  while ($out.Count -and -not $out[$out.Count - 1]) { $out = @($out[0..($out.Count - 2)]) }
+  $txt = ($out -join "`n"); if ($txt.Length -gt 8000) { $txt = $txt.Substring(0, 8000) }
+  return $txt
+}
+function DtmTime($s) { $s = [string]$s; if ($s.Length -lt 12) { return $null }
+  try { return [DateTime]::ParseExact($s.Substring(0, 12), 'yyyyMMddHHmm', [Globalization.CultureInfo]::InvariantCulture) } catch { return $null } }
+$script:NoteHash = @{}; $script:NoteDay = ''
+function PollNote() {
+  if ($NoteEvery -le 0) { return }
+  $ymd = (Get-Date).ToString('yyyyMMdd'); $day = (Get-Date).ToString('yyyy-MM-dd')
+  if ($script:NoteDay -ne $day) { $script:NoteDay = $day; $script:NoteHash = @{} }
+  $rows = SqlRows ($NOTE_QUERY -f $ymd) 20
+  $byOcm = [ordered]@{}
+  foreach ($r in $rows.Rows) {
+    $key = ([string]$r.k -replace '\D', ''); $mrn = ([string]$r.mrn -replace '\D', ''); if (-not $key -or -not $mrn) { continue }
+    if (-not $byOcm.Contains($key)) { $byOcm[$key] = @{ mrn = $mrn; upd = ''; L = (New-Object System.Collections.ArrayList); name = ([string]$r.name).Trim(); rrn7 = (Rrn7 $r.rrn $r.bir $r.sex) } }
+    [void]$byOcm[$key].L.Add([string]$(if ($r.v -is [DBNull]) { '' } else { $r.v }))
+    $u = ([string]$r.upd).Trim(); if ($u -gt $byOcm[$key].upd) { $byOcm[$key].upd = $u }
+  }
+  $byMrn = @{}   # 차트번호 → 가장 늦게 저장된 접수
+  foreach ($key in $byOcm.Keys) { $v = $byOcm[$key]; if (-not $byMrn.ContainsKey($v.mrn) -or $v.upd -gt $byMrn[$v.mrn].upd) { $byMrn[$v.mrn] = $v } }
+  $can = $script:IsLeader -or $RxAlways -or $PayAlways
+  $made = 0; $fixed = 0; $same = 0
+  foreach ($mrn in ($byMrn.Keys | Sort-Object)) {
+    $v = $byMrn[$mrn]; $text = RtfPlain ($v.L -join "`n"); $hm = ($v.upd -replace '^\d{8}', '')
+    $ex = NoteRxOf $text; $rx = ($ex.lines -join "`n"); $chart = NoteChartOf $text
+    if (-not $rx -and -not $chart) { continue }
+    $h = "$($v.upd)|$rx|$chart"
+    if ($script:NoteHash[$mrn] -eq $h) { continue }
+    if ($DryRun -or -not $can) { $script:NoteHash[$mrn] = $h; continue }
+    $id = "${day}_$mrn"; $updT = DtmTime $v.upd
+    $emr = @{ emrRx = $rx; emrChart = $chart; emrUpd = $(if ($updT) { $updT.ToString('yyyy-MM-ddTHH:mm:00.000zzz') } else { '' }); emrAt = (NowIso); emrPc = $Pc }
+    try {
+      $f = FsGet "bitNote/$id"
+      $vks = @(); if ($f) { $vks = @($f.PSObject.Properties.Name | Where-Object { $_ -like 'v_*' -and $f.$_.mapValue }) }
+      if ($vks.Count -ge 2) { $script:NoteHash[$mrn] = $h; continue }   # 보험이 둘 이상(슬립 2장) — 감시 프로그램에 맡김. 하나면 그 칸도 같이 고친다(감시 v3.7 은 보험 칸을 늘 하나 남긴다)
+      $docRx = if ($f -and $f.rx) { [string]$f.rx.stringValue } else { '' }
+      $docChart = if ($f -and $f.chart) { [string]$f.chart.stringValue } else { '' }
+      $docT = $null; if ($f -and $f.updatedAt) { try { $docT = [DateTimeOffset]::Parse([string]$f.updatedAt.stringValue).LocalDateTime } catch {} }
+      $docRtf = (RtfLike $docRx) -or (RtfLike $docChart)   # 예전 에이전트가 RTF 그대로 보낸 문서 → 시각과 관계없이 고친다 (db2.6)
+      $rev = 0; if ($f -and $f.rev) { [void][int]::TryParse([string]$f.rev.integerValue, [ref]$rev) }
+      if (-not $f -or (-not $docRx -and -not $docChart)) {   # 문서 없음(또는 비워진 문서) → 만든다
+        $nf = @{ date = $day; mrn = $mrn; rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; rev = [int]($rev + 1); updatedAt = (NowIso) } + $emr
+        if (-not $f -or -not $f.firstAt) { $nf.firstAt = (NowIso) }
+        if (-not $f -or -not $f.pc -or -not $f.pc.stringValue) { $nf.pc = '비트 기록' }
+        if ($v.name -and (-not $f -or -not $f.name -or -not $f.name.stringValue)) { $nf.name = $v.name }
+        if ($v.rrn7 -and (-not $f -or -not $f.rrn7 -or -not $f.rrn7.stringValue)) { $nf.rrn7 = $v.rrn7 }
+        FsPatch "bitNote/$id" $nf; $made++
+        Log "슬립(비트 기록): 차트번호 $mrn 문서 만듦 ($($ex.lines.Count)줄, med 줄 $(if ($ex.marker) { '있음' } else { '없음' }), 저장 $hm)"
+      } elseif (($docRx -ne $rx -or $docChart -ne $chart) -and ($docRtf -or ($updT -and (-not $docT -or $updT -ge $docT.Date.AddHours($docT.Hour).AddMinutes($docT.Minute))))) {   # 비트 저장이 나중(같은 분 포함) + 내용 다름 → 고침
+        FsPatch "bitNote/$id" (@{ rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; rev = [int]($rev + 1); updatedAt = (NowIso) } + $emr); $fixed++
+        if ($vks.Count -eq 1) {   # 보험 칸 하나 — 맵을 통째로 다시 쓰므로 ins·pc·firstAt 은 그대로 옮긴다
+          $vk = $vks[0]; $sf = $f.$vk.mapValue.fields; $sub = @{ rx = $rx; rxMarker = [bool]$ex.marker; rxLines = [int]$ex.lines.Count; chart = $chart; updatedAt = (NowIso) }
+          foreach ($k in 'ins', 'pc', 'firstAt') { if ($sf -and $sf.$k -and $sf.$k.stringValue) { $sub[$k] = [string]$sf.$k.stringValue } }
+          $srev = 0; if ($sf -and $sf.rev) { [void][int]::TryParse([string]$sf.rev.integerValue, [ref]$srev) }; $sub.rev = [int]($srev + 1)
+          FsPatchNested "bitNote/$id" $vk $sub }
+        Log "슬립(비트 기록): 차트번호 $mrn 비트 저장($hm)이 화면 전송보다 나중 + 내용 다름 → 고침 ($($ex.lines.Count)줄, ${rev}→$($rev + 1)회차)"
+      } else { FsPatch "bitNote/$id" $emr; $same++ }
+      $script:NoteHash[$mrn] = $h
+    } catch { Log "슬립(비트 기록) 전송 오류 ${mrn}: $($_.Exception.Message)" }
+  }
+  if ($made -or $fixed) { Log "슬립(비트 기록): $made 건 만듦, $fixed 건 고침, $same 건 확인 (오늘 차팅 저장 $($byMrn.Count)명)" }
+}
+
+# ── 한 달 처방 합계 → bitRx/_month_YYYY-MM (db1.4, 2026-10-04) ──
+#  재고 통계표의 '처방량' 칸(처방코드별)을 채운다. 코드별 건수(n)와 총투여량(tot = 수량×횟수×일수)만 — 환자 정보는 없다.
+#  이번 달은 RxMonthMin 분마다 다시 세고(final=false), 달이 바뀌면 지난달을 한 번 더 세어 final=true 로 쓴다(마지막 날 진료 마감까지 전부).
+#  담당 PC 가 아니어도 -PayAlways/-RxAlways 면 쓴다(개발 PC). 같은 내용이면 다시 쓰지 않는다. 문서 id 가 '_month_' 라 날짜·차트번호 조회에는 걸리지 않는다
+$RX_MONTH_QUERY = @"
+SELECT RTRIM(o.OdrCod) AS cod, COUNT(*) AS n,
+       SUM(CAST(o.OdrQty AS float) * CAST(o.OdrTms AS float) * CAST(o.OdrDay AS float)) AS tot
+FROM OdrInf o WITH (NOLOCK)
+JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+WHERE m.OcmAcpDtm >= '{0}' AND m.OcmAcpDtm < '{1}' AND o.OdrDelFlg <> 'C'
+GROUP BY RTRIM(o.OdrCod)
+"@
+$script:RxMonthAt = [DateTime]::MinValue; $script:RxMonthHash = @{}; $script:RxMonthFinal = @{}
+function WriteRxMonth($first, $final) {   # $first = 그 달 1일(DateTime)
+  $ym = $first.ToString('yyyy-MM'); $from = $first.ToString('yyyyMMdd'); $to = $first.AddMonths(1).ToString('yyyyMMdd')
+  $t = SqlRows ($RX_MONTH_QUERY -f $from, $to) 60
+  $rows = New-Object System.Collections.ArrayList
+  foreach ($r in $t.Rows) { $cod = ([string]$r.cod).Trim(); if (-not $cod) { continue }
+    [void]$rows.Add([ordered]@{ cod = $cod; n = [int]$r.n; tot = (NumTxt $r.tot) }) }
+  $h = "final=$final`n" + (($rows | Sort-Object { $_.cod } | ForEach-Object { "$($_.cod)|$($_.n)|$($_.tot)" }) -join "`n")
+  if ($script:RxMonthHash[$ym] -eq $h) { return }
+  $upto = $(if ($final) { $first.AddMonths(1).AddDays(-1).ToString('yyyy-MM-dd') + ' 마감' } else { (Get-Date).ToString('yyyy-MM-dd HH:mm') })
+  if ($DryRun) { Log "한 달 처방 합계(시험): $ym 코드 $($rows.Count)개 final=$final"; $script:RxMonthHash[$ym] = $h; return }
+  FsPatch "bitRx/_month_$ym" @{ ym = $ym; final = [bool]$final; upto = $upto; at = (NowIso); pc = $Pc; count = [int]$rows.Count; rows = @($rows) }
+  $script:RxMonthHash[$ym] = $h
+  Log "한 달 처방 합계: $ym 코드 $($rows.Count)개 $(if ($final) { '(확정)' } else { "($upto 기준)" })"
+}
+function PollRxMonth() {
+  if ($RxMonthMin -le 0) { return }
+  if (-not $script:IsLeader -and -not $RxAlways -and -not $PayAlways) { return }
+  $now = Get-Date; $thisFirst = Get-Date -Year $now.Year -Month $now.Month -Day 1 -Hour 0 -Minute 0 -Second 0 -Millisecond 0
+  $prevFirst = $thisFirst.AddMonths(-1); $pym = $prevFirst.ToString('yyyy-MM')
+  if (($now - $script:RxMonthAt).TotalMinutes -lt $RxMonthMin) { return }   # 실패해도 RxMonthMin 분 뒤에 다시(매 주기 재시도 안 함)
+  $script:RxMonthAt = $now
+  if (-not $script:RxMonthFinal[$pym] -and $now.Day -le 10) {   # 지난달 확정본 — 이 에이전트가 켜진 뒤 한 번(달 초 열흘 안)
+    WriteRxMonth $prevFirst $true; $script:RxMonthFinal[$pym] = $true }
+  WriteRxMonth $thisFirst $false
+}
+
+# ── 자동차보험 급여 도수 가능 환자 → bitRx/_jabo (db2.1, 2026-10-30) ──
+#  조건(2026-10-30 원무 확인): 자보(보험 코드 21)로 처음 온 날부터 14일 이상 지났고, 그 전 내원에서 기본물리치료(처방코드에 MM, 또는 명칭 '기본물리치료')를 받은 날이 4일 이상.
+#  조건을 처음 만족한 내원부터 3번의 내원 동안(자동차도수 처방과 상관없이) 진료실 캡처 바(slip_capture.ps1)가 그 환자를 비트에서 열면 팝업을 띄운다.
+#  한 사고 = 자보 내원 사이가 $JaboGapDays 일 넘게 비면 새 사고로 본다. 오늘 자보로 접수한 환자만, 1분마다. 문서 하나: pts = { 차트번호: {n, first, pt, days} }
+#  ※ 문서에 'date' 칸을 두지 않는다 — 동선관리가 bitRx 를 date == 오늘 로 읽어 처방 문서로 착각하지 않게(day 로 둔다)
+$JaboGapDays = 90
+# db2.2 (2026-11-02 '어떤 상황이든 자보를 확인할 수 있어야'): 오늘 온 환자 중 400일 안에 자보 내원이 있는 사람은 오늘 접수 보험과 상관없이 모두 본다
+#  (자보인데 오늘 일반·건보로 잘못 접수돼도 빠지지 않게). 자보 내원(21)만 경과일·기본물리치료 일수에 센다. jb = 그날 자보 접수 여부
+$JABO_QUERY = @"
+SELECT RTRIM(m.OcmChtNum) AS mrn, LEFT(m.OcmAcpDtm, 8) AS d,
+       MAX(CASE WHEN RTRIM(CAST(m.OcmInsCod AS varchar(10))) = '21' THEN 1 ELSE 0 END) AS jb,
+       MAX(CASE WHEN RTRIM(CAST(m.OcmInsCod AS varchar(10))) = '21' AND (o.OdrCod LIKE '%MM%' OR o.OdrCodNam LIKE N'%기본물리치료%') THEN 1 ELSE 0 END) AS pt
+FROM OcmInf m WITH (NOLOCK)
+LEFT JOIN OdrInf o WITH (NOLOCK) ON o.OdrOcmNum = m.OcmNum AND o.OdrDelFlg <> 'C'
+WHERE m.OcmAcpDtm >= '{1}' AND m.OcmComStt IN ({2})
+  AND (RTRIM(CAST(m.OcmInsCod AS varchar(10))) = '21' OR LEFT(m.OcmAcpDtm, 8) = '{0}')
+  AND m.OcmChtNum IN (SELECT t.OcmChtNum FROM OcmInf t WITH (NOLOCK) WHERE LEFT(t.OcmAcpDtm, 8) = '{0}' AND t.OcmComStt IN ({2}))
+  AND m.OcmChtNum IN (SELECT u.OcmChtNum FROM OcmInf u WITH (NOLOCK) WHERE RTRIM(CAST(u.OcmInsCod AS varchar(10))) = '21' AND u.OcmAcpDtm >= '{1}' AND u.OcmComStt IN ({2}))
+GROUP BY RTRIM(m.OcmChtNum), LEFT(m.OcmAcpDtm, 8)
+"@
+# 한 환자의 오늘 자보 상태 — 언제나 돌려준다. $days = @{ 'yyyyMMdd' = @{ jb = 자보 접수 0/1; pt = 자보 기본물리치료 0/1 } }
+#  first = 이번 사고 자보 첫 내원, days = 오늘까지 경과일, pt = 오늘 전까지 기본물리치료 받은 날 수, ok = 14일 이상 + 4일 이상,
+#  n = 조건을 만족한 몇 번째 내원(오늘 포함), tj = 오늘 접수가 자보인지. 팝업(pts)은 ok·tj·n≤3 일 때만(db2.1 과 같음)
+function JaboStatus($days, $todayYmd) {
+  $first = $null; $prev = $null; $pt = 0; $nth = 0
+  foreach ($d in @($days.Keys | ForEach-Object { [string]$_ } | Where-Object { $_ -ne $todayYmd -and [int]$days[$_].jb } | Sort-Object)) {
+    $dt = [DateTime]::ParseExact($d, 'yyyyMMdd', $null)
+    if ($null -eq $prev -or ($dt - $prev).TotalDays -gt $JaboGapDays) { $first = $dt; $pt = 0; $nth = 0 }   # 새 사고
+    if ((($dt - $first).TotalDays -ge 14) -and $pt -ge 4) { $nth++ }   # 이 날 진료 전까지 받은 기본물리치료 일수
+    if ([int]$days[$d].pt) { $pt++ }
+    $prev = $dt
+  }
+  $td = [DateTime]::ParseExact($todayYmd, 'yyyyMMdd', $null)
+  if ($null -eq $prev -or ($td - $prev).TotalDays -gt $JaboGapDays) { $first = $td; $pt = 0; $nth = 0 }   # 오늘이 새 사고의 첫날
+  $ok = ((($td - $first).TotalDays -ge 14) -and $pt -ge 4); if ($ok) { $nth++ }
+  $tj = [int]($days.ContainsKey($todayYmd) -and [int]$days[$todayYmd].jb)
+  return @{ first = $first.ToString('yyyy-MM-dd'); days = [int]($td - $first).TotalDays; pt = [int]$pt; ok = [bool]$ok; n = [int]$nth; tj = $tj }
+}
+$script:JaboAt = [DateTime]::MinValue; $script:JaboHash = $null
+function PollJabo() {
+  if (-not $script:IsLeader -and -not $RxAlways) { return }
+  $hr = (Get-Date).Hour; if ($hr -lt 7 -or $hr -ge 22) { return }
+  if (((Get-Date) - $script:JaboAt).TotalSeconds -lt 60) { return }
+  $script:JaboAt = Get-Date
+  $today8 = (Get-Date).ToString('yyyyMMdd'); $from8 = (Get-Date).AddDays(-400).ToString('yyyyMMdd')
+  $sql = $JABO_QUERY -f $today8, $from8, (($ACTIVE | ForEach-Object { "'$_'" }) -join ',')
+  AssertReadonlySql $sql
+  $rows = SqlRows $sql 20
+  $by = @{}
+  foreach ($r in $rows.Rows) { $m = (([string]$r.mrn) -replace '\D', '').TrimStart('0'); $d = ([string]$r.d).Trim(); if (-not $m -or $d.Length -ne 8) { continue }   # 캡처 바와 같은 모양(숫자만, 앞 0 뺌)
+    if (-not $by.ContainsKey($m)) { $by[$m] = @{} }; $by[$m][$d] = @{ jb = [int]$r.jb; pt = [int]$r.pt } }
+  $all = @{}; $pts = @{}
+  foreach ($m in $by.Keys) { $e = JaboStatus $by[$m] $today8; $all[$m] = $e
+    if ($e.ok -and $e.tj -and $e.n -le 3) { $pts[$m] = @{ n = $e.n; first = $e.first; pt = $e.pt; days = $e.days } } }   # 캡처 바 팝업용(db2.1 과 같은 모양)
+  $h = "$today8`n" + (($all.Keys | Sort-Object | ForEach-Object { "$_|$($all[$_].n)|$($all[$_].pt)|$($all[$_].ok)|$($all[$_].tj)|$($all[$_].first)" }) -join "`n")
+  if ($h -eq $script:JaboHash) { return }
+  if ($DryRun) { Log "자보 도수 가능(시험): 오늘 자보 이력 $($by.Count)명 중 $($pts.Count)명"; $script:JaboHash = $h; return }
+  FsPatch "bitRx/_jabo" @{ day = (Get-Date).ToString('yyyy-MM-dd'); at = (NowIso); pc = $Pc; jabo = [int]$by.Count; pts = $pts; all = $all }   # all = 오늘 온 자보 이력 환자 전원 — 동선관리가 언제든 보여 준다 (db2.2)
+  $script:JaboHash = $h
+  Log "자보 도수 가능: 오늘 자보 $($by.Count)명 중 $($pts.Count)명 ($(($pts.Keys | Sort-Object | ForEach-Object { "$_ $($pts[$_].n)/3" }) -join ', '))"
+}
+
+# ── 메인 ──
+Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
+AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
+if (-not $DryRun) { try { $null = FbToken } catch { Log $_.Exception.Message } }
+$st = LoadState; $first = $st.fresh
+if (-not $first) { Log "상태 파일 복원: 오늘 본 접수 $($st.seen.Count)건, 보낸 접수 $($st.sent.Count)건 (스냅샷 없이 이어감)" }
+$lastBeat = [DateTime]::MinValue; $sqlOk = $null; $cyc = 0
+while ($true) {
+  $cycStart = Get-Date
+  if ($st.date -ne (Today)) { Log "날짜 변경 → 상태 초기화"; $st = @{ date = (Today); seen = @{}; sent = @{}; fresh = $true }; $first = $true; $script:Conf = @{}; TrimLog }
+  HealthDrain
+  if ($Peers.Count) { DiscoverPeers; ElectLeader }   # 다른 에이전트가 있으면 매 주기 우선순위 확인(LAN, 수 ms)
+  try {
+    $n = Poll $st $first
+    $script:LastDbOk = Get-Date
+    if ($ResvDays -gt 0 -and ($ResvEvery -le 1 -or ($cyc % $ResvEvery) -eq 0)) { if (-not $script:DepName.Count) { LoadDepNames }; try { PollResv } catch { Log "예약 조회 오류: $($_.Exception.Message)" } }
+    if ($RxEvery -gt 0 -and ($RxEvery -le 1 -or ($cyc % $RxEvery) -eq 0)) { try { PollRx } catch { Log "처방 조회 오류: $($_.Exception.Message)" } }
+    if ($NoteEvery -gt 0 -and ($NoteEvery -le 1 -or ($cyc % $NoteEvery) -eq 1)) { try { PollNote } catch { Log "차팅(슬립) 조회 오류: $($_.Exception.Message)" } }   # db2.5 — 처방과 다른 주기에(부하 분산)
+    try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
+    try { PollJabo } catch { Log "자보 도수 조회 오류: $($_.Exception.Message)" }   # db2.1
+    try { AnswerAsks } catch { Log "내원 날짜 요청 확인 오류: $($_.Exception.Message)" }   # 서류 발급 태블릿 (db1.9)
+    if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
+    SaveState $st
+    if ($sqlOk -ne $true) { if ($sqlOk -eq $false) { Log "DB 연결 회복" }; $sqlOk = $true; $lastBeat = [DateTime]::MinValue }
+  } catch {
+    if ($sqlOk -ne $false) { Log "DB 조회 오류: $($_.Exception.Message)"; $sqlOk = $false; $lastBeat = [DateTime]::MinValue }
+  }
+  if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSec) {
+    try { Heartbeat $sqlOk; $lastBeat = Get-Date; $script:CycMax = 0 } catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date }
+  }
+  try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }   # db2.8 — DB 가 안 돼도 확인한다(고친 버전이 DB 문제를 풀 수도 있으므로)
+  $ms = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($ms -gt $script:CycMax) { $script:CycMax = $ms }
+  $cyc++; if ($Cycles -gt 0 -and $cyc -ge $Cycles) { Log "시험 종료 ($Cycles 회)"; break }
+  IdleWait ([Math]::Max(500, $PollSec * 1000 - $ms))
+}

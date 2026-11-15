@@ -47,7 +47,10 @@ param(
   [int]$Priority = 1,                       # 여러 PC 에서 함께 돌 때 우선순위(큰 수가 우선). 가장 높은 '정상' 에이전트만 Firestore 에 쓰고 나머지는 대기(상태만 따라감)
   [int]$HealthPort = 9001,                  # 감시 스크립트·다른 에이전트가 "살아 있나"를 묻는 TCP 포트(LAN 전용, Firestore 비용 없음). 0 = 끔
   [string]$PeersFile = (Join-Path $PSScriptRoot 'bitplus_peers.txt'),   # 다른 에이전트 PC IP 목록(한 줄에 하나, # 뒤는 주석). 없으면 단독 운영
-  [int]$PeerPort = 0                        # 동료 에이전트의 상태 포트(0 = HealthPort 와 같음). 한 PC 에서 두 인스턴스로 시험할 때만 다르게
+  [int]$PeerPort = 0,                       # 동료 에이전트의 상태 포트(0 = HealthPort 와 같음). 한 PC 에서 두 인스턴스로 시험할 때만 다르게
+  [string]$UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit',   # db2.8 자동 업데이트: 여기의 agent.json·bit_db_agent.ps1
+  [switch]$UpdNow,                          # 시작하자마자 업데이트 확인(시험용)
+  [switch]$NoUpdate                         # 자동 업데이트 끔
 )
 if ($PeerPort -le 0) { $PeerPort = $HealthPort }
 $ErrorActionPreference = 'Continue'
@@ -56,7 +59,7 @@ $script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgen
 $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
 if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db2.7'   # 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
+$VER = 'db2.8'   # 2.8: 자동 업데이트 — 30분마다 사이트의 agent.json(ver·sha256)을 보고 새 버전이면 받아서 확인(sha256·문법·버전 표시) 뒤 스스로 바꾸고 다시 시작한다. 접수 PC 를 돌며 재설치하지 않게 (2026-11-15). 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
 # 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
 # 2.3: 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
 # 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
@@ -434,6 +437,32 @@ function HealthDrain() {   # 대기 중인 접속마다 한 줄 답하고 끊는
       $line += ' ' + ((@($Peers) + @($MyIps | Where-Object { $_ -like '192.168.*' -or $_ -like '10.*' })) -join ',')
       $b = [Text.Encoding]::UTF8.GetBytes($line + "`n"); $cli.GetStream().Write($b, 0, $b.Length) }
     catch {} finally { if ($cli) { try { $cli.Close() } catch {} } } }
+}
+# ── 자동 업데이트 (db2.8, 2026-11-15) — bitplus_watcher.ps1 v3.9 SelfUpdate 와 같은 방식 ──
+#  30분마다(PC 마다 시작 시각을 흩뜨려 모든 접수 PC 가 한꺼번에 다시 시작하지 않게) agent.json 의 ver 가 내 $VER 와 다르면
+#  새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 $VER 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고(옛 파일은 .bak) 같은 인수로 다시 시작.
+#  비밀번호 파일·상태 파일은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만). 시험 실행(-Cycles)·-NoUpdate 는 하지 않음
+$script:UpdAt = if ($UpdNow) { [DateTime]::MinValue } else { (Get-Date).AddMinutes(-28 + (Get-Random -Minimum 0 -Maximum 12)) }   # 첫 확인: 시작 2~14분 뒤
+function SelfUpdate() {
+  if ($NoUpdate -or $Cycles -gt 0 -or -not $UpdBase) { return }
+  if (((Get-Date) - $script:UpdAt).TotalMinutes -lt 30) { return }; $script:UpdAt = Get-Date
+  $base = $UpdBase.TrimEnd('/')
+  $j = Invoke-RestMethod -TimeoutSec 8 -Uri "$base/agent.json?t=$([DateTime]::Now.Ticks)"
+  if (-not $j.ver -or -not $j.sha256 -or $j.ver -eq $VER) { return }
+  $tmp = Join-Path $PSScriptRoot 'bit_db_agent.new'
+  Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$base/bit_db_agent.ps1?v=$($j.ver)" -OutFile $tmp
+  $hash = (Get-FileHash $tmp -Algorithm SHA256).Hash
+  if ($hash -ne ([string]$j.sha256).ToUpper()) { Log "자동 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
+  if ($pe.Count -or $txt -notmatch ("\`$VER = '" + [regex]::Escape([string]$j.ver) + "'")) { Log "자동 업데이트 건너뜀: 받은 파일이 올바르지 않음 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $me = $PSCommandPath; Copy-Item $me "$me.bak" -Force -ErrorAction SilentlyContinue; Move-Item $tmp $me -Force
+  Log "자동 업데이트: $VER → $($j.ver) — 다시 시작합니다"
+  $cl = [string](Get-CimInstance Win32_Process -Filter "ProcessId=$PID").CommandLine
+  $m = [regex]::Match($cl, '^\s*("[^"]+"|\S+)\s*(.*)$')
+  try { if ($health) { $health.Stop() } } catch {}          # 상태 포트를 놓아 새 프로세스가 바로 열 수 있게
+  try { $script:Mtx.ReleaseMutex() } catch {}
+  if ($m.Success) { Start-Process -FilePath ($m.Groups[1].Value.Trim('"')) -ArgumentList $m.Groups[2].Value -WindowStyle Hidden }   # 실패해도 작업 스케줄러(5분 반복)가 다시 띄운다
+  exit 0
 }
 function ProbePeer($ip) {   # 300ms 안에 연결·응답이 없으면 죽은 것으로 본다. 반환 @{ ok; prio; pc } 또는 $null
   $cli = New-Object System.Net.Sockets.TcpClient
@@ -913,6 +942,7 @@ while ($true) {
   if (((Get-Date) - $lastBeat).TotalSeconds -ge $HeartbeatSec) {
     try { Heartbeat $sqlOk; $lastBeat = Get-Date; $script:CycMax = 0 } catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date }
   }
+  try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }   # db2.8 — DB 가 안 돼도 확인한다(고친 버전이 DB 문제를 풀 수도 있으므로)
   $ms = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($ms -gt $script:CycMax) { $script:CycMax = $ms }
   $cyc++; if ($Cycles -gt 0 -and $cyc -ge $Cycles) { Log "시험 종료 ($Cycles 회)"; break }
   IdleWait ([Math]::Max(500, $PollSec * 1000 - $ms))

