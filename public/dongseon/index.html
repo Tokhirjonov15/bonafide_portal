@@ -13158,12 +13158,12 @@ function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!b
   const c=recTextCache[mrn];if(c&&Date.now()-c.at<60000){draw(c.list);return;}
   recFetch(mrn).then(L=>{   // 개수 제한 없이 (2026-10-12)
     recTextCache[mrn]={at:Date.now(),list:L};draw(L);}).catch(e=>console.warn('recText get',e));}
-/* ═ 녹음 삭제 (2026-11-15 요청: 원장님 전화 통화가 환자 녹음에 같이 들어간 경우 지운다) — 원장님·관리자만 ═
+/* ═ 녹음 삭제 (2026-11-15 요청: 원장님 전화 통화가 환자 녹음에 같이 들어간 경우 지운다) — 로그인한 직원 누구나 (지운 사람은 감사 기록에) ═
    한 녹음(같은 시작 시각·진료실) = 소리(Firebase 저장소 rec_audio/…) + 받아쓴 글(recText 문서 여럿).
    지우면 recDel 에 '지운 녹음' 표시를 남긴다:
     · 늦게 끝난 받아쓰기·소리 올리기가 다시 올리지 않는다(올리기 전에 확인)
     · 녹음한 진료실 PC(외장하드 폴더를 가진 동선관리 화면)가 보고 외장하드의 녹음·.txt 를 지운다 */
-function canRecDelete(){return !!(currentUser&&(currentUser.role==='doctor'||currentUser.role==='admin'||currentUser.super));}
+function canRecDelete(){return !!currentUser;}   // 2026-11-15 요청: 모든 직원에게 보이게 (처음엔 원장님·관리자만)
 const recKeyOf=r=>(r&&r.startedAt?r.startedAt+'|'+(r.room||''):'')||(r&&r.file)||'';
 /* 파일 이름에서 녹음 한 건을 가리키는 앞부분 — '녹음 2026-11-10 홍길동 710403 진료실1 09시09분00초~' (끝 시각·확장자·.chrome.txt 등은 뺀다) */
 const recFileStem=f=>{const s=String(f||'');const i=s.indexOf('~');return i>0?s.slice(0,i+1):s.replace(/(\.(chrome|openai|clova))?\.(webm|wav|txt)$/i,'');};
@@ -13175,7 +13175,7 @@ async function recFetch(mrn){const [s,dels]=await Promise.all([cloud.ref.collect
   return s.docs.map(d=>Object.assign({_id:d.id},d.data())).filter(r=>!recDelHit(dels,r)).sort((a,b)=>String(b.startedAt||'').localeCompare(String(a.startedAt||'')));}
 const REC_GRP={};   // 화면에 그린 녹음 묶음 — 삭제 버튼이 가리킨다
 window.recDelete=async function(id){const L=REC_GRP[id];if(!L||!L.length)return;
-  if(!canRecDelete()){alert('녹음 삭제는 원장님·관리자만 할 수 있습니다.');return;}
+  if(!canRecDelete()){alert('로그인한 뒤 다시 해 주세요.');return;}
   if(!(cloud.active&&cloud.ref)){alert('클라우드에 연결된 뒤 다시 해 주세요.');return;}
   const f=L[0],mrn=String(f.mrn||'').trim(),key=recKeyOf(f);
   const d=new Date(f.startedAt||'');const when=isNaN(d)?String(f.date||''):localYMD(d)+' '+hhmm(d.toISOString());
