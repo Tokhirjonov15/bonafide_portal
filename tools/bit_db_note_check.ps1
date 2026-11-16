@@ -22,7 +22,7 @@ try {
   if (Test-Path $agent) { $vm = Select-String -Path $agent -Pattern "^\`$VER = '([^']+)'" | Select-Object -First 1
     Say ("에이전트 파일 버전: {0}" -f $(if ($vm) { $vm.Matches[0].Groups[1].Value } else { '?' })) } else { Say "에이전트 파일 없음: $agent" }
   try { $t = Get-ScheduledTask BitDbAgent -ErrorAction Stop; Say ("작업 BitDbAgent: {0} · {1}" -f $t.State, $t.Actions[0].Arguments) } catch { Say "작업 BitDbAgent 없음" }
-  try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 9001); $s = $c.GetStream(); $s.ReadTimeout = 2000
+  try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', 9001); $s = $c.GetStream(); $s.ReadTimeout = 6000
     $buf = New-Object byte[] 256; $n = $s.Read($buf, 0, 256); $c.Close(); Say ("상태 포트 9001: {0}" -f ([Text.Encoding]::UTF8.GetString($buf, 0, $n).Trim())) } catch { Say "상태 포트 9001 응답 없음" }
   $alog = Join-Path $env:LOCALAPPDATA 'bit_db_agent\agent.log'
   if (Test-Path $alog) {
@@ -52,6 +52,13 @@ ORDER BY e.EmrOcmNum, e.EmrShtTyp, e.EmrShtCod, e.EmrShtSeq
 "@ $p
     Say ("비트 저장 기록(EmrInf) {0}줄 — [접수번호 · 종류 · 순서 · 저장시각] 내용:" -f $emr.Rows.Count)
     foreach ($r in $emr.Rows) { Say ("   [{0} · {1}/{2} · {3} · {4}] {5}" -f $r.k, $r.typ, $r.cod, $r.seq, $r.upd, (([string]$r.v) -replace '\s+', ' ')) }
+    # 저장 시각마다 그 뒤 3분 동안 에이전트가 슬립을 어떻게 처리했는지(요약 줄: 만듦·고침·확인 건수)
+    if (Test-Path $alog) {
+      $ups = @($emr.Rows | ForEach-Object { [string]$_.upd } | Where-Object { $_.Length -ge 12 } | Sort-Object -Unique)
+      $all = @(Get-Content $alog -Encoding UTF8 -Tail 40000)
+      foreach ($u in $ups) { $t0 = [DateTime]::ParseExact($u.Substring(0, 12), 'yyyyMMddHHmm', $null)
+        Say ("비트 저장 {0} 뒤 3분 에이전트 슬립 기록:" -f $t0.ToString('HH:mm'))
+        $all | Where-Object { $_.Length -ge 19 -and $_ -match '슬립' } | ForEach-Object { try { $lt = [DateTime]::ParseExact($_.Substring(0, 19), 'yyyy-MM-dd HH:mm:ss', $null); if ($lt -ge $t0 -and $lt -lt $t0.AddMinutes(3)) { Say "   $_" } } catch {} } } }
     # 처방 항목(OdrInf) — 지운 줄(C)도 함께: 엑스레이 오더가 언제 들어오고 지워졌는지 (2026-11-16 박재현 4562 x-ray 알림 안 감)
     $odr = Q @"
 SELECT RTRIM(o.OdrOcmNum) AS k, o.OdrSeq AS seq, RTRIM(o.OdrCod) AS cod, LEFT(RTRIM(o.OdrCodNam), 40) AS nam, RTRIM(o.OdrDtm) AS dtm, RTRIM(o.OdrDelFlg) AS del
