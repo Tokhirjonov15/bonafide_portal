@@ -2102,6 +2102,7 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
   <div class="slip-top">
     <b class="st-title"><i data-lucide="pill"></i><span class="st-lbl"> 슬립 화면</span></b><span class="hint" id="slipRoomLbl">전체</span><span id="slipUpd" class="slip-upd" style="display:none">새 버전이 있습니다 <button type="button" class="btn sm" onclick="slipReloadNow()" title="환자 사이에 눌러 주세요 — 슬립을 보는 동안은 자동으로 새로고침하지 않습니다">지금 새로고침</button></span>
     <div class="slip-search"><i data-lucide="search"></i><input id="slipQ" type="search" name="ds-slip-find" placeholder="환자 성함·차트번호 검색" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-form-type="other" readonly onfocus="this.removeAttribute('readonly')" oninput="slipSearch(this.value)" onkeydown="if(event.key==='Escape'){this.value='';slipSearch('');}"></div>
+    <button type="button" class="btn" id="slipListBtn" onclick="slipListToggle()" style="font-weight:800;min-height:40px" title="왼쪽 환자 목록 숨기기/펴기"><span id="slipListLbl">◀ 목록 접기</span></button>   <!-- 2026-11-16 요청: 가운데 ◀ 손잡이가 좁아 태블릿에서 잘 안 눌림 → 동의서 [전체보기]처럼 글자 버튼 -->
     <div class="spacer"></div>
     <a class="btn sm" href="?slip" target="_blank" rel="noopener" title="태블릿·별도 창용 주소 (뒤에 &room=물리치료 를 붙이면 그 방 동선의 환자만)"><i data-lucide="external-link"></i><span class="st-lbl"> 새 창</span></a>
     <button class="btn sm slip-ap" id="slipApBtn" onclick="slipAutoToggle()"><i data-lucide="printer"></i><span class="st-lbl"> 자동 인쇄</span></button>
@@ -2118,8 +2119,12 @@ try{if(localStorage.getItem("dsTopbarHidden")==="1")document.body.classList.add(
   const apply=()=>{L.style.maxHeight=L.style.height=L.style.width=L.style.flex="";try{if(mq.matches){const v=+localStorage.getItem("dsSlipListH");if(v>0)setH(v);}else{const v=+localStorage.getItem("dsSlipListW");if(v>0)setW(v);}}catch(e){}};
   apply();mq.addEventListener("change",apply);
   /* 한 번 누르면(끌지 않고) 목록 숨기기/펴기 (2026-10-12 요청) */
-  const body=sp.parentElement;const setOff=v=>{body.classList.toggle("list-off",v);try{localStorage.setItem("dsSlipListOff",v?"1":"0");}catch(e){}};
+  const body=sp.parentElement;
+  const lbl=()=>{const b=document.getElementById("slipListLbl");if(b)b.textContent=body.classList.contains("list-off")?"▶ 목록 펼치기":"◀ 목록 접기";};
+  const setOff=v=>{body.classList.toggle("list-off",v);lbl();try{localStorage.setItem("dsSlipListOff",v?"1":"0");}catch(e){}};
+  window.slipListToggle=()=>setOff(!body.classList.contains("list-off"));   /* 위 [목록 접기] 버튼 (2026-11-16) */
   try{if(localStorage.getItem("dsSlipListOff")==="1")body.classList.add("list-off");}catch(e){}
+  lbl();
   let p0=0,s0=0,on=false,mv=0;
   sp.addEventListener("pointerdown",e=>{on=true;mv=0;const r=L.getBoundingClientRect();p0=mq.matches?e.clientY:e.clientX;s0=mq.matches?r.height:r.width;sp.setPointerCapture(e.pointerId);e.preventDefault();});
   sp.addEventListener("pointermove",e=>{if(!on)return;mv=Math.max(mv,Math.abs((mq.matches?e.clientY:e.clientX)-p0));if(mv<5||body.classList.contains("list-off"))return;if(mq.matches)setH(s0+e.clientY-p0);else setW(s0+e.clientX-p0);});
