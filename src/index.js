@@ -1236,7 +1236,7 @@ async function dongseonWaitAlert(request, env) {
   }
 }
 
-async function dongseonNotify(request, env) {
+async function dongseonNotify(request, env, ctx) {
   try {
     if (request.method !== "POST") return json({ error: "POST 만 지원" }, 405);
     const b = await request.json().catch(() => ({}));
@@ -1260,6 +1260,15 @@ async function dongseonNotify(request, env) {
       const ins = await env.DB.prepare(`INSERT OR IGNORE INTO wait_sent (k, at) VALUES (?,?)`).bind(k, Date.now()).run();
       if (!(ins.meta && ins.meta.changes)) return json({ ok: true, sent: 0, dup: true });
     }
+    /* x-ray '나왔습니다' 25초 대기를 서버에서 (2026-11-16 박재현 4562: '촬영 있습니다'는 갔는데 '나왔습니다'가 안 갔다).
+       예전엔 카드를 옮긴 화면이 30초를 기다렸다 보냈다 → 그 사이 그 기기 화면이 꺼지거나 창을 닫으면 사라졌다.
+       이제 화면은 바로 보내고(delay), 서버가 wait_sent 에 'xro|카드id' 를 적어 두고 25초 뒤 그대로면 보낸다.
+       그 사이 같은 카드가 x-ray실로 되돌아오면(잘못 옮김) 'in' 이 그 표시를 지워 보내지 않는다 */
+    const xrKey = /x-?ray/i.test(room) && s(b.pid) ? "xro|" + s(b.pid).slice(0, 80) : "";
+    if (xrKey && kind === "in") await env.DB.prepare(`DELETE FROM wait_sent WHERE k=?`).bind(xrKey).run();
+    const xrDelay = !!(xrKey && kind === "out" && b.delay && ctx && ctx.waitUntil);
+    let xrToken = 0;
+    if (xrDelay) { xrToken = Date.now(); await env.DB.prepare(`INSERT OR REPLACE INTO wait_sent (k, at) VALUES (?,?)`).bind(xrKey, xrToken).run(); }
     const who = (b.seq ? "#" + b.seq + " " : "") + s(b.name) + (s(b.mrn) ? " (" + s(b.mrn) + ")" : "");
     const d = new Date(Date.now() + 9 * 3600 * 1000);
     const hm = String(d.getUTCHours()).padStart(2, "0") + ":" + String(d.getUTCMinutes()).padStart(2, "0");
@@ -1303,12 +1312,25 @@ async function dongseonNotify(request, env) {
       : kind === "in"
       ? `🟢 ${room} 도착 · ${who} · ${hm}`
       : `⚪ ${room} 나감 · ${who} · ${hm}` + ((b.waitMs || b.activeMs) ? ` · 대기 ${fmtMin(b.waitMs)}${b.activeMs ? " · 진행 " + fmtMin(b.activeMs) : ""}` : "") + (s(b.next) ? ` → ${s(b.next)}` : "");
-    let sent = 0;
-    for (const sub of subs) {
-      if (env.ROOM_BOT_TOKEN) { const r = await tgRoomApi(env, "sendMessage", { chat_id: sub.chat_id, text }); if (r && r.ok) sent++; }
-      else if (await tgSendTo(env, sub.chat_id, text)) sent++;
+    const sendAll = async () => {
+      let sent = 0;
+      for (const sub of subs) {
+        if (env.ROOM_BOT_TOKEN) { const r = await tgRoomApi(env, "sendMessage", { chat_id: sub.chat_id, text }); if (r && r.ok) sent++; }
+        else if (await tgSendTo(env, sub.chat_id, text)) sent++;
+      }
+      return sent;
+    };
+    if (xrDelay) {
+      ctx.waitUntil((async () => {
+        await new Promise((r) => setTimeout(r, 25000));
+        const row = await env.DB.prepare(`SELECT at FROM wait_sent WHERE k=?`).bind(xrKey).first();
+        if (!row || Number(row.at) !== xrToken) return;   // 되돌아옴(in 이 지움) 또는 더 새 '나왔습니다'가 대신함
+        await env.DB.prepare(`DELETE FROM wait_sent WHERE k=? AND at=?`).bind(xrKey, xrToken).run();
+        await sendAll();
+      })().catch(() => {}));
+      return json({ ok: true, queued: true });
     }
-    return json({ ok: true, sent });
+    return json({ ok: true, sent: await sendAll() });
   } catch (err) {
     return json({ error: err && err.message ? err.message : String(err) }, 500);
   }
@@ -2380,7 +2402,7 @@ export default {
       return dongseonFiles(request, env, url);
     }
     if (url.pathname === "/api/dongseon/notify") {   // 동선관리 방 도착·퇴실 → 텔레그램(/room 구독자)
-      return dongseonNotify(request, env);
+      return dongseonNotify(request, env, ctx);
     }
 
     try {

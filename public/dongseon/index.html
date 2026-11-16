@@ -11230,7 +11230,10 @@ function roomNotify(p,room,kind,extra){
         if(its.length&&R)has=its.some(it=>{const cod=String(it.cod||'').trim();return /^g\d/i.test(cod)||rxRuleHit(R,cod,String(it.nam||'').trim());});}catch(e){}
       if(has===false){try{console.info('x-ray 알림 안 보냄(엑스레이 오더 없음)',p.name);}catch(e){}return;}}
     /* "나왔습니다"는 30초 뒤 — 그 사이 화면이 새로고침(업데이트 자동 새로고침 등)되면 사라졌다 (2026-11-11) → 이 기기에 적어 두고 xrPendRun 이 보낸다 */
-    if(kind==='out'&&/x-?ray/i.test(room)){xrPendAdd({pid:p.id,room,body,due:Date.now()+30000});return;}
+    /* 2026-11-16 박재현 4562: '촬영 있습니다'는 갔는데 '나왔습니다'가 안 갔다 — 옮긴 기기가 30초를 못 버티면(화면 꺼짐·창 닫음) 사라졌다.
+       → 바로 서버로 보내고 25초 대기·되돌아옴 확인은 서버가 한다(delay, pid). 진료실은 지금 계산(아직 x-ray실 단계라 다음 진료실을 찾는다) */
+    if(/x-?ray/i.test(room)&&(kind==='out'||kind==='in')&&p.id){body.pid=p.id;
+      if(kind==='out'){body.delay=1;try{body.clinic=xrayClinicOf(p).room||'';}catch(e){}}}
     send();
   }catch(e){}
 }
