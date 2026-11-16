@@ -52,6 +52,15 @@ ORDER BY e.EmrOcmNum, e.EmrShtTyp, e.EmrShtCod, e.EmrShtSeq
 "@ $p
     Say ("비트 저장 기록(EmrInf) {0}줄 — [접수번호 · 종류 · 순서 · 저장시각] 내용:" -f $emr.Rows.Count)
     foreach ($r in $emr.Rows) { Say ("   [{0} · {1}/{2} · {3} · {4}] {5}" -f $r.k, $r.typ, $r.cod, $r.seq, $r.upd, (([string]$r.v) -replace '\s+', ' ')) }
+    # 처방 항목(OdrInf) — 지운 줄(C)도 함께: 엑스레이 오더가 언제 들어오고 지워졌는지 (2026-11-16 박재현 4562 x-ray 알림 안 감)
+    $odr = Q @"
+SELECT RTRIM(o.OdrOcmNum) AS k, o.OdrSeq AS seq, RTRIM(o.OdrCod) AS cod, LEFT(RTRIM(o.OdrCodNam), 40) AS nam, RTRIM(o.OdrDtm) AS dtm, RTRIM(o.OdrDelFlg) AS del
+FROM OdrInf o WITH (NOLOCK) JOIN OcmInf m WITH (NOLOCK) ON m.OcmNum = o.OdrOcmNum
+WHERE LEFT(m.OcmAcpDtm, 8) = @d AND LTRIM(RTRIM(m.OcmChtNum)) IN (@m, @m0)
+ORDER BY o.OdrOcmNum, o.OdrSeq
+"@ $p
+    Say ("비트 처방 항목(OdrInf) {0}줄 — [접수번호 · 순서 · 입력시각 · 지움표시] 코드 명칭:" -f $odr.Rows.Count)
+    foreach ($r in $odr.Rows) { Say ("   [{0} · {1} · {2} · {3}] {4}  {5}" -f $r.k, $r.seq, $r.dtm, $(if ($r.del -eq 'C') { '지움' } else { '-' }), $r.cod, $r.nam) }
   } finally { $cn.Close() }
 } catch { Say "오류: $($_.Exception.Message)" }
 finally { [IO.File]::WriteAllLines($out, $lines, (New-Object Text.UTF8Encoding $true)); Write-Host "`n결과 파일: $out" -ForegroundColor Green }
