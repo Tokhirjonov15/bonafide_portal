@@ -14659,7 +14659,16 @@ function toggleCompact(){COMPACT=!COMPACT;try{localStorage.setItem('patientBoard
 applyCompact();
 try{ setTimeout(postDoctorsToExt,1200); }catch(e){}   // 로드 직후 진료의 명단을 EMR 확장에 1회 전달(로그인 전 캐시)
 function showModal(){document.getElementById("modal").classList.add("show")}
-function closeModal(){try{rxDcPendClear();}catch(e){}data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("view-only","add-full");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';}
+function closeModal(){try{rxDcPendClear();}catch(e){}data=data.filter(x=>!x._viewOnly);VIEW_CARD=null;const m=document.getElementById("modal");m.classList.remove("show");m.classList.remove("view-only","add-full");m.classList.remove("over-resv");BIT_PREFILL=null;const bb=document.getElementById('modalBack');if(bb)bb.style.display='none';
+  if(CDESK_RETURN){CDESK_RETURN=false;try{openConsentDesk();}catch(e){console.warn('cdesk back',e);}}}   // 동의서에서 연 환자 정보 창 → 닫으면(취소·X·저장·←) 동의서로 돌아간다 (2026-11-16)
+/* 동의서(비용 상담) 화면에서 [환자 정보 창] (2026-11-16 요청: 특이사항 확인 후 취소·X 를 누르면 동의서까지 꺼져 다시 들어가야 했다).
+   동의서 화면(z 900)을 잠깐 숨기고 환자 정보 창을 연다 — 창에서 여는 지난 차트·PACS 등도 그대로 위에 뜬다. 닫으면 동의서가 같은 환자로 다시 열린다 */
+var CDESK_RETURN=false;
+window.openEditFromCdesk=function(pid){const ov=document.getElementById('cdesk');if(ov)ov.classList.remove('show');
+  try{openEdit(pid);}catch(e){console.warn(e);if(ov)ov.classList.add('show');return;}
+  CDESK_RETURN=true;
+  const bb=document.getElementById('modalBack');if(bb){bb.style.display='';bb.innerHTML='<i data-lucide="arrow-left"></i> 동의서';bb.title='동의서 화면으로 돌아가기';}
+  if(window.lucide)try{lucide.createIcons();}catch(e){}};
 /* 4층 비급여 치료 표의 칸(빈 곳)에서 환자 정보 창 열기: 화면(z-index 300) 위에 뜨도록 하고, 머리에 '← 4층 비급여 치료' 단추 — 닫으면 표가 그대로 남아 있다 (2026-09-20) */
 window.openEditFromResv=function(pid,backLabel){const p=data.find(x=>x.id===pid);if(!p)return;
   try{openEdit(pid);}catch(e){console.warn(e);return;}
@@ -15293,7 +15302,7 @@ function cdDetailHtml(r){const p=r.p,mrn=String(p.mrn||'').trim();const sv=mrn?c
     ${ex.map(x=>`<tr><td title="${esc(x.cod)} — 동의서 항목 목록에 없는 비트 비급여">${esc(x.nam)} <span class="hint">기타</span></td><td class="r">${esc(wonTxt(x.amt))}</td><td>${lastToday?consentSavedTag(lastToday):'<span class="hint">미서명</span>'}</td></tr>`).join('')}
     <tr class="sum"><th class="r">합계</th><th class="r">${esc(wonTxt(total)||'0원')}</th><th></th></tr></tbody></table>${r.items.length||ex.length?'':'-->'}
     ${mrn?`<button type="button" class="btn cd-sign" onclick="openConsent('${esc(p.id)}')"><i data-lucide="pen-line"></i> 동의서 작성 (서명)</button>`:'<div class="hint">차트번호가 없는 환자는 동의서를 쓸 수 없습니다.</div>'}
-    <button type="button" class="btn sm" style="margin-left:6px" onclick="closeConsentDesk();openEdit('${esc(p.id)}')">환자 정보 창</button></div>`;
+    <button type="button" class="btn sm" style="margin-left:6px" onclick="openEditFromCdesk('${esc(p.id)}')">환자 정보 창</button></div>`;
   const n=bitNoteFor(p);
   const chart=`<div class="cd-sect"><div class="cd-h"><i data-lucide="stethoscope"></i> 원장님 차팅${n&&n.updatedAt?` <span class="hint">${esc(hhmm(n.updatedAt))}${n.pc?' · '+esc(n.pc):''}</span>`:''}</div>
     ${n&&slipDupOf(n)?`<div style="color:#dc2626;font-weight:800;margin-bottom:6px">⚠ 다른 환자(${slipDupOf(n).others.map(o=>esc(o.name||o.mrn||'')).join(', ')})와 차팅이 똑같습니다 — 비트에서 이 환자 차트를 확인해 주세요</div>`:''}
