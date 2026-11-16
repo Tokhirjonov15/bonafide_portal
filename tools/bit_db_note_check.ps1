@@ -10,7 +10,8 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 while (($Mrn -replace '\D', '') -eq '') { $Mrn = Read-Host '차트번호 (숫자만)' }
 $Mrn = $Mrn -replace '\D', ''
-$D = if ($Day) { $Day -replace '\D', '' } else { (Get-Date).ToString('yyyyMMdd') }
+if (-not $Day) { $Day = Read-Host '날짜 (오늘이면 그냥 엔터, 다른 날이면 예: 20261115)' }
+$D = if (($Day -replace '\D', '').Length -eq 8) { $Day -replace '\D', '' } else { (Get-Date).ToString('yyyyMMdd') }
 $out = Join-Path $PSScriptRoot 'bit_db_note_check.txt'
 $lines = New-Object System.Collections.ArrayList
 function Say($s) { Write-Host $s; [void]$lines.Add([string]$s) }
