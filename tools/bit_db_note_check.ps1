@@ -12,7 +12,7 @@ while (($Mrn -replace '\D', '') -eq '') { $Mrn = Read-Host '차트번호 (숫자
 $Mrn = $Mrn -replace '\D', ''
 if (-not $Day) { $Day = Read-Host '날짜 (오늘이면 그냥 엔터, 다른 날이면 예: 20261115)' }
 $D = if (($Day -replace '\D', '').Length -eq 8) { $Day -replace '\D', '' } else { (Get-Date).ToString('yyyyMMdd') }
-$out = Join-Path $PSScriptRoot 'bit_db_note_check.txt'
+$out = Join-Path $PSScriptRoot "bit_db_note_check_${Mrn}_$D.txt"   # 환자·날짜별 파일 — 여러 명을 차례로 돌려도 앞 결과가 지워지지 않게
 $lines = New-Object System.Collections.ArrayList
 function Say($s) { Write-Host $s; [void]$lines.Add([string]$s) }
 try {
