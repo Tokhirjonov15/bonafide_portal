@@ -930,6 +930,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   .slip-detail{flex:1;overflow:auto;padding:18px 22px}
   .sd-name{font-size:30px;font-weight:800;line-height:1.2}.sd-sa{font-size:16px;font-weight:700;margin-left:10px;color:var(--sub)}
   .sd-meta{font-size:15px;color:var(--sub);margin-top:4px}.sd-meta.warn{color:var(--orange)}
+  .sd-room{display:inline-block;vertical-align:middle;margin-left:14px;padding:2px 14px;border-radius:10px;background:#1d4ed8;color:#fff;font-size:24px;font-weight:900;line-height:1.4;white-space:nowrap}   /* 2026-11-16 요청: 몇 진료실인지 크게 */
   /* 주사 준비 자세 칩·사진 (2026-10-15) */
   .sd-pos{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
   .sd-pos-h{font-size:13px;font-weight:800;color:var(--sub)}
@@ -982,7 +983,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
   @media(max-width:760px){.slip-split .sp-arrow{top:50%;left:12px;transform:translateY(-50%)}.slip-split .sp-arrow::before{content:'▲'}.slip-body.list-off .slip-split .sp-arrow::before{content:'▼'}}
   .slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:14px;cursor:col-resize;touch-action:none;background:var(--panel);border-left:1px solid var(--line);border-right:1px solid var(--line)}.slip-split span{width:4px;height:44px;border-radius:3px;background:#94a3b8}   /* 태블릿·PC: 좌우로 끌어 목록 너비 (2026-10-11) */
   @media(max-width:760px){.slip-split{display:flex;flex:none;justify-content:center;align-items:center;width:auto;height:22px;border-left:0;border-right:0;cursor:row-resize;touch-action:none;background:var(--panel);border-bottom:1px solid var(--line)}.slip-split span{width:44px;height:5px;border-radius:3px;background:#94a3b8}.slip-list{border-bottom:0!important}}   /* 목록 높이 조절 손잡이 (2026-10-11) */
-  @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-lines li{font-size:21px}}
+  @media(max-width:760px){.slip-body{flex-direction:column}.slip-list{width:auto;flex:0 0 auto;max-height:34vh;border-right:0;border-bottom:1px solid var(--line)}.sd-name{font-size:26px}.sd-room{font-size:20px;margin-left:10px}.sd-lines li{font-size:21px}}
   .next-btn{flex:1;border:1px solid var(--blue);background:var(--blue-bg);color:var(--t-bluesoft);border-radius:8px;padding:8px;font-size:13px;font-weight:700;cursor:pointer}
   .next-btn:hover{background:var(--blue);color:#fff}
   .next-btn.done{border-color:var(--green);background:var(--green-bg);color:var(--green)}
@@ -4457,9 +4458,9 @@ function renderSlipScreen(){
   if(!it){const e='<div class="slip-empty">목록에서 환자를 선택하세요</div>';if(det.dataset.h!==e){det.dataset.h=e;det.innerHTML=e;}return;}
   const h=slipHeaderInfo(it);
   let detHtml=`<div class="sd-head">
-      <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span></div>
+      <div class="sd-name">${esc(it.name)}<span class="sd-sa">${esc(h.sexAge)}</span>${h.clinic?`<span class="sd-room">${esc(h.clinic)}</span>`:''}</div>
       ${it.badges.length?`<div class="sd-badges">${it.badges.map(b=>`<span class="sd-badge">${esc(b)}</span>`).join('')}</div>`:''}
-      <div class="sd-meta">${h.birth?esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''}${h.clinic?' · <b>'+esc(h.clinic)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${slipEmrOk(it.note)?' · <span class="hint">비트 저장 기록과 같음</span>':(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
+      <div class="sd-meta">${h.birth?esc(h.birth):''}${h.doc?' · 담당의 <b>'+esc(h.doc)+'</b>':''} · ${h.hm}${h.f4.length?` · <span class="rb rb-4f">4층 ${h.f4.map(esc).join(' · ')}</span>`:''}${(it.note.rev|0)>1?` · <b>${it.note.rev}회 갱신</b>`:''}${slipEmrOk(it.note)?' · <span class="hint">비트 저장 기록과 같음</span>':(it.note.rev|0)===1?' <span class="hint">(첫 전송 — 진료 중 바뀔 수 있음)</span>':''}</div>
       ${h.cur?`<div class="sd-meta">현재 <b>${esc(h.cur)}</b>${h.nxt?' → '+esc(h.nxt):''}</div>`:`<div class="sd-meta warn">보드에 카드 없음 — ${slipNoCardWhy(it)}</div>`}
       ${posChipsHtml(it)}
     </div>
