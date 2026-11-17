@@ -9,15 +9,16 @@
 #  설치: slip_capture_install.ps1 (진료실 PC, 감시 스크립트가 설치된 뒤)
 #  2026-10-13: 버튼 둘 — [주사 캡처](예전 [캡처], 슬립으로) · [PT 캡처](4층으로: shots 에 kind='pt' → 4층 예약 스케줄 위 알림 + 4층 카드 색)
 #  2026-11-17: [진료 캡처](kind='rec') — 진료실 이미지 기록용. 슬립·4층에는 안 가고 [지난 캡처]·동선관리 환자 정보 창에만 따로 남는다
+#  2026-11-17 c1.2: [진료 캡처]는 이 PC 에도 jpg 로 남긴다 — C:\진료캡처\{차트번호}_{이름}\{날짜_시각}.jpg (안 되면 내 문서\진료캡처). 오른쪽 클릭 메뉴 = 폴더 열기
 #  이 파일은 감시 스크립트(v4.0~)가 사이트의 capture.json 을 보고 스스로 바꿔 준다(진료실 PC 재설치 없이)
-#  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
+#  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 진료 캡처 폴더 열기 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
 # ─────────────────────────────────────────────────────────────
 #  환자 정하기: ① 비트 외래진료실 창에 지금 열린 환자(차트번호) ② 없으면 동선관리에서 이 진료실($Room)에 '진행' 중인 카드
 #             캡처 화면 위에 누구 슬립으로 가는지 이름을 크게 보여 준다.
 param([string]$Pc = $env:COMPUTERNAME,
       [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
-$CapVer = 'c1.1'   # c1.1: [진료 캡처] (2026-11-17). 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
+$CapVer = 'c1.2'   # c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
 $ApiKey    ='AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
@@ -171,6 +172,25 @@ function FbToken() {
 }
 function PmKey($mrn) { $k = ([string]$mrn).Trim() -replace '[^\w-]', '_'; if ($k) { return $k } else { return '_' } }   # 웹 pmKey 와 같게
 
+# ── 진료 캡처 → 이 PC 에 파일로 (2026-11-17 진료실 요청: '진료실 컴퓨터에 파일로 저장되게') ──
+function LocalCapRoot() {
+  foreach ($d in @('C:\진료캡처', (Join-Path ([Environment]::GetFolderPath('MyDocuments')) '진료캡처'))) {
+    try { New-Item -ItemType Directory -Force $d -ErrorAction Stop | Out-Null; return $d } catch {}
+  }
+  return $null
+}
+function SaveLocalShot([byte[]]$bytes, $mrn, $name) {
+  $root = LocalCapRoot; if (-not $root) { throw '저장 폴더를 만들 수 없습니다' }
+  $bad = [IO.Path]::GetInvalidFileNameChars()
+  $who = (("$mrn" + $(if ($name) { "_$name" } else { '' })).ToCharArray() | ForEach-Object { if ($bad -contains $_) { '_' } else { $_ } }) -join ''
+  $dir = Join-Path $root $who.Trim(); New-Item -ItemType Directory -Force $dir | Out-Null
+  $f = Join-Path $dir ((Get-Date).ToString('yyyy-MM-dd_HHmmss') + '.jpg')
+  $i = 2; while (Test-Path $f) { $f = Join-Path $dir ((Get-Date).ToString('yyyy-MM-dd_HHmmss') + "_$i.jpg"); $i++ }
+  [IO.File]::WriteAllBytes($f, $bytes)
+  Log "PC 저장 $f"
+  return $f
+}
+
 # ── 올리기: Storage 에 사진 → bitNote 문서의 shots 배열에 덧붙임(없으면 문서 생성) ──
 function UploadShot([byte[]]$bytes, $mrn, $name, $w, $h, $kind = 'inj') {
   $tok = FbToken
@@ -274,6 +294,7 @@ $drag = { param($s, $e) if ($e.Button -eq 'Left') { [void][SlipCap.U]::ReleaseCa
 $bar.Add_MouseDown($drag); $lbl.Add_MouseDown($drag)
 $menu = New-Object Windows.Forms.ContextMenuStrip
 [void]$menu.Items.Add('위치 초기화 (화면 위 가운데)', $null, { $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top; try { Remove-Item $PosFile -ErrorAction SilentlyContinue } catch {} })
+[void]$menu.Items.Add('진료 캡처 폴더 열기', $null, { $d = LocalCapRoot; if ($d) { Start-Process explorer.exe $d } })
 [void]$menu.Items.Add('잠시 끄기 (5분 안에 다시 켜짐)', $null, { $bar.Close() })
 $bar.ContextMenuStrip = $menu; $lbl.ContextMenuStrip = $menu
 
@@ -348,6 +369,9 @@ function DoCapture($kind) {
   if (-not $shot) { return }
   SetStatus "올리는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 60; [Windows.Forms.Application]::DoEvents()
   $done = if ($kind -eq 'pt') { '4층으로 보냄' } elseif ($kind -eq 'rec') { '진료 기록 저장' } else { '슬립에 올림' }
+  if ($kind -eq 'rec') {   # 올리기 전에 PC 에 먼저 — 인터넷이 안 돼도 파일은 남는다
+    try { [void](SaveLocalShot $shot.bytes $mrn $name); $done = '진료 기록 저장 (PC 에도)' } catch { Log "PC 저장 실패 $mrn : $($_.Exception.Message)"; $done = '진료 기록 저장 (PC 저장 실패)' }
+  }
   try { UploadShot $shot.bytes $mrn $name $shot.w $shot.h $kind; Log "환자 출처: $src"; SetStatus "✔ $done  ·  $name" ([Drawing.Color]::FromArgb(134, 239, 172)) 4 }
   catch { $m = $_.Exception.Message; Log "올리기 실패 $mrn : $m"; SetStatus "✖ 올리기 실패 — 다시 눌러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 8
     [Windows.Forms.MessageBox]::Show("슬립에 올리지 못했습니다.`n`n$m`n`n로그: $LogFile", '슬립 캡처') | Out-Null }
