@@ -212,7 +212,7 @@ function ReadPayWin($procId) {
 # v3.9 자동 업데이트 (2026-11-15) — PC 를 돌며 USB 로 다시 설치하지 않게. 30분마다 동선관리 사이트의 watcher.json(ver·sha256)을 보고,
 #  버전이 다르면 새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 버전 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고 같은 인수로 다시 시작한다.
 #  비밀번호(.secret)·토큰은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만)
-$MyVer = 'v3.9'
+$MyVer = 'v4.0'   # v4.0: 진료실 캡처 바(slip_capture.ps1)도 사이트의 capture.json 을 보고 바꿔 준다 (2026-11-17 [진료 캡처] 추가)
 $UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit'
 $script:UpdAt = (Get-Date).AddMinutes(-28)   # 시작 2분 뒤 첫 확인
 function SelfUpdate() {
@@ -232,6 +232,30 @@ function SelfUpdate() {
   try { $script:Mtx.ReleaseMutex() } catch {}
   if ($m.Success) { Start-Process -FilePath ($m.Groups[1].Value.Trim('"')) -ArgumentList $m.Groups[2].Value -WindowStyle Hidden }   # 실패해도 작업 스케줄러가 5분 안에 다시 띄운다
   exit 0
+}
+# v4.0 캡처 바 갱신 (2026-11-17) — 같은 폴더에 slip_capture.ps1 이 있는 PC(진료실)만. 30분마다 capture.json 의 sha256 과 내 파일이 다르면
+#  새 파일을 받아 ① sha256 ② 문법 확인 뒤 바꾸고(옛 파일 .bak), 떠 있는 캡처 바를 끈다 → 작업 SlipCapture 가 다시 띄운다(바로 시작, 실패해도 5분 안에).
+#  의사가 캡처 중일 수 있으니 캡처 로그가 2분 안에 쓰였으면(방금 캡처·올리기) 이번엔 건너뛰고 다음에 한다
+$script:CapUpdAt = (Get-Date).AddMinutes(-27)   # 시작 3분 뒤 첫 확인
+function CapSync() {
+  if (((Get-Date) - $script:CapUpdAt).TotalMinutes -lt 30) { return }; $script:CapUpdAt = Get-Date
+  $me = Join-Path $PSScriptRoot 'slip_capture.ps1'; if (-not (Test-Path $me)) { return }
+  $j = Invoke-RestMethod -TimeoutSec 20 -Uri "$UpdBase/capture.json?t=$([DateTime]::Now.Ticks)"
+  if (-not $j.sha256) { return }
+  if ((Get-FileHash $me -Algorithm SHA256).Hash -eq ([string]$j.sha256).ToUpper()) { return }
+  $clog = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\slip_capture.log'
+  if ((Test-Path $clog) -and ((Get-Date) - (Get-Item $clog).LastWriteTime).TotalMinutes -lt 2) { $script:CapUpdAt = (Get-Date).AddMinutes(-25); return }   # 5분 뒤 다시
+  $tmp = Join-Path $PSScriptRoot 'slip_capture.new'
+  Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$UpdBase/slip_capture.ps1?v=$($j.ver)" -OutFile $tmp
+  if ((Get-FileHash $tmp -Algorithm SHA256).Hash -ne ([string]$j.sha256).ToUpper()) { Log "캡처 바 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
+  if ($pe.Count) { Log "캡처 바 업데이트 건너뜀: 받은 파일 문법 오류 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  Copy-Item $me "$me.bak" -Force -ErrorAction SilentlyContinue; Move-Item $tmp $me -Force
+  $pat = '-File\s+"?' + [regex]::Escape($me)
+  Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match $pat } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force } catch {} }
+  Start-Sleep -Milliseconds 800
+  try { Start-ScheduledTask -TaskName 'SlipCapture' -ErrorAction Stop } catch {}   # 작업이 없으면(.vbs 로 띄운 PC) 다음 로그온 때 — 그 사이엔 바가 없다
+  Log "캡처 바 업데이트: $($j.ver) — 다시 띄움"
 }
 $script:PayLast = ''; $script:PaySent = @{}
 function PayWinTick($procId) {
@@ -746,5 +770,6 @@ while ($true) {
   $cycMs = [int]((Get-Date) - $cycStart).TotalMilliseconds; if ($cycMs -gt $script:CycMax) { $script:CycMax = $cycMs }
   if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
   try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }
+  try { CapSync } catch { Log "캡처 바 업데이트 확인 실패: $($_.Exception.Message)" }   # v4.0
   Start-Sleep -Milliseconds 500
 }

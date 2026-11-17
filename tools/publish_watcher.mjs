@@ -2,7 +2,7 @@
 // watcher.json { ver, sha256 } 을 만든다. ver 는 파일 안의 $MyVer 값. git push 로 배포되면 각 PC 의 감시 프로그램이 30분 안에 스스로 바꾼다.
 // 같은 날 DB 에이전트도: tools/bit_db_agent.ps1 → bit_db_agent.ps1 + agent.json { ver = 파일 안의 $VER, sha256 } (db2.8 부터 스스로 바꾼다)
 //   node tools/publish_watcher.mjs            (둘 다)
-//   node tools/publish_watcher.mjs watcher    (감시만)   /   node tools/publish_watcher.mjs agent   (DB 에이전트만)
+//   node tools/publish_watcher.mjs watcher    (감시만)   /   node tools/publish_watcher.mjs agent   (DB 에이전트만)   /   … capture (캡처 바만)
 import fs from 'node:fs'; import path from 'node:path'; import crypto from 'node:crypto';
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const dir = path.join(root, 'public', 'dongseon', 'bit');
@@ -10,6 +10,7 @@ const only = process.argv[2] || '';
 const items = [
   { key: 'watcher', src: 'bitplus_watcher.ps1', json: 'watcher.json', re: /\$MyVer = '([^']+)'/ },
   { key: 'agent', src: 'bit_db_agent.ps1', json: 'agent.json', re: /\$VER = '([^']+)'/ },
+  { key: 'capture', src: 'slip_capture.ps1', json: 'capture.json', re: /\$CapVer = '([^']+)'/ },   // 진료실 캡처 바 — 감시 v4.0 이 sha256 으로 비교해 바꿔 준다 (2026-11-17)
 ];
 fs.mkdirSync(dir, { recursive: true });
 for (const it of items) {

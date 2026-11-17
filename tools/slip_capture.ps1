@@ -8,6 +8,8 @@
 #  로그인: 같은 폴더의 bitplus_watcher.secret(bitbot 비밀번호). 세션은 slip_capture.token 에 따로 둔다.
 #  설치: slip_capture_install.ps1 (진료실 PC, 감시 스크립트가 설치된 뒤)
 #  2026-10-13: 버튼 둘 — [주사 캡처](예전 [캡처], 슬립으로) · [PT 캡처](4층으로: shots 에 kind='pt' → 4층 예약 스케줄 위 알림 + 4층 카드 색)
+#  2026-11-17: [진료 캡처](kind='rec') — 진료실 이미지 기록용. 슬립·4층에는 안 가고 [지난 캡처]·동선관리 환자 정보 창에만 따로 남는다
+#  이 파일은 감시 스크립트(v4.0~)가 사이트의 capture.json 을 보고 스스로 바꿔 준다(진료실 PC 재설치 없이)
 #  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
 # ─────────────────────────────────────────────────────────────
 #  환자 정하기: ① 비트 외래진료실 창에 지금 열린 환자(차트번호) ② 없으면 동선관리에서 이 진료실($Room)에 '진행' 중인 카드
@@ -15,7 +17,8 @@
 param([string]$Pc = $env:COMPUTERNAME,
       [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
-$ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
+$CapVer = 'c1.1'   # c1.1: [진료 캡처] (2026-11-17). 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
+$ApiKey    ='AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
 $BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'bitbot'
@@ -250,7 +253,7 @@ function SelectRegion($who, $where = '슬립에 올립니다') {
 $script:CurMrn = ''; $script:CurName = ''; $script:HoldUntil = [DateTime]::MinValue
 $bar = New-Object Windows.Forms.Form
 $bar.FormBorderStyle = 'None'; $bar.TopMost = $true; $bar.ShowInTaskbar = $false; $bar.StartPosition = 'Manual'
-$BarW = 540; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
+$BarW = 628; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
 $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top
 try { if (Test-Path $PosFile) { $p = (Get-Content $PosFile -TotalCount 1) -split ','; $pt = New-Object Drawing.Point ([int]$p[0]), ([int]$p[1])
@@ -261,11 +264,12 @@ function CapButton($text, $x, $r, $g, $b) { $o = New-Object Windows.Forms.Button
   $o.Location = New-Object Drawing.Point $x, 4; $o.Size = New-Object Drawing.Size 84, 30; $o.Cursor = [Windows.Forms.Cursors]::Hand; return $o }
 $btn = CapButton '주사 캡처' 4 59 130 246     # 파랑 — 슬립(주사)으로
 $btnPt = CapButton 'PT 캡처' 92 13 148 136    # 청록 — 4층으로 (2026-10-13)
-$btnPast = CapButton '지난 캡처' 180 71 85 105  # 회색 — 이 환자의 예전 캡처 보기 (2026-10-20)
+$btnRec = CapButton '진료 캡처' 180 124 58 237  # 보라 — 진료 기록용, 슬립·4층에 안 감 (2026-11-17)
+$btnPast = CapButton '지난 캡처' 268 71 85 105  # 회색 — 이 환자의 예전 캡처 보기 (2026-10-20)
 $lbl = New-Object Windows.Forms.Label
 $lbl.Font = New-Object Drawing.Font 'Malgun Gothic', 10; $lbl.ForeColor = [Drawing.Color]::White; $lbl.AutoSize = $false; $lbl.TextAlign = 'MiddleLeft'
-$lbl.Location = New-Object Drawing.Point 270, 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
-$bar.Controls.AddRange(@($btn, $btnPt, $btnPast, $lbl))
+$lbl.Location = New-Object Drawing.Point 358, 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
+$bar.Controls.AddRange(@($btn, $btnPt, $btnRec, $btnPast, $lbl))
 $drag = { param($s, $e) if ($e.Button -eq 'Left') { [void][SlipCap.U]::ReleaseCapture(); [void][SlipCap.U]::SendMessage($bar.Handle, 0xA1, 2, 0); try { "$($bar.Left),$($bar.Top)" | Set-Content $PosFile } catch {} } }   # 끌어서 옮기기
 $bar.Add_MouseDown($drag); $lbl.Add_MouseDown($drag)
 $menu = New-Object Windows.Forms.ContextMenuStrip
@@ -320,7 +324,7 @@ function ReadPatient() {
   try { $h = FindDoctorWindow; if ($h) { $d = ReadDoctor $h; if ($d) { $mrn = [string]$d.mrn; $name = [string]$d.name } } } catch { Log "창 읽기 오류: $($_.Exception.Message)" }
   if ($mrn -and $mrn -ne $script:CurMrn) { try { JaboPopup $mrn $name } catch { Log "자보 도수 팝업 오류: $($_.Exception.Message)" } }
   $script:CurMrn = $mrn; $script:CurName = $name
-  $btn.Enabled = [bool]$mrn -or [bool]$Room; $btnPt.Enabled = $btn.Enabled; $btnPast.Enabled = $btn.Enabled
+  $btn.Enabled = [bool]$mrn -or [bool]$Room; $btnPt.Enabled = $btn.Enabled; $btnRec.Enabled = $btn.Enabled; $btnPast.Enabled = $btn.Enabled
   if ($mrn) { $lbl.ForeColor = [Drawing.Color]::White; $lbl.Text = "$name  ·  $mrn" }
   elseif ($Room) { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = "비트 환자 없음 → $Room 진행 환자로" }
   else { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = '비트 외래진료실에 환자 없음' }
@@ -338,12 +342,12 @@ function DoCapture($kind) {
   }
   $script:Capturing = $true; $bar.Hide(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 250
   $shot = $null
-  $where = if ($kind -eq 'pt') { 'PT(4층)으로 보냅니다' } else { '주사 슬립에 올립니다' }
+  $where = if ($kind -eq 'pt') { 'PT(4층)으로 보냅니다' } elseif ($kind -eq 'rec') { '진료 기록으로 남깁니다' } else { '주사 슬립에 올립니다' }
   try { $shot = SelectRegion "$name ($mrn)" $where } catch { Log "캡처 오류: $($_.Exception.Message)" }
   $bar.Show(); $bar.TopMost = $true; $script:Capturing = $false
   if (-not $shot) { return }
   SetStatus "올리는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 60; [Windows.Forms.Application]::DoEvents()
-  $done = if ($kind -eq 'pt') { '4층으로 보냄' } else { '슬립에 올림' }
+  $done = if ($kind -eq 'pt') { '4층으로 보냄' } elseif ($kind -eq 'rec') { '진료 기록 저장' } else { '슬립에 올림' }
   try { UploadShot $shot.bytes $mrn $name $shot.w $shot.h $kind; Log "환자 출처: $src"; SetStatus "✔ $done  ·  $name" ([Drawing.Color]::FromArgb(134, 239, 172)) 4 }
   catch { $m = $_.Exception.Message; Log "올리기 실패 $mrn : $m"; SetStatus "✖ 올리기 실패 — 다시 눌러 주세요" ([Drawing.Color]::FromArgb(252, 165, 165)) 8
     [Windows.Forms.MessageBox]::Show("슬립에 올리지 못했습니다.`n`n$m`n`n로그: $LogFile", '슬립 캡처') | Out-Null }
@@ -430,7 +434,7 @@ function ShowPast() {
   $lp = New-Object Windows.Forms.Panel; $lp.Dock = 'Left'; $lp.Width = 250; $lb.Dock = 'Fill'; $lp.Controls.AddRange(@($lb, $del))
   $script:PastMrn = $mrn
   foreach ($s in $L) { $t = $s.at; try { $t = ([DateTime]::Parse($s.at)).ToString('yyyy-MM-dd  HH:mm') } catch { if (-not $t) { $t = $s.date } }
-    $kindTxt = if ($s.kind -eq 'pt') { 'PT' } else { '주사' }
+    $kindTxt = if ($s.kind -eq 'pt') { 'PT' } elseif ($s.kind -eq 'rec') { '진료' } else { '주사' }
     [void]$lb.Items.Add("$t   [$kindTxt]") }
   $script:PastL = $L; $script:PastPb = $pb; $script:PastLb = $lb   # 이벤트 안에서는 함수의 지역 변수가 안 보일 수 있어 script: 로
   $lb.Add_SelectedIndexChanged({ $i = $this.SelectedIndex; if ($i -lt 0) { return }; $s = $script:PastL[$i]
@@ -459,6 +463,7 @@ function ShowPast() {
 }
 $btn.Add_Click({ DoCapture 'inj' })
 $btnPt.Add_Click({ DoCapture 'pt' })
+$btnRec.Add_Click({ DoCapture 'rec' })
 $btnPast.Add_Click({ ShowPast })
 # 바가 안 보이게 된 경우 되살리기 (2026-10-25: 진료실 캡처 바가 갑자기 사라짐) — 모니터를 끄거나 해상도·배치가 바뀌어 바가 화면 밖에 남았거나,
 #  캡처 중 오류로 숨겨진 채 남았을 때. 1.5초마다: 어느 화면에도 걸치지 않으면 화면 위 가운데로, 숨겨져 있으면 다시 보이게
@@ -476,6 +481,6 @@ function EnsureBarVisible() {
 }
 $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient }); $timer.Start()
 $bar.Add_Shown({ ReadPatient })
-Log "시작 ($Pc)"
+Log "시작 $CapVer ($Pc)"
 [Windows.Forms.Application]::Run($bar)
 Log "종료"
