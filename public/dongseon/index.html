@@ -16528,6 +16528,15 @@ boot();
   .dk-done .t{font-size:clamp(38px,5vw,58px);font-weight:900;color:var(--dk-navy);margin-top:30px}
   .dk-done .m{font-size:clamp(21px,2.5vw,28px);line-height:1.65;margin-top:16px;color:#33425c}
   .dk-done .m b{color:var(--dk-blue)}
+  /* 2026-11-20 요청: 태블릿 옆 딩동 벨 — 신청 뒤 벨을 눌러 달라는 안내 */
+  .dk-bell{display:flex;align-items:center;gap:18px;margin-top:26px;padding:18px 34px;border-radius:24px;background:#fff7d6;border:3px solid #f5b400;box-shadow:0 10px 30px rgba(245,180,0,.25)}
+  .dk-bell .bi{font-size:clamp(54px,6vw,76px);line-height:1;display:inline-block;transform-origin:50% 8%;animation:dkRing 1.6s ease-in-out infinite}
+  .dk-bell .bt{font-size:clamp(26px,3.2vw,38px);font-weight:900;color:#7a4b00}
+  .dk-bell .bt b{color:#d9480f}
+  .dk-bell .bp{font-size:clamp(40px,4.6vw,58px);line-height:1;animation:dkPoke 1s ease-in-out infinite}
+  @keyframes dkRing{0%,55%,100%{transform:rotate(0)}10%{transform:rotate(18deg)}20%{transform:rotate(-16deg)}30%{transform:rotate(12deg)}40%{transform:rotate(-8deg)}48%{transform:rotate(4deg)}}
+  @keyframes dkPoke{0%,100%{transform:translateX(0)}50%{transform:translateX(12px)}}
+  @media (prefers-reduced-motion:reduce){.dk-bell .bi,.dk-bell .bp{animation:none}}
   .dk-done .cd{margin-top:38px;width:min(420px,70vw);height:8px;border-radius:99px;background:#dfe6f1;overflow:hidden}
   .dk-done .cd i{display:block;height:100%;background:var(--dk-blue);animation:dkCd 60s linear forwards}
   @keyframes dkCd{from{width:100%}to{width:0}}
@@ -16644,6 +16653,7 @@ boot();
         <div class="r"><span class="k">기간</span><span class="v">${S.all?'내원이력 전체':S.pick?(S.from?E(rangeLbl()):'<span style="color:#b3bfd1">달력에서 골라 주세요</span>'):'<span style="color:#b3bfd1">위에서 골라 주세요</span>'}</span></div>
       </div></div></div>${foot(3,'dkSubmit()','신청하기',ready)}`;return;}
     if(S.step===5){el.innerHTML=`<div class="dk-done" onclick="dkHome()">${ex}<div class="ok">✓</div><div class="t">신청이 완료되었습니다</div>
+      <div class="dk-bell"><span class="bi">🔔</span><span class="bt">태블릿 옆의 <b>벨</b>을 <b>꼭</b> 눌러 주세요</span><span class="bp">👉</span></div>
       <div class="m">모든 서류는 확인 절차를 거친 후 발급까지 <b>약 15분</b> 소요되며<br>시간이 지체될 시 직원이 다시 안내해 드리겠습니다.<br><br><b>자리에 앉아 계시면 호명해 드리겠습니다</b> ☺</div>
       <div class="cd"><i></i></div><div class="s">잠시 후 처음 화면으로 돌아갑니다 · 화면을 누르면 바로 돌아가요</div></div>`;
       clearTimeout(DONE_T);DONE_T=setTimeout(()=>{reset();render();},60000);return;}}   // 완료 화면 1분 뒤 시작 화면으로 (2026-10-26 요청)
