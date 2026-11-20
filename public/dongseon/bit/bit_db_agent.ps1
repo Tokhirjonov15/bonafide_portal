@@ -59,7 +59,7 @@ $script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgen
 $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
 if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db2.8'   # 2.8: 자동 업데이트 — 30분마다 사이트의 agent.json(ver·sha256)을 보고 새 버전이면 받아서 확인(sha256·문법·버전 표시) 뒤 스스로 바꾸고 다시 시작한다. 접수 PC 를 돌며 재설치하지 않게 (2026-11-15). 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
+$VER = 'db2.9'   # 2.9: 급여 도수 선행조건(2026-11-20 요청) — 오늘 온 환자(일반·자보 빼고)마다 오늘 접수 보험과 같은 보험 내원만 세어 첫 기본물리치료부터 14일 이상 + 기본물리치료 4일 이상인지 → bitRx/_gd. 부위는 보지 않는다. 2.8: 2.8: 자동 업데이트 — 30분마다 사이트의 agent.json(ver·sha256)을 보고 새 버전이면 받아서 확인(sha256·문법·버전 표시) 뒤 스스로 바꾸고 다시 시작한다. 접수 PC 를 돌며 재설치하지 않게 (2026-11-15). 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
 # 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
 # 2.3: 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
 # 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
@@ -912,6 +912,64 @@ function PollJabo() {
   Log "자보 도수 가능: 오늘 자보 $($by.Count)명 중 $($pts.Count)명 ($(($pts.Keys | Sort-Object | ForEach-Object { "$_ $($pts[$_].n)/3" }) -join ', '))"
 }
 
+# ── 급여 도수 선행조건 → bitRx/_gd (db2.9, 2026-11-20 요청) ──
+#  조건: 기본물리치료(처방코드 MM 또는 명칭 '기본물리치료')를 처음 받은 날부터 14일 이상 지났고, 그 뒤 기본물리치료 받은 날이 4일 이상(오늘 전까지).
+#  부위는 보지 않는다(비트 처방에 부위가 없음 — 직원이 확인). 보험이 다르면 따로 센다: 오늘 접수 보험과 같은 보험 코드의 내원만.
+#  같은 보험 내원 사이가 $GdGapDays 일 넘게 비면 처음부터 다시 센다. 일반(11)·자보(21, 자보는 _jabo 가 따로)는 빼고, 오늘 온 환자 전원 3분마다.
+#  문서: all = { 차트번호(앞 0 뺌): { 보험코드: { ins, first, days, pt, ok } } }
+$GdGapDays = 90
+$GD_QUERY = @"
+SELECT RTRIM(m.OcmChtNum) AS mrn, LEFT(m.OcmAcpDtm, 8) AS d, RTRIM(CAST(m.OcmInsCod AS varchar(10))) AS ins,
+       MAX(CASE WHEN o.OdrCod LIKE '%MM%' OR o.OdrCodNam LIKE N'%기본물리치료%' THEN 1 ELSE 0 END) AS pt
+FROM OcmInf m WITH (NOLOCK)
+LEFT JOIN OdrInf o WITH (NOLOCK) ON o.OdrOcmNum = m.OcmNum AND o.OdrDelFlg <> 'C'
+WHERE m.OcmAcpDtm >= '{1}' AND m.OcmComStt IN ({2})
+  AND m.OcmChtNum IN (SELECT t.OcmChtNum FROM OcmInf t WITH (NOLOCK) WHERE LEFT(t.OcmAcpDtm, 8) = '{0}' AND t.OcmComStt IN ({2}))
+GROUP BY RTRIM(m.OcmChtNum), LEFT(m.OcmAcpDtm, 8), RTRIM(CAST(m.OcmInsCod AS varchar(10)))
+"@
+# $days = @{ 'yyyyMMdd' = 기본물리치료 0/1 } (한 보험 코드의 내원만)
+function GdStatus($days, $todayYmd) {
+  $prev = $null; $first = $null; $pt = 0
+  foreach ($d in @($days.Keys | ForEach-Object { [string]$_ } | Where-Object { $_ -lt $todayYmd } | Sort-Object)) {
+    $dt = [DateTime]::ParseExact($d, 'yyyyMMdd', $null)
+    if ($null -ne $prev -and ($dt - $prev).TotalDays -gt $GdGapDays) { $first = $null; $pt = 0 }   # 오래 안 옴 → 새로
+    if ([int]$days[$d]) { if ($null -eq $first) { $first = $dt }; $pt++ }
+    $prev = $dt
+  }
+  $td = [DateTime]::ParseExact($todayYmd, 'yyyyMMdd', $null)
+  if ($null -ne $prev -and ($td - $prev).TotalDays -gt $GdGapDays) { $first = $null; $pt = 0 }
+  $dd = if ($null -ne $first) { [int]($td - $first).TotalDays } else { 0 }
+  return @{ first = $(if ($null -ne $first) { $first.ToString('yyyy-MM-dd') } else { '' }); days = $dd; pt = [int]$pt; ok = [bool](($null -ne $first) -and $dd -ge 14 -and $pt -ge 4) }
+}
+$script:GdAt = [DateTime]::MinValue; $script:GdHash = $null
+function PollGd() {
+  if (-not $script:IsLeader -and -not $RxAlways) { return }
+  $hr = (Get-Date).Hour; if ($hr -lt 7 -or $hr -ge 22) { return }
+  if (((Get-Date) - $script:GdAt).TotalSeconds -lt 180) { return }
+  $script:GdAt = Get-Date
+  $today8 = (Get-Date).ToString('yyyyMMdd'); $from8 = (Get-Date).AddDays(-400).ToString('yyyyMMdd')
+  $sql = $GD_QUERY -f $today8, $from8, (($ACTIVE | ForEach-Object { "'$_'" }) -join ',')
+  AssertReadonlySql $sql
+  $rows = SqlRows $sql 30
+  $by = @{}; $todayIns = @{}
+  foreach ($r in $rows.Rows) { $m = (([string]$r.mrn) -replace 'D', '').TrimStart('0'); $d = ([string]$r.d).Trim(); $ins = ([string]$r.ins).Trim()
+    if (-not $m -or $d.Length -ne 8 -or -not $ins) { continue }
+    if ($d -eq $today8) { if ($ins -ne '11' -and $ins -ne '21') { if (-not $todayIns.ContainsKey($m)) { $todayIns[$m] = @{} }; $todayIns[$m][$ins] = 1 }; continue }
+    $k = "$m|$ins"; if (-not $by.ContainsKey($k)) { $by[$k] = @{} }
+    $by[$k][$d] = [int]([int]$by[$k][$d] -bor [int]$r.pt) }
+  $all = @{}; $nOk = 0
+  foreach ($m in $todayIns.Keys) { $e = @{}
+    foreach ($ins in $todayIns[$m].Keys) { $st = GdStatus $(if ($by.ContainsKey("$m|$ins")) { $by["$m|$ins"] } else { @{} }) $today8
+      $st.ins = (InsName $ins); $e[$ins] = $st; if ($st.ok) { $nOk++ } }
+    $all[$m] = $e }
+  $h = "$today8`n" + (($all.Keys | Sort-Object | ForEach-Object { $m = $_; ($all[$m].Keys | Sort-Object | ForEach-Object { "$m|$_|$($all[$m][$_].pt)|$($all[$m][$_].first)|$($all[$m][$_].ok)" }) -join ';' }) -join "`n")
+  if ($h -eq $script:GdHash) { return }
+  if ($DryRun) { Log "급여 도수(시험): 오늘 $($all.Count)명 중 조건 만족 $nOk"; $script:GdHash = $h; return }
+  FsPatch "bitRx/_gd" @{ day = (Get-Date).ToString('yyyy-MM-dd'); at = (NowIso); pc = $Pc; all = $all }
+  $script:GdHash = $h
+  Log "급여 도수: 오늘 $($all.Count)명 중 조건 만족 $nOk"
+}
+
 # ── 메인 ──
 Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
 AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
@@ -932,6 +990,7 @@ while ($true) {
     if ($NoteEvery -gt 0 -and ($NoteEvery -le 1 -or ($cyc % $NoteEvery) -eq 1)) { try { PollNote } catch { Log "차팅(슬립) 조회 오류: $($_.Exception.Message)" } }   # db2.5 — 처방과 다른 주기에(부하 분산)
     try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
     try { PollJabo } catch { Log "자보 도수 조회 오류: $($_.Exception.Message)" }   # db2.1
+    try { PollGd } catch { Log "급여 도수 조회 오류: $($_.Exception.Message)"; $script:GdAt = Get-Date }   # db2.9
     try { AnswerAsks } catch { Log "내원 날짜 요청 확인 오류: $($_.Exception.Message)" }   # 서류 발급 태블릿 (db1.9)
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st

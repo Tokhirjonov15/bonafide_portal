@@ -71,7 +71,7 @@ function renderSchedule(){
         const arr=occ.get(t.id),done=rendered.get(t.id);if(done.has(i))continue;const o=arr[i];
         if(o.type==='booking'){const b=o.b;const span=b.durationMin/SLOT;for(let k=i;k<i+span;k++)done.add(k);
           if(t.single){const bg=b.visited?'#ffe599':b.color||'#ffffff';
-            h+=`<td rowspan="${span}" class="pt single ${ed} ${b.note?'has-note':''}${SEL.has(b.id)?' sel':''}" data-bid="${b.id}" data-tid="${t.id}" data-min="${b.startMin}" style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>`;}
+            h+=`<td rowspan="${span}" class="pt single ${ed} ${b.note?'has-note':''}${SEL.has(b.id)?' sel':''}" data-bid="${b.id}" data-tid="${t.id}" data-min="${b.startMin}" style="background:${A(bg)}" onclick="bOpen(${b.id})">${gdMark(b)}${esc(bookingText(b))}${notePop(b)}</td>`;}
           else h+=bookingCells(b,span);
           continue;}
         if(o.type==='block'){let span=0;while(i+span<slots&&arr[i+span].type==='block'&&arr[i+span].k.id===o.k.id)span++;for(let k=i;k<i+span;k++)done.add(k);
@@ -115,6 +115,12 @@ function renderSchedule(){
 function jumpHtml(date,page){const ym=date.slice(0,7);const list=[...new Set(META.dataDays.map(d=>d.slice(0,7)).concat([ym]))].sort();
   return `<div class="jump"><select title="달 선택" onchange="go('${page}',{date:this.value+'-01'})">${list.map(v=>`<option value="${v}" ${v===ym?'selected':''}>${Number(v.slice(0,4))}년 ${Number(v.slice(5))}월</option>`).join('')}</select>
     <input type="date" value="${date}" title="날짜로 이동" onchange="if(this.value)go('${page}',{date:this.value})"></div>`;}
+/* 급여 도수 선행조건 (2026-11-20 요청) — 오늘 표에서만. 첫 기본물리치료부터 14일 이상 + 4회 이상(부위는 안 봄, 보험별로 따로 셈) */
+function gdMark(b){const G=window.GD4;const dv=D_();if(!G||!G.all||!dv||dv.date!==G.day)return '';
+  const k=mrnKey(b.mrn).replace(/^0+/,'');const a=k&&G.all[k];if(!a)return '';const L=Object.values(a).filter(x=>x&&typeof x==='object');if(!L.length)return '';
+  const ok=L.some(x=>x.ok);const md=s=>String(s||'').slice(5).replace('-','/');
+  const tip=L.map(x=>`${x.ins||'보험'}: 급여 도수 ${x.ok?'가능':'불가'} — ${x.first?`첫 기본물리치료 ${md(x.first)} (${x.days}일 지남) · `:''}기본물리치료 ${x.pt}회`).join('\n')+(ok?'\n부위는 확인해 주세요':'');
+  return `<span class="gd ${ok?'ok':'no'}" title="${A(tip)}">${ok?'급도✓':'급도✕'}</span>`;}
 const bookingText=b=>b.mrn||b.patientName?`${b.mrn}${b.room?`(${b.room})`:''}\n${b.patientName}${b.visitNo??''}`:(b.rawText||'');
 function notePop(b){return `<div class="note-pop" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"><div class="note-head">메모 · ${esc(b.patientName||b.mrn||'예약')}</div>
   <textarea rows="6" placeholder="예: 11:00 CRYO10 수납 +20&#10;**항상 PT 먼저" onblur="bNoteBlur(${b.id},this)" onkeydown="event.stopPropagation();if(event.key==='Enter'&&(event.ctrlKey||event.metaKey))this.blur()">${esc(b.note||'')}</textarea>
@@ -122,7 +128,7 @@ function notePop(b){return `<div class="note-pop" onclick="event.stopPropagation
 function bookingCells(b,span){const bg=b.visited?'#ffe599':b.color||'#ffffff';const shown=b.mark||(b.visited?'.':'');
   const dm=`data-bid="${b.id}" data-tid="${b.therapistId}" data-min="${b.startMin}"`,sc=SEL.has(b.id)?' sel':'';
   const du=dueInfo(b),dc=du?' due':'',dt=du?` title="${A(`${hm(du.start)} 시작 · ${du.mins}분 치료 → ${hm(du.end)} 끝 (지남) — 끝났으면 표시 칸에 점(.)`)}"`:'';
-  return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}${sc}${dc}"${dt} ${dm} style="background:${A(bg)}" onclick="bOpen(${b.id})">${esc(bookingText(b))}${notePop(b)}</td>
+  return `<td rowspan="${span}" class="pt editable ${b.note?'has-note':''}${sc}${dc}"${dt} ${dm} style="background:${A(bg)}" onclick="bOpen(${b.id})">${gdMark(b)}${esc(bookingText(b))}${notePop(b)}</td>
     <td rowspan="${span}" class="code editable${sc}${dc}"${dt} ${dm} style="background:${A(b.codeColor||'#ffffff')}" onclick="bOpen(${b.id})">${esc(b.code)}${(()=>{const x=txInfo(b);return x?`<div class="tx-end" title="${A(`${hm(x.start)} 시작 · ${x.mins}분`)}">~${hm(x.end)}</div>`:'';})()}</td>
     <td rowspan="${span}" class="mark editable${sc}" ${dm} title="클릭해서 점(.)이나 치료 시작 시각을 입력. 내용이 있으면 내원 · 두 번 누르면 방문 체크" onclick="markClick(${b.id},this,event)" ondblclick="event.stopPropagation();bVisit(${b.id})">${esc(shown)}</td>`;}
 
