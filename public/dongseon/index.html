@@ -3828,13 +3828,13 @@ function gdOf(p){if(!GD||!GD.all||!p)return null;const k=normMrn(p.mrn).replace(
   const ci=insNorm(bitInsOf(p));const m=ci&&L.find(x=>insNorm(x.ins)===ci);
   if(m)return m;if(ci==='일반'||ci==='자보')return null;return L.find(x=>x.ok)||L[0];}
 function gdText(g){if(!g)return '';const md=s=>String(s||'').slice(5).replace('-','/');
-  const base=g.first?`첫 기본물리치료 ${md(g.first)} (${g.days}일 지남) · 기본물리치료 ${g.pt}회`:'기본물리치료 기록 없음';
+  const base=g.first?`첫 기본물리치료 ${md(g.first)} (${g.days}일 지남) · 지난 기본물리치료 ${g.pt}회(오늘 ${g.pt+1}번째)`:'기본물리치료 기록 없음(오늘 1번째)';   // 2026-11-21 원무: 4회째부터 가능
   const ins=g.ins?` · ${g.ins} 기준`:'';
   if(g.ok)return `급여 도수 가능 — ${base}${ins} · 부위는 확인해 주세요`;
-  const need=[g.pt<4?`기본물리치료 ${4-g.pt}회 더`:'',!g.first?'첫 물리치료부터 14일':g.days<14?`${14-g.days}일 더`:''].filter(Boolean).join(' · ');
+  const need=[g.pt<3?`기본물리치료 ${3-g.pt}회 더`:'',!g.first?'첫 물리치료부터 14일':g.days<14?`${14-g.days}일 더`:''].filter(Boolean).join(' · ');
   return `급여 도수 불가 — ${base}${ins}${need?` (${need})`:''}`;}
 function gdTagHtml(p){const g=gdOf(p);if(!g)return '';
-  return `<div class="${g.ok?'silbi-tag':'ins-tag'}" title="${esc(gdText(g))}">${g.ok?'✅ 급여도수 가능':`❌ 급여도수 불가 · ${g.first?g.days+'일 · ':''}물리치료 ${g.pt}회`}</div>`;}
+  return `<div class="${g.ok?'silbi-tag':'ins-tag'}" title="${esc(gdText(g))}">${g.ok?'✅ 급여도수 가능':`❌ 급여도수 불가 · ${g.first?g.days+'일 · ':''}물리치료 오늘 ${g.pt+1}번째`}</div>`;}
 function fillGdSum(p){const el=document.getElementById('gdSum');if(!el)return;const g=gdOf(p);
   el.style.display=g?'':'none';if(!g){el.innerHTML='';return;}
   el.className='jabo-sum'+(g.ok?' ok':'');el.textContent=(g.ok?'✅ ':'❌ ')+gdText(g);}
@@ -6210,7 +6210,7 @@ async function runSelfTest(){
       ok('자보: 앞 0 무시, 조건 만족·아직(남은 일수·물리치료 횟수)·오늘 자보 아님 경고, 옛 에이전트(pts)도 표시', a&&a.ok&&/급여 도수 가능/.test(jaboText(a))&&b&&!b.ok&&/6일 더/.test(tb)&&/기본물리치료 2회 더/.test(tb)&&/자보가 아님/.test(tg)&&c&&c.ok&&c.tj===1&&d===null,tb);}
      {const _g=GD;GD={day:'x',all:{'601':{'31':{ins:'국민건강보험',first:'2026-11-01',days:19,pt:4,ok:true},'41':{ins:'산재-공단분',first:'',days:0,pt:0,ok:false}},'602':{'31':{ins:'국민건강보험',first:'2026-11-10',days:10,pt:2,ok:false}}}};   // 급여 도수 선행조건 (2026-11-20)
       let a,b,c,d,tb,tg;try{a=gdOf({mrn:'00601',ins:'국민건강보험'});b=gdOf({mrn:'601',ins:'산재-공단분'});c=gdOf({mrn:'602',ins:'일반'});d=gdOf({mrn:'602'});tb=gdText(d);tg=gdTagHtml({mrn:'601',ins:'국민건강보험'});}finally{GD=_g;}
-      ok('급여 도수: 카드 보험과 같은 보험 기준(보험이 다르면 따로), 일반 카드는 표시 안 함, 남은 횟수·일수', a&&a.ok&&b&&!b.ok&&c===null&&d&&!d.ok&&/기본물리치료 2회 더/.test(tb)&&/4일 더/.test(tb)&&/급여도수 가능/.test(tg),tb);}
+      ok('급여 도수: 카드 보험과 같은 보험 기준(보험이 다르면 따로), 일반 카드는 표시 안 함, 남은 횟수·일수', a&&a.ok&&b&&!b.ok&&c===null&&d&&!d.ok&&/기본물리치료 1회 더/.test(tb)&&/오늘 3번째/.test(tb)&&/4일 더/.test(tb)&&/급여도수 가능/.test(tg),tb);}
      ok('동의서 처방내역: 먹는 약만 일수·맨 아래 (2026-11-01)', rxIsOral({nam:'아클펜정(아세클로페낙)_(0.1g/1정)'})&&rxIsOral({nam:'판토케이정20밀리그램(판토프라졸나트륨세스키히드레이트)_(22.55mg/1정)'})
        &&!rxIsOral({nam:'대한리도카인염산염수화물2%주_(0.4266g/20mL)'})&&!rxIsOral({nam:'로카인주사2mg/mL(로피바카인염산염일수화물)_(42mg/20mL)'})&&!rxIsOral({nam:'신장분사치료3'})&&!rxIsOral({nam:'외래환자 의약품관리료-1일분(의원/치과의원/보건의료원 의·치과)'})
        &&rxIsOral({nam:'케토톱플라스타',itm:'030200'})&&!rxIsOral({nam:'아클펜정',itm:'010300'})&&rxIsOral({nam:'x',sot:'MED'})&&!rxIsOral({nam:'세페리손정',sot:'INJ'}));   // 비트 구분이 있으면 그것대로 (db2.3)

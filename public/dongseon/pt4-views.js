@@ -115,11 +115,11 @@ function renderSchedule(){
 function jumpHtml(date,page){const ym=date.slice(0,7);const list=[...new Set(META.dataDays.map(d=>d.slice(0,7)).concat([ym]))].sort();
   return `<div class="jump"><select title="달 선택" onchange="go('${page}',{date:this.value+'-01'})">${list.map(v=>`<option value="${v}" ${v===ym?'selected':''}>${Number(v.slice(0,4))}년 ${Number(v.slice(5))}월</option>`).join('')}</select>
     <input type="date" value="${date}" title="날짜로 이동" onchange="if(this.value)go('${page}',{date:this.value})"></div>`;}
-/* 급여 도수 선행조건 (2026-11-20 요청) — 오늘 표에서만. 첫 기본물리치료부터 14일 이상 + 4회 이상(부위는 안 봄, 보험별로 따로 셈) */
+/* 급여 도수 선행조건 (2026-11-20 요청) — 오늘 표에서만. 첫 기본물리치료부터 14일 이상 + 오늘이 4번째 이상(4회째부터 가능, 2026-11-21). 부위는 안 봄, 보험별로 따로 셈 */
 function gdMark(b){const G=window.GD4;const dv=D_();if(!G||!G.all||!dv||dv.date!==G.day)return '';
   const k=mrnKey(b.mrn).replace(/^0+/,'');const a=k&&G.all[k];if(!a)return '';const L=Object.values(a).filter(x=>x&&typeof x==='object');if(!L.length)return '';
   const ok=L.some(x=>x.ok);const md=s=>String(s||'').slice(5).replace('-','/');
-  const tip=L.map(x=>`${x.ins||'보험'}: 급여 도수 ${x.ok?'가능':'불가'} — ${x.first?`첫 기본물리치료 ${md(x.first)} (${x.days}일 지남) · `:''}기본물리치료 ${x.pt}회`).join('\n')+(ok?'\n부위는 확인해 주세요':'');
+  const tip=L.map(x=>`${x.ins||'보험'}: 급여 도수 ${x.ok?'가능':'불가'} — ${x.first?`첫 기본물리치료 ${md(x.first)} (${x.days}일 지남) · `:''}지난 기본물리치료 ${x.pt}회(오늘 ${x.pt+1}번째)`).join('\n')+(ok?'\n부위는 확인해 주세요':'');
   return `<span class="gd ${ok?'ok':'no'}" title="${A(tip)}">${ok?'급도✓':'급도✕'}</span>`;}
 const bookingText=b=>b.mrn||b.patientName?`${b.mrn}${b.room?`(${b.room})`:''}\n${b.patientName}${b.visitNo??''}`:(b.rawText||'');
 function notePop(b){return `<div class="note-pop" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"><div class="note-head">메모 · ${esc(b.patientName||b.mrn||'예약')}</div>
