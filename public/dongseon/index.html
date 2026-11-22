@@ -5782,6 +5782,7 @@ async function saveStaff(){
       else await adminAuthPost('set-member',{email:staffEditId,role,team});}   // 주임·원장님·행정실: 명단은 서버가 대신 고친다 (2026-11-22)
     catch(e){alert('저장 실패: '+((e&&e.message)||e));return;}
     if((m.role||'staff')!==role||(m.team||'')!==team)try{audit('계정수정',m.name+' · '+roleLabel({role})+(team?' · '+team:''));}catch(e){}
+    try{rosterAutoAdd([{name:m.name,team}]);}catch(e){console.warn(e);}   // 수정으로 파트를 정해도 직원 목록 그 파트에 (아직 어느 파트에도 없을 때만, 2026-11-22)
     closeStaff();renderStaffList();updateUserPill();
     return;
   }
