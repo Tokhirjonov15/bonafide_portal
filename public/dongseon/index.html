@@ -12079,6 +12079,10 @@ function docStatIsDoctor(){const key=n=>String(n||'').replace(/\s+/g,'').toLower
     if(part&&part!=='의사')return false;return set.has(k)||part==='의사';};}
 function docStatHtml(){
   const d=docStatData();const sum=l=>l.reduce((s,x)=>s+x[1],0);DS_PATS=d.pats;DS_KEYS=[];
+  /* 직원 목록 '의사' 파트의 원장님은 기록이 없어도 0건으로 보인다 (2026-11-22 요청: 김면 원장님 추가 — 직원 목록에 넣으면 통계에도 따라오게) */
+  {const ks=staffKey;let R=[];try{R=rosterNames('의사').filter(n=>!isFormerStaff(n));}catch(e){}
+   const add0=L=>{R.forEach(n=>{if(!L.some(x=>ks(x[0])===ks(n)))L.push([n,0]);});return L;};
+   d.clinic=add0(d.clinic.slice());d.proc.forEach(p=>{p.byDoc=add0(p.byDoc.slice());});}
   const row=(k,n,max,sec)=>{const pk=sec?sec+'|'+k:'';const i=pk&&DS_PATS[pk]?DS_KEYS.push({pk,title:(sec==='clinic'?'원장님별 진료':sec.replace('|doc',' · 원장님별').replace('|staff',' · 직원별').replace('|inc',' · 인센티브'))+' — '+k})-1:-1;
     return `<div class="ds-row${i>=0?' ds-click':''}"${i>=0?` onclick="dsPatOpen(${i})" title="눌러서 환자 보기"`:''}><span class="ds-k">${esc(k)}</span><span class="ds-bar"><i style="width:${Math.max(4,Math.round(n/max*100))}%"></i></span><b>${n}</b>건</div>`;};
   const block=(title,list,hint,sec)=>{const max=Math.max(1,...list.map(x=>x[1]));
@@ -13805,7 +13809,8 @@ function changeSeenDoc(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return
 function viewerDoctor(room){
   if(!currentUser)return '';
   const me=[currentUser.name,currentUser.id].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean);if(!me.length)return '';
-  const list=(room&&(meta(room).doctors||[]).length)?meta(room).doctors:realDocs();
+  /* 원장님은 지정 진료실 없이 돌아다니신다 (2026-11-22) — 그 방 진료의 + 직원 목록 의사 모두 */
+  const list=uniqStaff([...(room?(meta(room).doctors||[]):[]),...realDocs()]);
   const hit=(list||[]).find(d=>me.includes(String(d||'').trim().toLowerCase()));
   return (hit&&!isOffToday(hit))?hit:'';}
 function autoAssignViewer(p){if(p&&p._viewOnly)return;
