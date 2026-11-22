@@ -2942,7 +2942,9 @@ function rxRouteCompute(p,h,stamp){
   if(mustCons&&!p.route.includes(consR)){const i=next.indexOf(consR);if(i>=0)next.splice(i,1);placeMustRoom(next,consR);}
   if(mustUp&&!p.route.includes(upR)){const i=next.indexOf(upR);if(i>=0)next.splice(i,1);placeMustRoom(next,upR);}
   /* CT 를 찍으면 결과를 보러 그 진료실로 다시 (시트: 진료실 → CT → 진료실). 지나온 진료실 중 마지막 */
-  {const ci=next.indexOf('CT실',prefix.length);const doc=[...prefix].reverse().find(r=>/진료실/.test(r)&&r!=='3층 진료실');
+  /* 2026-11-22 (CT 종결 → 비용 상담으로 감): CT실에 와 있는 동안 처방이 다시 짜이면 CT 가 prefix 쪽이라 못 찾아 뒤의 진료실이 빠졌다 → 지금 방이 CT실이어도 */
+  {let ci=next.indexOf('CT실',prefix.length);if(ci<0&&cur==='CT실')ci=prefix.length-1;
+   const doc=[...prefix.slice(0,Math.max(0,ci))].reverse().find(r=>/진료실/.test(r)&&r!=='3층 진료실');
    if(ci>=0&&doc&&next[ci+1]!==doc){next.splice(ci+1,0,doc);auto.push(doc);}}
   /* 수납대기 자리 (2026-10-01 시트):
      · 4층 상담이 있으면 → 4층 상담 뒤(치료까지 마친 맨 끝) — 2026-09-26 지시 'CS+MM → 4층 상담 → 기본물리치료 → 수납대기' 와 같은 뜻
@@ -10866,6 +10868,11 @@ function nextStep(pid){const p=data.find(x=>x.id===pid);if(!p)return;
   /* 같은 공간에 처방이 남은 방이 있으면 그 방으로 — 동선에 없거나 뒤쪽에 있으면 바로 다음 자리로 당겨 온다 (2026-10-07) */
   {const sn=spaceNext(p);
    if(sn&&p.route[p.step+1]!==sn){const later=p.route.indexOf(sn,p.step+1);if(later>=0)p.route.splice(later,1);p.route.splice(p.step+1,0,sn);}}
+  /* CT 를 찍으면 결과를 보러 진료실로 다시 (2026-11-22 요청: CT 에서 종결하면 비용 상담으로 갔다) — 다음 차례가 진료실이 아니면, 그 전에 거친 진료실(마지막)을 바로 다음으로 */
+  if(curRoom(p)==='CT실'){const nx=p.route[p.step+1];
+    const doc=[...p.route.slice(0,p.step)].reverse().find(r=>/진료실/.test(r)&&r!=='3층 진료실')||[...(p.visits||[])].reverse().map(v=>v&&v.room).find(r=>/진료실/.test(r||'')&&r!=='3층 진료실');
+    if(doc&&!/진료실/.test(nx||'')){const later=p.route.indexOf(doc,p.step+1);if(later>=0)p.route.splice(later,1);p.route.splice(p.step+1,0,doc);
+      try{audit('CT → 진료실',(p.name||'')+(p.mrn?' ('+p.mrn+')':'')+' · '+doc+(nx?' (원래 다음: '+nx+')':''));}catch(e){}}}
   {const done=roomsDoneBefore(p);done.add(curRoom(p));
    const rest=p.route.slice(p.step+1), keep=rest.filter(r=>repeatOk(r)||!done.has(r));
    if(keep.length!==rest.length){
