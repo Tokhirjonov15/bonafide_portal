@@ -2232,7 +2232,7 @@ async function dsCaller(request, env) {
   /* 주임(원장님·행정실 포함 — 동선관리 isChief 와 같음): 직원 계정만 추가·삭제 (2026-10-30 요청: 퇴사자를 관리자 혼자 다 못 지움) */
   const chief = !admin && ["chief", "doctor", "office"].includes(memRole(members.find((v) => memField(v, "email") === email)));
   if (!admin && !chief) throw Object.assign(new Error("관리자·주임만 할 수 있습니다."), { status: 403 });
-  return { email, super: supers.includes(email), supers, admin, chief, members };
+  return { email, super: supers.includes(email), supers, admins, admin, chief, members };
 }
 const memField = (v, k) => (v && v.mapValue && v.mapValue.fields && v.mapValue.fields[k] && v.mapValue.fields[k].stringValue) || "";
 const memRole = (v) => (v ? memField(v, "role") || "staff" : "");
@@ -2306,6 +2306,22 @@ async function dongseonApi(request, env, url) {
           if (d.members.length === n) return false;
         });
         return json({ ok: true, existed: !!uid, aclDone: true });
+      }
+      /* 파트·직급 수정 (2026-11-22 요청): 직원·주임 계정만, 직급은 직원 ↔ 주임만. 관리자·원장님·행정실은 관리자만 */
+      if (path === "set-member") {
+        if (!tm) return json({ error: "명단에 없는 계정입니다." }, 404);
+        const sup = tm.mapValue.fields.super && tm.mapValue.fields.super.booleanValue;
+        if (sup || me.admins.includes(target) || !["staff", "chief"].includes(memRole(tm))) return json({ error: "직원·주임 계정만 고칠 수 있습니다(관리자·원장님·행정실 계정은 관리자에게)." }, 403);
+        const role = s(body.role);
+        if (!["staff", "chief"].includes(role)) return json({ error: "직급은 직원·주임만 줄 수 있습니다." }, 403);
+        const team = s(body.team).trim().slice(0, 30);
+        await aclEdit(env, (d) => {
+          const t = d.members.find((v) => memField(v, "email") === target);
+          if (!t || !["staff", "chief"].includes(memRole(t))) return false;
+          t.mapValue.fields.role = { stringValue: role };
+          t.mapValue.fields.team = { stringValue: team };
+        });
+        return json({ ok: true });
       }
       return json({ error: "관리자만 할 수 있습니다." }, 403);
     }
