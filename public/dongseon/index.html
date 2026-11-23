@@ -13664,7 +13664,12 @@ function rxAutoDc(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_
     const rx=bitRxFor(p);const items=(rx&&Array.isArray(rx.items))?rx.items:[];if(!items.length)return;
     const cur=rxCurMapOf(rx);
     Object.keys(p.rxSeen||{}).forEach(c=>{const k=p.id+'|'+c;if(cur[c])delete RXAD_GONE[k];else if(!RXAD_GONE[k])RXAD_GONE[k]=now;});
-    const ready=c=>{const t=RXAD_GONE[p.id+'|'+c];return !!t&&now-t>=RX_AUTO_DC_MS;};
+    /* 2026-11-23 최도겸 33891: 치료를 다 했는데 9건이 '비트에서 처방 삭제'로 자동 D/C — 비트에는 처방이 그대로 있었다.
+       카드는 접수 하나(접수번호)의 처방만 보는데, 처방이 같은 환자의 다른 오늘 접수로 옮겨 가면(접수 다시·보험 바꿈 등) 지워진 것으로 보였다.
+       → 같은 환자(차트번호)의 오늘 비트 접수 어디에든 그 처방코드가 있으면 지운 게 아니다(대소문자 무시) */
+    const allCods=new Set();try{const mk=rxMrnKey(p.mrn);(BIT_RX_DOCS||[]).forEach(d=>{if(d&&rxMrnKey(d.mrn)===mk&&Array.isArray(d.items)){
+      const m=rxCurMap(d.items,d.ocm);Object.keys(m).forEach(c=>{allCods.add(c.toLowerCase());if(!cur[c])cur[c]=m[c];});}});}catch(e){}   // 다른 접수에 있는 처방도 '있음' — 이미 자동 D/C 된 것도 저절로 풀린다(D/C 취소 알림)
+    const ready=c=>{if(allCods.has(String(c||'').trim().toLowerCase()))return false;const t=RXAD_GONE[p.id+'|'+c];return !!t&&now-t>=RX_AUTO_DC_MS;};
     const at=String((rx&&rx.at)||'');
     if(!rxAutoDcPlan(jclone(p),cur,ready,rxOcmAlive,at))return;   // 로컬로 먼저 따져 보고 바꿀 게 있을 때만 서버 트랜잭션
     let res=null;
