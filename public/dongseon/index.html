@@ -13265,17 +13265,41 @@ async function recSumTick(){if(REC_SUM_BUSY||IS_PHONE||!currentUser||typeof BIT_
 setInterval(()=>{recSumTick();},60000);
 /* ═ 녹음기록 — 진료 녹음을 진료실 PC 가 글로 바꾼 것(recText). 이 환자 차트번호로, 최근 것부터 (2026-10-12) ═ */
 window.recTextCache={};
+/* 받아쓴 글 직접 넣기 (2026-11-23 요청: 33986 정옥자 11/22 — 다른 곳에서 받아쓴 진료 대화를 동선관리 녹음기록에) — 그날 녹음이 있으면 그 녹음에 붙이고, 없으면 그 날짜에 글만.
+   recText 문서 src:manual — 다른 받아쓰기보다 먼저 보인다. 로그인한 직원 누구나(넣은 사람은 by·감사 기록) */
+const REC_ADD_BTN='<button type="button" class="btn sm" style="margin-left:6px" onclick="recManualOpen()" title="다른 곳에서 받아쓴 진료 대화를 붙여 넣어 이 환자 녹음기록에 추가"><i data-lucide="clipboard-paste"></i> 글 붙여넣기</button>';
+window.recManualOpen=function(){const p=editId&&data.find(x=>x.id===editId);if(!p||!String(p.mrn||'').trim()){alert('차트번호가 있는 환자만 넣을 수 있습니다.');return;}
+  const box=document.getElementById('recTextBox');const L=(box&&box._list)||[];
+  const G=new Map();L.forEach(r=>{if(!r.startedAt)return;const k=recKeyOf(r);if(!G.has(k))G.set(k,r);});
+  const hm=d=>String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const opts=[...G.entries()].sort((a,b)=>String(b[1].startedAt).localeCompare(String(a[1].startedAt))).slice(0,40).map(([k,r])=>{const d=new Date(r.startedAt);return `<option value="${esc(k)}">${esc(localYMD(d))} ${hm(d)} · ${esc(r.room||'')} 녹음에 붙이기</option>`;}).join('');
+  const ov=document.createElement('div');ov.className='modal-bg show';ov.style.zIndex='1300';
+  ov.innerHTML=`<div class="modal" style="width:640px;max-width:96vw"><h3>받아쓴 글 붙여넣기 — ${esc(p.name||'')} ${esc(p.mrn)}</h3><div class="body">
+    <div class="fld"><label>어디에</label><select id="rmWhere" onchange="document.getElementById('rmDateRow').style.display=this.value?'none':''">${opts}<option value="">녹음 없이 — 날짜만 정해서</option></select></div>
+    <div class="fld" id="rmDateRow" style="${opts?'display:none':''}"><label>날짜</label><input type="date" id="rmDate" value="${localYMD(new Date(Date.now()-864e5))}"> <input id="rmRoom" placeholder="진료실 (예: 진료실1, 선택)" style="width:180px"></div>
+    <div class="fld"><label>받아쓴 글</label><textarea id="rmText" rows="14" style="width:100%" placeholder="여기에 붙여 넣으세요 (Ctrl+V)"></textarea></div></div>
+    <div class="foot"><button class="btn" type="button" onclick="this.closest('.modal-bg').remove()">취소</button><button class="btn primary" type="button" id="rmSave">저장</button></div></div>`;
+  document.body.appendChild(ov);setTimeout(()=>{try{document.getElementById('rmText').focus();}catch(e){}},50);
+  ov.querySelector('#rmSave').onclick=async()=>{const text=String(document.getElementById('rmText').value||'').trim();if(!text){alert('붙여 넣은 글이 없습니다.');return;}
+    const k=document.getElementById('rmWhere').value;const base=k?G.get(k):null;let startedAt,room,file='';
+    if(base){startedAt=base.startedAt;room=base.room||'';file=base.file||'';}
+    else{const dv=document.getElementById('rmDate').value;if(!/^d{4}-d{2}-d{2}$/.test(dv)){alert('날짜를 골라 주세요.');return;}startedAt=new Date(dv+'T12:00:00').toISOString();room=String(document.getElementById('rmRoom').value||'').trim();}
+    const mrn=String(p.mrn).trim(),date=localYMD(new Date(startedAt)),id='manual_'+mrn+'_'+Date.now();
+    try{await cloud.ref.collection('recText').doc(id).set({mrn,pid:p.id||'',name:p.name||'',room,startedAt,date,file,text:text.slice(0,200000),src:'manual',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});}
+    catch(e){alert('저장하지 못했습니다: '+((e&&(e.code||e.message))||e));return;}
+    try{audit('녹음 글 직접 추가',(p.name||'')+' ('+mrn+') · '+date+(room?' '+room:''));}catch(e){}
+    ov.remove();delete recTextCache[mrn];REC_DAY_OPEN.add(mrn+date);fillRecTextBox(p);toast('녹음기록에 넣었습니다');};};
 function fillRecTextBox(p){const box=document.getElementById('recTextBox');if(!box)return;const mrn=String((p&&p.mrn)||'').trim();
   if(!mrn||!(cloud.active&&cloud.ref)){box.style.display='none';box.innerHTML='';return;}
   const draw=L=>{if(!editId||!data.find(x=>x.id===editId&&String(x.mrn||'').trim()===mrn))return;
-    if(!L.length){box.style.display='none';box.innerHTML='';return;}
+    if(!L.length){box.style.display='';box._list=[];box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">녹음 없음</span> ${REC_ADD_BTN}</div>`;if(window.lucide)try{lucide.createIcons();}catch(e){}return;}
     box.style.display='';
     /* 날짜별로 묶기 (2026-10-12 요청) — 오늘은 펼치고 지난 날은 접어 둔다(누르면 펼침, 펼친 날짜는 기억). 개수 제한 없음 */
     const today=localYMD(new Date()),g={};L.forEach((r,i)=>{const d=String(r.date||r.startedAt||'').slice(0,10)||'날짜 없음';(g[d]=g[d]||[]).push([r,i]);});
     const wd=['일','월','화','수','목','금','토'];const days=Object.keys(g).sort().reverse();
     const nRec=new Set(L.map(r=>(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file)).size;
     const nfs=recNfsMap(mrn,p,()=>{if(editId===p.id)fillRecTextBox(p);});
-    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${nRec}건 · ▶ 눌러 듣기 (받아쓴 글은 틀린 곳이 있을 수 있음)</span></div>`+
+    box.innerHTML=`<div class="sect-t"><i data-lucide="mic"></i> 녹음기록 <span class="hint">${days.length}일 · ${nRec}건 · ▶ 눌러 듣기 (받아쓴 글은 틀린 곳이 있을 수 있음)</span> ${REC_ADD_BTN}</div>`+
       days.map(d=>{const open=d===today?!REC_DAY_SHUT.has(mrn+d):REC_DAY_OPEN.has(mrn+d);const dw=/^\d{4}-\d{2}-\d{2}$/.test(d)?' ('+wd[new Date(d+'T12:00:00').getDay()]+')':'';
         const byF=new Map();g[d].forEach(([r,i])=>{const k=(r.startedAt?r.startedAt+'|'+(r.room||''):'')||r.file||String(i);if(!byF.has(k))byF.set(k,[]);byF.get(k).push([r,i]);});
         return `<details class="rt-day${recDayCls(nfs[d])}"${open?' open':''} ontoggle="recDayToggle('${esc(mrn+d)}',this.open,${d===today})"><summary>${esc(d)}${dw}${d===today?' · 오늘':''} ${nfsBadge(nfs[d])} <span class="hint">${byF.size}건</span></summary>`+
@@ -13319,11 +13343,11 @@ window.recDelete=async function(id){const L=REC_GRP[id];if(!L||!L.length)return;
   try{if(histView==='rec')renderHistory();}catch(e){}
   if(errs.length)alert('녹음 삭제 중 문제가 있었습니다:\n· '+[...new Set(errs)].join('\n· '));else toast('녹음을 삭제했습니다');};
 /* 녹음 한 건(같은 파일) — 재생 막대(음성 메시지처럼) + 받아쓴 글은 접어서 (2026-10-16) */
-const REC_SRC_L={chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
+const REC_SRC_L={manual:'직접 넣은 글',chrome:'크롬',local:'진료실 PC',openai:'OpenAI',clova:'네이버 클로바'};
 function recDurTxt(s){s=Math.round(Number(s)||0);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
 /* 2026-10-16 요청: 진료실 PC 받아쓰기를 기본으로 — 재생 막대 아래에 진료실 PC 글을 펼쳐 두고, 다른 방식(크롬·OpenAI·클로바) 글은 '다른 받아쓰기'로 접는다.
    진료실 PC 글이 없으면 있는 글 중 첫째를 펼친다 */
-const REC_SRC_ORDER=['local','clova','openai','chrome'];
+const REC_SRC_ORDER=['manual','local','clova','openai','chrome'];   // manual = 직원이 붙여 넣은 받아쓴 글 (2026-11-23) — 있으면 맨 위
 function recItemHtml(G,dl){const first=G[0][0];const au=G.find(([r])=>r.src==='audio');
   const tx=G.filter(([r])=>r.src!=='audio').sort((a,b)=>REC_SRC_ORDER.indexOf(a[0].src||'local')-REC_SRC_ORDER.indexOf(b[0].src||'local'));
   /* 녹음 시각 '시작 ~ 끝'(초까지, 2026-10-19 요청) — 끝 = endAt(새 녹음) 또는 시작 + 소리 길이(dur) */
