@@ -11126,6 +11126,7 @@ function archiveVisit(p){
     rxDc:JSON.parse(JSON.stringify(p.rxDc||{})),                       // 처방 D/C — 내보낸 뒤에도 진료지원 창에 남게
     researchChart:p.researchChart||"",
     rxProc:p.rxProc||"",rxItems:p.rxItems||"",
+    ...(()=>{const lr=rxLiveRooms(p);return lr?{rxRooms:lr}:{};})(),   // 내보낼 때 남아 있던 비트 처방의 방들 — 술기 통계의 '처방 있음' (2026-11-23)
     silbi:!!p.silbi,silbiLimit:p.silbiLimit||0,ins:p.ins||"",
     smsHistory:Array.isArray(p.smsHistory)?JSON.parse(JSON.stringify(p.smsHistory)):[],
     bit:(p.bit&&typeof p.bit==='object')?{ocmNum:String(p.bit.ocmNum||''),auto:!!p.bit.auto,pc:p.bit.pc||'',chojae:p.bit.chojae||''}:null   // 비트 접수번호·초재구분 — 수납취소 복귀, 접수 구분 통계용
@@ -12035,32 +12036,41 @@ function docStatStaff(room,rad,nurse){rad=String(rad||'').trim();nurse=String(nu
   if(!rad)return '(방사선사 미지정)';
   let part='';try{part=rosterPart(rad);}catch(e){}
   return (part&&part!=='방사선사')?'(방사선사 미지정)':rad;}
+/* 지금 남아 있는 비트 처방(D/C 안 한 줄)이 가는 방들 — 비트 처방 자료가 아직 없으면 null (2026-11-23 통계 정확도) */
+function rxLiveRooms(p){try{const L=rxItemsOf(p);if(!L||!L.length)return null;const dc=(p&&p.rxDc)||{};const s=new Set();
+  L.forEach(it=>{if(!dc[rxDcKey(it)])rxItemRooms(it).forEach(r=>s.add(r));});return [...s];}catch(e){return null;}}
 function docStatRooms(){
   const out=[];
   const day=d=>{try{return d?localYMD(new Date(d)):'';}catch(e){return '';}};
   /* D/C 한 처방이 가는 방 (2026-10-27 요청: 주사 D/C 한 환자가 C-Arm 술기 통계에 잡혀 있었다) — 처방내역에서 D/C 체크한 처방 → 처방→방 규칙의 방 */
   const dcRooms=x=>{const s=new Set();try{Object.values((x&&x.rxDc)||{}).forEach(d=>{if(d)rxItemRooms(d).forEach(r=>s.add(r));});}catch(e){}return s;};
   const ms=(a,b)=>{const x=new Date(a||0).getTime(),y=new Date(b||0).getTime();return x&&y?Math.max(0,y-x):0;};
-  statsVis().forEach(v=>{const dc=dcRooms(v);(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({vk:'v:'+(v.id||v.mrn+'|'+v.dischargedAt),dur:ms(r.enteredAt,r.leftAt),act:Number(r.activeMs)||0,dc:dc.has(r.room),room:r.room,doctor:String(r.doctor||'').trim(),seen:String(r.seenDoc||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse),name:v.name||'',mrn:v.mrn||'',date:day(r.leftAt||r.enteredAt||v.dischargedAt)});});});
-  data.filter(p=>p&&!p._viewOnly&&!p.discharged&&!isTestPatient(p)).forEach(p=>{const dc=dcRooms(p);(p.visits||[]).forEach(v=>{
+  /* 그 방으로 가는 비트 처방이 남아 있나: 내보낼 때 남긴 rxRooms(2026-11-23~)가 있으면 그것, 없으면(옛 기록) D/C 기록이 없으면 남아 있다고 본다 */
+  const rxHasV=(v,room,dc)=>Array.isArray(v.rxRooms)?v.rxRooms.includes(room):!dc.has(room);
+  statsVis().forEach(v=>{const dc=dcRooms(v);(v.rooms||[]).forEach(r=>{if(r&&r.room)out.push({vk:'v:'+(v.id||v.mrn+'|'+v.dischargedAt),dur:ms(r.enteredAt,r.leftAt),act:Number(r.activeMs)||0,dc:dc.has(r.room),rxHas:rxHasV(v,r.room,dc),room:r.room,doctor:String(r.doctor||'').trim(),seen:String(r.seenDoc||'').trim(),staff:docStatStaff(r.room,r.rad,r.nurse),name:v.name||'',mrn:v.mrn||'',date:day(r.leftAt||r.enteredAt||v.dischargedAt)});});});
+  data.filter(p=>p&&!p._viewOnly&&!p.discharged&&!isTestPatient(p)).forEach(p=>{const dc=dcRooms(p);const lr=rxLiveRooms(p);(p.visits||[]).forEach(v=>{
     if(!v||!v.room)return;if((statsDate||statsDays)&&!statInRange(v.leftAt||v.enteredAt))return;
-    out.push({vk:'p:'+p.id,dur:ms(v.enteredAt,v.leftAt||new Date().toISOString()),act:Number(v.activeMs)||0,dc:dc.has(v.room),room:v.room,doctor:String(docFor(p,v.room)||'').trim(),seen:String((isProcRoom(v.room)?seenDocFor(p,v.room):'')||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room)),name:p.name||'',mrn:p.mrn||'',date:day(v.leftAt||v.enteredAt)});});});
+    out.push({vk:'p:'+p.id,dur:ms(v.enteredAt,v.leftAt||new Date().toISOString()),act:Number(v.activeMs)||0,dc:dc.has(v.room),rxHas:lr?lr.includes(v.room):!dc.has(v.room),room:v.room,doctor:String(docFor(p,v.room)||'').trim(),seen:String((isProcRoom(v.room)?seenDocFor(p,v.room):'')||'').trim(),staff:docStatStaff(v.room,radFor(p,v.room),nurseFor(p,v.room)),name:p.name||'',mrn:p.mrn||'',date:day(v.leftAt||v.enteredAt)});});});
   /* 술기 방(C-Arm·Sono·근전도)은 한 내원에 한 번만 (2026-11-06 요청: C-Arm 직원별에 같은 환자가 두 번 — 11/1 C-Arm → 4층 대기실 3분 → 다시 C-Arm,
      11/2 C-Arm 1분(잘못 보냄) → 수납 → 다시 C-Arm). 가장 오래 머문 칸을 남기고, 그 칸에 없는 원장님·담당 직원은 다른 칸에서 채운다 */
   const keep=[],best={};
   out.forEach(r=>{if(!DOC_STAT_PROC.includes(r.room)){keep.push(r);return;}const k=r.vk+'|'+r.room,b=best[k];
     if(!b){best[k]=r;keep.push(r);return;}
     const win=r.dur>b.dur?r:b,lose=win===r?b:r,m=Object.assign({},win);
-    if(!m.doctor)m.doctor=lose.doctor;if(!m.seen)m.seen=lose.seen;if(!m.staff||/미지정/.test(m.staff))m.staff=(lose.staff&&!/미지정/.test(lose.staff))?lose.staff:m.staff;m.dc=b.dc||r.dc;m.act=Math.max(b.act||0,r.act||0);
+    if(!m.doctor)m.doctor=lose.doctor;if(!m.seen)m.seen=lose.seen;if(!m.staff||/미지정/.test(m.staff))m.staff=(lose.staff&&!/미지정/.test(lose.staff))?lose.staff:m.staff;m.dc=b.dc||r.dc;m.act=Math.max(b.act||0,r.act||0);m.rxHas=(b.rxHas===true||r.rxHas===true)?true:(b.rxHas===false||r.rxHas===false)?false:null;
     keep[keep.indexOf(b)]=m;best[k]=m;});
   /* 술기(C-Arm·Sono·근전도)는 [진행]을 1분 넘게 한 것만 센다 (2026-11-23).
      · 9045 임현주 11/15: C-Arm 36분 진행했는데, 비트에서 처방을 고치며 옛 C-Arm 처방이 자동 D/C 되어 통계에서 빠졌다
      · 24155 김영희 11/11: 처방이 잘못 들어가 C-Arm 에 1초 들렀다 나왔는데(진행 0) 통계에 잡혔다
      → D/C 여부가 아니라 실제 진행으로. 진행이 없거나 1분 안 된 건은 '진행 없음·D/C 로 뺀 건' 목록에 남고 거기서 [넣기] 할 수 있다 */
-  keep.forEach(r=>{if(DOC_STAT_PROC.includes(r.room))r.dc=(r.act||0)<60000;});
+  /* 2026-11-23 '통계는 정확해야 — 한 분·안 한 분을 거를 수 있어야': 진행 하나만 보지 않고 두 가지를 함께 본다.
+     ① [진행] 1분 이상  ② 그 방으로 가는 비트 처방이 남아 있음(D/C·비트 삭제 아님 — 내보낼 때 남긴 rxRooms, 옛 기록은 D/C 기록으로)
+     둘 다 O → 셈 · 둘 다 X → 안 함(뺌) · 엇갈리면 '확인 필요'(진행 O·처방 X 는 세고 표시, 처방 O·진행 X 는 안 세고 표시) — [넣기]/[빼기]로 정하면 표시가 없어진다 */
+  keep.forEach(r=>{if(!DOC_STAT_PROC.includes(r.room))return;const did=(r.act||0)>=60000,rx=r.rxHas!==false;
+    r.st=did&&rx?'ok':did?'chkIn':rx?'chkOut':'no';r.dc=r.st==='no';});
   /* 직접 넣고 빼기 (2026-11-23 요청) — statAdj/main: out{키} 뺀 건 · inn{키} 진행 없음·D/C 여도 넣은 건 · add{id} 직접 추가한 건. 키 = 내원|방 */
   const A=STAT_ADJ.d||{};
-  keep.forEach(r=>{r.key=r.vk+'|'+r.room;if(A.inn&&A.inn[r.key])r.dc=false;if(A.out&&A.out[r.key])r.out=true;});
+  keep.forEach(r=>{r.key=r.vk+'|'+r.room;if(A.inn&&A.inn[r.key]){r.dc=false;if(r.st)r.st='ok';}if(A.out&&A.out[r.key])r.out=true;});
   Object.entries(A.add||{}).forEach(([id,x])=>{if(!x||!x.room||!x.date)return;if((statsDate||statsDays)&&!statInRange(x.date+'T12:00:00'))return;
     keep.push({vk:'m:'+id,key:'m:'+id,mid:id,manual:true,dur:0,act:0,dc:false,room:x.room,doctor:String(x.doctor||'').trim(),seen:String(x.seen||'').trim(),staff:String(x.staff||'').trim(),name:x.name||'',mrn:x.mrn||'',date:x.date});});
   return keep;}
@@ -12100,12 +12110,15 @@ function docStatData(){
   const incv={},incFrom={},incNoSeen={},dcSkip={};   // 인센티브: 술기 원장님 ≠ 진료 원장님 → 술기 원장님 건수 (진료 원장님 기록이 없으면 판정 못 함)
   const inc=(o,k)=>{o[k]=(o[k]||0)+1;};
   /* 이름을 누르면 그 건의 환자 목록 (2026-10-26 요청: 원장님이 어느 환자분께 주사했는지 — 이름·차트번호) */
-  const pats={};const pat=(sec,k,r)=>{(pats[sec+'|'+k]=pats[sec+'|'+k]||[]).push({name:r.name,mrn:r.mrn,date:r.date,seen:r.seen,staff:r.staff,key:r.key,mid:r.mid,room:r.room,manual:!!r.manual,inn:!!(STAT_ADJ.d&&STAT_ADJ.d.inn&&r.key&&STAT_ADJ.d.inn[r.key])});};
-  const outSkip={};
+  const pats={};const pat=(sec,k,r)=>{(pats[sec+'|'+k]=pats[sec+'|'+k]||[]).push({name:r.name,mrn:r.mrn,date:r.date,seen:r.seen,staff:r.staff,key:r.key,mid:r.mid,room:r.room,manual:!!r.manual,st:r.st||'',inn:!!(STAT_ADJ.d&&STAT_ADJ.d.inn&&r.key&&STAT_ADJ.d.inn[r.key])});};
+  const outSkip={},chkN={};
   rooms.forEach(r=>{
     if(r.out){outSkip[r.room]=(outSkip[r.room]||0)+1;pat(r.room+'|out','뺀 건',r);return;}   // 직접 뺀 건 (2026-11-23)
     if(/^진료실\s*\d/.test(r.room)){if(r.doctor&&!isDoc(r.doctor)){clinicSkip++;return;}inc(clinic,r.doctor||'(미지정)');pat('clinic',r.doctor||'(미지정)',r);}
-    else if(DOC_STAT_PROC.includes(r.room)){if(r.dc){dcSkip[r.room]=(dcSkip[r.room]||0)+1;pat(r.room+'|dc','D/C',r);return;}   // D/C 한 술기는 빼고 건수만 (2026-10-27)
+    else if(DOC_STAT_PROC.includes(r.room)){
+      if(r.st==='chkOut'||r.st==='chkIn'){chkN[r.room]=(chkN[r.room]||0)+1;pat(r.room+'|chk','확인',r);}   // 확인 필요 (2026-11-23) — chkIn 은 세면서 표시, chkOut 은 안 세고 표시
+      if(r.st==='chkOut')return;
+      if(r.dc){dcSkip[r.room]=(dcSkip[r.room]||0)+1;pat(r.room+'|dc','D/C',r);return;}   // 안 한 술기(진행 없음 + 처방 없음·D/C)는 빼고 건수만
       const k=(r.doctor||'(미지정)')+(r.staff&&!/미지정/.test(r.staff)?'('+r.staff+')':'');
       inc(proc[r.room]||(proc[r.room]={}),k);
       if(r.doctor&&!isDoc(r.doctor))procSkip[r.room]=(procSkip[r.room]||0)+1;else{inc(byDoc[r.room]||(byDoc[r.room]={}),r.doctor||'(미지정)');pat(r.room+'|doc',r.doctor||'(미지정)',r);}
@@ -12114,7 +12127,7 @@ function docStatData(){
         else if(procIncentive(r.doctor,r.seen)){inc(incv[r.room]||(incv[r.room]={}),r.doctor);pat(r.room+'|inc',r.doctor,r);const f=(incFrom[r.room]=incFrom[r.room]||{});inc(f[r.doctor]||(f[r.doctor]={}),r.seen);}}}});
   const sortE=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'ko'));
   const clinicOut=Object.keys(outSkip).filter(k=>/^진료실\s*\d/.test(k));
-  return {pats,outSkip,clinicOut,clinic:sortE(clinic),clinicSkip,proc:DOC_STAT_PROC.map(r=>({room:r,list:sortE(proc[r]||{}),byDoc:sortE(byDoc[r]||{}),byStaff:sortE(byStaff[r]||{}),docSkip:procSkip[r]||0,dcSkip:dcSkip[r]||0,incentive:sortE(incv[r]||{}),incFrom:incFrom[r]||{},incNoSeen:incNoSeen[r]||0}))};}
+  return {pats,outSkip,chkN,clinicOut,clinic:sortE(clinic),clinicSkip,proc:DOC_STAT_PROC.map(r=>({room:r,list:sortE(proc[r]||{}),byDoc:sortE(byDoc[r]||{}),byStaff:sortE(byStaff[r]||{}),docSkip:procSkip[r]||0,dcSkip:dcSkip[r]||0,incentive:sortE(incv[r]||{}),incFrom:incFrom[r]||{},incNoSeen:incNoSeen[r]||0}))};}
 /* 인센티브 (2026-10-25 요청): 진료 원장님과 술기 원장님이 다르면 술기 원장님만 인센티브 */
 function procIncentive(doc,seen){const k=x=>String(x||'').replace(/\s+/g,'');return !!(k(doc)&&k(seen)&&k(doc)!==k(seen));}
 /* 의사인가: 직원 목록 '의사' 파트 + 원장님 근무표(4층 비급여 화면)에 나온 이름 + 예전 원장님(퇴사해 직원 목록에서 빠진 분). 직원 목록에 다른 파트로 있으면 의사 아님 */
@@ -12140,20 +12153,21 @@ function docStatHtml(){
     const from=n=>Object.entries(x.incFrom[n]||{}).sort((a,b)=>b[1]-a[1]).map(([s2,c])=>esc(s2)+' '+c).join(' · ');
     return `<div class="ds-card" style="border-color:#f59e0b"><div class="ds-t">${esc(x.room)} · 인센티브 <span class="hint">합계 ${sum(L)}건 · 진료 원장님 ≠ 술기 원장님${x.incNoSeen?' · 진료 원장님 기록 없는 '+x.incNoSeen+'건 판정 못 함':''}</span></div>${L.map(y=>row(y[0],y[1],max,x.room+'|inc')+`<div class="hint" style="margin:-2px 0 6px 4px;font-size:11.5px">진료: ${from(y[0])}</div>`).join('')||'<div class="hint">인센티브 건이 없습니다.</div>'}</div>`;};
   return `<div class="hint" style="margin-bottom:8px">진료 = 진료실을 거친 횟수(그 방 담당 진료의 기준) · 시술 = <b>술기 의사(담당 직원)</b>별 건수 — 담당 직원은 그 방의 방사선 담당, 없으면 간호 담당입니다.</div>
-    <div class="hint" style="margin:-4px 0 8px">👆 이름을 누르면 그 건의 환자(이름·차트번호·날짜)를 볼 수 있고, 거기서 한 건씩 <b>빼기</b>·<b>넣기</b>를 할 수 있습니다. 술기는 <b>[진행]을 1분 넘게 한 건만</b> 셉니다. <button class="btn sm" type="button" onclick="dsAddOpen()"><i data-lucide="plus"></i> 직접 추가</button></div>
+    <div class="hint" style="margin:-4px 0 8px">👆 이름을 누르면 그 건의 환자(이름·차트번호·날짜)를 볼 수 있고, 거기서 한 건씩 <b>빼기</b>·<b>넣기</b>를 할 수 있습니다. 술기는 <b>[진행] 1분 이상</b>과 <b>비트 처방(D/C·삭제 안 됨)</b>을 함께 봅니다 — 둘 다 있으면 셈, 둘 다 없으면 뺌, 엇갈리면 <b style="color:#dc2626">확인 필요</b>(눌러서 넣기/빼기로 정해 주세요). <button class="btn sm" type="button" onclick="dsAddOpen()"><i data-lucide="plus"></i> 직접 추가</button></div>
     ${(()=>{const L=d.clinicOut.map(k=>'<a href="javascript:void 0" onclick="dsPatOpen('+(DS_KEYS.push({pk:k+'|out|뺀 건',title:k+' · 뺀 건'})-1)+')">'+esc(k)+' 뺀 건 '+d.outSkip[k]+'</a>');return L.length?'<div class="hint" style="margin:-2px 0 8px">원장님별 진료에서 뺀 건: '+L.join(' · ')+'</div>':'';})()}
     <div class="ds-grid">${block('원장님별 진료',d.clinic,d.clinicSkip?'의사 아닌 담당(간호·물리치료 등) '+d.clinicSkip+'건 제외':'','clinic')}</div>
-    ${d.proc.map(x=>`<div class="ds-sec">${esc(x.room)} 술기 <span class="hint">합계 ${sum(x.list)}건${x.dcSkip?` · <a href="javascript:void 0" onclick="dsPatOpen(${DS_KEYS.push({pk:x.room+'|dc|D/C',title:x.room+' · 진행 없음·D/C 로 뺀 건'})-1})">진행 없음·D/C ${x.dcSkip}건 제외</a>`:''}${d.outSkip[x.room]?` · <a href="javascript:void 0" onclick="dsPatOpen(${DS_KEYS.push({pk:x.room+'|out|뺀 건',title:x.room+' · 뺀 건'})-1})">뺀 건 ${d.outSkip[x.room]}</a>`:''}</span></div>
+    ${d.proc.map(x=>`<div class="ds-sec">${esc(x.room)} 술기 <span class="hint">합계 ${sum(x.list)}건${d.chkN[x.room]?` · <a href="javascript:void 0" style="color:#dc2626;font-weight:800" onclick="dsPatOpen(${DS_KEYS.push({pk:x.room+'|chk|확인',title:x.room+' · 확인 필요 (진행·처방이 엇갈림)'})-1})">⚠ 확인 필요 ${d.chkN[x.room]}건</a>`:''}${x.dcSkip?` · <a href="javascript:void 0" onclick="dsPatOpen(${DS_KEYS.push({pk:x.room+'|dc|D/C',title:x.room+' · 안 함으로 뺀 건 (진행 없음 + 처방 없음·D/C)'})-1})">안 함 ${x.dcSkip}건 제외</a>`:''}${d.outSkip[x.room]?` · <a href="javascript:void 0" onclick="dsPatOpen(${DS_KEYS.push({pk:x.room+'|out|뺀 건',title:x.room+' · 뺀 건'})-1})">뺀 건 ${d.outSkip[x.room]}</a>`:''}</span></div>
       <div class="ds-grid">${block(x.room+' · 원장님별 총',x.byDoc,x.docSkip?'의사 아닌 이름 '+x.docSkip+'건 제외':'',x.room+'|doc')}${block(x.room+' · 직원별 총',x.byStaff,DOC_STAT_RAD_ONLY.includes(x.room)?'방사선사만':'방사선 담당, 없으면 간호 담당',x.room+'|staff')}${incBlock(x)}</div>`).join('')}`;}
 let DS_PATS={},DS_KEYS=[];
 function dsPatOpen(i){const k=DS_KEYS[i];if(!k)return;const L0=DS_PATS[k.pk]||[];const L=L0.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(a.name).localeCompare(String(b.name),'ko'));
   const uniq=new Set(L.map(r=>normMrn(r.mrn)||r.name)).size;const isProc=!k.pk.startsWith('clinic|');
   let ov=document.getElementById('dsPatOv');if(!ov){ov=document.createElement('div');ov.id='dsPatOv';ov.className='modal-bg show';ov.style.zIndex='1200';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
-  const kind=/\|dc\|/.test(k.pk)?'dc':/\|out\|/.test(k.pk)?'out':'';
+  const kind=/\|dc\|/.test(k.pk)?'dc':/\|out\|/.test(k.pk)?'out':/\|chk\|/.test(k.pk)?'chk':'';
+  const why=r=>r.st==='chkIn'?'<span style="color:#b45309">진행 O · 처방 없음/D/C — 지금 셈</span>':r.st==='chkOut'?'<span style="color:#dc2626">처방 O · 진행 없음 — 지금 안 셈</span>':'';
   const act=r=>{const j=L0.indexOf(r),a=(x,l,c)=>'<button class="btn sm'+(c?' '+c:'')+'" type="button" style="margin:0" onclick="dsAdj(\''+x+'\',\''+esc(k.pk)+'\','+j+')">'+l+'</button>';   // 직접 넣고 빼기 (2026-11-23)
-    if(!r.key)return '';if(kind==='dc')return a('inn','넣기','primary');if(kind==='out')return a('back','되돌리기');if(r.mid)return '<span class="hint">직접 추가</span> '+a('del','삭제','ghost-red');return (r.inn?'<span class="hint">직접 넣음</span> '+a('unin','되돌리기'):'')+a('out','빼기','ghost-red');};
+    if(!r.key)return '';if(kind==='chk')return why(r)+' '+a('inn','넣기','primary')+' '+a('out','빼기','ghost-red');if(kind==='dc')return a('inn','넣기','primary');if(kind==='out')return a('back','되돌리기');if(r.mid)return '<span class="hint">직접 추가</span> '+a('del','삭제','ghost-red');return (r.inn?'<span class="hint">직접 넣음</span> '+a('unin','되돌리기'):'')+a('out','빼기','ghost-red');};
   const rows=L.map((r,j)=>`<tr><td class="hint">${j+1}</td><td>${esc(r.date||'')}</td><td><b>${esc(r.name||'')}</b></td><td>${esc(r.mrn||'')}</td>${isProc?`<td class="hint">${esc(r.seen||'')}</td><td class="hint">${esc(/미지정/.test(r.staff||'')?'':r.staff||'')}</td>`:''}<td style="text-align:right;white-space:nowrap">${act(r)}</td></tr>`).join('');
-  ov.innerHTML=`<div class="modal" style="width:620px"><h3>${esc(k.title)} <span class="hint" style="font-size:13px">${L.length}건 · 환자 ${uniq}명 · ${esc(statRangeLabel())}</span></h3>
+  ov.innerHTML=`<div class="modal" style="width:${kind==='chk'?820:620}px;max-width:96vw"><h3>${esc(k.title)} <span class="hint" style="font-size:13px">${L.length}건 · 환자 ${uniq}명 · ${esc(statRangeLabel())}</span></h3>
     <div class="body" style="max-height:65vh;overflow:auto"><table class="ds-pt"><thead><tr><th></th><th>날짜</th><th>이름</th><th>차트번호</th>${isProc?'<th>진료 원장님</th><th>담당 직원</th>':''}<th></th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="hint">기록이 없습니다.</td></tr>'}</tbody></table></div>
     <div class="foot"><button class="btn" onclick="dsPatCsv(${i})"><i data-lucide="download"></i> 엑셀</button><button class="btn primary" onclick="document.getElementById('dsPatOv').remove()">닫기</button></div></div>`;
   try{lucide.createIcons();}catch(e){}}
