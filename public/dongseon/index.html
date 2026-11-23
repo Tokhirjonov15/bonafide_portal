@@ -8426,10 +8426,10 @@ function clockHM(iso){const d=new Date(iso);if(isNaN(d))return"";return String(d
 function procsOfVisit(v){const set=[];(v.rooms||[]).forEach(r=>{(r.proc||"").split(",").forEach(x=>{x=x.trim();if(x&&!set.includes(x))set.push(x);});});return set.join(", ");}
 function procsOfLive(p){const set=[];(p.visits||[]).forEach(r=>{(r.proc||"").split(",").forEach(x=>{x=x.trim();if(x&&!set.includes(x))set.push(x);});});const pr=p.proc||{};Object.keys(pr).forEach(room=>{(Array.isArray(pr[room])?pr[room]:[pr[room]]).forEach(x=>{x=(x||"").trim();if(x&&!set.includes(x))set.push(x);});});return set.join(", ");}
 function consultsSummary(cs){if(!cs)return"";const out=[];Object.keys(cs).forEach(room=>{const c=cs[room];if(c&&(c.result||c.reason))out.push(esc(room)+": "+esc(c.result||c.reason));});return out.join(" / ");}
-function visitToRow(v){return {done:true,vid:v.id,seq:v.seq||0,name:v.name||"",mrn:v.mrn||"",birth:v.birth||"",sex:v.sex||"",doctor:v.doctor||"",
+function visitToRow(v){return {done:true,vid:v.id,dcs:Object.values(v.rxDc||{}).filter(Boolean).map(d=>d.nam||d.cod||''),seq:v.seq||0,name:v.name||"",mrn:v.mrn||"",birth:v.birth||"",sex:v.sex||"",doctor:v.doctor||"",
   roomsArr:(v.routeFull||[]),route:(v.routeFull||[]).join(" › "),procs:procsOfVisit(v),consults:consultsSummary(v.consults),totalMs:v.totalMs||0,
   recv:v.receiveAt||clockHM(v.arrivedAt),doneTs:new Date(v.dischargedAt).getTime()||0,doneLabel:clockHM(v.dischargedAt)+(v.autoClosed?' 자동':'')};}
-function liveToRow(p){const now=Date.now();return {done:false,vid:null,seq:p.seq||0,name:p.name||"",mrn:p.mrn||"",birth:p.birth||"",sex:p.sex||"",doctor:p.doctor||"",
+function liveToRow(p){const now=Date.now();return {done:false,vid:null,dcs:Object.values(p.rxDc||{}).filter(Boolean).map(d=>d.nam||d.cod||''),seq:p.seq||0,name:p.name||"",mrn:p.mrn||"",birth:p.birth||"",sex:p.sex||"",doctor:p.doctor||"",
   roomsArr:(p.route||[]),route:(p.route||[]).join(" › "),procs:procsOfLive(p),consults:consultsSummary(p.consults),totalMs:totalMsNow(p),
   recv:p.receiveAt||clockHM(p.arrivedAt),doneTs:now+1e12,doneLabel:"",status:p.out?'외출':(p.status||'대기')};}
 function buildVisitRows(ymd){
@@ -8517,7 +8517,7 @@ function renderDischargedBoard(board,q){
         <td class="wrap">${bi||'-'}</td>
         <td>${esc(r.doctor)||'-'}</td>
         <td class="wrap">${esc(r.route)||'-'}</td>
-        <td class="wrap">${esc(r.procs)||'-'}</td>
+        <td class="wrap">${esc(r.procs)||'-'}${(r.dcs&&r.dcs.length)?`<div style="color:#dc2626;font-weight:800;margin-top:2px" title="${esc(r.dcs.join(' / '))}">⛔ D/C ${r.dcs.length}건: ${esc(r.dcs.slice(0,3).join(', '))}${r.dcs.length>3?' …':''}</div>`:''}</td>
         <td class="wrap">${r.consults||'-'}</td>
         <td>${esc(r.recv)||'-'}</td>
         <td>${fmtClock(r.totalMs||0)}</td>
