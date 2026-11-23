@@ -13685,7 +13685,20 @@ function rxAutoDc(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_
         res.back.forEach(x=>{const label=x.nam||x.cod;labels.push(label);rooms.push(...rxItemRooms(x));try{audit('처방 D/C 취소(비트 처방 다시 → 자동)',(q.name||'')+' '+label);}catch(e){}});
         roomNotify(q,'__all__','dcundo',labels.length===1?{item:labels[0],by:'비트 처방 다시',rooms:uniq(rooms).join(', ')}:{list:labels,by:'비트 처방 다시',rooms:uniq(rooms).join(', ')});}
       try{if(typeof editId!=='undefined'&&editId===q.id)fillRxBox(q);}catch(e){}render();});});}
-setInterval(()=>{try{rxAutoDc();}catch(e){console.warn('rxAutoDc',e);}},15000);
+setInterval(()=>{try{rxAutoDc();}catch(e){console.warn('rxAutoDc',e);}try{rxAutoDcFixVisits();}catch(e){console.warn('rxAutoDcFixVisits',e);}},15000);
+/* 이미 내보낸 오늘 내원(내원목록)의 잘못된 자동 D/C 도 바로잡는다 (2026-11-23 최도겸 33891 — 내보낸 뒤라 카드에서 풀 수 없었다).
+   자동 D/C(auto) 한 처방이 같은 환자의 오늘 비트 접수 어디든 있으면 → 내원 기록의 D/C 를 지우고, 술기 통계용 rxRooms 에 그 방을 넣는다 */
+function rxAutoDcFixVisits(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_ROLE!=='staff'||!cloud.visitsCol)return;
+  const today=localYMD(new Date());
+  (VISITS||[]).forEach(v=>{if(!v||!v.id||!v.rxDc||localYMD(new Date(v.dischargedAt||0))!==today)return;const mk=rxMrnKey(v.mrn);if(!mk)return;
+    const cods=new Set();(BIT_RX_DOCS||[]).forEach(d=>{if(d&&rxMrnKey(d.mrn)===mk&&Array.isArray(d.items))d.items.forEach(it=>{const c=String((it&&it.cod)||'').trim().toLowerCase();if(c)cods.add(c);});});
+    if(!cods.size)return;
+    const fix=Object.keys(v.rxDc).filter(k=>{const x=v.rxDc[k];return x&&x.auto&&cods.has(String(x.cod||'').trim().toLowerCase());});if(!fix.length)return;
+    const R=Object.assign({},v.rxDc),rooms=new Set(Array.isArray(v.rxRooms)?v.rxRooms:[]),labels=[];
+    fix.forEach(k=>{const x=R[k];labels.push(x.nam||x.cod);try{rxItemRooms(x).forEach(r=>rooms.add(r));}catch(e){}delete R[k];});
+    v.rxDc=R;if(Array.isArray(v.rxRooms))v.rxRooms=[...rooms];
+    const upd={rxDc:R,syncAt:new Date().toISOString()};if(Array.isArray(v.rxRooms))upd.rxRooms=v.rxRooms;
+    cloud.visitsCol.doc(v.id).update(upd).then(()=>{try{audit('처방 D/C 취소(내보낸 내원 — 비트에 처방 있음 → 자동)',(v.name||'')+(v.mrn?' ('+v.mrn+')':'')+' '+labels.join(', '));}catch(e){}}).catch(e=>console.warn('fix visit dc',e&&e.code));});}
 /* 환자 정보 창의 치료 회차 블록 — 회차를 직접 고치고, 누가 고쳤는지 함께 보여 준다 (2026-09-23) */
 function treatGroupsOf(){const seen=[],out=[];
   TREAT_COUNT_ROOMS.forEach(r=>{const k=treatKey(r);if(seen.includes(k))return;seen.push(k);out.push({key:k,rooms:treatRoomsFor(r),main:r});});
