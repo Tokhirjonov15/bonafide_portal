@@ -59,7 +59,7 @@ $script:Mtx = New-Object System.Threading.Mutex($false, "Local\BonafideBitDbAgen
 $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }
 if (-not $own) { exit }
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
-$VER = 'db3.1'   # 3.1: 급여 도수 '4회부터 가능'(2026-11-21 원무 기준) — 오늘 전까지 기본물리치료 3일 이상이면 오늘이 4번째라 가능. 공단부담금 유무(100/100)·주사 동시 진행은 상관없음. 3.0: 3.0: 급여 도수는 전송 담당이 아닌 PC 도 계산(담당 PC 가 옛 버전이어도 보이게). 2.9: 급여 도수 선행조건(2026-11-20 요청) — 오늘 온 환자(일반·자보 빼고)마다 오늘 접수 보험과 같은 보험 내원만 세어 첫 기본물리치료부터 14일 이상 + 기본물리치료 4일 이상인지 → bitRx/_gd. 부위는 보지 않는다. 2.8: 2.8: 자동 업데이트 — 30분마다 사이트의 agent.json(ver·sha256)을 보고 새 버전이면 받아서 확인(sha256·문법·버전 표시) 뒤 스스로 바꾸고 다시 시작한다. 접수 PC 를 돌며 재설치하지 않게 (2026-11-15). 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
+$VER = 'db3.2'   # 3.2: 날짜별 접수 인원·초/재진(OcmDgsNfs)을 비트 DB 에서 직접 세어 bitRx/_nfs_YYYY-MM — 동선관리 접수 구분 통계 (2026-11-24: 접수창 화면값에 의존하다 11/9·11~14 가 빠짐). 3.1: 급여 도수 '4회부터 가능'(2026-11-21 원무 기준) — 오늘 전까지 기본물리치료 3일 이상이면 오늘이 4번째라 가능. 공단부담금 유무(100/100)·주사 동시 진행은 상관없음. 3.0: 3.0: 급여 도수는 전송 담당이 아닌 PC 도 계산(담당 PC 가 옛 버전이어도 보이게). 2.9: 급여 도수 선행조건(2026-11-20 요청) — 오늘 온 환자(일반·자보 빼고)마다 오늘 접수 보험과 같은 보험 내원만 세어 첫 기본물리치료부터 14일 이상 + 기본물리치료 4일 이상인지 → bitRx/_gd. 부위는 보지 않는다. 2.8: 2.8: 자동 업데이트 — 30분마다 사이트의 agent.json(ver·sha256)을 보고 새 버전이면 받아서 확인(sha256·문법·버전 표시) 뒤 스스로 바꾸고 다시 시작한다. 접수 PC 를 돌며 재설치하지 않게 (2026-11-15). 2.7: 처방 문서에 OcmFreRsn(fre) — 의료급여 1·2종 본인부담 정액: Y 면 1,000원, N 이고 AL(원내 주사·약)이 있으면 1,500원, 아니면 1,000원 — 동선관리 예상 본인부담에 쓴다(2026-11-14 강원종 33482). 2.6: 비트가 RTF 로 저장한 차팅을 글자로 바꿔 슬립·동의서에 (2026-11-11 33782). 2.5: 비트에 저장된 원장님 차팅(EmrInf)으로 슬립 문서(bitNote)를 채우고 고친다 — 진료실 PC 감시가 못 보낸 환자도 슬립이 뜨고, 다른 PC 에서 고쳐 저장한 기록도 슬립에 반영 (2026-11-05 강원종 33482).
 # 2.4: 처방 문서에 그 접수의 보험(insNm = OcmInsCod 이름) — 예상 본인부담이 다른 접수·보드 카드의 보험으로 계산되던 것(2026-11-03 정혁 18945 '일반'으로 15,400원 차이).
 # 2.3: 2.3: 처방 줄마다 비트 구분(itm = OdrItmCod 03…=@투약, sot = OdrSotCod MED·INJ·PT…) — 동의서 처방내역이 먹는 약을 이름 대신 비트 구분으로 가린다 (2026-11-02, bit_db_find_kind 차트 30277).
 # 2.2: 자보 — 오늘 온 자보 이력 환자 전원의 상태(all: 첫 내원·경과일·기본물리치료 일수·조건·오늘 자보 접수 여부)를 올려 동선관리가 언제든 보여 줌, 오늘 다른 보험으로 접수돼도 포함, 두 개 뜨지 않게 (2026-11-02). 2.1: 자동차보험 급여 도수 가능 환자(자보 첫 내원 14일 이상 + 기본물리치료 4일 이상, 조건 만족 뒤 3번 내원) → bitRx/_jabo — 진료실 캡처 바가 팝업 (2026-10-30). 2.0: 총 본인부담(OrpInf.OrpTotOwn)을 처방 문서 own 으로 — 동의서·처방내역의 환자부담금 (2026-10-28).1.9: 서류 발급 태블릿의 내원 날짜 요청(bitIntake/ask_…)에 비트 접수 날짜로 답함. 한 접수번호에 보험이 다른 행이 둘 이상이면(일반 + 건강보험) 두 번째 보험도 따로 보낸다 — 예전엔 같은 접수번호 행을 조인 중복으로 보고 버려 카드가 하나만 생겼다 (2026-10-26).1.8: 동료 에이전트를 10분마다 망에서 다시 찾음(접수 PC IP 가 바뀌어도 전송 담당이 하나만, 2026-10-25). 1.7: 빠진 접수 보충 — 재시작(시작 스냅샷)·대기 PC 시절에 '보낸 것으로' 넘긴 접수를 담당이 되면 Firestore 에 실제로 있는지 한 번 확인하고, 없으면 보낸다 (2026-10-25: 권루아 접수가 동선관리에 안 뜸).1.6: 처방 줄마다 급여구분(ins) — 계산 전(0원)에도 동선관리에 급/비 (2026-10-14).1.5: 처방을 모두 지웠거나 접수를 취소한 접수는 처방·금액을 비워 보낸다(동선관리에 옛 처방이 남던 것, 2026-10-14).1.4: 한 달 처방 합계 → bitRx/_month_YYYY-MM (재고 통계표 '처방량', 2026-10-04). 1.3: 처방 문서에 초/재진(nfs = OcmDgsNfs) (2026-10-01). 1.2: 처방 금액(pay: 단가·금액·급여구분) — 비급여 동의서 금액 자동 채우기 (2026-10-01)
@@ -971,6 +971,47 @@ function PollGd() {
   Log "급여 도수: 오늘 $($all.Count)명 중 조건 만족 $nOk"
 }
 
+# ── 날짜별 접수 인원·초/재진 → bitRx/_nfs_YYYY-MM (db3.2, 2026-11-24) ──
+#  접수 계열 상태($ACTIVE)만, 하루 한 환자 1건(접수가 둘이면 초진 > 90일초진 > 재진 > 그 밖 > 물리치료내원 > 산정안함 > 빈칸). 가짜 차트(Res_)는 뺀다.
+#  이번 달은 10분마다, 2026-09 부터 지난 달들은 시작할 때와 6시간마다. 담당이 아니어도 센다(같은 값이라 겹쳐도 무해). 'date' 칸은 두지 않는다
+$NFS_QUERY = @"
+SELECT q.d AS d, q.r AS r, COUNT(*) AS n
+FROM (SELECT LEFT(m.OcmAcpDtm, 8) AS d, RTRIM(m.OcmChtNum) AS c,
+        MIN(CASE ISNULL(RTRIM(CAST(m.OcmDgsNfs AS varchar(10))), '') WHEN '1' THEN 'a1' WHEN '3' THEN 'b3' WHEN '4' THEN 'c4' WHEN '7' THEN 'e7' WHEN '0' THEN 'f0' WHEN '' THEN 'g'
+            ELSE 'd' + RTRIM(CAST(m.OcmDgsNfs AS varchar(10))) END) AS r
+      FROM OcmInf m WITH (NOLOCK)
+      WHERE m.OcmAcpDtm >= '{0}' AND m.OcmAcpDtm < '{1}' AND m.OcmComStt IN ({2}) AND m.OcmChtNum NOT LIKE 'Res[_]%'
+      GROUP BY LEFT(m.OcmAcpDtm, 8), RTRIM(m.OcmChtNum)) q
+GROUP BY q.d, q.r
+"@
+$script:NfsAt = [DateTime]::MinValue; $script:NfsAllAt = [DateTime]::MinValue
+function NfsDays($rows) {   # 행(d, r, n) → @{ 'yyyy-MM-dd' = @{ '코드' = 건수 } }, 빈 코드는 'x'
+  $days = @{}
+  foreach ($r in $rows) { $d = DateOf ([string]$r.d).Trim(); if (-not $d) { continue }
+    $k = ([string]$r.r).Trim(); $k = if ($k.Length -gt 1) { $k.Substring(1) } else { 'x' }
+    if (-not $days.ContainsKey($d)) { $days[$d] = @{} }; $days[$d][$k] = [int]$r.n }
+  return $days
+}
+function PollNfs() {
+  $now = Get-Date
+  if (($now - $script:NfsAt).TotalMinutes -lt 10) { return }
+  $script:NfsAt = $now
+  $cur = [DateTime]::ParseExact($now.ToString('yyyyMM') + '01', 'yyyyMMdd', $null); $all = (($now - $script:NfsAllAt).TotalHours -ge 6)
+  $m = if ($all) { [DateTime]::ParseExact('20260901', 'yyyyMMdd', $null) } else { $cur }
+  $inList = ($ACTIVE | ForEach-Object { "'$_'" }) -join ','
+  while ($m -le $cur) {
+    $rows = SqlRows ($NFS_QUERY -f $m.ToString('yyyyMMdd'), $m.AddMonths(1).ToString('yyyyMMdd'), $inList) 30
+    $days = NfsDays $rows.Rows
+    if ($days.Count) {
+      if ($DryRun) { Log "접수 구분(시험) $($m.ToString('yyyy-MM')): $($days.Count)일" }
+      else { FsPatch "bitRx/_nfs_$($m.ToString('yyyy-MM'))" @{ ym = $m.ToString('yyyy-MM'); at = (NowIso); pc = $Pc; days = $days } }
+      if ($all) { Log "접수 구분 $($m.ToString('yyyy-MM')): $($days.Count)일" }
+    }
+    $m = $m.AddMonths(1)
+  }
+  if ($all) { $script:NfsAllAt = $now }
+}
+
 # ── 메인 ──
 Log "비트 DB 감시 $VER 시작: PC=$Pc  SQL=$SqlServer/$Database ($SqlUser)  주기 ${PollSec}s  우선순위 $Priority  동료 $(if ($Peers.Count) { $Peers -join ',' } else { '없음' })  상태포트 $(if ($health) { $HealthPort } else { '없음' })  $(if ($DryRun) { '[DRY RUN — 전송 없음]' })$(if ($SendExistingOnStart) { '[시작 시 기존 접수 전송]' })"
 AssertReadonlySql ($QUERY -f '20000101'); Log "SQL 읽기 전용 검사 통과"
@@ -992,6 +1033,7 @@ while ($true) {
     try { PollRxMonth } catch { Log "한 달 처방 합계 오류: $($_.Exception.Message)"; $script:RxMonthAt = Get-Date }
     try { PollJabo } catch { Log "자보 도수 조회 오류: $($_.Exception.Message)" }   # db2.1
     try { PollGd } catch { Log "급여 도수 조회 오류: $($_.Exception.Message)"; $script:GdAt = Get-Date }   # db2.9
+    try { PollNfs } catch { Log "접수 구분 조회 오류: $($_.Exception.Message)" }   # db3.2 — 10분 뒤 다시
     try { AnswerAsks } catch { Log "내원 날짜 요청 확인 오류: $($_.Exception.Message)" }   # 서류 발급 태블릿 (db1.9)
     if ($first) { Log "시작 스냅샷: 오늘 행 $n 건, 접수 계열 $($st.sent.Count)건$(if ($SendExistingOnStart) { ' 전송' } else { " (보내지 않음, 최근 ${RecentMin}분 접수 $($script:SnapRecent)건은 전송)" })"; $first = $false; $script:SnapRecent = 0 }
     SaveState $st

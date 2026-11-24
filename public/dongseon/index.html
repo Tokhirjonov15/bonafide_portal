@@ -6220,6 +6220,8 @@ async function runSelfTest(){
      {const _j=JABO;JABO={day:'x',all:{'501':{first:'2026-10-10',days:23,pt:4,ok:true,n:1,tj:1},'502':{first:'2026-10-25',days:8,pt:2,ok:false,n:0,tj:0}},pts:{'503':{n:2,first:'2026-10-01',pt:5,days:30}}};   // 자보 급여 도수 표시 (2026-11-02)
       const a=jaboOf({mrn:'00501'}),b=jaboOf({mrn:'502'}),c=jaboOf({mrn:'503'}),d=jaboOf({mrn:'999'});const tb=jaboText(b),tg=jaboTagHtml({mrn:'502'});JABO=_j;
       ok('자보: 앞 0 무시, 조건 만족·아직(남은 일수·물리치료 횟수)·오늘 자보 아님 경고, 옛 에이전트(pts)도 표시', a&&a.ok&&/급여 도수 가능/.test(jaboText(a))&&b&&!b.ok&&/6일 더/.test(tb)&&/기본물리치료 2회 더/.test(tb)&&/자보가 아님/.test(tg)&&c&&c.ok&&c.tj===1&&d===null,tb);}
+     {const D={'2026-11-08':{src:'saved',m:{'재진':100}},'2026-11-10':{src:'saved',m:{'재진':90}}};chojaeBitDays(D,{at:'2026-11-10T14:00:00+09:00',days:{'2026-11-08':{'1':2,'4':90},'2026-11-09':{'4':5,x:1},'2026-11-10':{'4':50},'2026-10-31':{'4':1}}},'2026-11-01','2026-11-30','2026-11-24');
+      ok('접수 구분: 비트 DB 값이 정답, 하루가 끝나기 전에 센 적은 값은 안 씀, 빠진 날 채움, 기간 밖 제외',chojaeTot(D['2026-11-08'].m)===92&&D['2026-11-08'].src==='bit'&&chojaeTot(D['2026-11-09'].m)===6&&D['2026-11-10'].src==='saved'&&!D['2026-10-31'],JSON.stringify(D));}
      {const c=chojaeFromRx([{mrn:'1',nfs:'4'},{mrn:'01',nfs:'1'},{mrn:'2',nfs:'7'},{mrn:'3',nfs:'3'},{mrn:'4',nfs:'4',cleared:true},{mrn:'5',nfs:''}]);
       ok('접수 구분: 빠진 날은 처방 초/재진으로 복구(한 환자 1건·초진 우선·취소 제외), 적은 수로 저장값을 덮지 않음',JSON.stringify(c)===JSON.stringify({'신환':1,'물리치료내원':1,'90일초진':1,'(미기재)':1})&&!chojaeBetter({'재진':3},{c:{'재진':9}})&&chojaeBetter({'재진':10},{c:{'재진':9}})&&chojaeBetter({'재진':1},null)&&!chojaeBetter({},null),JSON.stringify(c));}
      {const _g=GD;GD={day:'x',all:{'601':{'31':{ins:'국민건강보험',first:'2026-11-01',days:19,pt:4,ok:true},'41':{ins:'산재-공단분',first:'',days:0,pt:0,ok:false}},'602':{'31':{ins:'국민건강보험',first:'2026-11-10',days:10,pt:2,ok:false}}}};   // 급여 도수 선행조건 (2026-11-20)
@@ -11949,6 +11951,10 @@ function chojaeFromRx(docs){const by={};   // 하루 한 환자 1건 — 접수�
     const r=x=>{const i=pri.indexOf(x);return i<0?4.5:i;};if(!(m in by)||r(n)<r(by[m]))by[m]=n;});
   const c={};Object.values(by).forEach(n=>{const k=CHOJAE_NFS[n]||'(미기재)';c[k]=(c[k]||0)+1;});return c;}
 function chojaeFromLookup(docs){const live={};(docs||[]).forEach(v=>{const d=String((v&&v.date)||'');if(!d)return;const raw=String(v.chojae||'').trim()||'(미기재)';(live[d]=live[d]||{});live[d][raw]=(live[d][raw]||0)+1;});return live;}
+function chojaeBitDays(days,v,from,to,today){const atD=v.at?localYMD(new Date(v.at)):'';
+  Object.entries(v.days||{}).forEach(([d,c])=>{if(d<from||d>to)return;const m={};Object.entries(c||{}).forEach(([k,n])=>{const l=k==='x'?'(미기재)':(CHOJAE_NFS[k]||'기타코드 '+k);m[l]=(m[l]||0)+(Number(n)||0);});
+    if(!chojaeTot(m))return;const old=days[d]&&days[d].src!=='none'?chojaeTot(days[d].m):0;
+    if(!(atD>d||d===today)&&chojaeTot(m)<old)return;days[d]={src:'bit',m,old};});}
 /* 저장된 값보다 건수가 많을 때만 바꾼다. 처방으로 복구한 값(rx)은 접수창 값이 있으면 접수창 값으로 */
 function chojaeBetter(live,old){if(!live||!chojaeTot(live))return false;if(!old)return true;return chojaeTot(live)>chojaeTot(old.c);}
 let CHOJAE_ARC_AT=0;
@@ -11998,6 +12004,12 @@ async function loadChojae(force){
       Object.assign(live,chojaeFromLookup(snap.docs.map(x=>x.data())));
       Object.keys(live).forEach(d=>{if(d>=localYMD(new Date())||chojaeBetter(live[d],saved[d]))days[d]={src:'live',m:live[d]};});   // 일부만 남은 원본이 저장값을 가리지 않게
     }
+    /* 비트 DB 에서 직접 센 값 (에이전트 db3.2, bitRx/_nfs_YYYY-MM) — 있으면 이것이 정답. 그날이 끝나기 전에 센 지난 날 값은(그 뒤 PC 꺼짐) 다른 값보다 적으면 쓰지 않는다 */
+    if(liveFrom<=to&&cloud.rxCol){
+      const today=localYMD(new Date()),end=to<today?to:today,yms=[];
+      for(let x=new Date(liveFrom.slice(0,7)+'-01T12:00:00');localYMD(x).slice(0,7)<=end.slice(0,7)&&yms.length<60;x.setMonth(x.getMonth()+1))yms.push(localYMD(x).slice(0,7));
+      for(const ym of yms){try{const ds=await cloud.rxCol.doc('_nfs_'+ym).get();if(!ds.exists)continue;chojaeBitDays(days,ds.data()||{},liveFrom,end,today);}catch(e){console.warn('chojae nfs',ym,e);}}
+    }
     /* ④ 빠진 날 복구 (2026-11-24) — 비트 처방 문서의 초/재진. 복구한 값은 저장해 다음부터 다시 읽지 않는다 */
     if(liveFrom<=to&&cloud.rxCol){
       const today=localYMD(new Date());const x=new Date(liveFrom+'T12:00:00');
@@ -12028,7 +12040,7 @@ function chojaeRows(){
   const c=CHOJAE_CACHE[chojaeKey()];if(!c)return null;
   const etcSet={};
   const rows=Object.keys(c.days).sort().reverse().map(d=>{
-    const m=c.days[d].m||{};const row={d,src:c.days[d].src||'',tot:0,etc:0,etcTip:[]};
+    const m=c.days[d].m||{};const row={d,src:c.days[d].src||'',old:c.days[d].old||0,tot:0,etc:0,etcTip:[]};
     CHOJAE_MAIN.forEach(k=>{row[k]=m[k]||0;row.tot+=row[k];});
     Object.keys(m).forEach(k=>{if(!CHOJAE_MAIN.includes(k)){row.etc+=m[k];row.tot+=m[k];row.etcTip.push(k+' '+m[k]);etcSet[k]=(etcSet[k]||0)+m[k];}});
     return row;});
@@ -12051,8 +12063,9 @@ function chojaeHtml(){
   data.rows.forEach(r=>{const dt=new Date(r.d);const wd=isNaN(dt)?'':W[dt.getDay()];
     if(r.src==='none'){html+=`<tr><td>${r.d} (${wd})</td><td colspan="${CHOJAE_MAIN.length+2}" style="color:var(--red);font-weight:700">⚠ 자료 없음 (합계에 안 들어감)</td></tr>`;return;}
     html+=`<tr><td>${r.d} (${wd})${r.src==='rx'?' <span class="hint" title="접수창 기록이 남지 않아 비트 처방 기록의 초/재진으로 복구한 값 — 처방 없이 간 접수는 빠질 수 있음">◆</span>':''}${r.src==='db'?' <span class="hint" title="비트 DB에서 계산한 값 — 접수창 표시와 조금 다를 수 있음">▲</span>':''}</td>${CHOJAE_MAIN.map(k=>`<td>${r[k]||''}</td>`).join('')}
-      <td ${r.etcTip.length?`title="${esc(r.etcTip.join(', '))}"`:''}>${r.etc||''}</td><td><b>${r.tot}</b></td></tr>`;});
+      <td ${r.etcTip.length?`title="${esc(r.etcTip.join(', '))}"`:''}>${r.etc||''}</td><td${r.src==='bit'&&r.old&&r.old!==r.tot?` title="예전 방식(접수창 화면값·처방) 합계 ${r.old}"`:''}><b>${r.tot}</b>${r.src==='bit'?' <span class="hint">✓</span>':''}</td></tr>`;});
   html+=`</tbody></table></div>`;
+  if(data.rows.some(r=>r.src==='bit'))html+=`<div class="hint" style="margin-top:6px">✓ 비트 DB 에서 직접 센 값 — 접수취소·예약만 한 환자는 빼고 하루 한 환자 1건 (예전 값과 다르면 합계에 마우스를 올리면 예전 합계)</div>`;
   if(data.rows.some(r=>r.src==='db'))html+=`<div class="hint" style="margin-top:6px">▲ ${CHOJAE_LIVE_FROM} 이전은 비트 DB에서 계산한 값입니다 — 같은 차트번호의 직전 내원과의 간격으로 신환/90일초진/재진을 나눴고, 접수창의 세부 구분(물리치료내원 등)은 없습니다.</div>`;
   if(data.rows.some(r=>r.src==='rx'))html+=`<div class="hint" style="margin-top:6px">◆ 접수창 기록이 남지 않은 날 — 비트 처방 기록의 초/재진(초진=신환)으로 복구했습니다. 처방 없이 간 접수는 빠져 조금 적을 수 있습니다.</div>`;
   const etc=Object.entries(data.etcSet).sort((a,b)=>b[1]-a[1]);
