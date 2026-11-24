@@ -122,11 +122,19 @@ OK "vazifa ro'yxatdan o'tdi va ishga tushdi"
 STEP "5. Lokal tekshiruv"
 $H = @{ 'x-files-key' = $KEY }
 $up = $false
-for ($i = 0; $i -lt 15 -and -not $up; $i++) { Start-Sleep 1; try { $h = Invoke-RestMethod "http://127.0.0.1:$PORT/health" -Headers $H -TimeoutSec 3; $up = $true } catch {} }
-if (-not $up) { BAD "fayl server javob bermadi (log: $ROOT\_logs)" }
+for ($i = 0; $i -lt 45 -and -not $up; $i++) { Start-Sleep 1; try { $hr = Invoke-RestMethod "http://127.0.0.1:$PORT/health" -Headers $H -TimeoutSec 3; $up = $true } catch { $lastErr = $_.Exception.Message } }
+if (-not $up) {
+  BAD "fayl server javob bermadi (log: $ROOT\_logs)"
+  INFO ("oxirgi xato: " + $lastErr)
+  try { $ti = Get-ScheduledTaskInfo -TaskName 'DongseonFiles'; INFO ("vazifa: holat=" + (Get-ScheduledTask -TaskName 'DongseonFiles').State + " natija=0x" + ('{0:X}' -f $ti.LastTaskResult)) } catch {}
+  $lis = Get-NetTCPConnection -LocalPort $PORT -State Listen -ErrorAction SilentlyContinue; INFO ("port $PORT tinglanyaptimi: " + [bool]$lis)
+  $lf = Get-ChildItem "$ROOT\_logs" -Filter '*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime | Select-Object -Last 1
+  if ($lf) { INFO "log oxiri:"; Get-Content $lf.FullName -Tail 8 | ForEach-Object { INFO "  $_" } } else { INFO "log fayl yo'q (server umuman ishga tushmagan)" }
+  $ef = Join-Path $SRV 'last_error.txt'; if (Test-Path $ef) { INFO 'ishga tushish xatosi:'; Get-Content $ef -Tail 3 | ForEach-Object { INFO "  $_" } }
+}
 else {
-  OK ("server ishlayapti: {0}, bo'sh {1} GB, yozish {2}" -f $h.ver, $h.freeGB, $(if ($h.canWrite) { 'mumkin' } else { 'TO`XTATILGAN (disk to`la)' }))
-  if (-not $h.canWrite) { BAD "diskda bo'sh joy kam (kerak > $($h.needGB) GB)" }
+  OK ("server ishlayapti: {0}, bo'sh {1} GB, yozish {2}" -f $hr.ver, $hr.freeGB, $(if ($hr.canWrite) { 'mumkin' } else { 'TO`XTATILGAN (disk to`la)' }))
+  if (-not $hr.canWrite) { BAD "diskda bo'sh joy kam (kerak > $($hr.needGB) GB)" }
   try {
     $bytes = [byte[]](1..2048 | ForEach-Object { $_ % 251 })
     $tp = "patient_photos/_selftest/t$(Get-Date -Format 'HHmmss').jpg"

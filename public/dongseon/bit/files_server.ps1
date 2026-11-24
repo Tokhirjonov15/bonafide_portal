@@ -20,7 +20,8 @@ param(
   [string]$Prefix = ''                                  # test only (e.g. http://localhost:8787/); default http://+:<Port>/
 )
 $ErrorActionPreference = 'Stop'
-$VER = 'fs1.1'
+trap { try { Add-Content -Path (Join-Path $ConfigDir 'last_error.txt') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' ' + $_.Exception.Message) -Encoding ASCII } catch {}; break }   # startup errors happen before the log folder exists
+$VER = 'fs1.2'
 
 $cfgPath = Join-Path $ConfigDir 'config.json'
 $keyPath = Join-Path $ConfigDir 'files.key'
