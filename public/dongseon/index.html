@@ -11847,7 +11847,7 @@ function renderStats(){
   html+=`<div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
       <span class="hint" style="margin-left:auto">완료 내원 <b>${vis.length}</b>건 · 평균 원내 <b style="color:var(--orange)">${fmtClock(visAvg)}</b></span></div>
     <div class="hint" style="margin:-2px 0 10px">방 종결 ${totalVisits}건 · 환자 ${uniq}명 · 총 <span style="color:var(--t-amber)">대기 ${fmtClock(totalW)}</span>${anyPrep?` · 총 <span style="color:var(--t-sky)">준비 ${fmtClock(totalP)}</span>`:''} · 총 <span style="color:var(--red)">진행 ${fmtClock(totalA)}</span></div>`;
-  if(!rooms.length){html+=`<div class="route-empty">${STATS.length?'해당 날짜에 집계된 기록이 없습니다.':"아직 집계된 기록이 없습니다. 환자를 방에서 '종결' 처리하면 대기·진행 시간이 기록됩니다."}</div>`;body.innerHTML=html;return;}
+  if(!rooms.length){html+=`<div class="route-empty">${STATS.length?'해당 날짜에 집계된 기록이 없습니다.':"아직 집계된 기록이 없습니다. 환자를 방에서 '종결' 처리하면 대기·진행 시간이 기록됩니다."}</div>`;content.innerHTML=html;return;}   // body 에 쓰면 기간·탭 줄까지 지워져 날짜를 되돌릴 수 없었다
   html+=`<div class="hint" style="margin-bottom:4px">방 이름을 누르면 계산에 쓰인 세부 기록이 펼쳐집니다. 배제 = 체류 3시간 초과·5초 미만 기록(계산 제외) · 장기대기 = 대기 30분 초과 · 대기 점유 = 전체 대기 시간 중 이 방 비율</div>`;
   const RS=roomWaitStats(recs).sort((a,b)=>b.mean-a.mean);const maxMean=Math.max(1,...RS.map(o=>o.mean));const maxShare=Math.max(0.01,...RS.map(o=>o.share));
   const cols=10+(anyPrep?1:0);
