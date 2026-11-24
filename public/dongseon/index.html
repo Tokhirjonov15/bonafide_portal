@@ -6207,6 +6207,8 @@ async function runSelfTest(){
      {const L=[{cod:'LA359',amt:'267750',ins:'0'},{cod:'AL801',amt:'220',ins:'0'},{cod:'AA254',amt:'13370',ins:'0'}],L0=L.filter(x=>x.cod!=='AL801');   // 의료급여 정액 = OcmFreRsn + AL (2026-11-14 강원종 33482)
       ok('예상 본인부담액: 의료급여 1·2종은 비트 OcmFreRsn Y 면 1,000원, N + AL(원내 주사·약)이면 1,500원, N 인데 AL 없으면 1,000원, 모르면 예전 규칙',
         ownCalc(L,'보호1종',69,{_fre:'N'})===1500&&ownCalc(L,'보호1종',69,{_fre:'Y'})===1000&&ownCalc(L,'보호2종',50,{_fre:'N'})===1500&&ownCalc(L0,'보호2종',50,{_fre:'N'})===1000&&ownCalc(L,'보호1종',69,{})===1000);}
+     {const L=[{cod:'cryo10',amt:'140000',ins:'2'},{cod:'LA347',amt:'50000',ins:'0'},{cod:'AL801',amt:'220',ins:'0'},{cod:'MM080',amt:'13150',ins:'3'}];
+      ok('예상 본인부담액: 의료급여도 100/100(코드 3)은 정액과 따로 전액 — 문진수 32350 154,150원',ownCalc(L,'보호2종',45,{_fre:'Y'})===154150&&ownCalc(L,'보호2종',45,{})===154150&&ownCalc(L,'보호1종',45,{_fre:'N'})===154650&&ownCalc(L,'보호2종',45,{_fre:'Y',_m3:0})===141000,String(ownCalc(L,'보호2종',45,{_fre:'Y'})));}
      {const L=[{amt:'140000',ins:'2'},{amt:'20000',ins:'0'}],L2=[{amt:'10000',ins:'0'}];   // 예상 본인부담액 (2026-10-28)
       ok('예상 본인부담액: 비급여 100% + 급여 30%(100원 절사), 65세 이상 1.5만 이하 1,500원, 자보 급여 0, 일반 100%',
         ownCalc(L,'국민건강보험',40,{})===146000&&ownCalc(L2,'국민건강보험',70,{})===1500&&ownCalc(L,'자보',40,{})===140000&&ownCalc(L,'일반',40,{})===160000&&ownCalc([],'국민건강보험',40,{})===null
@@ -15451,19 +15453,23 @@ function ownCalc(lines,ins,ageN,rates){const r=ownParts(lines,ins,ageN,rates);re
 /* 계산 내역 — 설치 상태 창의 '예상과 다른 환자' 줄에 그대로 보여 준다 (2026-11-03 신연우 33626: 100원 차이 원인을 보려고) */
 function ownParts(lines,ins,ageN,rates){const n=x=>Number(String(x.amt==null?'':x.amt).replace(/[^\d.-]/g,''))||0;
   if(!lines||!lines.length)return null;const k=String(ins||'').replace(/\s+/g,'');
-  let non=0,g0=0,oth=0;lines.forEach(x=>{const c=String(x.ins==null?'':x.ins).trim(),a=n(x);if(c==='2')non+=a;else if(c===''||c==='0')g0+=a;else oth+=a*(rates&&rates[c]!=null?rates[c]:OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3);});
+  let non=0,g0=0,oth=0,o3=0;lines.forEach(x=>{const c=String(x.ins==null?'':x.ins).trim(),a=n(x);if(c==='3')o3+=a;if(c==='2')non+=a;else if(c===''||c==='0')g0+=a;else oth+=a*(rates&&rates[c]!=null?rates[c]:OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3);});
   /* 급여 총액은 10원 미만을 버린 뒤 부담률을 곱한다 (2026-11-03 신연우 33626·이희영 16093: 56,334.5 → 56,330 ×30% = 16,899 → 16,800, 비트와 100원 차이였다) */
   g0=Math.floor(g0/10+1e-6)*10;
+  /* 100/100(코드 3 — 같은 날 시술과 함께 받는 물리치료 등)은 의료급여도 정액과 따로 전액 본인부담
+     (2026-11-24 문진수 32350 보호2종: 비급여 140,000 + 정액 1,000 + 코드3 13,150 = 비트 154,150, 예상은 141,000 이었다).
+     오늘 비트 금액들과 더 잘 맞을 때만 예전처럼 정액에 포함(rates._m3=0, ownCalibrate) */
+  const m3=rates&&rates._m3===0?0:o3;
   let gOwn;
   if(/일반/.test(k))gOwn=g0;
   else if(/자보|자동차|산재|공상/.test(k))gOwn=0;
   /* 의료급여(보호)는 의원 외래 정액 — 물리치료 등 다른 급여 코드도 정액에 포함(oth 0). 2종 1,500원 (2026-10-28 신주아님으로 확인), 1종 1,000원(아직 확인 전) */
   /* 2026-11-14 강원종 33482(1종 1,500원·예상 1,000원): 1·2종 모두 비트 접수의 OcmFreRsn 이 Y 면 1,000원, N 이고 처방에 AL(외래환자 의약품관리료 — 원내 주사·약)이 있으면 1,500원, N 인데 AL 이 없으면(물리치료·촬영만) 1,000원 (10/1~11/14 의료급여 접수 전체로 확인 · 1종 0원 환자·CT 는 따로 — 예상과 다를 수 있음) — 에이전트 db2.7 이 처방 문서에 fre 로 보낸다.
      fre 가 없으면(옛 에이전트) 예전 규칙 */
-  else if(/보호|의료급여|[12]종/.test(k)&&rates&&(rates._fre==='Y'||rates._fre==='N')){const al=(lines||[]).some(x=>/^AL/i.test(String((x&&x.cod)||'').trim()));gOwn=(g0+oth)>0?(rates._fre==='N'&&al?1500:1000):0;oth=0;}
-  else if(/보호\s*1|의료급여\s*1|1종/.test(k)){gOwn=(g0+oth)>0?1000:0;oth=0;}
+  else if(/보호|의료급여|[12]종/.test(k)&&rates&&(rates._fre==='Y'||rates._fre==='N')){const al=(lines||[]).some(x=>/^AL/i.test(String((x&&x.cod)||'').trim()));gOwn=(g0+oth)>0?(rates._fre==='N'&&al?1500:1000):0;oth=m3;}
+  else if(/보호\s*1|의료급여\s*1|1종/.test(k)){gOwn=(g0+oth)>0?1000:0;oth=m3;}
   /* 2종 정액: 의원 외래 1,000원(2026-11-03 최수비 20462 비트 1,000원). 10-28 신주아님은 1,500원 — 오늘 비트 금액이 온 2종 환자가 있으면 그것에 맞춘다(rates._m2, ownCalibrate) */
-  else if(/보호\s*2|의료급여\s*2|2종/.test(k)){gOwn=(g0+oth)>0?(rates&&rates._m2!=null?rates._m2:1000):0;oth=0;}
+  else if(/보호\s*2|의료급여\s*2|2종/.test(k)){gOwn=(g0+oth)>0?(rates&&rates._m2!=null?rates._m2:1000):0;oth=m3;}
   else if(ageN!=null&&ageN>=65){const tot=g0;gOwn=tot<=15000?(tot>0?1500:0):tot<=20000?tot*0.1:tot<=25000?tot*0.2:tot*0.3;}
   else if(ageN!=null&&ageN<6)gOwn=g0*0.21;
   else gOwn=g0*0.3;
@@ -15498,6 +15504,7 @@ function ownCalibrate(){if(Date.now()-OWN_CAL_AT<600000&&OWN_CAL_STAT)return;OWN
   const score=rt=>cases.reduce((s,c)=>{const e=ownCalc(c.pay,c.ins,c.ageN,rt);return s+(e===c.actual?2:Math.abs(e-c.actual)<=100?1:0);},0);   // 똑같으면 2점, 100원 안이면 1점
   let best={};codes.forEach(c=>{let bv=OWN_RATE_DEF[c]!=null?OWN_RATE_DEF[c]:0.3,bs=score(Object.assign({},best,{[c]:bv}));[0.3,0.5,0.8,1.0].forEach(v=>{/* 확인된 값이 먼저 — 다른 값이 더 잘 맞을 때만 바꾼다 */const t=Object.assign({},best,{[c]:v});const s=score(t);if(s>bs){bs=s;bv=v;}});best[c]=bv;});
   {const s1=score(Object.assign({},best,{_m2:1000})),s2=score(Object.assign({},best,{_m2:1500}));if(s2>s1)best._m2=1500;}   // 2종 정액 1,000/1,500 — 오늘 실제 금액으로 (2026-11-03)
+  {const s1=score(best),s0=score(Object.assign({},best,{_m3:0}));if(s0>s1)best._m3=0;}   // 의료급여 100/100 을 정액에 포함하는 쪽이 오늘 금액과 더 맞으면 (2026-11-24)
   OWN_RATES=best;const diff=c=>Math.abs(ownCalc(c.pay,c.ins,c.ageN,best)-c.actual);
   const same=cases.filter(c=>diff(c)===0).length,ok=cases.filter(c=>diff(c)<=100).length,near=cases.filter(c=>diff(c)<=1000).length;
   const off=cases.filter(c=>diff(c)>0).map(c=>({mrn:c.mrn,actual:c.actual,pt:ownParts(c.pay,c.ins,c.ageN,best),pay:c.pay}));
