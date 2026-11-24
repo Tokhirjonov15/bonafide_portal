@@ -3795,7 +3795,9 @@ async function bitCleanupOld(){
       if(!ns.empty){const b2=cloud.db.batch();ns.docs.forEach(d=>b2.delete(d.ref));await b2.commit();console.log('비트 처방 문서 정리',ns.size);}}
     if(cloud.resvCol){const rs=await cloud.resvCol.where('date','<',limYmd).limit(300).get();   // 비트 진료 예약 하루치 문서도 같은 보관 기간(_summary 는 date 필드가 없어 남는다)
       if(!rs.empty){const b4=cloud.db.batch();rs.docs.forEach(d=>b4.delete(d.ref));await b4.commit();console.log('비트 예약 문서 정리',rs.size);}}
-    if(cloud.lookupCol){const ls=await cloud.lookupCol.where('date','<',limYmd).limit(300).get();   // 조회 기록도 같은 보관 기간
+    /* 접수 구분 요약을 저장한 뒤에만 조회 기록을 지운다 (2026-11-24) — 저장이 안 되면 30일까지 남겨 둔다 */
+    let lkLim=limYmd;try{await chojaeArchive();}catch(e){console.warn('chojaeArchive',e);const l2=new Date();l2.setDate(l2.getDate()-30);lkLim=localYMD(l2);}
+    if(cloud.lookupCol){const ls=await cloud.lookupCol.where('date','<',lkLim).limit(300).get();   // 조회 기록도 같은 보관 기간
       if(!ls.empty){const b3=cloud.db.batch();ls.docs.forEach(d=>b3.delete(d.ref));await b3.commit();console.log('비트 조회 문서 정리',ls.size);}}
   }catch(e){console.warn('bitCleanupOld',e);}
 }
@@ -6218,6 +6220,8 @@ async function runSelfTest(){
      {const _j=JABO;JABO={day:'x',all:{'501':{first:'2026-10-10',days:23,pt:4,ok:true,n:1,tj:1},'502':{first:'2026-10-25',days:8,pt:2,ok:false,n:0,tj:0}},pts:{'503':{n:2,first:'2026-10-01',pt:5,days:30}}};   // 자보 급여 도수 표시 (2026-11-02)
       const a=jaboOf({mrn:'00501'}),b=jaboOf({mrn:'502'}),c=jaboOf({mrn:'503'}),d=jaboOf({mrn:'999'});const tb=jaboText(b),tg=jaboTagHtml({mrn:'502'});JABO=_j;
       ok('자보: 앞 0 무시, 조건 만족·아직(남은 일수·물리치료 횟수)·오늘 자보 아님 경고, 옛 에이전트(pts)도 표시', a&&a.ok&&/급여 도수 가능/.test(jaboText(a))&&b&&!b.ok&&/6일 더/.test(tb)&&/기본물리치료 2회 더/.test(tb)&&/자보가 아님/.test(tg)&&c&&c.ok&&c.tj===1&&d===null,tb);}
+     {const c=chojaeFromRx([{mrn:'1',nfs:'4'},{mrn:'01',nfs:'1'},{mrn:'2',nfs:'7'},{mrn:'3',nfs:'3'},{mrn:'4',nfs:'4',cleared:true},{mrn:'5',nfs:''}]);
+      ok('접수 구분: 빠진 날은 처방 초/재진으로 복구(한 환자 1건·초진 우선·취소 제외), 적은 수로 저장값을 덮지 않음',JSON.stringify(c)===JSON.stringify({'신환':1,'물리치료내원':1,'90일초진':1,'(미기재)':1})&&!chojaeBetter({'재진':3},{c:{'재진':9}})&&chojaeBetter({'재진':10},{c:{'재진':9}})&&chojaeBetter({'재진':1},null)&&!chojaeBetter({},null),JSON.stringify(c));}
      {const _g=GD;GD={day:'x',all:{'601':{'31':{ins:'국민건강보험',first:'2026-11-01',days:19,pt:4,ok:true},'41':{ins:'산재-공단분',first:'',days:0,pt:0,ok:false}},'602':{'31':{ins:'국민건강보험',first:'2026-11-10',days:10,pt:2,ok:false}}}};   // 급여 도수 선행조건 (2026-11-20)
       let a,b,c,d,tb,tg;try{a=gdOf({mrn:'00601',ins:'국민건강보험'});b=gdOf({mrn:'601',ins:'산재-공단분'});c=gdOf({mrn:'602',ins:'일반'});d=gdOf({mrn:'602'});tb=gdText(d);tg=gdTagHtml({mrn:'601',ins:'국민건강보험'});}finally{GD=_g;}
       ok('급여 도수: 카드 보험과 같은 보험 기준(보험이 다르면 따로), 일반 카드는 표시 안 함, 남은 횟수·일수', a&&a.ok&&b&&!b.ok&&c===null&&d&&!d.ok&&/기본물리치료 1회 더/.test(tb)&&/오늘 3번째/.test(tb)&&/4일 더/.test(tb)&&/급여도수 가능/.test(tg),tb);}
@@ -11933,6 +11937,36 @@ let CHOJAE_CACHE={}, chojaeBusy=false;
 const CHOJAE_MAIN=['신환','재진','90일초진','물리치료내원'];   /* 표의 고정 열 — 그 밖의 값은 '기타' */
 function chojaeKey(){return statRangeFrom()+'~'+statRangeTo();}
 function chojaeCol(){return (cloud.active&&cloud.ref)?cloud.ref.collection('bitChojae'):null;}
+const chojaeTot=m=>Object.values(m||{}).reduce((a,b)=>a+(Number(b)||0),0);
+/* 2026-11-24 (11/9·11~14 가 통째로 빠짐): 요약은 누가 이 표를 열어야만 저장됐고, 접수창 원본은 7일 뒤 지워졌다.
+   → ① 직원 화면이 매시간·원본 정리 직전에 지난 날 요약을 스스로 저장(chojaeArchive) ② 저장 확인 전에는 원본을 지우지 않음
+     ③ 이미 빠진 날은 비트 처방 문서(bitRx)의 초/재진(nfs)으로 복구(◆) ④ 그래도 없는 날은 '자료 없음' 줄로 보임
+     ⑤ 원본이 일부만 남은 날(정리 중)의 작은 수로 저장된 값을 덮지 않음 */
+const CHOJAE_NFS={'1':'신환','3':'90일초진','4':'재진','0':'진찰료 산정안함','7':'물리치료내원'};
+function chojaeFromRx(docs){const by={};   // 하루 한 환자 1건 — 접수가 둘이면 초진·90일초진 > 재진 > 물리치료내원 > 산정안함
+  const pri=['1','3','4','7','0',''];
+  (docs||[]).forEach(v=>{if(!v||v.cleared===true)return;const m=rxMrnKey(v.mrn);if(!m)return;const n=String(v.nfs==null?'':v.nfs).trim();
+    const r=x=>{const i=pri.indexOf(x);return i<0?4.5:i;};if(!(m in by)||r(n)<r(by[m]))by[m]=n;});
+  const c={};Object.values(by).forEach(n=>{const k=CHOJAE_NFS[n]||'(미기재)';c[k]=(c[k]||0)+1;});return c;}
+function chojaeFromLookup(docs){const live={};(docs||[]).forEach(v=>{const d=String((v&&v.date)||'');if(!d)return;const raw=String(v.chojae||'').trim()||'(미기재)';(live[d]=live[d]||{});live[d][raw]=(live[d][raw]||0)+1;});return live;}
+/* 저장된 값보다 건수가 많을 때만 바꾼다. 처방으로 복구한 값(rx)은 접수창 값이 있으면 접수창 값으로 */
+function chojaeBetter(live,old){if(!live||!chojaeTot(live))return false;if(!old)return true;return chojaeTot(live)>chojaeTot(old.c);}
+let CHOJAE_ARC_AT=0;
+async function chojaeArchive(){   // 지난 날(원본이 남아 있는 날 전부) 접수 구분 요약 저장. 실패하면 throw — 부른 쪽이 원본을 지우지 않는다
+  const cc=chojaeCol();if(!cc||!currentUser||!cloud.lookupCol)throw new Error('not ready');
+  const today=localYMD(new Date()),f=new Date();f.setDate(f.getDate()-30);const from=localYMD(f);
+  const snap=await cloud.lookupCol.where('date','>=',from).where('date','<',today).get();
+  const live=chojaeFromLookup(snap.docs.map(d=>d.data()));const ds=Object.keys(live);if(!ds.length)return 0;
+  const saved={};(await cc.where('date','>=',from).where('date','<',today).get()).forEach(d=>{const v=d.data()||{};if(v.date)saved[v.date]=v;});
+  let n=0;for(const d of ds){if(!chojaeBetter(live[d],saved[d]))continue;
+    await cc.doc(d).set({date:d,src:'lookup',c:live[d],tot:chojaeTot(live[d]),updatedAt:Date.now(),updatedBy:(currentUser&&currentUser.name)||''});n++;}
+  return n;}
+/* 하루 한 번(화면마다) — 자정을 넘겨 켜 둔 화면도. 새벽·아침에 전날 요약이 저장된다 */
+async function chojaeArchiveDaily(){if(!currentUser||typeof BIT_SUB_ROLE==='undefined'||BIT_SUB_ROLE!=='staff'||!cloud.lookupCol)return;
+  const k='chojaeArc',t=localYMD(new Date());try{if(localStorage.getItem(k)===t)return;}catch(e){}
+  if(Date.now()-CHOJAE_ARC_AT<600000)return;CHOJAE_ARC_AT=Date.now();
+  await chojaeArchive();try{localStorage.setItem(k,t);}catch(e){}}
+setInterval(()=>{chojaeArchiveDaily().catch(e=>console.warn('chojaeArchive',e));},60000);
 async function loadChojae(force){
   const key=chojaeKey(), from=statRangeFrom(), to=statRangeTo();
   const hasToday=to>=localYMD(new Date());
@@ -11961,10 +11995,18 @@ async function loadChojae(force){
     const live={};
     if(liveFrom<=to){
       const snap=await cloud.lookupCol.where('date','>=',liveFrom).where('date','<=',to).get();
-      snap.forEach(doc=>{const v=doc.data()||{};const d=String(v.date||'');if(!d)return;
-        const raw=String(v.chojae||'').trim()||'(미기재)';
-        (live[d]=live[d]||{});live[d][raw]=(live[d][raw]||0)+1;});
-      Object.keys(live).forEach(d=>{days[d]={src:'live',m:live[d]};});
+      Object.assign(live,chojaeFromLookup(snap.docs.map(x=>x.data())));
+      Object.keys(live).forEach(d=>{if(d>=localYMD(new Date())||chojaeBetter(live[d],saved[d]))days[d]={src:'live',m:live[d]};});   // 일부만 남은 원본이 저장값을 가리지 않게
+    }
+    /* ④ 빠진 날 복구 (2026-11-24) — 비트 처방 문서의 초/재진. 복구한 값은 저장해 다음부터 다시 읽지 않는다 */
+    if(liveFrom<=to&&cloud.rxCol){
+      const today=localYMD(new Date());const x=new Date(liveFrom+'T12:00:00');
+      for(let i=0;i<400;i++,x.setDate(x.getDate()+1)){const d=localYMD(x);if(d>to||d>=today)break;if(days[d])continue;
+        try{const rs=await cloud.rxCol.where('date','==',d).get();const c=chojaeFromRx(rs.docs.map(y=>y.data()));
+          if(!chojaeTot(c)){days[d]={src:'none',m:{}};continue;}
+          days[d]={src:'rx',m:c};
+          if(cc&&currentUser)cc.doc(d).set({date:d,src:'rx',c,tot:chojaeTot(c),updatedAt:Date.now(),updatedBy:(currentUser&&currentUser.name)||''}).catch(e=>console.warn('chojae rx save',e));
+        }catch(e){console.warn('chojae rx',d,e);days[d]={src:'none',m:{}};}}
     }
     /* 지나간 날의 접수창 값을 요약 문서로 저장 — 8일 뒤 원본이 지워져도 남도록 (달라졌을 때만 씀) */
     if(cc&&currentUser){
@@ -11973,7 +12015,7 @@ async function loadChojae(force){
         if(d>=today)return;
         const tot=Object.values(live[d]).reduce((a,b)=>a+b,0);
         const old=saved[d];
-        if(old&&old.tot===tot&&JSON.stringify(old.c||{})===JSON.stringify(live[d]))return;
+        if(!chojaeBetter(live[d],old))return;
         cc.doc(d).set({date:d,src:'lookup',c:live[d],tot,updatedAt:Date.now(),updatedBy:(currentUser&&currentUser.name)||''}).catch(e=>console.warn('chojae save',e));
       });
     }
@@ -12005,12 +12047,14 @@ function chojaeHtml(){
   const T={tot:0,etc:0};CHOJAE_MAIN.forEach(k=>T[k]=0);
   data.rows.forEach(r=>{T.tot+=r.tot;T.etc+=r.etc;CHOJAE_MAIN.forEach(k=>T[k]+=r[k]);});
   html+=`<div class="st-wrap"><table class="stat-tb"><thead><tr><th>날짜</th>${CHOJAE_MAIN.map(k=>`<th>${k}</th>`).join('')}<th>기타</th><th>합계</th></tr></thead><tbody>`;
-  html+=`<tr style="font-weight:800;background:var(--panel2)"><td>합계 (${data.rows.length}일)</td>${CHOJAE_MAIN.map(k=>`<td>${T[k]||''}</td>`).join('')}<td>${T.etc||''}</td><td>${T.tot}</td></tr>`;
+  html+=`<tr style="font-weight:800;background:var(--panel2)"><td>합계 (${data.rows.filter(r=>r.src!=='none').length}일)</td>${CHOJAE_MAIN.map(k=>`<td>${T[k]||''}</td>`).join('')}<td>${T.etc||''}</td><td>${T.tot}</td></tr>`;
   data.rows.forEach(r=>{const dt=new Date(r.d);const wd=isNaN(dt)?'':W[dt.getDay()];
-    html+=`<tr><td>${r.d} (${wd})${r.src==='db'?' <span class="hint" title="비트 DB에서 계산한 값 — 접수창 표시와 조금 다를 수 있음">▲</span>':''}</td>${CHOJAE_MAIN.map(k=>`<td>${r[k]||''}</td>`).join('')}
+    if(r.src==='none'){html+=`<tr><td>${r.d} (${wd})</td><td colspan="${CHOJAE_MAIN.length+2}" style="color:var(--red);font-weight:700">⚠ 자료 없음 (합계에 안 들어감)</td></tr>`;return;}
+    html+=`<tr><td>${r.d} (${wd})${r.src==='rx'?' <span class="hint" title="접수창 기록이 남지 않아 비트 처방 기록의 초/재진으로 복구한 값 — 처방 없이 간 접수는 빠질 수 있음">◆</span>':''}${r.src==='db'?' <span class="hint" title="비트 DB에서 계산한 값 — 접수창 표시와 조금 다를 수 있음">▲</span>':''}</td>${CHOJAE_MAIN.map(k=>`<td>${r[k]||''}</td>`).join('')}
       <td ${r.etcTip.length?`title="${esc(r.etcTip.join(', '))}"`:''}>${r.etc||''}</td><td><b>${r.tot}</b></td></tr>`;});
   html+=`</tbody></table></div>`;
   if(data.rows.some(r=>r.src==='db'))html+=`<div class="hint" style="margin-top:6px">▲ ${CHOJAE_LIVE_FROM} 이전은 비트 DB에서 계산한 값입니다 — 같은 차트번호의 직전 내원과의 간격으로 신환/90일초진/재진을 나눴고, 접수창의 세부 구분(물리치료내원 등)은 없습니다.</div>`;
+  if(data.rows.some(r=>r.src==='rx'))html+=`<div class="hint" style="margin-top:6px">◆ 접수창 기록이 남지 않은 날 — 비트 처방 기록의 초/재진(초진=신환)으로 복구했습니다. 처방 없이 간 접수는 빠져 조금 적을 수 있습니다.</div>`;
   const etc=Object.entries(data.etcSet).sort((a,b)=>b[1]-a[1]);
   if(etc.length)html+=`<div class="hint" style="margin-top:6px">기타 = ${etc.map(([k,n])=>esc(k)+' '+n+'건').join(' · ')}</div>`;
   return html;
@@ -12019,7 +12063,7 @@ function exportChojae(){
   const data=chojaeRows();
   if(!data||!data.rows.length){alert('내보낼 기록이 없습니다.');return;}
   const out=[['날짜',...CHOJAE_MAIN,'기타','합계','기타 내용']];
-  data.rows.slice().reverse().forEach(r=>out.push([r.d,...CHOJAE_MAIN.map(k=>r[k]||0),r.etc||0,r.tot,r.etcTip.join(' / ')]));
+  data.rows.slice().reverse().forEach(r=>out.push([r.d,...CHOJAE_MAIN.map(k=>r[k]||0),r.etc||0,r.tot,(r.src==='none'?'자료 없음':r.src==='rx'?'처방 기록으로 복구':'')+(r.etcTip.length?' '+r.etcTip.join(' / '):'')]));
   downloadCSV('접수구분'+statRangeTag()+'.csv',out);
 }
 function exportStatsCurrent(){if(statsTab==='consult')exportConsults();else if(statsTab==='chojae')exportChojae();else if(statsTab==='doc')exportDocStats();else exportStats();}
