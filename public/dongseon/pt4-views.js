@@ -852,7 +852,7 @@ function renderMobile(){
         <label>방문수<input inputmode="numeric" value="${A(f.visitNo)}" oninput="this.value=this.value.replace(/\\D/g,'').slice(0,3);MOB.f.visitNo=this.value"></label>
         <label>시작 시간<select onchange="mobTime(Number(this.value))">${bookTimes(f.startMin).filter(m=>m<D.endMin).map(m=>opt(m,f.startMin,hm(m))).join('')}</select></label>
         <label>치료코드${codeSelect(f.code,"MOB.f.code=v")}</label>
-        <label>길이<select onchange="MOB.f.durationMin=Number(this.value)">${[...new Set([30,60,90,...([30,60,90].includes(+f.durationMin)||!f.durationMin?[]:[+f.durationMin])])].sort((a,b)=>a-b).filter(x=>ed.b||x<=ed.maxMin).map(x=>opt(x,f.durationMin,x+'분')).join('')}</select></label>
+        <label>길이<select onchange="MOB.f.durationMin=Number(this.value)">${[...new Set([...DURATIONS,...(DURATIONS.includes(+f.durationMin)||!f.durationMin?[]:[+f.durationMin])])].sort((a,b)=>a-b).filter(x=>ed.b||x<=ed.maxMin).map(x=>opt(x,f.durationMin,x+'분')).join('')}</select></label>
         <label class="wide">메모<textarea rows="2" oninput="MOB.f.note=this.value">${esc(f.note)}</textarea></label></div>
       ${MSG?`<p class="err">${esc(MSG)}</p>`:''}
       <div class="row wrap"><button type="button" ${BUSY?'disabled':''} onclick="mobSave()">${BUSY?'저장 중...':'저장'}</button>
