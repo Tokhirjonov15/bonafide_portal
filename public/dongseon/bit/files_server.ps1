@@ -20,7 +20,7 @@ param(
   [string]$Prefix = ''                                  # test only (e.g. http://localhost:8787/); default http://+:<Port>/
 )
 $ErrorActionPreference = 'Stop'
-$VER = 'fs1.0'
+$VER = 'fs1.1'
 
 $cfgPath = Join-Path $ConfigDir 'config.json'
 $keyPath = Join-Path $ConfigDir 'files.key'
@@ -54,7 +54,7 @@ function KeyOk($given) {
   $diff = 0; for ($i = 0; $i -lt $KEY.Length; $i++) { $diff = $diff -bor ([int][char]$given[$i] -bxor [int][char]$KEY[$i]) }
   return ($diff -eq 0)
 }
-$PATH_RE = '^patient_photos/[A-Za-z0-9_-]{1,40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$'
+$PATH_RE = '^(patient_photos|rx_captures)/[A-Za-z0-9_-]{1,40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$'
 $CT = @{ jpg = 'image/jpeg'; jpeg = 'image/jpeg'; png = 'image/png'; webp = 'image/webp' }
 
 function Send($ctx, [int]$code, $obj) {

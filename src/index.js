@@ -991,7 +991,7 @@ async function fbEmailCached(request) {
   }
   return email;
 }
-const FILES_PATH_RE = /^patient_photos\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$/;
+const FILES_PATH_RE = /^(patient_photos|rx_captures)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$/;
 async function dongseonFiles(request, env, url) {
   const email = await fbEmailCached(request);
   if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
