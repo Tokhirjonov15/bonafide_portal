@@ -24,6 +24,9 @@ function OK($m)   { Write-Host "  [OK]   $m" -ForegroundColor Green }
 function BAD($m)  { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
 function INFO($m) { Write-Host "  $m" }
 function STEP($m) { Write-Host ""; Write-Host "== $m" -ForegroundColor Cyan }
+# On the Bit server the PATH of a fresh account has no Windows folders (2026-11-25: 'powershell' and 'icacls' were not found).
+# Fix it for THIS process only - the server's own PATH setting is not touched.
+$env:Path = (Join-Path $env:SystemRoot 'System32') + ';' + $env:SystemRoot + ';' + (Join-Path $env:SystemRoot 'System32\Wbem') + ';' + (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0') + ';' + $env:Path
 function Ask($q, $def) { $a = Read-Host "$q [$def]"; if ([string]::IsNullOrWhiteSpace($a)) { $def } else { $a.Trim() } }
 function Lock($dir) { & icacls $dir /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null }
 
