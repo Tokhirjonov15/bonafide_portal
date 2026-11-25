@@ -20,6 +20,8 @@
 #  2026-11-25 c1.6: 자동 저장 — 원장님이 [확인]하면 요청한 PC 의 바가 ① 화면의 환자가 그대로인지 ② 처방 칸 화면이 요청 때와 같은지(화면 비교) ③ 비트에 다른 창이 떠 있지 않은지
 #     확인한 뒤 비트의 [저장] 단추(글자가 '저장'인 단추, 좌표 아님)를 누른다. 하나라도 다르면 누르지 않고 '다시 요청'을 알린다. 저장 뒤에 뜨는 DUR·산정특례 확인 창은 누르지 않는다(간호가 직접).
 #     비트가 관리자 권한으로 떠 있으면 바도 관리자 권한이어야 누를 수 있다(rx_install.ps1 이 그렇게 등록). 끄기: 같은 폴더에 rx_nosave.on
+#  2026-11-25 c1.7: (병원 요청) 원장님께는 사진이 필요 없다 — 바 아래에 '처방이 바뀌었습니다 · 환자 이름 (차트번호)' 와 [확인] 단추만. 큰 창·사진 보기 없음.
+#     간호 PC 는 그대로 사진을 올려 기록으로 남기고(동선관리 [처방 확인]에서 관리자가 봄), 저장 전 화면 비교도 그대로 한다.
 #  이 파일은 감시 스크립트(v4.0~)가 사이트의 capture.json 을 보고 스스로 바꿔 준다(진료실 PC 재설치 없이)
 #  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 진료 캡처 폴더 열기 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
 # ─────────────────────────────────────────────────────────────
@@ -28,7 +30,7 @@
 param([string]$Pc = $env:COMPUTERNAME,
       [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
-$CapVer = 'c1.6'   # c1.6: 원장님 [확인] 뒤 간호 PC 의 바가 비트 [저장]을 스스로 누른다(확인 3가지 뒤, 2026-11-25). c1.5: 원장님 쪽은 바 아래 작은 미리보기 → 누르면 크게 + [확인]. 바가 있는 PC 는 모두 알림을 받는다 (2026-11-25). c1.4: 원장님 PC 알림 창 [확인] (rx_doctor.on 이 있는 PC 만, 2026-11-25). c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
+$CapVer = 'c1.7'   # c1.7: 원장님 알림은 사진 없이 글 + [확인] 만 (2026-11-25). c1.6: 원장님 [확인] 뒤 간호 PC 의 바가 비트 [저장]을 스스로 누른다(확인 3가지 뒤, 2026-11-25). c1.5: 원장님 쪽은 바 아래 작은 미리보기 → 누르면 크게 + [확인]. 바가 있는 PC 는 모두 알림을 받는다 (2026-11-25). c1.4: 원장님 PC 알림 창 [확인] (rx_doctor.on 이 있는 PC 만, 2026-11-25). c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
 $ApiKey    ='AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
@@ -494,13 +496,6 @@ function RxPending() {   # 오늘의 '대기' 요청 (먼저 온 것부터). 부
     $out += [pscustomobject]@{ id = [string](FsVal $f.id); mrn = [string](FsVal $f.mrn); name = [string](FsVal $f.name); pc = [string](FsVal $f.pc); at = [string](FsVal $f.at); path = [string](FsVal $f.path); srv = [bool](FsVal $f.srv) } }
   return @($out | Where-Object { $_.id } | Sort-Object at)
 }
-function RxPhoto($r) {   # 사진 바이트: 병원 서버(srv) 또는 Firebase
-  if (-not $r.srv) { return (ShotImage $r.path) }
-  if ($script:ImgCache[$r.path]) { return $script:ImgCache[$r.path] }
-  $wc = New-Object Net.WebClient; $wc.Headers.Add('Authorization', "Bearer $(FbToken)")
-  try { $b = $wc.DownloadData("$SiteBase/api/dongseon/files/$($r.path)") } finally { $wc.Dispose() }
-  $script:ImgCache[$r.path] = $b; return $b
-}
 function RxApprove($r) {   # '대기'일 때만 '승인'으로 (읽은 뒤 바뀌었으면 실패 — updateTime 조건)
   $tok = FbToken; $H = @{ Authorization = "Bearer $tok" }
   $d = Invoke-RestMethod -TimeoutSec 10 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/rxReq/$($r.id)" -Headers $H
@@ -509,62 +504,34 @@ function RxApprove($r) {   # '대기'일 때만 '승인'으로 (읽은 뒤 바�
           updateMask = @{ fieldPaths = @('status', 'approvedBy', 'approvedAt') }; currentDocument = @{ updateTime = [string]$d.updateTime } }
   Invoke-RestMethod -TimeoutSec 15 -Method Post -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents:commit" -Headers $H -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{ writes = @($w) } | ConvertTo-Json -Depth 30 -Compress))) | Out-Null
 }
-function RxShowPop($r) {
-  if ($script:RxPop[$r.id]) { return }
-  $f = New-Object RxPopForm; $f.Tag = $r.id
-  $tm = ''; try { $tm = ([DateTime]::Parse($r.at)).ToString('HH:mm') } catch {}
-  $f.Text = "처방 확인 요청 — $($r.name) ($($r.mrn))"; $f.StartPosition = 'Manual'; $f.ShowInTaskbar = $true; $f.BackColor = [Drawing.Color]::FromArgb(15, 23, 42)
-  $wa2 = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $fw = [int]($wa2.Width * 0.84); $fh = [int]($wa2.Height * 0.86)
-  $f.Size = New-Object Drawing.Size $fw, $fh; $f.Location = New-Object Drawing.Point ([int]($wa2.Left + ($wa2.Width - $fw) / 2)), ([int]($wa2.Top + ($wa2.Height - $fh) / 2 + 20))
-  $pb = New-Object Windows.Forms.PictureBox; $pb.Dock = 'Fill'; $pb.SizeMode = 'Zoom'; $pb.BackColor = [Drawing.Color]::FromArgb(15, 23, 42); $pb.Cursor = [Windows.Forms.Cursors]::Hand; $pb.Tag = $r
-  $bot = New-Object Windows.Forms.Panel; $bot.Size = New-Object Drawing.Size $fw, 70; $bot.Dock = 'Bottom';   # 폭을 먼저 정한다 — 오른쪽에 붙인(Anchor) 단추가 제자리에 오도록
-  $bot.BackColor = [Drawing.Color]::FromArgb(30, 41, 59)
-  $info = New-Object Windows.Forms.Label; $info.Font = New-Object Drawing.Font 'Malgun Gothic', 15, ([Drawing.FontStyle]::Bold); $info.ForeColor = [Drawing.Color]::White; $info.AutoSize = $false
-  $info.Location = New-Object Drawing.Point 16, 8; $info.Size = New-Object Drawing.Size ($fw - 420), 54; $info.TextAlign = 'MiddleLeft'
-  $info.Text = "$($r.name)  ·  $($r.mrn)     $tm 요청 ($($r.pc))`n간호가 바꾼 처방입니다 (아직 저장 전). 사진을 두 번 누르면 크게 봅니다."
-  $info.Font = New-Object Drawing.Font 'Malgun Gothic', 11
-  $ok = New-Object Windows.Forms.Button; $ok.Text = '확인'; $ok.Font = New-Object Drawing.Font 'Malgun Gothic', 16, ([Drawing.FontStyle]::Bold); $ok.FlatStyle = 'Flat'; $ok.FlatAppearance.BorderSize = 0
-  $ok.BackColor = [Drawing.Color]::FromArgb(22, 163, 74); $ok.ForeColor = [Drawing.Color]::White; $ok.Size = New-Object Drawing.Size 220, 50; $ok.Location = New-Object Drawing.Point ($fw - 260), 10; $ok.Anchor = 'Top, Right'; $ok.Cursor = [Windows.Forms.Cursors]::Hand; $ok.Tag = $r; $ok.TabStop = $false
-  $later = New-Object Windows.Forms.Button; $later.Text = '나중에'; $later.Font = New-Object Drawing.Font 'Malgun Gothic', 11; $later.FlatStyle = 'Flat'; $later.ForeColor = [Drawing.Color]::FromArgb(203, 213, 225)
-  $later.Size = New-Object Drawing.Size 110, 50; $later.Location = New-Object Drawing.Point ($fw - 380), 10; $later.Anchor = 'Top, Right'; $later.TabStop = $false
-  $bot.Controls.AddRange(@($info, $later, $ok)); $f.Controls.AddRange(@($pb, $bot))
-  try { $b = RxPhoto $r; $ms = New-Object IO.MemoryStream (, $b); $pb.Image = [Drawing.Image]::FromStream($ms) }
-  catch { Log "처방 확인 사진 받기 실패 $($r.path): $($_.Exception.Message)"; $info.Text = "$($r.name)  ·  $($r.mrn)     $tm 요청 ($($r.pc))`n사진을 받지 못했습니다: $($_.Exception.Message)" }
-  $ok.Add_Click({ $r = $this.Tag; $frm = $this.FindForm(); $this.Enabled = $false; $frm.Cursor = [Windows.Forms.Cursors]::WaitCursor
-    try { RxApprove $r; Log "처방 확인 [확인] $($r.id) $($r.mrn) $($r.name)"; $script:RxPend = @($script:RxPend | Where-Object { $_.id -ne $r.id }); RxDocButton; $frm.Close(); SetStatus "✔ 확인했습니다  ·  $($r.name)" ([Drawing.Color]::FromArgb(134, 239, 172)) 5 }
-    catch { $frm.Cursor = [Windows.Forms.Cursors]::Default; $this.Enabled = $true; Log "처방 확인 [확인] 실패 $($r.id): $($_.Exception.Message)"; [Windows.Forms.MessageBox]::Show($frm, "확인하지 못했습니다.`n`n$($_.Exception.Message)", '처방 확인') | Out-Null } })
-  $later.Add_Click({ $this.FindForm().Close() })
-  $pb.Add_DoubleClick({ $r = $this.Tag; try { $tmp = Join-Path $env:TEMP ("rxreq_" + ($r.id -replace '[^\w-]', '_') + '.jpg'); [IO.File]::WriteAllBytes($tmp, (RxPhoto $r)); Start-Process $tmp } catch { Log "사진 보기 열기 실패: $($_.Exception.Message)" } })
-  $f.Add_FormClosed({ $id = [string]$this.Tag; $script:RxPop.Remove($id); $script:RxHide[$id] = 1;   # 확인 없이 닫았으면 미리보기는 다시 띄우지 않는다(바의 빨간 단추로)
-    foreach ($c in $this.Controls) { if ($c -is [Windows.Forms.PictureBox] -and $c.Image) { $c.Image.Dispose() } } })
-  $script:RxPop[$r.id] = $f; $f.Show()
-}
-# 바 바로 아래 작은 미리보기 (c1.5): 가장 먼저 온 대기 요청의 사진. 누르면 큰 창. 입력을 뺏지 않는다
-$script:RxThumb = $null; $script:RxThumbId = ''; $script:RxHide = @{}
-function RxThumbOpen() { $r = $null; if ($script:RxThumb) { $r = $script:RxThumb.Tag }; if (-not $r) { return }
-  try { RxShowPop $r; if ($script:RxPop[$r.id]) { $script:RxPop[$r.id].Activate() } } catch { Log "처방 확인 창 오류 $($r.id): $($_.Exception.Message)" }; RxThumbSync }
+# 바 바로 아래 알림 (c1.7): 가장 먼저 온 대기 요청 — '처방이 바뀌었습니다' + 환자 + [확인]. 사진 없음. 입력을 뺏지 않는다(Enter 로 눌리지 않는다 — 마우스로만)
+$script:RxThumb = $null; $script:RxHide = @{}
 function RxThumbSync() {
-  $cand = @($script:RxPend | Where-Object { -not $script:RxPop[$_.id] -and -not $script:RxHide[$_.id] })
-  if (-not $cand.Count) { if ($script:RxThumb -and $script:RxThumb.Visible) { $script:RxThumb.Hide() }; $script:RxThumbId = ''; return }
+  $cand = @($script:RxPend | Where-Object { -not $script:RxHide[$_.id] })
+  if (-not $cand.Count) { if ($script:RxThumb -and $script:RxThumb.Visible) { $script:RxThumb.Hide() }; return }
   $r = $cand[0]
   if (-not $script:RxThumb) {
-    $t = New-Object RxPopForm; $t.FormBorderStyle = 'None'; $t.ShowInTaskbar = $false; $t.StartPosition = 'Manual'; $t.Size = New-Object Drawing.Size 400, 280; $t.BackColor = [Drawing.Color]::FromArgb(220, 38, 38); $t.Padding = New-Object Windows.Forms.Padding 3
-    $cap = New-Object Windows.Forms.Label; $cap.Name = 'cap'; $cap.Dock = 'Top'; $cap.Height = 30; $cap.TextAlign = 'MiddleLeft'; $cap.Font = New-Object Drawing.Font 'Malgun Gothic', 10.5, ([Drawing.FontStyle]::Bold); $cap.ForeColor = [Drawing.Color]::White; $cap.BackColor = [Drawing.Color]::FromArgb(220, 38, 38); $cap.Cursor = [Windows.Forms.Cursors]::Hand
-    $x = New-Object Windows.Forms.Button; $x.Text = '✕'; $x.FlatStyle = 'Flat'; $x.FlatAppearance.BorderSize = 0; $x.ForeColor = [Drawing.Color]::White; $x.BackColor = [Drawing.Color]::FromArgb(185, 28, 28); $x.Size = New-Object Drawing.Size 30, 26; $x.Location = New-Object Drawing.Point 362, 2; $x.TabStop = $false; $cap.Controls.Add($x)
-    $hint = New-Object Windows.Forms.Label; $hint.Dock = 'Bottom'; $hint.Height = 24; $hint.TextAlign = 'MiddleCenter'; $hint.Font = New-Object Drawing.Font 'Malgun Gothic', 9.5; $hint.ForeColor = [Drawing.Color]::White; $hint.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $hint.Text = '눌러서 크게 보고 [확인]'; $hint.Cursor = [Windows.Forms.Cursors]::Hand
-    $pb = New-Object Windows.Forms.PictureBox; $pb.Name = 'pb'; $pb.Dock = 'Fill'; $pb.SizeMode = 'Zoom'; $pb.BackColor = [Drawing.Color]::FromArgb(15, 23, 42); $pb.Cursor = [Windows.Forms.Cursors]::Hand
-    $t.Controls.AddRange(@($pb, $cap, $hint))
-    $pb.Add_Click({ RxThumbOpen }); $cap.Add_Click({ RxThumbOpen }); $hint.Add_Click({ RxThumbOpen })
-    $x.Add_Click({ $r = $script:RxThumb.Tag; if ($r) { $script:RxHide[$r.id] = 1 }; RxThumbSync })
+    $t = New-Object RxPopForm; $t.FormBorderStyle = 'None'; $t.ShowInTaskbar = $false; $t.StartPosition = 'Manual'; $t.Size = New-Object Drawing.Size 460, 96; $t.BackColor = [Drawing.Color]::FromArgb(220, 38, 38); $t.Padding = New-Object Windows.Forms.Padding 3
+    $cap = New-Object Windows.Forms.Label; $cap.Name = 'cap'; $cap.Dock = 'Top'; $cap.Height = 30; $cap.TextAlign = 'MiddleLeft'; $cap.Font = New-Object Drawing.Font 'Malgun Gothic', 11, ([Drawing.FontStyle]::Bold); $cap.ForeColor = [Drawing.Color]::White; $cap.BackColor = [Drawing.Color]::FromArgb(220, 38, 38)
+    $x = New-Object Windows.Forms.Button; $x.Text = '✕'; $x.FlatStyle = 'Flat'; $x.FlatAppearance.BorderSize = 0; $x.ForeColor = [Drawing.Color]::White; $x.BackColor = [Drawing.Color]::FromArgb(185, 28, 28); $x.Size = New-Object Drawing.Size 30, 26; $x.Location = New-Object Drawing.Point 422, 2; $x.TabStop = $false; $cap.Controls.Add($x)
+    $body = New-Object Windows.Forms.Panel; $body.Name = 'body'; $body.Dock = 'Fill'; $body.BackColor = [Drawing.Color]::FromArgb(30, 41, 59)
+    $who = New-Object Windows.Forms.Label; $who.Name = 'who'; $who.AutoSize = $false; $who.Location = New-Object Drawing.Point 10, 4; $who.Size = New-Object Drawing.Size 300, 52; $who.TextAlign = 'MiddleLeft'; $who.Font = New-Object Drawing.Font 'Malgun Gothic', 12, ([Drawing.FontStyle]::Bold); $who.ForeColor = [Drawing.Color]::White
+    $ok = New-Object Windows.Forms.Button; $ok.Name = 'ok'; $ok.Text = '확인'; $ok.Font = New-Object Drawing.Font 'Malgun Gothic', 14, ([Drawing.FontStyle]::Bold); $ok.FlatStyle = 'Flat'; $ok.FlatAppearance.BorderSize = 0; $ok.BackColor = [Drawing.Color]::FromArgb(22, 163, 74); $ok.ForeColor = [Drawing.Color]::White
+    $ok.Size = New-Object Drawing.Size 124, 46; $ok.Location = New-Object Drawing.Point 320, 7; $ok.Cursor = [Windows.Forms.Cursors]::Hand; $ok.TabStop = $false
+    $body.Controls.AddRange(@($who, $ok)); $t.Controls.AddRange(@($body, $cap))
+    $ok.Add_Click({ $r = $script:RxThumb.Tag; if (-not $r) { return }; $this.Enabled = $false
+      try { RxApprove $r; Log "처방 확인 [확인] $($r.id) $($r.mrn) $($r.name)"; $script:RxPend = @($script:RxPend | Where-Object { $_.id -ne $r.id }); RxDocButton; SetStatus "✔ 확인했습니다  ·  $($r.name)" ([Drawing.Color]::FromArgb(134, 239, 172)) 5 }
+      catch { $m = $_.Exception.Message; Log "처방 확인 [확인] 실패 $($r.id): $m"
+        if ($m -like '이미*') { $script:RxPend = @($script:RxPend | Where-Object { $_.id -ne $r.id }); RxDocButton; SetStatus "이 요청은 $m" ([Drawing.Color]::FromArgb(253, 224, 71)) 6 }
+        else { SetStatus '✖ 확인하지 못했습니다 — 다시 눌러 주세요' ([Drawing.Color]::FromArgb(252, 165, 165)) 8 } }
+      $this.Enabled = $true; RxThumbSync })
+    $x.Add_Click({ $r = $script:RxThumb.Tag; if ($r) { $script:RxHide[$r.id] = 1 }; RxThumbSync })   # 숨기기만 — 바의 빨간 [처방 확인 N]으로 다시 연다
     $script:RxThumb = $t
   }
-  $t = $script:RxThumb; $pb = $t.Controls['pb']; $cap = $t.Controls['cap']
-  if ($script:RxThumbId -ne $r.id) {
-    $old = $pb.Image; $pb.Image = $null; if ($old) { $old.Dispose() }
-    try { $b = RxPhoto $r; $ms = New-Object IO.MemoryStream (, $b); $pb.Image = [Drawing.Image]::FromStream($ms) } catch { Log "처방 확인 미리보기 사진 실패 $($r.path): $($_.Exception.Message)" }
-    $script:RxThumbId = $r.id; $t.Tag = $r
-  }
-  $cap.Text = " 처방 확인 요청  ·  $($r.name) ($($r.mrn))$(if ($cand.Count -gt 1) { "  외 $($cand.Count - 1)건" })"
+  $t = $script:RxThumb; $t.Tag = $r
+  $tm = ''; try { $tm = ([DateTime]::Parse($r.at)).ToString('HH:mm') } catch {}
+  $t.Controls['cap'].Text = " 처방이 바뀌었습니다$(if ($cand.Count -gt 1) { "  (외 $($cand.Count - 1)건)" })"
+  $t.Controls['body'].Controls['who'].Text = "$($r.name)  ·  $($r.mrn)`n$tm  $($r.pc)"
   $tx = $bar.Left + $(if ($btnRxDoc) { $btnRxDoc.Left } else { 0 }); $vs2 = [Windows.Forms.SystemInformation]::VirtualScreen
   if ($tx + $t.Width -gt $vs2.Right) { $tx = $vs2.Right - $t.Width }
   $t.Location = New-Object Drawing.Point $tx, ($bar.Bottom + 2)
@@ -582,12 +549,11 @@ function RxDocTick() {   # 타이머(1.5초)에서 부른다. 비트가 떠 있�
   foreach ($id in @($script:RxPop.Keys)) { if (-not $ids[$id]) { try { $script:RxPop[$id].Close() } catch {} } }   # 간호가 취소했거나 이미 확인된 요청의 창은 닫는다
   RxDocButton; try { RxThumbSync } catch { Log "처방 확인 미리보기 오류: $($_.Exception.Message)" }
 }
-function RxDocOpen() {   # 바의 [처방 확인 N] — 닫아 둔 요청을 다시 연다
+function RxDocOpen() {   # 바의 [처방 확인 N] — ✕ 로 숨긴 알림을 다시 보인다
   $script:RxDocAt = [DateTime]::MinValue; $P = @(); try { $P = @(RxPending) } catch { SetStatus '✖ 요청을 읽지 못했습니다' ([Drawing.Color]::FromArgb(252, 165, 165)) 5; return }
-  $script:RxPend = $P; RxDocButton
-  if (-not $P.Count) { SetStatus '기다리는 처방 확인 요청이 없습니다' ([Drawing.Color]::FromArgb(253, 224, 71)) 4; return }
-  foreach ($r in $P) { $script:RxSeen[$r.id] = 1; try { RxShowPop $r; if ($script:RxPop[$r.id]) { $script:RxPop[$r.id].Activate() } } catch { Log "처방 확인 알림 창 오류 $($r.id): $($_.Exception.Message)" } }
-  try { RxThumbSync } catch {}
+  $script:RxPend = $P; RxDocButton; $script:RxHide = @{}
+  if (-not $P.Count) { SetStatus '기다리는 처방 확인 요청이 없습니다' ([Drawing.Color]::FromArgb(253, 224, 71)) 4 }
+  try { RxThumbSync } catch { Log "처방 확인 알림 오류: $($_.Exception.Message)" }
 }
 
 # ── 바 ──
