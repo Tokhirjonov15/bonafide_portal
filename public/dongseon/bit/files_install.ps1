@@ -109,7 +109,8 @@ OK "dastur: $SRV\files_server.ps1"
 
 # ---- 4. scheduled task ---------------------------------------------------------------------
 STEP "4. Avtomatik ishga tushish (DongseonFiles)"
-$act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$SRV\files_server.ps1`""
+$PSEXE = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'   # full path: on the Bit server 'powershell' is not on the system PATH (2026-11-25) - the task could not start, so the file server never answered
+$act = New-ScheduledTaskAction -Execute $PSEXE -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$SRV\files_server.ps1`""
 $t1 = New-ScheduledTaskTrigger -AtStartup
 $t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 10)
 $set = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

