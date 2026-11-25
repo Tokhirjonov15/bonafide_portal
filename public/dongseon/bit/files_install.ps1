@@ -13,7 +13,7 @@
 #   7. prints the key for the Worker secret FILES_KEY (also copied to the clipboard)
 # Re-running is safe: the existing key and files are kept.
 # ASCII only on purpose (PowerShell 5.1 reads BOM-less files as ANSI).
-param([string]$Src = $PSScriptRoot, [string]$Drive = '', [switch]$SkipAccount, [switch]$SkipTunnel)
+param([string]$Src = $PSScriptRoot, [string]$Drive = '', [switch]$SkipAccount, [switch]$SkipTunnel, [switch]$ShowKey)   # -ShowKey: print the key (default: clipboard only, so it does not end up in screenshots or pasted logs)
 $ErrorActionPreference = 'Stop'
 $SRV = 'C:\dongseon_files_srv'
 $PORT = 8787
@@ -190,11 +190,10 @@ if (-not $SkipTunnel) {
 
 # ---- 7. key for the Worker -----------------------------------------------------------------
 STEP "7. Worker uchun kalit (FILES_KEY)"
-try { Set-Clipboard -Value $KEY; INFO "kalit clipboard'ga nusxalandi" } catch {}
-Write-Host ""
-Write-Host "  $KEY" -ForegroundColor Yellow
-Write-Host ""
-INFO "Dev PC'da:  npx wrangler secret put FILES_KEY   (shu kalitni qo'ying)"
+$clip = $false; try { Set-Clipboard -Value $KEY; $clip = $true } catch {}
+if ($clip) { INFO "kalit clipboard'ga nusxalandi - ekranda ko'rsatilmaydi (boshi: $($KEY.Substring(0, 4))...)" }
+if ($ShowKey -or -not $clip) { Write-Host ""; Write-Host "  $KEY" -ForegroundColor Yellow; Write-Host ""; INFO "kalitni rasmga olmang va hech kimga yubormang" }
+INFO "Dev PC'da:  npx wrangler secret put FILES_KEY   (Ctrl+V bilan qo'ying - RDP clipboard'i dev PC'ga o'tadi)"
 INFO "            npx wrangler secret put FILES_URL   ($PUBLIC)"
 Write-Host ""
 if ($fails -eq 0) { Write-Host "PASS - hammasi joyida" -ForegroundColor Green } else { Write-Host "FAIL - $fails ta muammo, yuqoridagi [FAIL] qatorlarini yuboring" -ForegroundColor Red }
