@@ -8,7 +8,7 @@
 # Run ONCE on that PC, as the Windows user that uses Bit, in an ADMIN PowerShell:
 #   [Net.ServicePointManager]::SecurityProtocol='Tls12'; iex (irm https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit/rx-setup.txt)
 #
-# Needs: the Bit watcher already installed on this PC (its password file is reused; nothing is asked).
+# If the Bit watcher is installed on this PC its password file is reused; otherwise the dongseon 'bitbot' password is asked once (checked by signing in).
 # Re-running is safe. To switch the button off again: delete rx_approve.on in the install folder and restart the bar.
 # Nothing in Bit is clicked or changed by this installer.
 # ASCII only on purpose (PowerShell 5.1 reads BOM-less downloads as ANSI).
@@ -45,8 +45,28 @@ function WatcherDir() {
   return ''
 }
 if (-not $Dir) { $Dir = WatcherDir }
-if (-not $Dir) { BAD "the Bit watcher is not installed on this PC (no BitPlusWatcher task, no C:\bitplus). Install the watcher first."; return }
-if (-not (Test-Path (Join-Path $Dir 'bitplus_watcher.secret'))) { BAD "password file not found: $Dir\bitplus_watcher.secret (the watcher must be installed for this Windows user)"; return }
+if (-not $Dir) { $Dir = 'C:\bitplus'; INFO "the Bit watcher is not installed here - using $Dir" }
+New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+$secret = Join-Path $Dir 'bitplus_watcher.secret'
+if (-not (Test-Path $secret)) {
+  # no watcher on this PC: ask for the dongseon 'bitbot' password once, check it by signing in, then save it like the watcher installer does
+  INFO "bitbot paroli kerak (dongseon 'bitbot' hisobi). Yozayotganda ekranda ko'rinmaydi."
+  $okPw = $false
+  for ($try = 0; $try -lt 3 -and -not $okPw; $try++) {
+    $pw = Read-Host -AsSecureString '  bitbot paroli'
+    $plain = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($pw))
+    if (-not $plain.Trim()) { INFO 'bo`sh - qayta kiriting'; continue }
+    try {
+      $body = @{ email = 'uc8feac453b1a01cc028b072a@bonafide.app'; password = $plain; returnSecureToken = $true } | ConvertTo-Json -Compress
+      $null = Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w' -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+      [IO.File]::WriteAllText($secret, $plain, (New-Object Text.UTF8Encoding $false))
+      & icacls $secret /inheritance:r /grant:r "$($env:USERNAME):M" '*S-1-5-32-544:F' | Out-Null
+      $okPw = $true; OK 'bitbot paroli to`g`ri - saqlandi'
+    } catch { INFO 'parol noto`g`ri yoki internet yo`q - qayta urinib ko`ring' }
+    $plain = $null
+  }
+  if (-not $okPw) { BAD 'bitbot paroli tasdiqlanmadi'; return }
+} else { OK 'password file found (shared with the watcher)' }
 OK "install folder: $Dir"
 
 # ---- 2. download the capture bar and verify it ----
