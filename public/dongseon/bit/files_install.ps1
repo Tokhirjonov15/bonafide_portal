@@ -171,8 +171,10 @@ if (-not $SkipTunnel) {
       $tok = Read-Host "  Cloudflare dashboard'dagi tunnel token'ini qo'ying (bo'sh = o'tkazib yuborish)"
       $tok = ($tok -replace '^.*service install\s+', '').Trim()
       if ($tok) {
-        if ($svc) { try { & $exe service uninstall 2>&1 | Out-Null } catch {} ; Start-Sleep 2 }
-        & $exe service install $tok 2>&1 | ForEach-Object { INFO "$_" }
+        if ($svc) { $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { & $exe service uninstall 2>&1 | Out-Null } catch {} finally { $ErrorActionPreference = $eap }; Start-Sleep 2 }
+        # cloudflared writes its normal progress lines to stderr; with ErrorActionPreference=Stop, PowerShell 5.1 turns the first line into a fatal error (2026-11-25)
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { & $exe service install $tok 2>&1 | ForEach-Object { INFO "$_" } } finally { $ErrorActionPreference = $eap }
         Start-Sleep 5
         $svc = Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue
         if ($svc -and $svc.Status -eq 'Running') { OK "cloudflared service ishlayapti" } else { BAD "cloudflared service ishga tushmadi" }
