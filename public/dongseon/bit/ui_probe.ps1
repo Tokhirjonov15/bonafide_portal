@@ -1,4 +1,4 @@
-# ui_probe.ps1 - READ-ONLY check of the Bit outpatient order window on this PC (2026-11-24)
+# ui_probe.ps1 (v2) - READ-ONLY check of the Bit outpatient order window on this PC (2026-11-24)
 #
 # Purpose: before building "approve, then save automatically", find out
 #   (1) whether the Bit SAVE button can be found as a control (so it could later be pressed exactly, without mouse coordinates)
@@ -115,7 +115,10 @@ public static class MsaaP {
     for (int i = 0; i < got; i++) {
       if (list.Count >= maxNodes || (DateTime.Now - t0).TotalMilliseconds > maxMs) return;
       var k = kids[i];
-      if (k is IAccessible) Visit((IAccessible)k, d + 1, 0, list, maxNodes, maxDepth, t0, maxMs);
+      if (k is IAccessible) { var ka = (IAccessible)k; object kr = SafeRole(ka, 0);
+        if (kr is int && ((int)kr == 1 || (int)kr == 3 || (int)kr == 4 || (int)kr == 39)) continue;
+        try { object ks = ka.get_accState(0); if (ks is int && (((int)ks) & 0x8000) != 0) continue; } catch {}
+        Visit(ka, d + 1, 0, list, maxNodes, maxDepth, t0, maxMs); }
       else if (k is int) Add(a, k, d + 1, list);
     }
   }
@@ -135,6 +138,32 @@ foreach ($x in $nodes) { if ($x[2] -like "*$W_SAVE*" -and $x[10] -notin @('41', 
   P "  [$($x[1])] '$(Short $x[2] 30)' action='$($x[4])' state=$($x[5]) at=($($x[6]),$($x[7])) size=$($x[8])x$($x[9]) depth=$($x[0])" } }
 P "-- named UI controls (buttons, menus, tabs, headers; first 150) --"
 $nmd = 0; foreach ($x in $nodes) { if ($UI_IDS -contains $x[10] -and $x[2] -and $x[2] -notmatch $SYS_NAMES -and $nmd -lt 150) { $nmd++; P "  [$($x[1])] '$(Short $x[2] 30)' action='$($x[4])'" } }
+
+# ---------- Part D: loaded grid libraries + every visible custom control, one by one ----------
+# (v2 2026-11-25: on the clinic PC the whole-window walk hit the node cap inside hidden title bars, and no table was found.)
+P ""; P "== D. Grid libraries loaded by $ProcName =="
+try { $proc.Modules | Where-Object { $_.ModuleName -match 'grid|spread|farpoint|flex|devexpress|xtra|c1\.|infragistics|ultra|syncfusion|telerik|component' } | ForEach-Object { P "  $($_.ModuleName)  $($_.FileVersionInfo.FileVersion)" } } catch { P "  (modules not readable: $($_.Exception.Message))" }
+$exe = try { (Get-CimInstance Win32_Process -Filter "ProcessId=$($proc.Id)").ExecutablePath } catch { '' }
+P "  exe: $exe"
+if ($exe) { Get-ChildItem (Split-Path $exe) -Filter '*.dll' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'grid|spread|farpoint|flex|devexpress|xtra|c1\.|infragistics|ultra|syncfusion|telerik|component' } | Select-Object -First 40 | ForEach-Object { P "  dll in folder: $($_.Name)  $($_.VersionInfo.FileVersion)" } }
+P ""; P "== E. Visible custom controls (class Window, at least 150x60), each walked separately =="
+$big = @(); foreach ($c in $kids) { if (-not [BitP.U32]::IsWindowVisible($c)) { continue }
+  $cls = [BitP.U32]::Cls($c); if ($cls -notmatch '^WindowsForms10\.Window\.') { continue }
+  $r = New-Object BitP.U32+RECT; [void][BitP.U32]::GetWindowRect($c, [ref]$r); $w = $r.R - $r.L; $h = $r.B - $r.T
+  if ($w -lt 150 -or $h -lt 60 -or $r.L -lt -2000) { continue }
+  $big += [pscustomobject]@{ H = $c; L = $r.L; T = $r.T; W = $w; Ht = $h; C = $cls } }
+P "candidates: $($big.Count)"
+$ci = 0
+foreach ($b in ($big | Sort-Object { $_.W * $_.Ht } -Descending | Select-Object -First 25)) {
+  $ci++; $sub = @(); try { $sub = [MsaaP]::Walk($b.H, 400, 6, 3000) } catch {}
+  $rc = @{}; foreach ($x in $sub) { $kr = "$($x[10])"; $rc[$kr] = 1 + [int]$rc[$kr] }
+  $sum = ($rc.Keys | Sort-Object { [int]$_ } | ForEach-Object { "r$($_)=$($rc[$_])" }) -join ' '
+  P "-- E$ci at=($($b.L),$($b.T)) size=$($b.W)x$($b.Ht) class=$($b.C) nodes=$($sub.Count)  roles: $sum"
+  $shown = 0
+  foreach ($x in $sub) { if ($shown -ge 14) { break }
+    if (-not ($x[2] -or $x[3])) { continue }; if ($x[10] -in @('9', '10')) { continue }
+    P "     d$($x[0]) r$($x[10]) name='$(Short (MaskHan $x[2]) 40)' value='$(Short (MaskHan $x[3]) 40)'"; $shown++ }
+}
 
 # ---------- Part C: tables (prescription list?) ----------
 $tabIdx = @(); for ($i = 0; $i -lt $nodes.Count; $i++) { if (@('24', '33', '35') -contains $nodes[$i][10]) { $tabIdx += $i } }
