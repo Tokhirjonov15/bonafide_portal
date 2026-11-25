@@ -13,6 +13,8 @@
 #  2026-11-25 c1.3: [원장님 확인 요청] — 같은 폴더에 rx_approve.on 파일이 있는 PC(처방 확인용 PC)에서만 보인다.
 #     간호가 비트 외래진료실에서 처방을 바꾸고(저장 전) 누르면 그 창 사진을 원장님께 보낸다 → 동선관리 [처방 확인]에서 [승인] → 바에 '승인' 표시.
 #     기록: (보드)/rxReq/{id}  { status: 대기 → 승인 | 취소 }.  사진: 병원 서버 rx_captures/{날짜}/{id}.jpg (서버가 안 되면 Firebase patient_photos/{차트번호}/rxq_{id}.jpg)
+#  2026-11-25 c1.4: 원장님은 동선관리를 쓰지 않는다 → 원장님 진료실 PC 의 이 바에서 확인한다. 같은 폴더에 rx_doctor.on 이 있는 PC 는
+#     7초마다 '대기' 요청을 읽어, 새 요청이 오면 그 사진을 창으로 띄운다(일하던 창의 입력을 뺏지 않는다). [확인] → status '승인'. 닫아 두었으면 바의 [처방 확인 N]으로 다시 연다.
 #  이 파일은 감시 스크립트(v4.0~)가 사이트의 capture.json 을 보고 스스로 바꿔 준다(진료실 PC 재설치 없이)
 #  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 진료 캡처 폴더 열기 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
 # ─────────────────────────────────────────────────────────────
@@ -21,7 +23,7 @@
 param([string]$Pc = $env:COMPUTERNAME,
       [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
-$CapVer = 'c1.3'   # c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
+$CapVer = 'c1.4'   # c1.4: 원장님 PC 알림 창 [확인] (rx_doctor.on 이 있는 PC 만, 2026-11-25). c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
 $ApiKey    ='AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
@@ -29,6 +31,7 @@ $BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'b
 $MaxSide   = 2400   # 잘라 낸 사진의 긴 변 최대(px) — 엑스레이 세부가 보이도록 넉넉히
 $BoardDoc  = 'patientboard_v3/' + [Uri]::EscapeDataString('반듯한정형외과')   # 동선관리 보드 문서(카드: …/patients)
 if (-not $Room -and $Pc -match '^진료실') { $Room = $Pc }
+$RxDoc = Test-Path (Join-Path $PSScriptRoot 'rx_doctor.on')   # 원장님 PC: 처방 확인 요청이 오면 알림 창을 띄우고 [확인]을 받는다
 $RxOn = Test-Path (Join-Path $PSScriptRoot 'rx_approve.on')   # 처방 확인 요청 단추를 쓰는 PC (설치 때 이 파일을 만든다)
 $SiteBase = 'https://bonafide-portal.seoulgijibae.workers.dev'
 $SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret'
@@ -374,11 +377,90 @@ function RxResume() {   # 바가 다시 떴을 때: 대기 중이던 요청이 �
   } catch { Log "대기 요청 다시 읽기 실패: $($_.Exception.Message)" }
 }
 
+# ── 원장님 쪽: 처방 확인 요청 알림 (2026-11-25 c1.4, rx_doctor.on 이 있는 PC 만) ──
+#  창은 입력을 뺏지 않고 뜬다(ShowWithoutActivation) — 원장님이 비트에 글을 쓰는 중에 Enter 가 [확인]으로 들어가지 않게. 늘 위(WS_EX_TOPMOST).
+if ($RxDoc) { Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition 'public class RxPopForm : System.Windows.Forms.Form { protected override bool ShowWithoutActivation { get { return true; } } protected override System.Windows.Forms.CreateParams CreateParams { get { System.Windows.Forms.CreateParams p = base.CreateParams; p.ExStyle |= 0x8; return p; } } }' }
+$script:RxPend = @(); $script:RxPop = @{}; $script:RxSeen = @{}; $script:RxDocAt = [DateTime]::MinValue
+function RxPending() {   # 오늘의 '대기' 요청 (먼저 온 것부터). 부르는 쪽에서 @( ) 로 감싼다
+  $tok = FbToken; $day = (Get-Date).ToString('yyyy-MM-dd')
+  $q = @{ structuredQuery = @{ from = @(@{ collectionId = 'rxReq' }); where = @{ fieldFilter = @{ field = @{ fieldPath = 'status' }; op = 'EQUAL'; value = @{ stringValue = '대기' } } } } } | ConvertTo-Json -Depth 10 -Compress
+  $r = Invoke-RestMethod -TimeoutSec 6 -Method Post -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/${BoardDoc}:runQuery" -Headers @{ Authorization = "Bearer $tok" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($q))
+  $out = @()
+  foreach ($row in @($r)) { if (-not $row.document) { continue }; $f = $row.document.fields; if ([string](FsVal $f.date) -ne $day) { continue }
+    $out += [pscustomobject]@{ id = [string](FsVal $f.id); mrn = [string](FsVal $f.mrn); name = [string](FsVal $f.name); pc = [string](FsVal $f.pc); at = [string](FsVal $f.at); path = [string](FsVal $f.path); srv = [bool](FsVal $f.srv) } }
+  return @($out | Where-Object { $_.id } | Sort-Object at)
+}
+function RxPhoto($r) {   # 사진 바이트: 병원 서버(srv) 또는 Firebase
+  if (-not $r.srv) { return (ShotImage $r.path) }
+  if ($script:ImgCache[$r.path]) { return $script:ImgCache[$r.path] }
+  $wc = New-Object Net.WebClient; $wc.Headers.Add('Authorization', "Bearer $(FbToken)")
+  try { $b = $wc.DownloadData("$SiteBase/api/dongseon/files/$($r.path)") } finally { $wc.Dispose() }
+  $script:ImgCache[$r.path] = $b; return $b
+}
+function RxApprove($r) {   # '대기'일 때만 '승인'으로 (읽은 뒤 바뀌었으면 실패 — updateTime 조건)
+  $tok = FbToken; $H = @{ Authorization = "Bearer $tok" }
+  $d = Invoke-RestMethod -TimeoutSec 10 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/rxReq/$($r.id)" -Headers $H
+  $st = [string](FsVal $d.fields.status); if ($st -ne '대기') { throw "이미 '$st' 상태입니다" }
+  $w = @{ update = @{ name = [string]$d.name; fields = @{ status = @{ stringValue = '승인' }; approvedBy = @{ stringValue = "원장님 ($Pc)" }; approvedAt = @{ stringValue = (NowIso) } } }
+          updateMask = @{ fieldPaths = @('status', 'approvedBy', 'approvedAt') }; currentDocument = @{ updateTime = [string]$d.updateTime } }
+  Invoke-RestMethod -TimeoutSec 15 -Method Post -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents:commit" -Headers $H -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes((@{ writes = @($w) } | ConvertTo-Json -Depth 30 -Compress))) | Out-Null
+}
+function RxShowPop($r) {
+  if ($script:RxPop[$r.id]) { return }
+  $f = New-Object RxPopForm; $f.Tag = $r.id
+  $tm = ''; try { $tm = ([DateTime]::Parse($r.at)).ToString('HH:mm') } catch {}
+  $f.Text = "처방 확인 요청 — $($r.name) ($($r.mrn))"; $f.StartPosition = 'Manual'; $f.ShowInTaskbar = $true; $f.BackColor = [Drawing.Color]::FromArgb(15, 23, 42)
+  $wa2 = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $fw = [int]($wa2.Width * 0.84); $fh = [int]($wa2.Height * 0.86)
+  $f.Size = New-Object Drawing.Size $fw, $fh; $f.Location = New-Object Drawing.Point ([int]($wa2.Left + ($wa2.Width - $fw) / 2)), ([int]($wa2.Top + ($wa2.Height - $fh) / 2 + 20))
+  $pb = New-Object Windows.Forms.PictureBox; $pb.Dock = 'Fill'; $pb.SizeMode = 'Zoom'; $pb.BackColor = [Drawing.Color]::FromArgb(15, 23, 42); $pb.Cursor = [Windows.Forms.Cursors]::Hand; $pb.Tag = $r
+  $bot = New-Object Windows.Forms.Panel; $bot.Size = New-Object Drawing.Size $fw, 70; $bot.Dock = 'Bottom';   # 폭을 먼저 정한다 — 오른쪽에 붙인(Anchor) 단추가 제자리에 오도록
+  $bot.BackColor = [Drawing.Color]::FromArgb(30, 41, 59)
+  $info = New-Object Windows.Forms.Label; $info.Font = New-Object Drawing.Font 'Malgun Gothic', 15, ([Drawing.FontStyle]::Bold); $info.ForeColor = [Drawing.Color]::White; $info.AutoSize = $false
+  $info.Location = New-Object Drawing.Point 16, 8; $info.Size = New-Object Drawing.Size ($fw - 420), 54; $info.TextAlign = 'MiddleLeft'
+  $info.Text = "$($r.name)  ·  $($r.mrn)     $tm 요청 ($($r.pc))`n간호가 바꾼 처방입니다 (아직 저장 전). 사진을 두 번 누르면 크게 봅니다."
+  $info.Font = New-Object Drawing.Font 'Malgun Gothic', 11
+  $ok = New-Object Windows.Forms.Button; $ok.Text = '확인'; $ok.Font = New-Object Drawing.Font 'Malgun Gothic', 16, ([Drawing.FontStyle]::Bold); $ok.FlatStyle = 'Flat'; $ok.FlatAppearance.BorderSize = 0
+  $ok.BackColor = [Drawing.Color]::FromArgb(22, 163, 74); $ok.ForeColor = [Drawing.Color]::White; $ok.Size = New-Object Drawing.Size 220, 50; $ok.Location = New-Object Drawing.Point ($fw - 260), 10; $ok.Anchor = 'Top, Right'; $ok.Cursor = [Windows.Forms.Cursors]::Hand; $ok.Tag = $r; $ok.TabStop = $false
+  $later = New-Object Windows.Forms.Button; $later.Text = '나중에'; $later.Font = New-Object Drawing.Font 'Malgun Gothic', 11; $later.FlatStyle = 'Flat'; $later.ForeColor = [Drawing.Color]::FromArgb(203, 213, 225)
+  $later.Size = New-Object Drawing.Size 110, 50; $later.Location = New-Object Drawing.Point ($fw - 380), 10; $later.Anchor = 'Top, Right'; $later.TabStop = $false
+  $bot.Controls.AddRange(@($info, $later, $ok)); $f.Controls.AddRange(@($pb, $bot))
+  try { $b = RxPhoto $r; $ms = New-Object IO.MemoryStream (, $b); $pb.Image = [Drawing.Image]::FromStream($ms) }
+  catch { Log "처방 확인 사진 받기 실패 $($r.path): $($_.Exception.Message)"; $info.Text = "$($r.name)  ·  $($r.mrn)     $tm 요청 ($($r.pc))`n사진을 받지 못했습니다: $($_.Exception.Message)" }
+  $ok.Add_Click({ $r = $this.Tag; $frm = $this.FindForm(); $this.Enabled = $false; $frm.Cursor = [Windows.Forms.Cursors]::WaitCursor
+    try { RxApprove $r; Log "처방 확인 [확인] $($r.id) $($r.mrn) $($r.name)"; $frm.Close(); SetStatus "✔ 확인했습니다  ·  $($r.name)" ([Drawing.Color]::FromArgb(134, 239, 172)) 5 }
+    catch { $frm.Cursor = [Windows.Forms.Cursors]::Default; $this.Enabled = $true; Log "처방 확인 [확인] 실패 $($r.id): $($_.Exception.Message)"; [Windows.Forms.MessageBox]::Show($frm, "확인하지 못했습니다.`n`n$($_.Exception.Message)", '처방 확인') | Out-Null } })
+  $later.Add_Click({ $this.FindForm().Close() })
+  $pb.Add_DoubleClick({ $r = $this.Tag; try { $tmp = Join-Path $env:TEMP ("rxreq_" + ($r.id -replace '[^\w-]', '_') + '.jpg'); [IO.File]::WriteAllBytes($tmp, (RxPhoto $r)); Start-Process $tmp } catch { Log "사진 보기 열기 실패: $($_.Exception.Message)" } })
+  $f.Add_FormClosed({ $id = [string]$this.Tag; $script:RxPop.Remove($id); foreach ($c in $this.Controls) { if ($c -is [Windows.Forms.PictureBox] -and $c.Image) { $c.Image.Dispose() } } })
+  $script:RxPop[$r.id] = $f; $f.Show()
+  try { [System.Media.SystemSounds]::Exclamation.Play() } catch {}
+  Log "처방 확인 요청 알림 창 $($r.id) $($r.mrn) $($r.name)"
+}
+function RxDocButton() { if (-not $btnRxDoc) { return }; $n = @($script:RxPend).Count
+  if ($n) { $btnRxDoc.Text = "처방 확인 $n"; $btnRxDoc.BackColor = [Drawing.Color]::FromArgb(220, 38, 38) } else { $btnRxDoc.Text = '처방 확인'; $btnRxDoc.BackColor = [Drawing.Color]::FromArgb(71, 85, 105) } }
+function RxDocTick() {   # 타이머(1.5초)에서 부른다. 비트가 떠 있으면 7초마다, 아니면 60초마다 읽는다(읽기 수를 아낀다)
+  if ($script:Capturing) { return }
+  $gap = if (Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue) { 7 } else { 60 }
+  if (((Get-Date) - $script:RxDocAt).TotalSeconds -lt $gap) { return }; $script:RxDocAt = Get-Date
+  $P = @(); try { $P = @(RxPending) } catch { Log "처방 확인 요청 읽기 오류: $($_.Exception.Message)"; return }
+  $script:RxPend = $P; $ids = @{}
+  foreach ($r in $P) { $ids[$r.id] = 1; if (-not $script:RxSeen[$r.id]) { $script:RxSeen[$r.id] = 1; try { RxShowPop $r } catch { Log "처방 확인 알림 창 오류 $($r.id): $($_.Exception.Message)" } } }
+  foreach ($id in @($script:RxPop.Keys)) { if (-not $ids[$id]) { try { $script:RxPop[$id].Close() } catch {} } }   # 간호가 취소했거나 이미 확인된 요청의 창은 닫는다
+  RxDocButton
+}
+function RxDocOpen() {   # 바의 [처방 확인 N] — 닫아 둔 요청을 다시 연다
+  $script:RxDocAt = [DateTime]::MinValue; $P = @(); try { $P = @(RxPending) } catch { SetStatus '✖ 요청을 읽지 못했습니다' ([Drawing.Color]::FromArgb(252, 165, 165)) 5; return }
+  $script:RxPend = $P; RxDocButton
+  if (-not $P.Count) { SetStatus '기다리는 처방 확인 요청이 없습니다' ([Drawing.Color]::FromArgb(253, 224, 71)) 4; return }
+  foreach ($r in $P) { $script:RxSeen[$r.id] = 1; try { RxShowPop $r; if ($script:RxPop[$r.id]) { $script:RxPop[$r.id].Activate() } } catch { Log "처방 확인 알림 창 오류 $($r.id): $($_.Exception.Message)" } }
+}
+
 # ── 바 ──
 $script:CurMrn = ''; $script:CurName = ''; $script:HoldUntil = [DateTime]::MinValue
 $bar = New-Object Windows.Forms.Form
 $bar.FormBorderStyle = 'None'; $bar.TopMost = $true; $bar.ShowInTaskbar = $false; $bar.StartPosition = 'Manual'
-$BarW = $(if ($RxOn) { 766 } else { 628 }); $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
+$RxX1 = $(if ($RxOn) { 138 } else { 0 }); $RxX2 = $(if ($RxDoc) { 112 } else { 0 })   # 처방 확인 단추들이 차지하는 폭
+$BarW = 628 + $RxX1 + $RxX2; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
 $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top
 try { if (Test-Path $PosFile) { $p = (Get-Content $PosFile -TotalCount 1) -split ','; $pt = New-Object Drawing.Point ([int]$p[0]), ([int]$p[1])
@@ -393,8 +475,10 @@ $btnRec = CapButton '진료 캡처' 180 124 58 237  # 보라 — 진료 기록�
 $btnPast = CapButton '지난 캡처' 268 71 85 105  # 회색 — 이 환자의 예전 캡처 보기 (2026-10-20)
 $lbl = New-Object Windows.Forms.Label
 $lbl.Font = New-Object Drawing.Font 'Malgun Gothic', 10; $lbl.ForeColor = [Drawing.Color]::White; $lbl.AutoSize = $false; $lbl.TextAlign = 'MiddleLeft'
-$lbl.Location = New-Object Drawing.Point $(if ($RxOn) { 496 } else { 358 }), 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
+$lbl.Location = New-Object Drawing.Point (358 + $RxX1 + $RxX2), 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
 $bar.Controls.AddRange(@($btn, $btnPt, $btnRec, $btnPast, $lbl))
+$btnRxDoc = $null
+if ($RxDoc) { $btnRxDoc = CapButton '처방 확인' (356 + $RxX1) 71 85 105; $btnRxDoc.Size = New-Object Drawing.Size 108, 30; $bar.Controls.Add($btnRxDoc); $btnRxDoc.Add_Click({ RxDocOpen }) }   # 원장님 PC 만 — 요청이 있으면 빨강 + 건수 (2026-11-25)
 $btnRx = $null
 if ($RxOn) { $btnRx = CapButton '원장님 확인 요청' 356 234 88 12; $btnRx.Size = New-Object Drawing.Size 134, 30; $bar.Controls.Add($btnRx); $btnRx.Add_Click({ DoRxRequest }) }   # 주황 — 처방 확인용 PC 만 (2026-11-25)
 $drag = { param($s, $e) if ($e.Button -eq 'Left') { [void][SlipCap.U]::ReleaseCapture(); [void][SlipCap.U]::SendMessage($bar.Handle, 0xA1, 2, 0); try { "$($bar.Left),$($bar.Top)" | Set-Content $PosFile } catch {} } }   # 끌어서 옮기기
@@ -612,7 +696,7 @@ function EnsureBarVisible() {
     $bar.TopMost = $true
   } catch { Log "바 표시 확인 오류: $($_.Exception.Message)" }
 }
-$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient; if ($RxOn) { try { RxTick } catch { Log "처방 확인 대기 오류: $($_.Exception.Message)" } } }); $timer.Start()
+$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient; if ($RxOn) { try { RxTick } catch { Log "처방 확인 대기 오류: $($_.Exception.Message)" } }; if ($RxDoc) { try { RxDocTick } catch { Log "처방 확인 알림 오류: $($_.Exception.Message)" } } }); $timer.Start()
 $bar.Add_Shown({ if ($RxOn) { RxResume }; ReadPatient })
 Log "시작 $CapVer ($Pc)"
 [Windows.Forms.Application]::Run($bar)
