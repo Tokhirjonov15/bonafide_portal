@@ -10,6 +10,9 @@
 #  2026-10-13: 버튼 둘 — [주사 캡처](예전 [캡처], 슬립으로) · [PT 캡처](4층으로: shots 에 kind='pt' → 4층 예약 스케줄 위 알림 + 4층 카드 색)
 #  2026-11-17: [진료 캡처](kind='rec') — 진료실 이미지 기록용. 슬립·4층에는 안 가고 [지난 캡처]·동선관리 환자 정보 창에만 따로 남는다
 #  2026-11-17 c1.2: [진료 캡처]는 이 PC 에도 jpg 로 남긴다 — C:\진료캡처\{차트번호}_{이름}\{날짜_시각}.jpg (안 되면 내 문서\진료캡처). 오른쪽 클릭 메뉴 = 폴더 열기
+#  2026-11-25 c1.3: [원장님 확인 요청] — 같은 폴더에 rx_approve.on 파일이 있는 PC(처방 확인용 PC)에서만 보인다.
+#     간호가 비트 외래진료실에서 처방을 바꾸고(저장 전) 누르면 그 창 사진을 원장님께 보낸다 → 동선관리 [처방 확인]에서 [승인] → 바에 '승인' 표시.
+#     기록: (보드)/rxReq/{id}  { status: 대기 → 승인 | 취소 }.  사진: 병원 서버 rx_captures/{날짜}/{id}.jpg (서버가 안 되면 Firebase patient_photos/{차트번호}/rxq_{id}.jpg)
 #  이 파일은 감시 스크립트(v4.0~)가 사이트의 capture.json 을 보고 스스로 바꿔 준다(진료실 PC 재설치 없이)
 #  바 사용: 바를 끌어서 옮김 · 오른쪽 클릭 = 메뉴(위치 초기화 / 진료 캡처 폴더 열기 / 잠시 끄기) · 캡처 중 Esc 또는 오른쪽 클릭 = 취소
 # ─────────────────────────────────────────────────────────────
@@ -18,7 +21,7 @@
 param([string]$Pc = $env:COMPUTERNAME,
       [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
-$CapVer = 'c1.2'   # c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
+$CapVer = 'c1.3'   # c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
 $ApiKey    ='AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
@@ -26,11 +29,14 @@ $BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'b
 $MaxSide   = 2400   # 잘라 낸 사진의 긴 변 최대(px) — 엑스레이 세부가 보이도록 넉넉히
 $BoardDoc  = 'patientboard_v3/' + [Uri]::EscapeDataString('반듯한정형외과')   # 동선관리 보드 문서(카드: …/patients)
 if (-not $Room -and $Pc -match '^진료실') { $Room = $Pc }
+$RxOn = Test-Path (Join-Path $PSScriptRoot 'rx_approve.on')   # 처방 확인 요청 단추를 쓰는 PC (설치 때 이 파일을 만든다)
+$SiteBase = 'https://bonafide-portal.seoulgijibae.workers.dev'
 $SecretFile = Join-Path $PSScriptRoot 'bitplus_watcher.secret'
 $TokenFile  = Join-Path $PSScriptRoot 'slip_capture.token'
 $LogDir = Join-Path $env:LOCALAPPDATA 'bitplus_watcher'; New-Item -ItemType Directory -Force $LogDir | Out-Null
 $LogFile = Join-Path $LogDir 'slip_capture.log'
 $PosFile = Join-Path $LogDir 'slip_capture.pos'
+$RxFile = Join-Path $LogDir 'rx_pending.txt'   # 대기 중인 처방 확인 요청 id — 바가 다시 떠도 이어서 기다린다
 function Log($m) { try { Add-Content $LogFile "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" -Encoding UTF8 } catch {} }
 function NowIso() { return (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffzzz') }
 
@@ -44,6 +50,8 @@ Add-Type -Namespace SlipCap -Name U -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(System.IntPtr v);
 [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr h, out uint pid);
 [DllImport("user32.dll")] public static extern System.IntPtr SendMessage(System.IntPtr h, int m, int w, int l);
 '@
 # 배율(125%·150%) 화면에서도 캡처 좌표가 실제 픽셀과 맞도록 — 모니터마다 배율이 달라도 맞게(모니터별 v2, Windows 10 1703+). 안 되면 예전 방식
@@ -269,11 +277,108 @@ function SelectRegion($who, $where = '슬립에 올립니다') {
   return $out
 }
 
+# ── 처방 확인 요청 (2026-11-25, rx_approve.on 이 있는 PC 만) ──
+#  비트 외래진료실 창 전체를 찍어 올리고 (보드)/rxReq/{id} 에 '대기'로 적는다. 원장님이 동선관리에서 [승인]하면 status 가 '승인'으로 바뀐다(3초마다 확인).
+#  기다리는 동안 다른 환자를 열면 요청을 취소한다(바꾼 처방이 화면에서 사라지므로). 비트에는 아무것도 누르지 않는다.
+function ShotWindow($hwnd) {
+  $r = New-Object BitW.U32+RECT; if (-not [BitW.U32]::GetWindowRect([IntPtr]$hwnd, [ref]$r)) { throw '비트 창 위치를 읽지 못했습니다' }
+  $vs = [Windows.Forms.SystemInformation]::VirtualScreen
+  $rc = [Drawing.Rectangle]::Intersect((New-Object Drawing.Rectangle $r.L, $r.T, ($r.R - $r.L), ($r.B - $r.T)), $vs)
+  if ($rc.Width -lt 400 -or $rc.Height -lt 300) { throw '비트 외래진료실 창이 화면에 보이지 않습니다 (최소화되어 있으면 다시 띄워 주세요)' }
+  $bmp = New-Object Drawing.Bitmap $rc.Width, $rc.Height
+  $g = [Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($rc.Left, $rc.Top, 0, 0, $bmp.Size); $g.Dispose()
+  $sc = [Math]::Min(1.0, $MaxSide / [double][Math]::Max($bmp.Width, $bmp.Height))
+  if ($sc -lt 1.0) { $nw = [int]($bmp.Width * $sc); $nh = [int]($bmp.Height * $sc); $rs = New-Object Drawing.Bitmap $nw, $nh
+    $gr = [Drawing.Graphics]::FromImage($rs); $gr.InterpolationMode = 'HighQualityBicubic'; $gr.DrawImage($bmp, 0, 0, $nw, $nh); $gr.Dispose(); $bmp.Dispose(); $bmp = $rs }
+  $codec = [Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' } | Select-Object -First 1
+  $ep = New-Object Drawing.Imaging.EncoderParameters 1; $ep.Param[0] = New-Object Drawing.Imaging.EncoderParameter ([Drawing.Imaging.Encoder]::Quality), ([long]88)
+  $ms = New-Object IO.MemoryStream; $bmp.Save($ms, $codec, $ep)
+  $out = @{ bytes = $ms.ToArray(); w = $bmp.Width; h = $bmp.Height }; $bmp.Dispose(); $ms.Dispose()
+  return $out
+}
+function BitInFront($hwnd) {   # 지금 맨 앞 창이 비트(BITDoctorOrder)인가 — 다른 프로그램이 비트를 가리고 있으면 사진에 그 프로그램이 찍힌다
+  try { $fg = [SlipCap.U]::GetForegroundWindow(); if ($fg -eq [IntPtr]::Zero) { return $true }
+    $p1 = [uint32]0; [void][SlipCap.U]::GetWindowThreadProcessId($fg, [ref]$p1); return (([int]$p1 -eq [BitW.U32]::Pid([IntPtr]$hwnd)) -or ([int]$p1 -eq $PID)) } catch { return $true }
+}
+function RxUpload([byte[]]$bytes, $id, $mrn) {   # 병원 서버(Worker → 터널) 먼저, 안 되면 Firebase
+  $tok = FbToken; $day = (Get-Date).ToString('yyyy-MM-dd'); $p = "rx_captures/$day/$id.jpg"
+  try { $r = Invoke-RestMethod -TimeoutSec 25 -Method Put -Uri "$SiteBase/api/dongseon/files/$p" -Headers @{ Authorization = "Bearer $tok" } -ContentType 'image/jpeg' -Body $bytes
+    if ($r.ok) { return @{ path = $p; srv = $true } } } catch { Log "병원 서버 저장 안 됨 → Firebase 로: $($_.Exception.Message)" }
+  $p2 = "patient_photos/$(PmKey $mrn)/rxq_$id.jpg"
+  $u = "https://firebasestorage.googleapis.com/v0/b/$Bucket/o?uploadType=media&name=" + [Uri]::EscapeDataString($p2)
+  Invoke-RestMethod -TimeoutSec 60 -Method Post -Uri $u -Headers @{ Authorization = "Bearer $tok" } -ContentType 'image/jpeg' -Body $bytes | Out-Null
+  return @{ path = $p2; srv = $false }
+}
+function RxSet($id, $h) {   # (보드)/rxReq/{id} 에 $h 의 칸만 쓴다
+  $tok = FbToken; $f = @{}
+  foreach ($k in @($h.Keys)) { $v = $h[$k]; if ($v -is [bool]) { $f[$k] = @{ booleanValue = $v } } elseif ($v -is [int]) { $f[$k] = @{ integerValue = "$v" } } else { $f[$k] = @{ stringValue = "$v" } } }
+  $doc = "projects/$ProjectId/databases/(default)/documents/$([Uri]::UnescapeDataString($BoardDoc))/rxReq/$id"
+  $json = (@{ writes = @(@{ update = @{ name = $doc; fields = $f }; updateMask = @{ fieldPaths = @($h.Keys) } }) } | ConvertTo-Json -Depth 30 -Compress)
+  Invoke-RestMethod -TimeoutSec 20 -Method Post -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents:commit" -Headers @{ Authorization = "Bearer $tok" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json)) | Out-Null
+}
+function RxGet($id) { $tok = FbToken
+  return (Invoke-RestMethod -TimeoutSec 6 -Method Get -Uri "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/$BoardDoc/rxReq/$id" -Headers @{ Authorization = "Bearer $tok" }).fields }
+$script:Rx = $null   # 대기 중인 요청: @{ id; mrn; name; at; miss; pollAt; logAt }
+function RxKeep() { try { if ($script:Rx) { "$($script:Rx.id)|$($script:Rx.mrn)|$($script:Rx.name)" | Set-Content $RxFile -Encoding UTF8 } else { Remove-Item $RxFile -ErrorAction SilentlyContinue } } catch {} }
+function RxEnd($text, $color, $sec) { $script:Rx = $null; RxKeep; RxButton; SetStatus $text $color $sec }
+function RxButton() { if (-not $btnRx) { return }
+  if ($script:Rx) { $btnRx.Text = '요청 취소'; $btnRx.BackColor = [Drawing.Color]::FromArgb(100, 116, 139) } else { $btnRx.Text = '원장님 확인 요청'; $btnRx.BackColor = [Drawing.Color]::FromArgb(234, 88, 12) } }
+function DoRxRequest() {
+  if ($script:Rx) {   # 대기 중에 다시 누르면 취소
+    if ([Windows.Forms.MessageBox]::Show("$($script:Rx.name) ($($script:Rx.mrn)) 의 원장님 확인 요청을 취소할까요?", '처방 확인 요청', 'YesNo', 'Question') -ne 'Yes') { return }
+    $id = $script:Rx.id; try { RxSet $id @{ status = '취소'; endAt = (NowIso); endWhy = '간호가 취소' } } catch { Log "요청 취소 기록 실패 $id : $($_.Exception.Message)" }
+    Log "처방 확인 요청 취소 $id"; RxEnd '요청을 취소했습니다' ([Drawing.Color]::FromArgb(253, 224, 71)) 4; return }
+  $h = FindDoctorWindow; $d = $null; if ($h) { try { $d = ReadDoctor $h } catch {} }
+  $mrn = if ($d) { [string]$d.mrn } else { '' }; $name = if ($d) { [string]$d.name } else { '' }
+  if (-not $h -or -not $mrn) { SetStatus '✖ 비트 외래진료실에 환자를 먼저 열어 주세요' ([Drawing.Color]::FromArgb(252, 165, 165)) 6; return }
+  $script:Capturing = $true; $bar.Hide(); [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 350
+  $shot = $null; $err = ''
+  try { if (-not (BitInFront $h)) { throw '비트 외래진료실 창을 맨 앞에 두고 다시 눌러 주세요' }; $shot = ShotWindow $h } catch { $err = $_.Exception.Message; Log "처방 확인 사진 오류: $err" }
+  $bar.Show(); $bar.TopMost = $true; $script:Capturing = $false
+  if (-not $shot) { SetStatus "✖ $err" ([Drawing.Color]::FromArgb(252, 165, 165)) 8; return }
+  SetStatus "원장님께 보내는 중…  $name" ([Drawing.Color]::FromArgb(253, 224, 71)) 60; [Windows.Forms.Application]::DoEvents()
+  $id = 'rq' + (Get-Date).ToString('yyyyMMddHHmmssfff')
+  try {
+    $up = RxUpload $shot.bytes $id $mrn
+    RxSet $id @{ id = $id; date = (Get-Date).ToString('yyyy-MM-dd'); at = (NowIso); mrn = $mrn; name = $name; pc = $Pc; status = '대기'; path = $up.path; srv = [bool]$up.srv; w = [int]$shot.w; h = [int]$shot.h }
+  } catch { $m = $_.Exception.Message; Log "처방 확인 요청 실패 $mrn : $m"; SetStatus '✖ 보내지 못했습니다 — 다시 눌러 주세요' ([Drawing.Color]::FromArgb(252, 165, 165)) 8
+    [Windows.Forms.MessageBox]::Show("원장님께 보내지 못했습니다.`n`n$m`n`n로그: $LogFile", '처방 확인 요청') | Out-Null; return }
+  Log "처방 확인 요청 $id $mrn $name $($shot.w)x$($shot.h) $($up.path)"
+  $script:Rx = @{ id = $id; mrn = $mrn; name = $name; at = (Get-Date); miss = 0; pollAt = (Get-Date); logAt = (Get-Date) }; RxKeep; RxButton
+  $script:HoldUntil = [DateTime]::MinValue
+}
+function RxTick() {   # 1.5초마다(타이머). 대기 중일 때만 일한다
+  $x = $script:Rx; if (-not $x -or $script:Capturing) { return }
+  # ① 화면의 환자가 바뀌었나 (두 번 연속 다르면 — 비트가 화면을 다시 그리는 순간의 빈 값은 넘어간다)
+  $cur = ''; try { $h = FindDoctorWindow; if ($h) { $d = ReadDoctor $h; if ($d) { $cur = [string]$d.mrn } } } catch {}
+  if ($cur -ne $x.mrn) { $x.miss++ } else { $x.miss = 0 }
+  if ($x.miss -ge 2) {
+    try { RxSet $x.id @{ status = '취소'; endAt = (NowIso); endWhy = $(if ($cur) { '다른 환자를 열었음' } else { '비트 환자 화면이 닫혔음' }) } } catch { Log "요청 취소 기록 실패 $($x.id): $($_.Exception.Message)" }
+    Log "처방 확인 요청 자동 취소 $($x.id) (화면 환자 '$cur')"
+    RxEnd "✖ $($x.name) 화면이 바뀌어 요청이 취소됐습니다" ([Drawing.Color]::FromArgb(252, 165, 165)) 12; try { [System.Media.SystemSounds]::Exclamation.Play() } catch {}; return }
+  $min = [int]((Get-Date) - $x.at).TotalMinutes
+  if ((Get-Date) -ge $script:HoldUntil) { $lbl.ForeColor = [Drawing.Color]::FromArgb(253, 224, 71); $lbl.Text = "원장님 확인 대기 중$(if ($min -ge 1) { " ${min}분" })  ·  $($x.name)" }
+  if (((Get-Date) - $x.logAt).TotalSeconds -ge 60) { $x.logAt = Get-Date; Log "처방 확인 대기 중 $($x.id) ${min}분" }   # 로그가 계속 쓰이면 감시 스크립트가 대기 중에 바를 바꿔 끄지 않는다
+  # ② 3초마다 원장님 답 확인
+  if (((Get-Date) - $x.pollAt).TotalSeconds -lt 3) { return }; $x.pollAt = Get-Date
+  $st = ''; $by = ''; try { $f = RxGet $x.id; $st = [string](FsVal $f.status); $by = [string](FsVal $f.approvedBy) } catch { return }
+  if ($st -eq '승인') { Log "처방 확인 승인 $($x.id) ($by)"
+    RxEnd "✔ 원장님 승인  ·  $($x.name)  — 비트 [저장]을 눌러 주세요" ([Drawing.Color]::FromArgb(134, 239, 172)) 90; try { [System.Media.SystemSounds]::Asterisk.Play() } catch {} }
+  elseif ($st -and $st -ne '대기') { Log "처방 확인 요청 끝 $($x.id) ($st)"; RxEnd "요청이 닫혔습니다 ($st)  ·  $($x.name)" ([Drawing.Color]::FromArgb(253, 224, 71)) 10 }
+}
+function RxResume() {   # 바가 다시 떴을 때: 대기 중이던 요청이 아직 '대기'면 이어서 기다린다
+  try { if (-not (Test-Path $RxFile)) { return }; $p = ((Get-Content $RxFile -Encoding UTF8 -TotalCount 1) -split '\|'); if ($p.Count -lt 2 -or -not $p[0]) { return }
+    $f = RxGet $p[0]; if ([string](FsVal $f.status) -ne '대기') { Remove-Item $RxFile -ErrorAction SilentlyContinue; return }
+    $t = Get-Date; try { $t = [DateTime]::Parse([string](FsVal $f.at)) } catch {}
+    $script:Rx = @{ id = $p[0]; mrn = $p[1]; name = $(if ($p.Count -ge 3) { $p[2] } else { '' }); at = $t; miss = 0; pollAt = (Get-Date); logAt = (Get-Date) }; RxButton; Log "처방 확인 요청 이어서 대기 $($p[0])"
+  } catch { Log "대기 요청 다시 읽기 실패: $($_.Exception.Message)" }
+}
+
 # ── 바 ──
 $script:CurMrn = ''; $script:CurName = ''; $script:HoldUntil = [DateTime]::MinValue
 $bar = New-Object Windows.Forms.Form
 $bar.FormBorderStyle = 'None'; $bar.TopMost = $true; $bar.ShowInTaskbar = $false; $bar.StartPosition = 'Manual'
-$BarW = 628; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
+$BarW = $(if ($RxOn) { 766 } else { 628 }); $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
 $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top
 try { if (Test-Path $PosFile) { $p = (Get-Content $PosFile -TotalCount 1) -split ','; $pt = New-Object Drawing.Point ([int]$p[0]), ([int]$p[1])
@@ -288,8 +393,10 @@ $btnRec = CapButton '진료 캡처' 180 124 58 237  # 보라 — 진료 기록�
 $btnPast = CapButton '지난 캡처' 268 71 85 105  # 회색 — 이 환자의 예전 캡처 보기 (2026-10-20)
 $lbl = New-Object Windows.Forms.Label
 $lbl.Font = New-Object Drawing.Font 'Malgun Gothic', 10; $lbl.ForeColor = [Drawing.Color]::White; $lbl.AutoSize = $false; $lbl.TextAlign = 'MiddleLeft'
-$lbl.Location = New-Object Drawing.Point 358, 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
+$lbl.Location = New-Object Drawing.Point $(if ($RxOn) { 496 } else { 358 }), 4; $lbl.Size = New-Object Drawing.Size 266, 30; $lbl.Text = '비트 외래진료실 확인 중…'
 $bar.Controls.AddRange(@($btn, $btnPt, $btnRec, $btnPast, $lbl))
+$btnRx = $null
+if ($RxOn) { $btnRx = CapButton '원장님 확인 요청' 356 234 88 12; $btnRx.Size = New-Object Drawing.Size 134, 30; $bar.Controls.Add($btnRx); $btnRx.Add_Click({ DoRxRequest }) }   # 주황 — 처방 확인용 PC 만 (2026-11-25)
 $drag = { param($s, $e) if ($e.Button -eq 'Left') { [void][SlipCap.U]::ReleaseCapture(); [void][SlipCap.U]::SendMessage($bar.Handle, 0xA1, 2, 0); try { "$($bar.Left),$($bar.Top)" | Set-Content $PosFile } catch {} } }   # 끌어서 옮기기
 $bar.Add_MouseDown($drag); $lbl.Add_MouseDown($drag)
 $menu = New-Object Windows.Forms.ContextMenuStrip
@@ -345,7 +452,9 @@ function ReadPatient() {
   try { $h = FindDoctorWindow; if ($h) { $d = ReadDoctor $h; if ($d) { $mrn = [string]$d.mrn; $name = [string]$d.name } } } catch { Log "창 읽기 오류: $($_.Exception.Message)" }
   if ($mrn -and $mrn -ne $script:CurMrn) { try { JaboPopup $mrn $name } catch { Log "자보 도수 팝업 오류: $($_.Exception.Message)" } }
   $script:CurMrn = $mrn; $script:CurName = $name
+  if ($btnRx) { $btnRx.Enabled = [bool]$mrn -or [bool]$script:Rx }
   $btn.Enabled = [bool]$mrn -or [bool]$Room; $btnPt.Enabled = $btn.Enabled; $btnRec.Enabled = $btn.Enabled; $btnPast.Enabled = $btn.Enabled
+  if ($script:Rx) { return }   # 대기 중 글은 RxTick 이 쓴다
   if ($mrn) { $lbl.ForeColor = [Drawing.Color]::White; $lbl.Text = "$name  ·  $mrn" }
   elseif ($Room) { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = "비트 환자 없음 → $Room 진행 환자로" }
   else { $lbl.ForeColor = [Drawing.Color]::FromArgb(148, 163, 184); $lbl.Text = '비트 외래진료실에 환자 없음' }
@@ -503,8 +612,8 @@ function EnsureBarVisible() {
     $bar.TopMost = $true
   } catch { Log "바 표시 확인 오류: $($_.Exception.Message)" }
 }
-$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient }); $timer.Start()
-$bar.Add_Shown({ ReadPatient })
+$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient; if ($RxOn) { try { RxTick } catch { Log "처방 확인 대기 오류: $($_.Exception.Message)" } } }); $timer.Start()
+$bar.Add_Shown({ if ($RxOn) { RxResume }; ReadPatient })
 Log "시작 $CapVer ($Pc)"
 [Windows.Forms.Application]::Run($bar)
 Log "종료"

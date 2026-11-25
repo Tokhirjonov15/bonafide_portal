@@ -1900,6 +1900,7 @@ html[data-theme="light"] .queue-info{background:var(--amber-bg);border-color:rgb
     <button class="btn" id="statsBtn" style="display:none" onclick="openStats()"><i data-lucide="chart-column"></i> 통계</button>
     <button class="btn" id="routinesBtn" style="display:none" onclick="openRoutines()"><i data-lucide="puzzle"></i> 루틴 동선</button>
     <button class="btn" id="roomsBtn" style="display:none" onclick="openRooms()">진료실 관리</button>
+    <button class="btn" id="rxReqBtn" style="display:none" onclick="openRxReqs()" title="처방 확인 — 간호가 비트에서 처방을 바꾸고 저장 전에 보낸 화면. [승인]하면 간호 PC 에 승인이 표시됩니다 (원장님·관리자만 보임)"><i data-lucide="clipboard-check"></i> 처방 확인<span id="rxReqCnt"></span></button>
     <button class="btn" id="docReqBtn" onclick="openDocReqs()" title="서류 발급 태블릿 신청 목록 — 신청이 오면 숫자·알림. 태블릿은 주소 끝에 ?docs"><i data-lucide="file-text"></i> 서류발급<span id="docReqCnt"></span></button>
     <button class="btn" id="bonusMgrBtn" onclick="openBonusMgr()" title="물리치료 관리 — 4층 물리치료 접수: 환자가 이름을 누르고 생년월일 확인 뒤 치료 동의 (이름은 가려서)"><i data-lucide="gift"></i> 물리치료 관리</button>
     <button class="btn" id="offBtn" style="display:none" onclick="openOff()"><i data-lucide="users"></i> 직원 목록</button>
@@ -16987,6 +16988,92 @@ boot();
       try{audit(done?'서류 발급 완료':'서류 발급 되돌림',id);}catch(e){}}catch(e){alert('저장하지 못했습니다: '+(e.message||e));}};
   /* 테스트용 */
   window._dk={reset:()=>reset(),S:()=>S,setS:o=>Object.assign(S,o),myVisits:()=>myVisits(),matchMrn:()=>matchMrn(),b6};
+})();
+</script>
+<!-- ═════ 처방 확인 (2026-11-25) ═════
+   간호가 처방 확인용 PC 의 비트 외래진료실에서 처방을 바꾸고(저장 전) 캡처 바 [원장님 확인 요청]을 누르면, 그 창 사진이 (보드)/rxReq/{id} 에 '대기'로 온다.
+   원장님(또는 관리자)에게만 맨 위 [처방 확인] 단추가 보이고, 새 요청이 오면 알림과 함께 이 창이 열린다. [승인] → status '승인' → 간호 PC 의 바가 3초 안에 알아챈다.
+   반려는 없다(원장님 요청: 바뀐 것을 보고 확인만). 사진: srv 면 병원 서버(/api/dongseon/files/rx_captures/…), 아니면 Firebase. 최근 3일만 읽는다 -->
+<style>
+  #rxReqCnt:not(:empty){display:inline-block;min-width:18px;padding:0 5px;margin-left:4px;border-radius:9px;background:#dc2626;color:#fff;font-size:11px;font-weight:800;line-height:18px;text-align:center}
+  .rxq-card{border:2px solid #ea580c;border-radius:12px;padding:12px;background:#fff7ed}
+  .rxq-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .rxq-head b{font-size:18px}
+  .rxq-img{display:block;width:100%;max-height:62vh;object-fit:contain;background:#0f172a;border-radius:8px;cursor:zoom-in;min-height:120px}
+  .rxq-ok{font-size:17px;font-weight:800;padding:10px 34px;margin-left:auto}
+  .rxq-row{border:1px solid var(--line);border-radius:10px;padding:7px 11px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .rxq-st{font-size:11.5px;font-weight:800;padding:2px 9px;border-radius:99px;background:#e2e8f0;color:#334155}
+  .rxq-st.ok{background:#dcfce7;color:#166534}.rxq-st.wait{background:#ffedd5;color:#9a3412}.rxq-st.no{background:#f1f5f9;color:#64748b}
+  .rxq-zoom{position:fixed;inset:0;z-index:1400;background:rgba(2,6,23,.92);overflow:auto;cursor:zoom-out}
+  .rxq-zoom img{display:block;margin:0 auto;max-width:none}
+</style>
+<script>
+(function(){
+  let REQS=[],UNSUB=null,SEEN=null,BUSY='';const URLS={};
+  const col=()=>(typeof cloud!=='undefined'&&cloud.ref)?cloud.ref.collection('rxReq'):null;
+  const E=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const hm=v=>{const t=new Date(v);return isNaN(t)?'':String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0');};
+  const md=v=>{const t=new Date(v);return isNaN(t)?'':(t.getMonth()+1)+'/'+t.getDate();};
+  function canApprove(){try{return !!(typeof currentUser!=='undefined'&&currentUser&&(currentUser.role==='doctor'||currentUser.role==='admin'||currentUser.super));}catch(e){return false;}}
+  function special(){try{return !!(window.DOCS_MODE||(typeof SLIP_MODE!=='undefined'&&SLIP_MODE)||(typeof RESV_MODE!=='undefined'&&RESV_MODE));}catch(e){return false;}}
+  function sub(){const btn=document.getElementById('rxReqBtn');const ok=canApprove()&&!special();
+    if(btn)btn.style.display=ok?'':'none';
+    if(!ok){if(UNSUB){try{UNSUB();}catch(e){}UNSUB=null;SEEN=null;REQS=[];}return;}
+    if(UNSUB)return;const c=col();if(!c)return;
+    UNSUB=c.where('date','>=',ymd(new Date(Date.now()-2*864e5))).onSnapshot(s=>{
+      REQS=s.docs.map(d=>d.data()).filter(r=>r&&r.id).sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+      const pend=REQS.filter(r=>r.status==='대기');const cnt=document.getElementById('rxReqCnt');if(cnt)cnt.textContent=pend.length?String(pend.length):'';
+      const fresh=pend.filter(r=>!SEEN||!SEEN.has(r.id));
+      if(fresh.length){
+        if(SEEN)fresh.forEach(r=>{try{notify('clipboard-check','처방 확인 요청',E((r.name||'')+' '+(r.mrn||'')+' · '+(r.pc||'')));}catch(e){}});
+        if(currentUser.role==='doctor')render(true);else if(document.getElementById('rxReqOv'))render();}   // 원장님 화면: 새 요청(또는 처음 열었을 때 남아 있는 대기)이 있으면 창을 연다. 관리자는 숫자·알림만
+      else if(document.getElementById('rxReqOv'))render();
+      SEEN=new Set(REQS.map(r=>r.id));
+    },e=>{console.warn('rxReq',e);UNSUB=null;});}
+  setInterval(sub,3000);
+  window.openRxReqs=()=>{sub();render(true);};
+  function img(r){   // 사진 주소는 한 번 받은 뒤 다시 쓴다(목록이 다시 그려져도 깜박이지 않게)
+    if(!r.path)return '<div class="hint">사진 없음</div>';
+    const u=URLS[r.path];
+    if(!u&&typeof photoUrl==='function'&&URLS[r.path]!==0){URLS[r.path]=0;
+      photoUrl(r.path,!!r.srv).then(x=>{URLS[r.path]=x;if(document.getElementById('rxReqOv'))render();}).catch(e=>{console.warn('rxReq photo',e);URLS[r.path]=-1;if(document.getElementById('rxReqOv'))render();});}
+    if(u===-1)return '<div class="hint" style="padding:18px">사진을 불러오지 못했습니다. <button class="btn sm" onclick="rxReqRetry(\''+E(r.id)+'\')">다시</button></div>';
+    return u?'<img class="rxq-img" src="'+E(u)+'" alt="처방 화면" onclick="rxReqZoom(\''+E(r.id)+'\')">':'<div class="rxq-img" style="display:flex;align-items:center;justify-content:center;color:#cbd5e1">사진 불러오는 중…</div>';}
+  function stTag(r){const s=r.status;return s==='대기'?'<span class="rxq-st wait">대기</span>':s==='승인'?'<span class="rxq-st ok">승인</span>':'<span class="rxq-st no">'+E(s||'')+'</span>';}
+  function render(open){let ov=document.getElementById('rxReqOv');if(!ov&&!open)return;
+    if(!ov){ov=document.createElement('div');ov.id='rxReqOv';ov.className='modal-bg show';ov.style.zIndex='1250';ov.onclick=e=>{if(e.target===ov)ov.remove();};document.body.appendChild(ov);}
+    const keep=ov.querySelector('.body');const top=keep?keep.scrollTop:0;
+    const pend=REQS.filter(r=>r.status==='대기').slice().reverse();   // 먼저 온 요청이 위
+    const rest=REQS.filter(r=>r.status!=='대기');
+    const cards=pend.map(r=>`<div class="rxq-card"><div class="rxq-head"><b>${E(r.name||'(이름 없음)')}</b><span>${E(r.mrn||'')}</span><span class="hint">${E(hm(r.at))} 요청 · ${E(r.pc||'')}</span>
+        <button class="btn primary rxq-ok" ${BUSY===r.id?'disabled':''} onclick="rxReqApprove('${E(r.id)}')">${BUSY===r.id?'저장 중…':'승인'}</button></div>${img(r)}
+        <div class="hint" style="margin-top:6px">사진을 누르면 크게 봅니다. 승인하면 간호 PC 에 바로 표시됩니다.</div></div>`).join('');
+    const rows=rest.map(r=>`<div class="rxq-row">${stTag(r)}<b>${E(r.name||'')}</b><span>${E(r.mrn||'')}</span>
+        <span class="hint">${E(md(r.at))} ${E(hm(r.at))} 요청${r.status==='승인'?' · '+E(hm(r.approvedAt))+' 승인 '+E(r.approvedBy||''):''}${r.endWhy?' · '+E(r.endWhy):''}</span>
+        <button class="btn sm" style="margin-left:auto" onclick="rxReqZoom('${E(r.id)}')">사진</button></div>`).join('');
+    ov.innerHTML=`<div class="modal" style="width:min(1180px,96vw)"><h3>처방 확인 <span class="hint">저장 전에 간호가 보낸 화면 · 최근 3일</span></h3>
+      <div class="body" style="display:flex;flex-direction:column;gap:10px;max-height:78vh;overflow:auto">
+        ${cards||'<div class="hint" style="padding:10px">확인을 기다리는 처방이 없습니다.</div>'}
+        ${rows?'<div class="hint" style="margin-top:6px;font-weight:700">지난 요청</div>'+rows:''}</div>
+      <div class="foot"><button class="btn primary" onclick="document.getElementById('rxReqOv').remove()">닫기</button></div></div>`;
+    const b=ov.querySelector('.body');if(b&&top)b.scrollTop=top;}
+  window.rxReqRetry=id=>{const r=REQS.find(x=>x.id===id);if(r){delete URLS[r.path];render();}};
+  window.rxReqZoom=id=>{const r=REQS.find(x=>x.id===id);if(!r||!r.path)return;
+    const show=u=>{const z=document.createElement('div');z.className='rxq-zoom';z.onclick=()=>z.remove();z.innerHTML='<img src="'+E(u)+'" alt="처방 화면">';document.body.appendChild(z);};
+    const u=URLS[r.path];if(u&&u!==-1){show(u);return;}
+    if(typeof photoUrl==='function')photoUrl(r.path,!!r.srv).then(x=>{URLS[r.path]=x;show(x);}).catch(e=>alert('사진을 불러오지 못했습니다: '+(e.message||e)));};
+  window.rxReqApprove=async id=>{const c=col();if(!c||BUSY)return;if(!canApprove()){alert('원장님만 승인할 수 있습니다.');return;}
+    BUSY=id;render();
+    try{const ref=c.doc(id);let why='';
+      await cloud.db.runTransaction(async tx=>{const d=await tx.get(ref);const v=d.exists?d.data():null;
+        if(!v||v.status!=='대기'){why=v?('이미 '+v.status+' 상태입니다'+(v.endWhy?' ('+v.endWhy+')':'')):'요청을 찾을 수 없습니다';return;}
+        tx.update(ref,{status:'승인',approvedBy:(currentUser&&currentUser.name)||'',approvedEmail:(cloud.email||''),approvedAt:new Date().toISOString()});});
+      if(why)alert('승인하지 못했습니다: '+why);
+      else{const r=REQS.find(x=>x.id===id);try{audit('처방 확인 승인',(r?(r.name||'')+' '+(r.mrn||'')+' ':'')+id);}catch(e){}}
+    }catch(e){alert('승인하지 못했습니다: '+(e.message||e));}
+    BUSY='';render();};
+  window._rxq={reqs:()=>REQS,render:()=>render(true)};
 })();
 </script>
 <!-- 고시 체크 (2026-10-27) — 보험·청구 기준 질문 → 서버(/api/dongseon/kb)가 심평원·복지부 자료 14개에서 찾아 근거와 함께 답. 질문·답은 직원(로그인)별로 서버에 저장, 본인만 보고 지운다 -->
