@@ -30,7 +30,14 @@
     while ((m = re.exec(s))) add(m[1]);
     return out;
   }
-  var api = { defaultUnit: defaultUnit, unitCount: unitCount, unitKey: unitKey, suggestBoxSizes: suggestBoxSizes, MAX_QTY: MAX_QTY };
+  /* 바코드 스캐너는 키보드처럼 글자를 아주 빠르게(글자 사이 수 ms) 치고 Enter 를 보낸다. 사람은 글자 사이가 100ms 안팎.
+     stamps = 최근 글자 입력 시각(ms) 목록. 4글자 이상이고 평균 간격이 40ms 미만이면 스캐너 입력으로 본다 */
+  function looksLikeScan(stamps) {
+    if (!stamps || stamps.length < 4) return false;
+    var n = stamps.length;
+    return (stamps[n - 1] - stamps[0]) / (n - 1) < 40;
+  }
+  var api = { defaultUnit: defaultUnit, unitCount: unitCount, unitKey: unitKey, suggestBoxSizes: suggestBoxSizes, looksLikeScan: looksLikeScan, MAX_QTY: MAX_QTY };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ScanUnit = api;
 })(typeof window !== "undefined" ? window : this);

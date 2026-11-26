@@ -701,6 +701,7 @@
   <div id="outBoxAsk" style="display:none; margin:0 0 10px">
     <label>1박스에 몇 개인가요? <span class="muted" style="font-weight:400">(한 번만 알려 주면 이 품목에 기억돼요)</span></label>
     <div class="inrow"><input id="outBoxN" type="number" min="2" max="1000" placeholder="예) 50" oninput="outHint()"><span id="outBoxSug" style="display:flex; gap:6px; flex-wrap:wrap"></span></div>
+    <div class="muted" id="outBoxNote" style="font-size:11.5px; margin-top:4px">※ 발주 수량도 이 개수 단위로 올림됩니다.</div>
   </div>
   <div id="outStep2">
     <label id="outQtyLabel">수량</label><input id="outQty" type="number" min="1" value="1" class="qbig" oninput="outHint()">
@@ -2181,10 +2182,13 @@ async function scanOutAsk(bar,mode){
   /* 2단계 B: 박스 크기를 모르는 품목도 [박스]를 고를 수 있다 — 고르면 "1박스에 몇 개인가요?"를 한 번 묻고 이 품목에 저장 */
   OUT.ask=!(bs>1);
   OUT.sug=OUT.ask?ScanUnit.suggestBoxSizes(p.name,p.unit):[];
+  OUT_KEYS=[];
   $("outBoxSz").textContent=bs>1?` (1박스=${bs}개)`:"";
   $("outUnitRow").style.display="";
   $("outBoxN").value="";
   $("outBoxSug").innerHTML=OUT.sug.map(n=>`<button type="button" class="btn small ghost" onclick="outSugPick(${n})">${n}개</button>`).join("");
+  { const gp=PRODUCTS.find(x=>x.id===p.id);   // 발주그룹에 속한 품목이면 그룹 합계 단위에도 영향이 있음을 알린다
+    $("outBoxNote").textContent="※ 발주 수량도 이 개수 단위로 올림됩니다."+(gp&&gp.ogrp?` 이 품목은 발주그룹(${gp.ogrp})에 속해 있어 그룹 합계 단위에도 영향이 있습니다.`:""); }
   $("outQty").value=1;outUnitUi();
   $("outOvl").classList.add("show");refreshIcons();
   setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);
@@ -2194,43 +2198,54 @@ function outUnitUi(){const u=OUT.unit;
   $("outUBox").classList.toggle("on",u==="box");$("outUEa").classList.toggle("on",u==="ea");
   $("outBoxAsk").style.display=(OUT.ask&&u==="box")?"":"none";
   $("outQtyLabel").textContent=u==="box"?(OUT.ask?"박스 수":`박스 수 (1박스=${OUT.bs}개)`):"개수";outHint();}
-window.outPick=function(u){if(!OUT)return;OUT.unit=u;outUnitUi();
+window.outPick=function(u){if(!OUT||OUT.busy)return;OUT.unit=u;outUnitUi();
   const n=$("outBoxN");
   if(OUT.ask&&u==="box"&&!n.value){ n.focus(); return; }   // 박스 크기를 아직 모르면 그것부터
   $("outQty").focus();$("outQty").select();};
-window.outSugPick=function(n){ if(!OUT) return; $("outBoxN").value=n; outHint(); $("outQty").focus(); $("outQty").select(); };
+window.outSugPick=function(n){ if(!OUT||OUT.busy) return; $("outBoxN").value=n; outHint(); $("outQty").focus(); $("outQty").select(); };
 /* 이번 입고·출고에 쓰는 1박스 개수: 아는 품목은 저장된 값, 모르는 품목은 방금 적은 값(2 이상) */
 function outBs(){ if(!OUT) return 0; if(!OUT.ask) return OUT.bs; const n=Math.floor(Number($("outBoxN").value)||0); return n>=2&&n<=1000?n:0; }
 function outCount(){return OUT?ScanUnit.unitCount(OUT.unit,$("outQty").value,outBs()):0;}
 window.outHint=function(){if(!OUT)return;const c=outCount(),el=$("outHintTx");
-  if(OUT.unit==="box"&&OUT.ask&&outBs()<2){ el.style.color="var(--accent)"; el.textContent="1박스에 몇 개인지 먼저 넣어 주세요"; return; }
+  if(OUT.unit==="box"&&OUT.ask&&outBs()<2){ el.style.color="var(--accent)"; el.textContent=Number($("outBoxN").value)>1000?"1박스 개수는 1000 이하로 넣어 주세요 — 바코드가 입력된 건 아닌지 확인하세요":"1박스에 몇 개인지 먼저 넣어 주세요"; return; }
   const W=OUT.mode==="in"?"입고":"출고",over=OUT.mode==="out"&&c>OUT.stock;
   el.style.color=over?"var(--warn)":"var(--accent)";
-  el.textContent=c<1?(Number($("outQty").value)>ScanUnit.MAX_QTY?`수량이 너무 큽니다 (최대 ${ScanUnit.MAX_QTY}) — 바코드가 입력된 건 아닌지 확인하세요`:"수량을 넣어 주세요"):(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
-window.outClose=function(){OUT=null;$("outOvl").classList.remove("show");focusScan();};
-window.outGo=async function(){if(!OUT)return;
-  if(OUT.unit==="box"&&OUT.ask&&outBs()<2){ $("outBoxN").focus(); outHint(); return; }   // 박스 크기부터
+  el.textContent=c<1?(Number($("outQty").value)>ScanUnit.MAX_QTY?`수량이 너무 큽니다 (최대 ${ScanUnit.MAX_QTY}) — 바코드가 입력된 건 아닌지 확인하세요`:"수량을 넣어 주세요"):(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));
+  if(OUT.unit==="box"&&OUT.ask&&c>=1) el.textContent+=` · 1박스=${outBs()}개로 저장`;};
+window.outClose=function(){if(OUT&&OUT.busy)return;OUT=null;$("outOvl").classList.remove("show");focusScan();};
+window.outGo=async function(){const o=OUT; if(!o||o.busy) return;   // 저장을 기다리는 중에 다시 눌러도 한 번만
+  if(o.unit==="box"&&o.ask&&outBs()<2){ $("outBoxN").focus(); outHint(); return; }   // 박스 크기부터
   const c=outCount();if(c<1){$("outQty").focus();return;}
-  if(OUT.mode==="out"&&c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
-  /* 모르던 박스 크기는 이 품목에 저장한다(발주단위) — 서버가 입고 박스 수를 이 값으로 곱하므로 입고보다 먼저 */
-  if(OUT.unit==="box"&&OUT.ask){
-    const prod=PRODUCTS.find(x=>x.id===OUT.product.id)||HIDDEN.find(x=>x.id===OUT.product.id);
-    if(!prod){ alert("품목 정보를 찾을 수 없습니다. 새로고침(↻) 후 다시 시도하세요."); return; }
-    try{ await API.call("/product",ProductCodes.updatePayload(prod,{ounit:outBs()})); }
-    catch(err){ alert("박스 크기를 저장하지 못했습니다: "+err.message); return; }
-    try{ localStorage.setItem(ScanUnit.unitKey(OUT.mode,OUT.product.id),"box"); }catch(_){}
+  if(o.mode==="out"&&c>o.stock&&!confirm(`재고(${o.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
+  const N=outBs(), boxes=Math.floor(Number($("outQty").value)||0);
+  /* 모르던 박스 크기는 이 품목에 저장한다(발주단위) — 서버가 입고 박스 수를 이 값으로 곱하므로 입고보다 먼저.
+     좁은 저장 경로로 박스 크기만 바꾼다(오래된 화면 데이터로 다른 항목을 되돌리지 않음). 저장하는 동안에는 닫거나 다시 누를 수 없다 */
+  if(o.unit==="box"&&o.ask){
+    o.busy=true; $("outOk").disabled=true;
+    try{ await API.call("/product/fields",{id:o.product.id, ounit:N}); }
+    catch(err){ o.busy=false; $("outOk").disabled=false; if(OUT===o) alert("박스 크기를 저장하지 못했습니다: "+err.message); return; }
+    o.busy=false; $("outOk").disabled=false;
+    if(OUT!==o) return;   // 그 사이 팝업이 바뀌었으면 입고하지 않는다
+    try{ localStorage.setItem(ScanUnit.unitKey(o.mode,o.product.id),"box"); }catch(_){}
   }
   /* 입고 박스: 서버가 박스 수 × 1박스 개수로 넣는다(입고 기록에 'N박스') · 개수: unit:'ea' 로 곱하지 않게 · 출고: 늘 개수 */
-  if(OUT.bs>1){ try{ localStorage.setItem(ScanUnit.unitKey(OUT.mode,OUT.product.id),OUT.unit); }catch(_){} }   // 다음에 이 품목은 이 단위로 시작
-  const o=OUT,boxes=Math.floor(Number($("outQty").value)||0);
+  if(o.bs>1){ try{ localStorage.setItem(ScanUnit.unitKey(o.mode,o.product.id),o.unit); }catch(_){} }   // 다음에 이 품목은 이 단위로 시작
   const opt=o.mode==="in"?(o.unit==="box"?{qty:boxes,unit:"box"}:{qty:c,unit:"ea"}):{qty:c};
   $("outOvl").classList.remove("show");OUT=null;
   await doScan(o.bar,opt);};
+let OUT_KEYS=[];   // 팝업 안에서 최근에 친 글자의 시각 — 스캐너(아주 빠름)와 사람을 구분한다
 $("outOvl").addEventListener("keydown",e=>{
-  if(e.key==="Escape"){e.preventDefault();outClose();}
-  else if(e.key==="Enter"){
-    if(e.target.id==="outBoxN"){ e.preventDefault(); $("outQty").focus(); $("outQty").select(); return; }   // 박스 크기 칸에서 Enter = 수량 칸으로
-    if(e.target.closest&&e.target.closest("button")) return;   /* 단위·취소 버튼에서 Enter = 그 버튼 누르기(확정 아님) */
+  if(e.key==="Escape"){e.preventDefault();outClose();return;}
+  if(e.key.length===1&&/[0-9A-Za-z]/.test(e.key)){ OUT_KEYS.push(Date.now()); if(OUT_KEYS.length>8) OUT_KEYS.shift(); return; }
+  if(e.key==="Enter"){
+    const t=e.target;
+    /* 숫자 칸에 스캐너가 바코드를 쳐 넣고 Enter 한 것은 지우고 안내한다 (글자는 number 칸이 버려 짧은 숫자만 남아 엉뚱한 수량·박스 크기가 될 수 있음) */
+    if((t.id==="outBoxN"||t.id==="outQty")&&ScanUnit.looksLikeScan(OUT_KEYS)){
+      e.preventDefault(); t.value=""; OUT_KEYS=[]; outHint();
+      $("outHintTx").style.color="var(--warn)"; $("outHintTx").textContent="바코드가 입력된 것 같아 지웠습니다. 숫자를 직접 입력해 주세요."; return;
+    }
+    if(t.id==="outBoxN"){ e.preventDefault(); $("outQty").focus(); $("outQty").select(); return; }   // 박스 크기 칸에서 Enter = 수량 칸으로
+    if(t.closest&&t.closest("button")) return;   /* 단위·취소 버튼에서 Enter = 그 버튼 누르기(확정 아님) */
     e.preventDefault();outGo();}
 });
 

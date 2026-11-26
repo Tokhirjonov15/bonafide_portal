@@ -99,3 +99,19 @@ test("추천: 거즈의 8P(8겹)는 개수가 아니다", () => {
   assert.deepEqual(suggestBoxSizes("접은거즈 4*4*8P"), []);
   assert.deepEqual(suggestBoxSizes("헤파뮨 1ml/10PFS"), [10]);
 });
+
+/* 2B 검토 반영: 스캐너 입력(아주 빠른 연속 글자)과 사람이 치는 것을 구분 */
+const { looksLikeScan: lls } = require("../../public/jaego/scan-unit.js");
+test("스캐너: 글자 사이가 평균 40ms 미만이고 4글자 이상이면 스캔", () => {
+  assert.equal(lls([0, 10, 20, 30, 40]), true);
+  assert.equal(lls([0, 39, 78, 117]), true);
+});
+test("사람이 치는 속도(100ms 안팎)는 스캔이 아니다", () => {
+  assert.equal(lls([0, 150, 310, 480]), false);
+  assert.equal(lls([0, 40, 80, 120]), false);
+});
+test("글자가 4개 미만이거나 기록이 없으면 스캔이 아니다", () => {
+  assert.equal(lls([0, 10, 20]), false);
+  assert.equal(lls([]), false);
+  assert.equal(lls(null), false);
+});
