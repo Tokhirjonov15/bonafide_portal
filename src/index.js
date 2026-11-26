@@ -12,7 +12,7 @@
 /* PDF 발주서 생성용 (한글 폰트 임베드) */
 import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
-import { normExtra } from "./product-fields.js";
+import { normExtra, normFields, FIELD_COLUMNS } from "./product-fields.js";
 import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "./hira.js";
 
 let schemaReady = false;
@@ -1744,6 +1744,17 @@ async function handleApi(request, env, url, ident, ctx) {
     }
     await env.DB.batch(stmts);
     return json({ ok: true, id });
+  }
+
+  /* 품목의 일부 항목만 바꾸기 (2026-11-26) — 박스당 개수(발주단위)·입고가·처방단가·급여 구분·급여코드·자체 코드 중 보낸 것만.
+     /product 수정은 안 보여도 모든 항목을 보낸 값으로 덮어써서, 오래된 화면 데이터로 다른 직원이 방금 바꾼 값을 되돌릴 수 있다 → 이 경로는 보낸 항목만 건드린다 */
+  if (path === "/product/fields" && method === "POST") {
+    const id = s(body.id), f = normFields(body), keys = Object.keys(f);
+    if (!id || !keys.length) return json({ error: "품목과 바꿀 항목이 필요합니다." }, 400);
+    const r = await env.DB.prepare(`UPDATE products SET ${keys.map((k) => FIELD_COLUMNS[k] + "=?").join(", ")} WHERE id=?`)
+      .bind(...keys.map((k) => f[k]), id).run();
+    if (!(r.meta && r.meta.changes > 0)) return json({ error: "품목을 찾을 수 없습니다." }, 404);
+    return json({ ok: true, id, fields: f });
   }
 
   /* 급여정보 조회 (2026-11-26): 환경변수 HIRA_API_KEY(건강보험심사평가원 약가 정보 인증키)가 있으면 화면의 [조회] 버튼이 켜진다.
