@@ -43,3 +43,5 @@ test("조회 팝업은 수정창보다 뒤에 있어 위에 겹친다", () => as
 for (const id of ["benefitQ", "benefitGo"]) test(`조회 팝업 검색 요소: #${id}`, () => assert.ok(html.includes(`id="${id}"`)));
 test("조회 결과를 늦게 받아도 품목이 바뀌었으면 버린다", () => assert.ok(html.includes("BENEFIT_SEQ")));
 test("조회 결과 행에 적용 시작일을 보여 준다", () => assert.ok(html.includes("it.startDate")));
+
+test("조회 중 안내: 응답에 10~20초 걸릴 수 있음을 알린다", () => assert.ok(html.includes("10~20초")));

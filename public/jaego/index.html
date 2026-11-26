@@ -2563,7 +2563,7 @@ async function runBenefit(q){
   q=String(q||"").trim();
   if(!q){ $("benefitQ").focus(); return; }
   const seq=++BENEFIT_SEQ, pid=editId, kind=ProductCodes.benefitQueryKind(q);
-  $("benefitGo").disabled=true; $("benefitQuery").textContent="조회 중…"; $("benefitList").innerHTML="";
+  $("benefitGo").disabled=true; $("benefitQuery").textContent="조회 중… (공공데이터 서비스 응답이 10~20초 걸릴 수 있습니다)"; $("benefitList").innerHTML="";
   try{
     const r=await API.call("/benefit/lookup?"+(kind==="code"?"code=":"name=")+encodeURIComponent(q));
     if(seq!==BENEFIT_SEQ || pid!==editId || !$("prodOvl").classList.contains("show")) return;   // 그 사이 다른 품목을 열었거나 수정창을 닫았으면 결과를 버린다

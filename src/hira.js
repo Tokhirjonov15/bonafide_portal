@@ -73,3 +73,32 @@ export function safeMessage(msg, key) {
   }
   return m.slice(0, 200);
 }
+
+/* 작은 시간제한 캐시 (서버 인스턴스 메모리) — 공공데이터 서비스 응답이 10~18초 걸려서 같은 검색을 잠시 기억한다.
+   now 는 시험용으로 바꿀 수 있다. 가득 차면 가장 먼저 넣은 것부터 버린다. */
+export function createCache(o) {
+  const ttl = (o && o.ttlMs) || 3600000, max = (o && o.max) || 200, now = (o && o.now) || Date.now;
+  const m = new Map();
+  return {
+    get(k) {
+      const e = m.get(k);
+      if (!e) return undefined;
+      if (now() >= e.until) { m.delete(k); return undefined; }
+      return e.v;
+    },
+    set(k, v) {
+      if (m.has(k)) m.delete(k);
+      m.set(k, { v, until: now() + ttl });
+      while (m.size > max) m.delete(m.keys().next().value);
+    },
+  };
+}
+
+/* 상위 서비스 오류 메시지를 사용자용 한국어 안내로 (알려진 것만, 나머지는 그대로) */
+export function friendlyMessage(msg) {
+  const m = txt(msg);
+  if (/ResourceLimitException|No resources currently available|pool/i.test(m)) return "공공데이터 서비스가 혼잡합니다. 잠시 후 다시 검색해 주세요.";
+  if (/NOT REGISTERED/i.test(m)) return "인증키가 아직 등록되지 않았거나 승인 대기 중입니다. 신청 승인 후 잠시 뒤 다시 시도해 주세요.";
+  if (/EXCEEDS|LIMITED NUMBER/i.test(m)) return "오늘 조회 한도를 넘었습니다. 내일 다시 시도해 주세요.";
+  return m;
+}

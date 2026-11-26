@@ -13,7 +13,7 @@
 import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
 import { normExtra } from "./product-fields.js";
-import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage } from "./hira.js";
+import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "./hira.js";
 
 let schemaReady = false;
 
@@ -1598,6 +1598,9 @@ async function currentStock(env, pid) {
 }
 
 /* ---------- 라우팅 ---------- */
+/* 급여정보 조회 결과 캐시 (서버 인스턴스 메모리, 1시간·최대 200건) */
+const BENEFIT_CACHE = createCache({ ttlMs: 3600000, max: 200 });
+
 async function handleApi(request, env, url, ident, ctx) {
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = request.method;
@@ -1743,19 +1746,24 @@ async function handleApi(request, env, url, ident, ctx) {
     return json({ ok: true, id });
   }
 
-  /* 급여정보 조회 (2026-11-26, 뼈대): 환경변수 HIRA_API_KEY(건강보험심사평가원 약가 정보 인증키)가 있으면 화면의 [조회] 버튼이 켜진다.
-     실제 조회는 아직 연결 전 — 키가 들어오면 이 자리에 연동한다 */
+  /* 급여정보 조회 (2026-11-26): 환경변수 HIRA_API_KEY(건강보험심사평가원 약가 정보 인증키)가 있으면 화면의 [조회] 버튼이 켜진다.
+     공공데이터 서비스는 키가 있는 요청에 10~18초 걸려서(실측) 대기 30초, 같은 검색은 1시간 기억한다 */
   if (path === "/benefit/status" && method === "GET") return json({ ok: true, enabled: !!env.HIRA_API_KEY });
   if (path === "/benefit/lookup" && method === "GET") {
     if (!env.HIRA_API_KEY) return json({ error: "급여정보 API 인증이 설정되지 않았습니다." }, 400);
     const code = s(url.searchParams.get("code")), name = s(url.searchParams.get("name")), maker = s(url.searchParams.get("maker"));
     if (!code && !name && !maker) return json({ error: "조회할 급여코드나 품목명이 필요합니다." }, 400);
+    const cacheKey = [code, name, maker].map((v) => v.slice(0, 100).toLowerCase()).join("|");   // 키(인증키)는 넣지 않는다
+    const hit = BENEFIT_CACHE.get(cacheKey);
+    if (hit) return json(hit);
     try {
       /* 인증키는 여기서만 쓴다 — 응답·오류 메시지에 URL 이나 키를 넣지 않는다 */
-      const r = await fetch(buildDgamtUrl({ key: env.HIRA_API_KEY, code, name, maker, rows: 20 }), { signal: AbortSignal.timeout(10000) });
+      const r = await fetch(buildDgamtUrl({ key: env.HIRA_API_KEY, code, name, maker, rows: 20 }), { signal: AbortSignal.timeout(30000) });
       const out = parseDgamtXml(await r.text());
-      if (!out.ok) return json({ error: "급여정보 조회 실패: " + (safeMessage(out.message, env.HIRA_API_KEY) || "응답 오류") }, 502);
-      return json({ ok: true, total: out.total, items: out.items.slice(0, 20).map((it) => ({ ...it, warning: itemWarning(it) })) });
+      if (!out.ok) return json({ error: "급여정보 조회 실패: " + (safeMessage(friendlyMessage(out.message), env.HIRA_API_KEY) || "응답 오류") }, 502);
+      const body = { ok: true, total: out.total, items: out.items.slice(0, 20).map((it) => ({ ...it, warning: itemWarning(it) })) };
+      BENEFIT_CACHE.set(cacheKey, body);   // 성공한 조회만 기억
+      return json(body);
     } catch (_) {
       return json({ error: "급여정보 조회 실패: 서비스에 연결하지 못했습니다." }, 502);
     }

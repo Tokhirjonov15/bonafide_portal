@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage } from "../../src/hira.js";
+import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "../../src/hira.js";
 
 const sample = fs.readFileSync(new URL("../fixtures/hira-getDgamtList.xml", import.meta.url), "utf8");
 const wrap = (items, extra = "") => `<?xml version="1.0" encoding="UTF-8"?><response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body>${items}${extra}</body></response>`;
@@ -85,4 +85,46 @@ test("URL: 검색어는 100자까지만", () => {
   const u = buildDgamtUrl({ key: "k", name: "가".repeat(300) });
   const v = decodeURIComponent(/itmNm=([^&]*)/.exec(u)[1]);
   assert.equal(v.length, 100);
+});
+
+/* 공공데이터 서비스 응답이 10~18초 걸려서(실측), 같은 검색은 잠시 기억해 둔다 */
+test("캐시: 저장한 값은 유효 시간 안에는 돌려주고, 지나면 비운다", () => {
+  let now = 1000;
+  const c = createCache({ ttlMs: 100, max: 10, now: () => now });
+  assert.equal(c.get("a"), undefined);
+  c.set("a", { v: 1 });
+  assert.deepEqual(c.get("a"), { v: 1 });
+  now = 1099; assert.deepEqual(c.get("a"), { v: 1 });
+  now = 1100; assert.equal(c.get("a"), undefined);
+});
+
+test("캐시: 가득 차면 가장 오래된 것부터 버린다", () => {
+  const c = createCache({ ttlMs: 1000, max: 2, now: () => 0 });
+  c.set("a", 1); c.set("b", 2); c.set("c", 3);
+  assert.equal(c.get("a"), undefined);
+  assert.equal(c.get("b"), 2);
+  assert.equal(c.get("c"), 3);
+});
+
+test("캐시: 같은 키를 다시 저장하면 값이 바뀐다", () => {
+  const c = createCache({ ttlMs: 1000, max: 2, now: () => 0 });
+  c.set("a", 1); c.set("a", 9);
+  assert.equal(c.get("a"), 9);
+});
+
+/* 실측: 서비스가 혼잡하면 weblogic 자원 부족 오류가 그대로 온다 → 사용자에게는 한국어 안내 */
+test("서비스 혼잡(자원 부족) 오류는 한국어 안내로 바꾼다", () => {
+  const m = friendlyMessage("weblogic.common.resourcepool.ResourceLimitException: No resources currently available in pool dsOpenapi to allocate to applications");
+  assert.match(m, /혼잡/);
+  assert.doesNotMatch(m, /weblogic/);
+});
+
+test("인증키 미등록·일일 한도 초과도 한국어 안내", () => {
+  assert.match(friendlyMessage("SERVICE KEY IS NOT REGISTERED ERROR."), /인증키/);
+  assert.match(friendlyMessage("LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR."), /한도/);
+});
+
+test("모르는 메시지는 그대로", () => {
+  assert.equal(friendlyMessage("뭔가 다른 오류"), "뭔가 다른 오류");
+  assert.equal(friendlyMessage(null), "");
 });
