@@ -10364,7 +10364,8 @@ function autoAssignRoomStaff(p){
   /* has(): 그 방에 이미 기록이 있으면 손대지 않는다. 빈칸('')도 기록 — 일부러 '(미지정)'으로 둔 것이므로 다시 채우지 않는다 (2026-09-24) */
   const has=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k);
   /* 카드에서 숨긴 칸(CARD_STAFF_HIDE)은 자동 지정하지 않는다 — 보이지 않는 담당이 통계에 남지 않게 (2026-10-01) */
-  if(ds.length===1&&!CARD_STAFF_HIDE.doc(r)){p.roomDocs=p.roomDocs||{};if(!has(p.roomDocs,r))p.roomDocs[r]=ds[0];}
+  /* 진료실은 방에 정해 둔 원장님을 자동으로 넣지 않는다 (2026-11-26 요청: 진료실1 에도 백민철 — 고른 원장님, 없으면 비트 접수의 담당의로 남는다). 시술 방은 그대로 */
+  if(ds.length===1&&!isClinicRoom(r)&&!CARD_STAFF_HIDE.doc(r)){p.roomDocs=p.roomDocs||{};if(!has(p.roomDocs,r))p.roomDocs[r]=ds[0];}
   if(ns.length===1&&!CARD_STAFF_HIDE.nurse(r)){p.roomNurses=p.roomNurses||{};if(!has(p.roomNurses,r))p.roomNurses[r]=ns[0];}
   if(xs.length===1&&!CARD_STAFF_HIDE.rad(r)){p.roomRads=p.roomRads||{};if(!has(p.roomRads,r))p.roomRads[r]=xs[0];}
 }
@@ -13998,7 +13999,8 @@ function viewerDoctor(room){
   return (hit&&!isOffToday(hit))?hit:'';}
 function autoAssignViewer(p){if(p&&p._viewOnly)return;
   if(!p||p.discharged)return false;const room=curRoom(p);if(!room)return false;
-  if(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return false;   // 빈칸('')도 기록 — 일부러 미지정으로 둔 방은 열어도 자동 지정하지 않는다
+  if(p.roomDocs&&Object.prototype.hasOwnProperty.call(p.roomDocs,room))return false;
+  if(isClinicRoom(room)&&String(p.doctor||'').trim())return false;   // 진료실: 비트 담당의가 있으면 카드를 연 사람으로 바꾸지 않는다 (2026-11-26)   // 빈칸('')도 기록 — 일부러 미지정으로 둔 방은 열어도 자동 지정하지 않는다
   const doc=viewerDoctor(room);if(!doc)return false;
   p.roomDocs=p.roomDocs||{};p.roomDocs[room]=doc;
   try{audit('진료의자동지정',p.name+' · '+room+' → '+doc+' (카드 열람)');}catch(e){}
@@ -14050,12 +14052,7 @@ function realDocs(){const R=rosterNames('의사');if(R.length)return R;   // 직
 function allClinicDoctors(){const L=[];ROOMS.forEach(r=>{if(isClinicRoom(r))L.push(...(meta(r).doctors||[]));});return staffOpts('',L,'의사');}
 function changeDoctor(pid,room,v){const p=data.find(x=>x.id===pid);if(!p)return;const nv=(v||"").trim();
   p.roomDocs=p.roomDocs||{};
-  if(nv&&isClinicRoom(room)&&curRoom(p)===room){const to=docRoomOf(nv);
-    if(to&&to!==room){p.roomDocs[to]=nv;
-      audit('진료실 이동(진료의 선택)',p.name+' · '+room+' → '+to+' ('+nv+')');
-      moveByDrag(p.id,to,{noAsk:true});
-      try{toast(dispName(p.name)+' 님 → '+to+' ('+nv+')');}catch(e){}
-      return;}}
+  /* 2026-11-26 요청: 원장님은 진료실을 정해 두지 않고 어느 방에서든 고른다 — 예전엔 진료실에서 원장님을 고르면 그 원장님의 '지정 진료실'로 카드가 옮겨 갔다(진료실3 에서 박초롱 → 다른 방). 이제 그 방에 그 원장님으로 남는다 */
   p.roomDocs[room]=nv;   // '' 도 그대로 둔다 = 일부러 미지정 (지우면 접수 때 담당의로 되돌아가 '미지정'을 고를 수 없었다)
   if(nv&&!DOCTORS.includes(nv)&&(isClinicRoom(room)||isProcRoom(room))){DOCTORS.push(nv);saveDoctorsCfg();}   // 진료실·시술 방에서 고른 사람만 진료의 목록에 (2026-10-13)
   audit('진료의변경',p.name+' · '+room+' → '+(nv||'(없음)'));save(p);cloudSaveConfig();render();}
