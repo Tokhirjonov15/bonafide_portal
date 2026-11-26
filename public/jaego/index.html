@@ -2128,7 +2128,7 @@ async function scanOutAsk(bar,mode){
   if(r.notFound) return r;
   const p=r.product, bs=Number(r.boxSize)||0;
   /* 2026-11-26: 단위 선택과 수량을 한 화면에 — 처음 단위는 이 품목에서 마지막에 쓴 단위(없으면 입고=박스·출고=개수) */
-  let last=null; try{ last=localStorage.getItem("jaego_unit_"+p.id); }catch(_){}
+  let last=null; try{ last=localStorage.getItem(ScanUnit.unitKey(mode,p.id)); }catch(_){}
   OUT={bar, mode, product:p, stock:Number(r.stock)||0, bs, unit:ScanUnit.defaultUnit(mode,bs,last)};
   const W=mode==="in"?"입고":"출고";
   $("outTitle").innerHTML=`<i data-lucide="${mode==="in"?"package-plus":"package-open"}"></i> ${W}`;
@@ -2150,19 +2150,20 @@ function outCount(){return OUT?ScanUnit.unitCount(OUT.unit,$("outQty").value,OUT
 window.outHint=function(){if(!OUT)return;const c=outCount(),el=$("outHintTx");
   const W=OUT.mode==="in"?"입고":"출고",over=OUT.mode==="out"&&c>OUT.stock;
   el.style.color=over?"var(--warn)":"var(--accent)";
-  el.textContent=c<1?"수량을 넣어 주세요":(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
+  el.textContent=c<1?(Number($("outQty").value)>ScanUnit.MAX_QTY?`수량이 너무 큽니다 (최대 ${ScanUnit.MAX_QTY}) — 바코드가 입력된 건 아닌지 확인하세요`:"수량을 넣어 주세요"):(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
 window.outClose=function(){OUT=null;$("outOvl").classList.remove("show");focusScan();};
 window.outGo=async function(){if(!OUT)return;const c=outCount();if(c<1){$("outQty").focus();return;}
   if(OUT.mode==="out"&&c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
   /* 입고 박스: 서버가 박스 수 × 1박스 개수로 넣는다(입고 기록에 'N박스') · 개수: unit:'ea' 로 곱하지 않게 · 출고: 늘 개수 */
-  if(OUT.bs>1){ try{ localStorage.setItem("jaego_unit_"+OUT.product.id,OUT.unit); }catch(_){} }   // 다음에 이 품목은 이 단위로 시작
+  if(OUT.bs>1){ try{ localStorage.setItem(ScanUnit.unitKey(OUT.mode,OUT.product.id),OUT.unit); }catch(_){} }   // 다음에 이 품목은 이 단위로 시작
   const o=OUT,boxes=Math.floor(Number($("outQty").value)||0);
   const opt=o.mode==="in"?(o.unit==="box"?{qty:boxes,unit:"box"}:{qty:c,unit:"ea"}):{qty:c};
   $("outOvl").classList.remove("show");OUT=null;
   await doScan(o.bar,opt);};
 $("outOvl").addEventListener("keydown",e=>{
   if(e.key==="Escape"){e.preventDefault();outClose();}
-  else if(e.key==="Enter"){e.preventDefault();outGo();}
+  else if(e.key==="Enter"){ if(e.target.closest&&e.target.closest("button")) return;   /* 단위·취소 버튼에서 Enter = 그 버튼 누르기(확정 아님) */
+    e.preventDefault();outGo();}
 });
 
 async function doScan(code,opt){
