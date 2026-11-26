@@ -7765,14 +7765,14 @@ async function filesReady(){
   if(FILES_OK!==null&&Date.now()-FILES_AT<(FILES_OK?5:2)*60000)return FILES_OK;
   try{const r=await filesFetch('_health',{},6000);const j=await r.json().catch(()=>({}));FILES_OK=!!(r.ok&&j.ok&&j.canWrite!==false);}catch(e){FILES_OK=false;}
   FILES_AT=Date.now();return FILES_OK;}
-async function filesPut(path,blob){
-  const r=await filesFetch(path,{method:'PUT',headers:{'content-type':blob.type||'image/jpeg'},body:blob},30000);
+async function filesPut(path,blob,ms){
+  const r=await filesFetch(encodeURI(path),{method:'PUT',headers:{'content-type':blob.type||'image/jpeg'},body:blob},ms||30000);
   if(!r.ok){FILES_OK=null;const j=await r.json().catch(()=>({}));throw new Error((j&&j.error)||('서버 저장 실패 '+r.status));}}
-async function filesDel(path){const r=await filesFetch(path,{method:'DELETE'},15000);if(!r.ok)throw new Error('서버 삭제 실패 '+r.status);}
+async function filesDel(path){const r=await filesFetch(encodeURI(path),{method:'DELETE'},15000);if(!r.ok)throw new Error('서버 삭제 실패 '+r.status);}
 function photoUrl(path,srv){   // 사진 주소: 서버 사진은 로그인 토큰으로 받아 blob 주소로, 예전 사진은 Firebase 주소
   if(!path)return Promise.reject(new Error('경로 없음'));
   if(srv){if(FILE_URL[path])return Promise.resolve(FILE_URL[path]);
-    return filesFetch(path,{},20000).then(r=>{if(!r.ok)throw new Error('서버 사진 '+r.status);return r.blob();}).then(b=>(FILE_URL[path]=URL.createObjectURL(b)));}
+    return filesFetch(encodeURI(path),{},/^rec_audio\//.test(path)?120000:20000).then(r=>{if(!r.ok)throw new Error('서버 파일 '+r.status);return r.blob();}).then(b=>(FILE_URL[path]=URL.createObjectURL(b)));}
   if(!cloud.storage)return Promise.reject(new Error('클라우드 미연결'));
   return cloud.storage.ref(path).getDownloadURL();}
 async function onPhotoPicked(ev){
@@ -13470,7 +13470,8 @@ window.recDelete=async function(id){const L=REC_GRP[id];if(!L||!L.length)return;
       room:f.room||'',startedAt:f.startedAt||'',date:String(f.date||f.startedAt||'').slice(0,10),name:f.name||'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});}
   catch(e){errs.push('삭제 표시 저장 실패('+(e.code||e.message||e)+') — 외장하드 파일은 지워지지 않을 수 있습니다');}
   for(const r of L){
-    if(r.audio&&cloud.storage){try{await cloud.storage.ref(r.audio).delete();delete REC_AUDIO_URL[r.audio];}catch(e){if(e.code!=='storage/object-not-found')errs.push('소리 파일 삭제 실패('+(e.code||e.message||e)+')');}}
+    if(r.audio&&r.asrv){try{await filesDel(r.audio);delete REC_AUDIO_URL[r.audio];try{delete FILE_URL[r.audio];}catch(e){}}catch(e){errs.push('소리 파일 삭제 실패('+(e.message||e)+')');}}   // 병원 서버의 녹음 — 서버가 _trash 로 옮긴다 (2026-11-27)
+    else if(r.audio&&cloud.storage){try{await cloud.storage.ref(r.audio).delete();delete REC_AUDIO_URL[r.audio];}catch(e){if(e.code!=='storage/object-not-found')errs.push('소리 파일 삭제 실패('+(e.code||e.message||e)+')');}}
     if(r._id){try{await cloud.ref.collection('recText').doc(r._id).delete();}catch(e){errs.push('받아쓴 글 삭제 실패('+(e.code||e.message||e)+')');}}}
   try{audit('진료 녹음 삭제',(f.name||'')+(mrn?' ('+mrn+')':'')+' · '+(f.room||'')+' '+when+(errs.length?' · 일부 실패':''));}catch(e){}
   delete recTextCache[mrn];
@@ -13490,7 +13491,7 @@ function recItemHtml(G,dl){const first=G[0][0];const au=G.find(([r])=>r.src==='a
   const t=(()=>{const d=new Date(first.startedAt||'');if(isNaN(d))return '';
     const ea=au&&(au[0].endAt?new Date(au[0].endAt):(au[0].dur?new Date(d.getTime()+Number(au[0].dur)*1000):null));
     return hms(d)+(ea&&!isNaN(ea)?' ~ '+hms(ea):'');})();
-  const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span>${dl?`<button type="button" class="btn sm" title="녹음 파일 내려받기" onclick="recDownload('${esc(au[0].audio)}','${esc(String(au[0].file||'녹음.webm').replace(/'/g,''))}')"><i data-lucide="download"></i></button>`:''}</div>`:'';
+  const player=au?`<div class="rt-voice"><audio controls preload="none" data-path="${esc(au[0].audio)}"${au[0].asrv?' data-srv="1"':''}></audio><span class="rt-dur">${esc(recDurTxt(au[0].dur))}</span>${dl?`<button type="button" class="btn sm" title="녹음 파일 내려받기" onclick="recDownload('${esc(au[0].audio)}','${esc(String(au[0].file||'녹음.webm').replace(/'/g,''))}',${au[0].asrv?1:0})"><i data-lucide="download"></i></button>`:''}</div>`:'';
   const one=([r,i])=>`<div class="rt-txh"><span class="rt-src rt-${esc(r.src||'local')}" title="${esc(r.sttLog?'받아쓰기 기록: '+r.sttLog:'')}">${esc(REC_SRC_L[r.src||'local']||r.src)}</span>${r.lvl?` <span class="hint" title="녹음된 소리 크기(진료실 PC 녹음 프로그램이 잼) — 작으면 키워서 받아쓴다">🎤 ${esc(r.lvl)}</span>`:''}${r.lvlPeak!=null&&Number(r.lvlPeak)<10?' <b style="color:#dc2626">⚠ 마이크 소리가 아주 작게 녹음됨</b>':''}
       <button type="button" class="btn sm" onclick="recTextCopyEl(this)"><i data-lucide="copy"></i> 복사</button></div><div class="rt-text">${esc(r.text||'(내용 없음)')}</div>`;
   const main=tx.length?one(tx[0]):'',rest=tx.slice(1).map(one).join('');
@@ -13499,8 +13500,18 @@ function recItemHtml(G,dl){const first=G[0][0];const au=G.find(([r])=>r.src==='a
   return `<div class="rt-item"><div class="rt-head"><b>${esc(t)}</b> · ${esc(first.room||'')}${au?'':(G.some(([r])=>String(r.by||'').startsWith('녹음('))?' <span class="hint">(소리 파일은 진료실 PC 외장하드에)</span>':' <span class="hint">(소리 없음 — 글만)</span>')}${del}</div>${player}
     ${main}${rest?`<details class="rt-txt"><summary>다른 받아쓰기 ${tx.length-1}개 (${esc(tx.slice(1).map(([r])=>REC_SRC_L[r.src||'local']||r.src).join('·'))})</summary>${rest}</details>`:''}</div>`;}
 const REC_AUDIO_URL={};
-function recAudioLoad(box){try{if(!cloud.storage||!box)return;box.querySelectorAll('audio[data-path]').forEach(a=>{if(a.getAttribute('src'))return;const p=a.dataset.path;
-  if(REC_AUDIO_URL[p]){a.src=REC_AUDIO_URL[p];return;}cloud.storage.ref(p).getDownloadURL().then(u=>{REC_AUDIO_URL[p]=u;a.src=u;}).catch(e=>{console.warn('rec audio',e);a.insertAdjacentHTML('afterend','<span class="hint">소리를 불러오지 못했습니다</span>');});});}catch(e){}}
+/* 소리 주소: 병원 서버(asrv)는 로그인 토큰으로 받아 blob 주소로(photoUrl), 예전 것은 Firebase 주소 (2026-11-27) */
+function recAudioUrl(p,srv){if(REC_AUDIO_URL[p])return Promise.resolve(REC_AUDIO_URL[p]);
+  return (srv?photoUrl(p,true):cloud.storage.ref(p).getDownloadURL()).then(u=>(REC_AUDIO_URL[p]=u));}
+function recAudioLoad(box){try{if(!box)return;box.querySelectorAll('audio[data-path]').forEach(a=>{if(a.getAttribute('src'))return;const p=a.dataset.path,srv=a.dataset.srv==='1';
+  if(!srv&&!cloud.storage)return;
+  if(REC_AUDIO_URL[p]){a.src=REC_AUDIO_URL[p];return;}
+  if(srv){   /* 서버 녹음은 통째로 받아야 들을 수 있다(몇 MB) — 주소가 없는 재생 막대는 눌리지 않으므로 [▶ 듣기] 단추를 두고, 누르면 받아서 바로 튼다 (2026-11-27) */
+    if(a.dataset.wired)return;a.dataset.wired='1';a.style.display='none';
+    const b=document.createElement('button');b.type='button';b.className='btn sm';b.textContent='▶ 듣기';b.title='병원 서버에서 녹음을 받아 재생합니다';a.insertAdjacentElement('beforebegin',b);
+    b.onclick=()=>{if(b.disabled)return;b.disabled=true;b.textContent='받는 중…';
+      recAudioUrl(p,true).then(u=>{a.src=u;a.style.display='';b.remove();a.play().catch(()=>{});}).catch(e=>{console.warn('rec audio',e);b.disabled=false;b.textContent='▶ 듣기 (다시)';toast('소리를 불러오지 못했습니다 — 병원 서버 연결을 확인해 주세요');});};return;}
+  recAudioUrl(p,false).then(u=>{a.src=u;}).catch(e=>{console.warn('rec audio',e);a.insertAdjacentHTML('afterend','<span class="hint">소리를 불러오지 못했습니다</span>');});});}catch(e){}}
 /* 환자 관리의 '녹음 기록' — recText 를 차트번호로(녹음기록 칸과 같은 캐시). 없으면 불러온 뒤 다시 그린다. {n, days, g:{날짜:[녹음 묶음]}} */
 function histRecList(mrn){mrn=String(mrn||'').trim();const c=recTextCache[mrn];
   if(!c||Date.now()-c.at>60000){if(!(cloud.active&&cloud.ref))return null;if(!histRecList.busy){histRecList.busy=true;
@@ -13512,8 +13523,8 @@ function histRecList(mrn){mrn=String(mrn||'').trim();const c=recTextCache[mrn];
   return {n:by.size,days:Object.keys(g).sort().reverse(),g};}
 window.recTextCopyEl=function(btn){const t=btn&&btn.closest('.rt-txh');const el=t&&t.nextElementSibling;const s=el?el.textContent:'';
   navigator.clipboard.writeText(s).then(()=>toast('녹음기록을 복사했습니다')).catch(()=>alert('복사하지 못했습니다'));};
-window.recDownload=function(path,name){const go=u=>{const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.download=name||'';a.click();};
-  if(REC_AUDIO_URL[path])go(REC_AUDIO_URL[path]);else if(cloud.storage)cloud.storage.ref(path).getDownloadURL().then(u=>{REC_AUDIO_URL[path]=u;go(u);}).catch(e=>alert('소리를 불러오지 못했습니다'));};
+window.recDownload=function(path,name,srv){const go=u=>{const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.download=name||'';a.click();};
+  if(!srv&&!cloud.storage)return;recAudioUrl(path,!!srv).then(go).catch(e=>alert('소리를 불러오지 못했습니다'));};
 const REC_DAY_OPEN=new Set(),REC_DAY_SHUT=new Set();   // 지난 날 펼친 것 / 오늘인데 접은 것 — 다시 그려도 그대로
 window.recDayToggle=function(k,open,isToday){if(isToday){open?REC_DAY_SHUT.delete(k):REC_DAY_SHUT.add(k);}else{open?REC_DAY_OPEN.add(k):REC_DAY_OPEN.delete(k);}};
 window.recTextCopy=function(i){const box=document.getElementById('recTextBox');const r=box&&box._list&&box._list[i];if(!r)return;
@@ -16400,10 +16411,17 @@ boot();
     try{if(!(typeof cloud!=='undefined'&&cloud.active&&cloud.storage&&cloud.ref)||!rec.meta)return;
       const f=await rec.fh.getFile();if(!f||!f.size)return;const m=rec.meta;
       if(await window.recIsDeleted(m))return;   // 녹음이 끝나기 전에 지웠으면 올리지 않는다 (2026-11-15)
-      const path='rec_audio/'+pmKey(m.mrn||'_')+'/rec_'+String(m.at).replace(/\D/g,'').slice(0,14)+'_'+pmKey(m.room||'')+'.webm';
-      await cloud.storage.ref(path).put(f,{contentType:'audio/webm'});
+      let path='rec_audio/'+pmKey(m.mrn||'_')+'/rec_'+String(m.at).replace(/\D/g,'').slice(0,14)+'_'+pmKey(m.room||'')+'.webm';
+      /* 2026-11-27 요청: 녹음도 병원 서버 디스크에(사진처럼) — rec_audio/{날짜}/{차트번호 이름 진료실 시각}.webm. 서버 폴더에서 날짜 → 차트번호·이름으로 찾는다.
+         서버가 안 되면(꺼짐·옛 판) 예전처럼 Firebase. 문서의 asrv:1 = 소리가 병원 서버에 있음 */
+      let asrv=false;
+      try{if(typeof filesReady==='function'&&await filesReady()){const d0=new Date(m.at),p2=n=>String(n).padStart(2,'0');
+        const nm=[String(m.mrn||'차트없음'),String(m.pname||''),String(m.room||''),p2(d0.getHours())+'시'+p2(d0.getMinutes())+'분'+p2(d0.getSeconds())+'초'].join(' ').replace(/[^0-9A-Za-z가-힣 _()~-]/g,'').replace(/\s+/g,' ').trim().slice(0,110);
+        const sp='rec_audio/'+d0.getFullYear()+'-'+p2(d0.getMonth()+1)+'-'+p2(d0.getDate())+'/'+nm+'.webm';
+        await filesPut(sp,new Blob([f],{type:'audio/webm'}),180000);path=sp;asrv=true;}}catch(e){console.warn('녹음 병원 서버 저장 실패 → Firebase 로',e);}
+      if(!asrv)await cloud.storage.ref(path).put(f,{contentType:'audio/webm'});
       await cloud.ref.collection('recText').doc(recDocId(m.file)+'__audio').set({mrn:m.mrn,pid:m.pid,name:m.pname,room:m.room,startedAt:m.at,date:String(m.at).slice(0,10),file:m.file,
-        src:'audio',audio:path,dur:Math.max(1,Math.round(((rec.endedAt||Date.now())-rec.started)/1000)),endAt:new Date(rec.endedAt||Date.now()).toISOString(),size:f.size,text:'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
+        src:'audio',audio:path,asrv:asrv?1:0,dur:Math.max(1,Math.round(((rec.endedAt||Date.now())-rec.started)/1000)),endAt:new Date(rec.endedAt||Date.now()).toISOString(),size:f.size,text:'',at:new Date().toISOString(),by:(currentUser&&currentUser.name)||''});
       if(window.recTextCache)delete window.recTextCache[m.mrn];
       try{if(typeof editId!=='undefined'&&editId){const p=data.find(q=>q.id===editId);if(p&&String(p.mrn||'').trim()===m.mrn)fillRecTextBox(p);}}catch(e){}}
     catch(e){console.warn('rec upload',e);if(!recUploadAudio.warned){recUploadAudio.warned=true;toast('녹음 소리를 올리지 못했습니다 — 외장하드의 파일은 그대로 있습니다 ('+(e.code||e.message||e)+')',8000);}}}

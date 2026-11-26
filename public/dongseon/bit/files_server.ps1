@@ -21,7 +21,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 trap { try { Add-Content -Path (Join-Path $ConfigDir 'last_error.txt') -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + ' ' + $_.Exception.Message) -Encoding ASCII } catch {}; break }   # startup errors happen before the log folder exists
-$VER = 'fs1.2'
+$VER = 'fs1.3'
 
 $cfgPath = Join-Path $ConfigDir 'config.json'
 $keyPath = Join-Path $ConfigDir 'files.key'
@@ -55,8 +55,11 @@ function KeyOk($given) {
   $diff = 0; for ($i = 0; $i -lt $KEY.Length; $i++) { $diff = $diff -bor ([int][char]$given[$i] -bxor [int][char]$KEY[$i]) }
   return ($diff -eq 0)
 }
-$PATH_RE = '^(patient_photos|rx_captures)/[A-Za-z0-9_-]{1,40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$'
-$CT = @{ jpg = 'image/jpeg'; jpeg = 'image/jpeg'; png = 'image/png'; webp = 'image/webp' }
+# fs1.3 (2026-11-27): recordings too - rec_audio/{yyyy-MM-dd}/{chart no} {name} {room} {time}.webm. The file name may hold Hangul and spaces
+#   so a person can find a recording in the folder; no dot, slash or backslash is allowed in it, so the path cannot leave the folder.
+$PATH_RE = '^((patient_photos|rx_captures)/[A-Za-z0-9_-]{1,40}/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)|rec_audio/\d{4}-\d\d-\d\d/[0-9A-Za-z\uAC00-\uD7A3 _()~-]{1,120}\.(webm|wav))$'
+$AUDIO_MAX_MB = 60   # a 60-minute recording (webm, 32 kbit/s) is about 15 MB
+$CT = @{ jpg = 'image/jpeg'; jpeg = 'image/jpeg'; png = 'image/png'; webp = 'image/webp'; webm = 'audio/webm'; wav = 'audio/wav' }
 
 function Send($ctx, [int]$code, $obj) {
   $b = [Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Compress))
@@ -94,29 +97,30 @@ while ($L.IsListening) {
       'PUT' {
         $d = DriveInfo
         if (-not $d.canWrite) { Log "REFUSE full free=$($d.freeGB)GB need=$($d.needGB)GB $rel"; Send $ctx 507 @{ ok = $false; error = 'disk full'; freeGB = $d.freeGB }; break }
-        if ($req.ContentLength64 -le 0 -or $req.ContentLength64 -gt ([int64]$cfg.MaxMB * 1MB)) { Send $ctx 413 @{ ok = $false; error = 'size' }; break }
+        $maxMB = [int64]$cfg.MaxMB; if ($rel -like 'rec_audio/*' -and $maxMB -lt $AUDIO_MAX_MB) { $maxMB = $AUDIO_MAX_MB }
+        if ($req.ContentLength64 -le 0 -or $req.ContentLength64 -gt ($maxMB * 1MB)) { Send $ctx 413 @{ ok = $false; error = 'size' }; break }
         $tmp = Join-Path (Join-Path $Root '_tmp') ([guid]::NewGuid().ToString('N') + '.part')
         $fs = [System.IO.File]::Create($tmp)
         try { $req.InputStream.CopyTo($fs) } finally { $fs.Close() }
         $len = (Get-Item $tmp).Length
         if ($len -ne $req.ContentLength64) { Remove-Item $tmp -Force; Send $ctx 400 @{ ok = $false; error = 'truncated' }; break }
         New-Item -ItemType Directory -Force -Path (Split-Path $full) | Out-Null
-        if (Test-Path $full) { Remove-Item $full -Force }
-        Move-Item $tmp $full
+        if (Test-Path -LiteralPath $full) { Remove-Item -LiteralPath $full -Force }
+        Move-Item -LiteralPath $tmp -Destination $full
         Log "PUT $rel $len by=$by"
         Send $ctx 200 @{ ok = $true; size = $len }
       }
       'GET' {
-        if (-not (Test-Path $full)) { Send $ctx 404 @{ ok = $false; error = 'not found' }; break }
+        if (-not (Test-Path -LiteralPath $full)) { Send $ctx 404 @{ ok = $false; error = 'not found' }; break }
         $ctx.Response.ContentType = $CT[$ext]
         $fs = [System.IO.File]::OpenRead($full)
         try { $ctx.Response.ContentLength64 = $fs.Length; $fs.CopyTo($ctx.Response.OutputStream) } finally { $fs.Close() }
       }
       'DELETE' {
-        if (-not (Test-Path $full)) { Send $ctx 404 @{ ok = $false; error = 'not found' }; break }
+        if (-not (Test-Path -LiteralPath $full)) { Send $ctx 404 @{ ok = $false; error = 'not found' }; break }
         $tdir = Join-Path (Join-Path $Root '_trash') (Get-Date -Format 'yyyyMMdd')
         New-Item -ItemType Directory -Force -Path $tdir | Out-Null
-        Move-Item $full (Join-Path $tdir (($rel -replace '/', '__')))  -Force
+        Move-Item -LiteralPath $full -Destination (Join-Path $tdir (($rel -replace '/', '__'))) -Force
         Log "DEL $rel by=$by"
         Send $ctx 200 @{ ok = $true }
       }

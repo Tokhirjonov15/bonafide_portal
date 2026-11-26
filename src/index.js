@@ -1026,16 +1026,18 @@ async function fbEmailCached(request) {
   }
   return email;
 }
-const FILES_PATH_RE = /^(patient_photos|rx_captures)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)$/;
+/* 2026-11-27: 녹음도 병원 서버에 — rec_audio/{날짜}/{차트번호 이름 진료실 시각}.webm. 파일 이름에 한글·빈칸을 허용한다(서버 폴더에서 사람이 찾을 수 있게). 점·슬래시는 안 됨 */
+const FILES_PATH_RE = /^((patient_photos|rx_captures)\/[A-Za-z0-9_-]{1,40}\/[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp)|rec_audio\/\d{4}-\d\d-\d\d\/[0-9A-Za-z가-힣 _()~-]{1,120}\.(webm|wav))$/;
 async function dongseonFiles(request, env, url) {
   const email = await fbEmailCached(request);
   if (!email || !email.endsWith(FB_AUTH_SUFFIX)) return json({ error: "로그인이 필요합니다." }, 401);
   if (!env.FILES_URL || !env.FILES_KEY) return json({ ok: false, error: "병원 서버 저장소가 아직 설정되지 않았습니다." }, 503);
   const base = String(env.FILES_URL).replace(/\/+$/, "");
   const hdr = { "x-files-key": env.FILES_KEY };
-  const rest = decodeURIComponent(url.pathname.slice("/api/dongseon/files/".length));
+  let rest = ""; try { rest = decodeURIComponent(url.pathname.slice("/api/dongseon/files/".length)); } catch (e) { return json({ error: "잘못된 파일 경로" }, 400); }
+  const isAudio = rest.startsWith("rec_audio/");
   const call = async (path, init) => {
-    try { return await fetch(base + path, { ...init, headers: { ...hdr, ...(init && init.headers) }, signal: AbortSignal.timeout(25000) }); }
+    try { return await fetch(base + path, { ...init, headers: { ...hdr, ...(init && init.headers) }, signal: AbortSignal.timeout(isAudio ? 120000 : 25000) }); }
     catch (e) { return json({ ok: false, error: "병원 서버에 연결할 수 없습니다: " + (e && e.message) }, 502); }
   };
   if (rest === "_health") {
@@ -1052,9 +1054,9 @@ async function dongseonFiles(request, env, url) {
   }
   if (m === "PUT") {
     const ct = request.headers.get("content-type") || "";
-    if (!/^image\//.test(ct)) return json({ error: "사진만 저장할 수 있습니다." }, 415);
+    if (isAudio ? !/^audio\//.test(ct) : !/^image\//.test(ct)) return json({ error: isAudio ? "녹음 파일만 저장할 수 있습니다." : "사진만 저장할 수 있습니다." }, 415);
     const body = await request.arrayBuffer();
-    if (!body.byteLength || body.byteLength > 20 * 1024 * 1024) return json({ error: "파일 크기 오류" }, 413);
+    if (!body.byteLength || body.byteLength > (isAudio ? 40 : 20) * 1024 * 1024) return json({ error: "파일 크기 오류" }, 413);
     const r = await call("/f/" + rest, { method: "PUT", headers: { "content-type": ct, "x-files-by": email }, body });
     const j = await r.json().catch(() => ({}));
     return json(j, r.ok ? 200 : (r.status === 507 ? 507 : 502));
