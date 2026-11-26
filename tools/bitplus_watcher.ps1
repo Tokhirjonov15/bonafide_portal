@@ -212,7 +212,7 @@ function ReadPayWin($procId) {
 # v3.9 자동 업데이트 (2026-11-15) — PC 를 돌며 USB 로 다시 설치하지 않게. 30분마다 동선관리 사이트의 watcher.json(ver·sha256)을 보고,
 #  버전이 다르면 새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 버전 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고 같은 인수로 다시 시작한다.
 #  비밀번호(.secret)·토큰은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만)
-$MyVer = 'v4.0'   # v4.0: 진료실 캡처 바(slip_capture.ps1)도 사이트의 capture.json 을 보고 바꿔 준다 (2026-11-17 [진료 캡처] 추가)
+$MyVer = 'v4.1'   # v4.1: 진료 녹음 프로그램(clinic_rec.ps1)도 돌본다 — 사이트의 rec.json 으로 바꿔 주고, 멈추면 다시 띄우고, 상태를 하트비트에 싣는다 (2026-11-26). v4.0: 진료실 캡처 바(slip_capture.ps1)도 사이트의 capture.json 을 보고 바꿔 준다 (2026-11-17 [진료 캡처] 추가)
 $UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit'
 $script:UpdAt = (Get-Date).AddMinutes(-28)   # 시작 2분 뒤 첫 확인
 function SelfUpdate() {
@@ -256,6 +256,78 @@ function CapSync() {
   Start-Sleep -Milliseconds 800
   try { Start-ScheduledTask -TaskName 'SlipCapture' -ErrorAction Stop } catch {}   # 작업이 없으면(.vbs 로 띄운 PC) 다음 로그온 때 — 그 사이엔 바가 없다
   Log "캡처 바 업데이트: $($j.ver) — 다시 띄움"
+}
+# v4.1 진료 녹음 프로그램 돌보기 (2026-11-26) — 같은 폴더에 clinic_rec.ps1 이 있는 PC(원장님 진료실)만.
+#  11/24~26: 진료실 녹음이 아침 몇 건 뒤 기록도 없이 멈췄고(진료실2), 그 PC 의 녹음 프로그램은 11/2 이전 판이었다(스스로 바뀌지 않아서). 그래서
+#  ① RecSync: 30분마다 rec.json 의 sha256 과 다르면 새 파일로 바꾸고 다시 띄운다(녹음 중이면 5분 뒤로 미룬다)
+#  ② RecWatch: 1분마다 — 녹음 프로그램이 15초마다 적는 clinic_rec.alive 가 5분 넘게 그대로면(멈춤) 끄고 다시 띄운다. 프로그램이 아예 없으면 작업을 다시 시작한다
+#  ③ RecStatus: 하트비트에 녹음 프로그램 버전·응답·마지막 기록 20줄(환자 이름은 가림)을 싣는다 → 동선관리 [PC 설치 상태]에서 보인다
+$RecFile = Join-Path $PSScriptRoot 'clinic_rec.ps1'
+$RecLog = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\clinic_rec.log'; $RecAlive = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\clinic_rec.alive'
+$script:RecUpdAt = (Get-Date).AddMinutes(-26); $script:RecChkAt = Get-Date; $script:RecNote = ''; $script:RecGoneAt = $null
+function RecProcs() {   # 녹음 프로그램 본체(받아쓰기만 하는 -SttJob 프로세스는 빼고)
+  $pat = '-File\s+"?' + [regex]::Escape($RecFile)
+  return @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match $pat -and $_.CommandLine -notmatch '-SttJob' })
+}
+function RecAliveInfo() {   # @{ at; ver; state } — 파일이 없으면(옛 판) $null
+  try { $a = ([IO.File]::ReadAllText($RecAlive)).Trim() -split '\|'; return @{ at = [DateTime]::ParseExact($a[0], 'yyyy-MM-dd HH:mm:ss', $null); ver = [string]$a[1]; state = [string]$a[2] } } catch { return $null }
+}
+function RecBusy() {   # 지금 녹음 중인가 — 그럴 때는 바꾸지 않는다(끄면 그 녹음을 잃는다)
+  $a = RecAliveInfo; if ($a -and ((Get-Date) - $a.at).TotalSeconds -lt 120) { return ($a.state -eq 'rec') }
+  try {   # 옛 판(alive 없음): 기록의 마지막 본체 줄이 '녹음 시작'이고 61분 안이면 녹음 중
+    $l = @(Get-Content $RecLog -Tail 40 -Encoding UTF8 -ErrorAction Stop | Where-Object { $_ -match '녹음 시작:|저장:|버림\(|저장 실패|시작' }) | Select-Object -Last 1
+    if ($l -and $l -match '녹음 시작:') { return (((Get-Date) - [DateTime]::ParseExact($l.Substring(0, 19), 'yyyy-MM-dd HH:mm:ss', $null)).TotalMinutes -lt 61) }
+  } catch {}
+  return $false
+}
+function RecRestart($why) {
+  foreach ($p in (RecProcs)) { try { Stop-Process -Id $p.ProcessId -Force } catch {} }
+  Start-Sleep -Milliseconds 800
+  try { Start-ScheduledTask -TaskName 'ClinicRec' -ErrorAction Stop } catch {}   # 작업이 없으면(.vbs 로 띄운 PC) 다음 로그온 때
+  $script:RecNote = "$(Get-Date -Format 'MM-dd HH:mm') $why"; Log "녹음 프로그램 다시 띄움: $why"
+}
+function RecSync() {
+  if (((Get-Date) - $script:RecUpdAt).TotalMinutes -lt 30) { return }; $script:RecUpdAt = Get-Date
+  if (-not (Test-Path $RecFile)) { return }
+  $j = Invoke-RestMethod -TimeoutSec 20 -Uri "$UpdBase/rec.json?t=$([DateTime]::Now.Ticks)"
+  if (-not $j.sha256) { return }
+  if ((Get-FileHash $RecFile -Algorithm SHA256).Hash -eq ([string]$j.sha256).ToUpper()) { return }
+  if (RecBusy) { $script:RecUpdAt = (Get-Date).AddMinutes(-25); return }   # 녹음 중 — 5분 뒤 다시
+  $tmp = Join-Path $PSScriptRoot 'clinic_rec.new'
+  Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$UpdBase/clinic_rec.ps1?v=$($j.ver)" -OutFile $tmp
+  if ((Get-FileHash $tmp -Algorithm SHA256).Hash -ne ([string]$j.sha256).ToUpper()) { Log "녹음 프로그램 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
+  if ($pe.Count -or $txt -notmatch ("\`$RecVer = '" + [regex]::Escape([string]$j.ver) + "'")) { Log "녹음 프로그램 업데이트 건너뜀: 받은 파일이 올바르지 않음 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
+  if (RecBusy) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue; $script:RecUpdAt = (Get-Date).AddMinutes(-25); return }   # 받는 사이 녹음이 시작됐다
+  Copy-Item $RecFile "$RecFile.bak" -Force -ErrorAction SilentlyContinue; Move-Item $tmp $RecFile -Force
+  RecRestart "업데이트 $($j.ver)"
+}
+function RecWatch() {
+  if (((Get-Date) - $script:RecChkAt).TotalSeconds -lt 60) { return }; $script:RecChkAt = Get-Date
+  if (-not (Test-Path $RecFile)) { return }
+  $procs = @(RecProcs)   # @( ): 하나뿐이면 PowerShell 5.1 이 배열을 낱개로 풀어 .Count 가 비는 경우가 있다
+  if (-not $procs.Count) {   # 작업 스케줄러가 5분마다 띄운다 — 7분 넘게 없으면 직접 시작해 본다
+    if (-not (Get-ScheduledTask -TaskName 'ClinicRec' -ErrorAction SilentlyContinue)) { return }   # 작업이 없는 PC(파일만 남은 곳)는 건드리지 않는다
+    if (-not $script:RecGoneAt) { $script:RecGoneAt = Get-Date } elseif (((Get-Date) - $script:RecGoneAt).TotalMinutes -ge 7) { $script:RecGoneAt = Get-Date; RecRestart '녹음 프로그램이 떠 있지 않음' }
+    return }
+  $script:RecGoneAt = $null
+  $a = RecAliveInfo; if (-not $a) { return }   # 옛 판은 alive 를 적지 않는다 — RecSync 가 새 판으로 바꾼 뒤부터 본다
+  if (((Get-Date) - $a.at).TotalMinutes -lt 5) { return }
+  $old = @($procs | Where-Object { $_.CreationDate -and ((Get-Date) - $_.CreationDate).TotalMinutes -ge 5 }); if (-not $old.Count) { return }   # 방금 뜬 프로그램은 기다려 준다
+  RecRestart "$([int]((Get-Date) - $a.at).TotalMinutes)분째 응답 없음(멈춤)"
+}
+function RecMask($l) {   # 기록 줄에서 환자 이름·생년월일을 가린다(차트번호는 남긴다)
+  $l = [string]$l -replace '(녹음 \d{4}-\d\d-\d\d) .+? (\d\d시\d\d분\d\d초~)', '$1 * $2'
+  return ($l -replace '(: |→ )[^()\r\n]*?\((\d{1,7})\)', '$1($2)')
+}
+function RecStatus() {   # 하트비트에 실을 녹음 프로그램 상태
+  $r = @{ recVer = 'old'; recAliveSec = -1; recState = ''; recProc = 0; recNote = [string]$script:RecNote; recTail = '' }
+  try { $m = [regex]::Match([IO.File]::ReadAllText($RecFile, [Text.Encoding]::UTF8), "\`$RecVer = '([^']+)'"); if ($m.Success) { $r.recVer = $m.Groups[1].Value } } catch {}
+  try { $r.recProc = [int]@(RecProcs).Count } catch {}
+  $a = RecAliveInfo; if ($a) { $r.recAliveSec = [int]((Get-Date) - $a.at).TotalSeconds; $r.recState = $a.state }
+  try { $r.recTail = ((Get-Content $RecLog -Tail 20 -Encoding UTF8 -ErrorAction Stop | ForEach-Object { RecMask $_ }) -join "`n") } catch {}
+  if ($r.recTail.Length -gt 4000) { $r.recTail = $r.recTail.Substring($r.recTail.Length - 4000) }
+  return $r
 }
 $script:PayLast = ''; $script:PaySent = @{}
 function PayWinTick($procId) {
@@ -654,6 +726,7 @@ while ($true) {
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
                  ver = $MyVer; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
+        if (Test-Path $RecFile) { try { $rs = RecStatus; foreach ($k in @($rs.Keys)) { $hb[$k] = $rs[$k] } } catch { Log "녹음 상태 읽기 오류: $($_.Exception.Message)" } }   # v4.1
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
         catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
@@ -771,5 +844,7 @@ while ($true) {
   if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
   try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }
   try { CapSync } catch { Log "캡처 바 업데이트 확인 실패: $($_.Exception.Message)" }   # v4.0
+  try { RecSync } catch { Log "녹음 프로그램 업데이트 확인 실패: $($_.Exception.Message)" }   # v4.1
+  try { RecWatch } catch { Log "녹음 프로그램 확인 실패: $($_.Exception.Message)" }
   Start-Sleep -Milliseconds 500
 }

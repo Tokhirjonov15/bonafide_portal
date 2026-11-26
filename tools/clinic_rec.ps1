@@ -23,6 +23,8 @@ param([string]$Pc = $env:COMPUTERNAME,
       [string]$Portal = 'https://bonafide-portal.seoulgijibae.workers.dev',
       [switch]$Test)               # 마이크 시험: 3초 녹음해서 소리 크기만 알려 주고 끝
 $ErrorActionPreference = 'Continue'
+$RecVer = 'r2.0'   # r2.0 (2026-11-26): 감시 스크립트(v4.1~)가 사이트의 rec.json 을 보고 이 파일을 바꿔 준다(진료실 PC 에 가지 않고). 15초마다 clinic_rec.alive 에 '살아 있음'을 적는다 —
+                   #   5분 넘게 안 적히면 감시 스크립트가 다시 띄운다(11/24~26 진료실2: 아침 몇 건 뒤 기록 없이 멈춤). 10분마다 지금 상태를 기록에 남긴다
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $BotEmail  = 'uc8feac453b1a01cc028b072a@bonafide.app'   # 동선관리 계정 'bitbot' (받아쓴 글 올리기용)
@@ -35,6 +37,7 @@ $Hold       = Join-Path $PSScriptRoot '녹음_임시'          # 외장하드가
 $LogDir  = Join-Path $env:LOCALAPPDATA 'bitplus_watcher'; New-Item -ItemType Directory -Force $LogDir | Out-Null
 $LogFile = Join-Path $LogDir 'clinic_rec.log'
 $Work    = Join-Path $LogDir 'clinic_rec_work'; New-Item -ItemType Directory -Force $Work | Out-Null   # 녹음 중 임시 파일(영문 경로)
+$AliveFile = Join-Path $LogDir 'clinic_rec.alive'           # '시각|버전|rec 또는 idle' — 감시 스크립트가 본다
 $QueueFile = Join-Path $LogDir 'clinic_rec_queue.json'      # 받아쓴 글을 올릴 녹음 목록
 if (-not $Dir -and (Test-Path $DirFile)) { $Dir = ([string](Get-Content $DirFile -Encoding UTF8 -TotalCount 1)).Trim() }
 function Log($m) { try { Add-Content $LogFile "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $m" -Encoding UTF8 } catch {} }
@@ -84,7 +87,8 @@ if ($Test) {
 # 한 번만 실행 (로그온 작업이 5분마다 다시 시작해도 이미 떠 있으면 그냥 끝난다)
 if (-not $SttJob) {
   $script:Mtx = New-Object System.Threading.Mutex($false, 'Local\BonafideClinicRec')
-  if (-not $script:Mtx.WaitOne(0)) { exit }
+  $own = $false; try { $own = $script:Mtx.WaitOne(0) } catch [System.Threading.AbandonedMutexException] { $own = $true }   # 감시 스크립트가 멈춘 프로그램을 강제로 끄면 잠금이 '버려진' 상태 — 넘겨받는다
+  if (-not $own) { exit }
 }
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -429,6 +433,7 @@ $script:Cand = ''; $script:CandN = 0; $script:CandP = $null; $script:Tick = 0
 $script:WaitLog = ''; $script:OutN = 0   # 동선에서 이 진료실이 아니라 녹음을 기다리는 차트번호(기록 한 번만) · 녹음 중 동선에서 나간 횟수
 function Poll() {
   $script:Tick++
+  if ($script:Tick % 10 -eq 1) { try { [IO.File]::WriteAllText($AliveFile, "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')|$RecVer|$(if ($script:Cur) { 'rec' } else { 'idle' })") } catch {} }   # 15초마다 '살아 있음'
   $p = $null; try { $p = CurrentPatient } catch { Log "창 읽기 오류: $($_.Exception.Message)"; return }
   $key = [string]$p.mrn
   # 차트번호 칸에 다른 번호를 치는 중(번호만 바뀌고 이름은 그대로) — 같은 환자로 본다. 다른 환자를 불러오면 이름도 바뀐다
@@ -455,6 +460,7 @@ function Poll() {
   }
   if ($script:Cur -and ((Get-Date) - $script:Cur.start).TotalMinutes -ge $MaxMin) { $script:StopKey = $script:Cur.mrn; StopRec "최대 ${MaxMin}분" }
   if ($script:Tick % 4 -eq 0) { SetIcon }
+  if ($script:Tick % 400 -eq 0) { Log "상태: 화면 환자=$(if ($key) { $key } else { '없음' }) · 녹음=$(if ($script:Cur) { $script:Cur.mrn } else { '안 함' })$(if ($script:StopKey) { " · 멈춘 차트=$($script:StopKey)" })$(if ($key -and $script:BoardRoom.ContainsKey($key)) { " · 동선 방=$($script:BoardRoom[$key])" })" }   # 10분마다 — 왜 녹음이 없는지 뒤에 알 수 있게
   if ($script:Tick % 20 -eq 0) { try { MoveHeld } catch {}; try { PushTexts } catch { Log "글 올리기 오류: $($_.Exception.Message)" }; try { SttNext } catch { Log "받아쓰기 오류: $($_.Exception.Message)" } }   # 30초마다
 }
 
@@ -464,7 +470,7 @@ $form.ShowInTaskbar = $false; $form.WindowState = 'Minimized'; $form.FormBorderS
 $form.Add_Shown({ $form.Hide() })
 $form.Add_FormClosing({ try { StopRec '프로그램 종료(로그오프·종료)' } catch {}; try { $tray.Visible = $false; $tray.Dispose() } catch {} })
 $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ try { Poll } catch { Log "주기 오류: $($_.Exception.Message)" } }); $timer.Start()
-Log "시작: PC=$Pc 진료실=$Room 폴더=$(if ($Dir) { $Dir } else { '(없음 — 임시 폴더)' }) 최대 ${MaxMin}분$(if ($SimFile) { ' [시험: ' + $SimFile + ']' })"
+Log "시작 ${RecVer}: PC=$Pc 진료실=$Room 폴더=$(if ($Dir) { $Dir } else { '(없음 — 임시 폴더)' }) 최대 ${MaxMin}분$(if ($SimFile) { ' [시험: ' + $SimFile + ']' })"
 if (-not $Dir) { Log '녹음 폴더가 정해지지 않았습니다 — clinic_rec_install.ps1 로 외장하드 폴더를 고르세요' }
 SetIcon
 [Windows.Forms.Application]::Run($form)

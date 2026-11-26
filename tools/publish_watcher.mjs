@@ -11,6 +11,7 @@ const items = [
   { key: 'watcher', src: 'bitplus_watcher.ps1', json: 'watcher.json', re: /\$MyVer = '([^']+)'/ },
   { key: 'agent', src: 'bit_db_agent.ps1', json: 'agent.json', re: /\$VER = '([^']+)'/ },
   { key: 'capture', src: 'slip_capture.ps1', json: 'capture.json', re: /\$CapVer = '([^']+)'/ },   // 진료실 캡처 바 — 감시 v4.0 이 sha256 으로 비교해 바꿔 준다 (2026-11-17)
+  { key: 'rec', src: 'clinic_rec.ps1', json: 'rec.json', re: /\$RecVer = '([^']+)'/ },   // 진료 녹음 프로그램 — 감시 v4.1 이 sha256 으로 비교해 바꿔 준다 (2026-11-26)
 ];
 fs.mkdirSync(dir, { recursive: true });
 for (const it of items) {
