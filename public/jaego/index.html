@@ -757,6 +757,7 @@
 </div>
 
 <script src="vendor/lucide.min.js"></script>
+<script src="product-codes.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -2474,6 +2475,19 @@ $("camClose").onclick=closeCam;
    품목 추가 / 수정
    ============================================================ */
 let editId=null;
+function setSecOpen(id,on){ const d=$(id); if(d) d.open=!!on; }
+/* lot 바코드 버튼: 약품일 때만 (직접 지정한 값이 없으면 카테고리·거래처로 자동 판정) */
+function lotBtnSync(){ const k=$("pKind").value||kindAuto({cat:$("pCat").value,vendor:$("pVendor").value}); $("lotBarBtn").style.display=k==="약품"?"":"none"; }
+["pKind","pCat","pVendor"].forEach(i=>{ $(i).addEventListener("input",lotBtnSync); $(i).addEventListener("change",lotBtnSync); });
+/* 급여정보 조회 버튼: 서버에 API 인증(HIRA_API_KEY)이 설정돼 있으면 켜진다 */
+let BENEFIT_ON=null;
+async function benefitSync(){
+  const b=$("benefitBtn");
+  if(BENEFIT_ON===null){ try{ BENEFIT_ON=!!(await API.call("/benefit/status")).enabled; }catch(_){ BENEFIT_ON=false; } }
+  b.disabled=!BENEFIT_ON;
+  b.title=BENEFIT_ON?"급여코드로 급여정보 조회":"급여정보 API 인증 설정 후 사용할 수 있습니다";
+  $("benefitHint").textContent=BENEFIT_ON?"급여코드를 넣고 [조회]를 누르세요.":"급여정보 조회는 API 인증이 설정되면 켜집니다.";
+}
 window.openProd=function(id){
   editId=id||null;
   const p=id? PRODUCTS.find(x=>x.id===id) : null;
@@ -2485,6 +2499,12 @@ window.openProd=function(id){
   $("pPar").value=p?(p.par||0):0; $("pAlt").value=p?(p.alt||""):"";
   $("pPrice").value=p?(p.price||0):0; $("pVendor").value=p?(p.vendor||""):"";
   $("pOunit").value=p?(p.ounit||0):0; $("pOgrp").value=p?(p.ogrp||""):"";
+  /* 새 항목 (2026-11-26) + 값이 있는 섹션은 열어 둔다 */
+  $("pRxPrice").value=p?(p.rxPrice||0):0; $("pPayType").value=p?(p.payType||""):""; $("pPayCode").value=p?(p.payCode||""):""; $("pOwnCode").value=p?(p.ownCode||""):"";
+  setSecOpen("secPrice", !p || !!(p.price||p.rxPrice||p.min||p.par||p.ounit||p.ogrp));
+  setSecOpen("secCode", !!(p&&(p.payType||p.payCode||p.ownCode)));
+  setSecOpen("secBar", !p || !!p.bar);
+  lotBtnSync(); benefitSync();
   $("pInitWrap").style.display=p?"none":"";
   $("prodDel").style.display=p?"":"none";
   $("prodHide").style.display=(p&&ME&&ME.admin)?"":"none";
@@ -2509,6 +2529,27 @@ $("barPrintBtn").onclick=()=>{
   const p=editId?PRODUCTS.find(x=>x.id===editId):null;
   const copies=(p&&p.stock>0)?p.stock:1;
   printBarLabels([{bar, name:$("pName").value.trim()||"", copies}]);
+};
+
+/* 비급여 자체 코드 자동 생성 · 약품 lot 바코드 라벨 · 급여정보 조회 (2026-11-26) */
+$("ownGenBtn").onclick=()=>{
+  const cur=$("pOwnCode").value.trim();
+  if(cur && !confirm("이미 자체 코드가 있습니다. 새 코드로 바꿀까요?")) return;
+  $("pOwnCode").value=ProductCodes.ownCode(Date.now());
+};
+$("lotBarBtn").onclick=()=>{
+  const base=$("pBar").value.trim();
+  if(!base){ alert("품목 바코드가 비어 있습니다. 먼저 [내부 바코드 생성]을 누르거나 입력하세요."); return; }
+  const lot=prompt("lot 번호를 입력하세요 (영문·숫자·-·. 만 사용)"); if(lot===null) return;
+  const code=ProductCodes.lotBarcode(base,lot);
+  if(!code){ alert("lot 번호를 확인하세요. 영문·숫자·-·. 만 쓸 수 있습니다."); return; }
+  printBarLabels([{bar:code, name:($("pName").value.trim()||"")+" (lot "+lot.trim()+")", copies:1}]);
+};
+$("benefitBtn").onclick=async()=>{
+  const code=$("pPayCode").value.trim();
+  if(!code){ alert("급여코드를 입력하세요."); $("pPayCode").focus(); return; }
+  try{ const r=await API.call("/benefit/lookup?code="+encodeURIComponent(code)); alert(JSON.stringify(r)); }
+  catch(err){ alert(err.message); }
 };
 
 /* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (장수 = 각 품목의 현재 재고) */
@@ -2621,7 +2662,8 @@ $("prodSave").onclick=async()=>{
     bar:$("pBar").value.trim(), min:+$("pMin").value||0,
     par:+$("pPar").value||0, alt:$("pAlt").value.trim(),
     price:+$("pPrice").value||0, vendor:$("pVendor").value.trim(),
-    ounit:+$("pOunit").value||0, ogrp:$("pOgrp").value.trim() };
+    ounit:+$("pOunit").value||0, ogrp:$("pOgrp").value.trim(),
+    rxPrice:+$("pRxPrice").value||0, payType:$("pPayType").value, payCode:$("pPayCode").value.trim(), ownCode:$("pOwnCode").value.trim() };
   if(!editId){ payload.init=+$("pInit").value||0; payload.expiry=$("pExp").value||""; }
   $("prodSave").disabled=true;
   try{
