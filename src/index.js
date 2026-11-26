@@ -13,6 +13,7 @@
 import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
 import { normExtra } from "./product-fields.js";
+import { buildDgamtUrl, parseDgamtXml, itemWarning } from "./hira.js";
 
 let schemaReady = false;
 
@@ -1747,7 +1748,17 @@ async function handleApi(request, env, url, ident, ctx) {
   if (path === "/benefit/status" && method === "GET") return json({ ok: true, enabled: !!env.HIRA_API_KEY });
   if (path === "/benefit/lookup" && method === "GET") {
     if (!env.HIRA_API_KEY) return json({ error: "급여정보 API 인증이 설정되지 않았습니다." }, 400);
-    return json({ error: "급여정보 조회 연동 준비 중입니다." }, 501);
+    const code = s(url.searchParams.get("code")), name = s(url.searchParams.get("name")), maker = s(url.searchParams.get("maker"));
+    if (!code && !name && !maker) return json({ error: "조회할 급여코드나 품목명이 필요합니다." }, 400);
+    try {
+      /* 인증키는 여기서만 쓴다 — 응답·오류 메시지에 URL 이나 키를 넣지 않는다 */
+      const r = await fetch(buildDgamtUrl({ key: env.HIRA_API_KEY, code, name, maker, rows: 20 }), { signal: AbortSignal.timeout(10000) });
+      const out = parseDgamtXml(await r.text());
+      if (!out.ok) return json({ error: "급여정보 조회 실패: " + (out.message || "응답 오류") }, 502);
+      return json({ ok: true, total: out.total, items: out.items.slice(0, 20).map((it) => ({ ...it, warning: itemWarning(it) })) });
+    } catch (_) {
+      return json({ error: "급여정보 조회 실패: 서비스에 연결하지 못했습니다." }, 502);
+    }
   }
 
   /* 여러 품목의 층(위치)·약품/물품 한꺼번에 바꾸기 — 관리자만 (2026-10-04). loc·kind 중 준 것만 바꾼다 */
