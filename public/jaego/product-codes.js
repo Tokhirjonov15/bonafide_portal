@@ -17,15 +17,15 @@
     if (!s) return "";
     return /^[A-Za-z][0-9]{8}$/.test(s) ? "code" : "name";
   }
-  /* 대체 품목의 "달라지는 값" 정리: 비운 칸은 본 품목 값을 따른다(저장할 때 복사). 잘못된 숫자·급여 구분도 본 품목 값. 입력한 0 은 명시한 값 */
+  /* 대체 품목의 "달라지는 값" 정리: 비운 칸은 본 품목의 값(입고가·처방단가·박스당 개수·급여 구분)을 따른다.
+     숫자는 숫자만 인정(음수·소수·"1e3"·글자는 본 품목 값), 입력한 0 은 명시한 값.
+     급여코드·자체 코드는 식별자라서 본 품목 것을 복사하지 않는다(비우면 빈 코드) */
   function resolveAltValues(parent, input) {
     var P = parent || {}, I = input || {};
     function txt(v) { return String(v == null ? "" : v).trim(); }
     function num(v, fallback) {
       var s = txt(v);
-      if (s === "") return fallback;
-      var x = parseInt(s, 10);
-      return isFinite(x) && x >= 0 ? x : fallback;
+      return /^[0-9]+$/.test(s) ? parseInt(s, 10) : fallback;
     }
     var pt = txt(I.payType);
     return {
@@ -33,24 +33,11 @@
       rxPrice: num(I.rxPrice, P.rxPrice || 0),
       ounit: num(I.ounit, P.ounit || 0),
       payType: pt === "급여" || pt === "비급여" || pt === "미정" ? pt : (P.payType || ""),
-      payCode: txt(I.payCode) || P.payCode || "",
-      ownCode: txt(I.ownCode) || P.ownCode || ""
+      payCode: txt(I.payCode),
+      ownCode: txt(I.ownCode)
     };
   }
-  /* /product 수정 요청 본문 — 서버 수정은 보낸 값으로 덮어쓰므로 기존 항목을 모두 담고 바꿀 값만 덮어쓴다 */
-  function updatePayload(p, over) {
-    var q = p || {};
-    var base = {
-      id: q.id, name: q.name, cat: q.cat || "", loc: q.loc || "", unit: q.unit || "", bar: q.bar || "",
-      min: q.min || 0, par: q.par || 0, alt: q.alt || "", price: q.price || 0, vendor: q.vendor || "",
-      ounit: q.ounit || 0, ogrp: q.ogrp || "", rx: q.rx || "", kind: q.kind || "",
-      rxPrice: q.rxPrice || 0, payType: q.payType || "", payCode: q.payCode || "", ownCode: q.ownCode || ""
-    };
-    var o = over || {};
-    Object.keys(o).forEach(function (k) { base[k] = o[k]; });
-    return base;
-  }
-  var api = { ownCode: ownCode, lotBarcode: lotBarcode, benefitQueryKind: benefitQueryKind, resolveAltValues: resolveAltValues, updatePayload: updatePayload };
+  var api = { ownCode: ownCode, lotBarcode: lotBarcode, benefitQueryKind: benefitQueryKind, resolveAltValues: resolveAltValues };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ProductCodes = api;
 })(typeof window !== "undefined" ? window : this);

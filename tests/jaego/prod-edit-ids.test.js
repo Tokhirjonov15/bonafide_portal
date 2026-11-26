@@ -53,3 +53,10 @@ test("대체 품목에 달라지는 값 입력 칸이 있다", () => {
 });
 test("대체 품목 층별 재고 칸(기존)은 그대로", () => assert.ok(html.includes("pAs_${j}_${i}")));
 test("저장 때 비운 칸을 본 품목 값으로 채우는 함수를 쓴다", () => assert.ok(html.includes("ProductCodes.resolveAltValues(")));
+
+/* 2단계 A 검토 반영: 좁은 저장 경로, 건드린 칸만, 기존 값 그대로 표시 */
+test("기존 대체 품목 값은 좁은 저장 경로로만 바꾼다 (통째 덮어쓰기 금지)", () => {
+  assert.ok(html.includes('"/product/fields"'));
+  assert.ok(!html.includes("ProductCodes.updatePayload("));
+});
+test("값 칸에 처음 값을 기억해 건드린 칸만 저장한다", () => assert.ok(html.includes("data-init=")));

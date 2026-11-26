@@ -39,39 +39,32 @@ test("급여코드 모양(영문 1자 + 숫자 8자리)이면 code, 아니면 na
   assert.equal(benefitQueryKind(null), "");
 });
 
-/* 2단계 A: 대체 품목 달라지는 값 */
-const { resolveAltValues, updatePayload } = require("../../public/jaego/product-codes.js");
-const parent = { price: 1000, rxPrice: 1500, ounit: 20, payType: "급여", payCode: "G03900131", ownCode: "" };
+/* 2단계 A: 대체 품목 달라지는 값 (검토 반영: 코드는 복사하지 않고, 숫자는 숫자만) */
+const { resolveAltValues } = require("../../public/jaego/product-codes.js");
+const parent = { price: 1000, rxPrice: 1500, ounit: 20, payType: "급여", payCode: "G03900131", ownCode: "NB1" };
 
-test("대체 품목: 비운 칸은 본 품목 값을 따른다", () => {
-  assert.deepEqual(resolveAltValues(parent, {}), { price: 1000, rxPrice: 1500, ounit: 20, payType: "급여", payCode: "G03900131", ownCode: "" });
-  assert.deepEqual(resolveAltValues(parent, { price: "", ounit: " ", payCode: "" }).price, 1000);
+test("대체 품목: 비운 칸은 본 품목의 값(입고가·처방단가·박스당 개수·급여 구분)을 따른다", () => {
+  const r = resolveAltValues(parent, {});
+  assert.deepEqual([r.price, r.rxPrice, r.ounit, r.payType], [1000, 1500, 20, "급여"]);
+});
+
+test("대체 품목: 급여코드·자체 코드는 식별자라서 본 품목 것을 복사하지 않는다", () => {
+  const r = resolveAltValues(parent, {});
+  assert.equal(r.payCode, ""); assert.equal(r.ownCode, "");
+  assert.equal(resolveAltValues(parent, { payCode: "X1", ownCode: "NB9" }).payCode, "X1");
 });
 
 test("대체 품목: 적은 값은 그 값을 쓴다 (0 도 명시한 값)", () => {
-  const r = resolveAltValues(parent, { price: "800", rxPrice: "0", ounit: "25", payType: "비급여", payCode: "X1", ownCode: "NB9" });
-  assert.deepEqual(r, { price: 800, rxPrice: 0, ounit: 25, payType: "비급여", payCode: "X1", ownCode: "NB9" });
+  const r = resolveAltValues(parent, { price: "800", rxPrice: "0", ounit: "25", payType: "비급여" });
+  assert.deepEqual([r.price, r.rxPrice, r.ounit, r.payType], [800, 0, 25, "비급여"]);
 });
 
-test("대체 품목: 음수·글자·이상한 급여 구분은 본 품목 값", () => {
-  const r = resolveAltValues(parent, { price: "-5", ounit: "abc", payType: "zzz" });
-  assert.equal(r.price, 1000); assert.equal(r.ounit, 20); assert.equal(r.payType, "급여");
+test("대체 품목: 음수·글자·소수·지수 표기·이상한 급여 구분은 본 품목 값", () => {
+  for (const bad of ["-5", "abc", "12.5", "1e3", "1,000"]) assert.equal(resolveAltValues(parent, { price: bad }).price, 1000, bad);
+  assert.equal(resolveAltValues(parent, { payType: "zzz" }).payType, "급여");
 });
 
 test("대체 품목: 본 품목에 값이 없으면 0·빈칸", () => {
   assert.deepEqual(resolveAltValues({}, {}), { price: 0, rxPrice: 0, ounit: 0, payType: "", payCode: "", ownCode: "" });
   assert.deepEqual(resolveAltValues(null, null), { price: 0, rxPrice: 0, ounit: 0, payType: "", payCode: "", ownCode: "" });
-});
-
-test("수정 본문: 화면에 없는 기존 항목(바코드·최소·적정·거래처 등)을 그대로 담고 바꿀 값만 덮어쓴다", () => {
-  const sub = { id: "s1", name: "거즈 B사", cat: "소모품", loc: "3층", unit: "개", bar: "BF1", min: 5, par: 20, alt: "", price: 900, vendor: "메디풀", ounit: 10, ogrp: "g", rx: "gz1", kind: "물품", rxPrice: 1200, payType: "급여", payCode: "A", ownCode: "" };
-  const p = updatePayload(sub, { price: 800, ounit: 25 });
-  assert.equal(p.id, "s1"); assert.equal(p.bar, "BF1"); assert.equal(p.min, 5); assert.equal(p.par, 20);
-  assert.equal(p.vendor, "메디풀"); assert.equal(p.rx, "gz1"); assert.equal(p.kind, "물품"); assert.equal(p.ogrp, "g");
-  assert.equal(p.price, 800); assert.equal(p.ounit, 25); assert.equal(p.rxPrice, 1200);
-});
-
-test("수정 본문: 없는 항목은 0·빈칸으로 채운다", () => {
-  const p = updatePayload({ id: "s2", name: "X" }, {});
-  assert.equal(p.price, 0); assert.equal(p.bar, ""); assert.equal(p.rxPrice, 0); assert.equal(p.payType, "");
 });
