@@ -14,6 +14,7 @@ import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
 import { normExtra, normFields, FIELD_COLUMNS } from "./product-fields.js";
 import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "./hira.js";
+import { normCountQty, adjustment, summarize } from "./stocktake.js";
 
 let schemaReady = false;
 
@@ -110,6 +111,15 @@ const DDL = [
      at     TEXT,
      file   TEXT,
      by     TEXT
+   )`,
+  /* 재고 실사 (2026-11-26) — 실사 세션과 품목별 센 수량 */
+  `CREATE TABLE IF NOT EXISTS counts (
+     id TEXT PRIMARY KEY, name TEXT, floor TEXT, kind TEXT DEFAULT '', status TEXT, blind INTEGER DEFAULT 1,
+     created_by TEXT, created_at INTEGER, finished_by TEXT, finished_at INTEGER, note TEXT
+   )`,
+  `CREATE TABLE IF NOT EXISTS count_lines (
+     count_id TEXT, pid TEXT, counted INTEGER, sys_at_count INTEGER, counted_by TEXT, counted_at INTEGER,
+     PRIMARY KEY (count_id, pid)
    )`
 ];
 
@@ -236,6 +246,14 @@ async function listProducts(env) {
 }
 
 /* 층별 재고 (2026-10-06): 품목마다 {층: 수량}. 층이 비어 있는 예전 기록은 품목 위치(loc)의 층으로, 위치도 없으면 '' (미지정) */
+/* 한 품목의 그 층 재고 — 기록의 층, 비어 있으면 품목 위치의 층 (attachFloors 와 같은 규칙) */
+async function floorStockOf(env, pid, floor) {
+  const prod = await env.DB.prepare(`SELECT loc FROM products WHERE id=?`).bind(pid).first();
+  const { results } = await env.DB.prepare(`SELECT COALESCE(floor,'') AS floor, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty FROM movements WHERE pid=? GROUP BY COALESCE(floor,'')`).bind(pid).all();
+  let sum = 0;
+  for (const r of results || []) if ((r.floor || floorOfLoc(prod && prod.loc)) === floor) sum += r.qty || 0;
+  return sum;
+}
 async function attachFloors(env, products) {
   const { results } = await env.DB.prepare(`
     SELECT pid, COALESCE(floor,'') AS floor, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty
@@ -1912,6 +1930,87 @@ async function handleApi(request, env, url, ident, ctx) {
 
   /* 층별 재고 맞추기 (2026-10-06, 품목 수정 창) — {pid, floors:{"3층":5,"10층":12}}.
      지금 층별 재고와의 차이만큼 그 층에 입고/출고 기록을 남긴다(출고는 유통기한 빠른 묶음부터) */
+  /* ===== 재고 실사 (2026-11-26) =====
+     층별로 직원이 실제 수량을 세어 넣고(/count/line), 관리자가 확정(/count/finish)하면 차이만큼 조정 기록이 남는다.
+     조정량 = 센 수량 − 센 순간의 전산 재고(서버가 계산) → 세는 동안의 입출고가 섞이지 않는다. 확정 전에는 재고가 바뀌지 않는다. */
+  if (path === "/count/start" && method === "POST") {
+    const floor = s(body.floor), kind = ["약품", "물품"].includes(s(body.kind)) ? s(body.kind) : "";
+    if (!FLOORS.includes(floor)) return json({ error: "층을 골라 주세요." }, 400);
+    const open = await env.DB.prepare(`SELECT id FROM counts WHERE status='open' AND floor=? AND kind=? LIMIT 1`).bind(floor, kind).first();
+    if (open) return json({ ok: true, id: open.id, existing: true });
+    const d = new Date(Date.now() + 9 * 3600 * 1000), id = uid();   // 이름 기본값은 한국 날짜
+    const name = s(body.name).slice(0, 60) || `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${floor}${kind ? " " + kind : ""} 실사`;
+    await env.DB.prepare(`INSERT INTO counts (id,name,floor,kind,status,blind,created_by,created_at) VALUES (?,?,?,?, 'open',?,?,?)`)
+      .bind(id, name, floor, kind, body.blind === false || body.blind === 0 ? 0 : 1, actor, Date.now()).run();
+    return json({ ok: true, id, existing: false });
+  }
+  if (path === "/count/list" && method === "GET") {
+    const { results } = await env.DB.prepare(`SELECT c.id, c.name, c.floor, c.kind, c.status, c.blind, c.created_by AS createdBy, c.created_at AS createdAt, c.finished_at AS finishedAt,
+        (SELECT COUNT(*) FROM count_lines l WHERE l.count_id = c.id) AS counted FROM counts c ORDER BY c.created_at DESC LIMIT 50`).all();
+    return json({ counts: results || [] });
+  }
+  if (path === "/count/get" && method === "GET") {
+    const id = s(url.searchParams.get("id"));
+    const c = await env.DB.prepare(`SELECT id, name, floor, kind, status, blind, created_by AS createdBy, created_at AS createdAt, finished_at AS finishedAt FROM counts WHERE id=?`).bind(id).first();
+    if (!c) return json({ error: "실사를 찾을 수 없습니다." }, 404);
+    /* 전산 수량은 블라인드가 아니거나, 관리자가 검토할 때만 내려준다 */
+    const showSys = !c.blind || (url.searchParams.get("review") === "1" && !!(staff && staff.admin));
+    const products = await listProducts(env);
+    await attachFloors(env, products);
+    const targets = products.filter((p) => !p.hidden && ((p.floors[c.floor] || 0) > 0 || floorOfLoc(p.loc) === c.floor))
+      .map((p) => (showSys ? { pid: p.id, sys: p.floors[c.floor] || 0 } : { pid: p.id }));
+    const { results } = await env.DB.prepare(`SELECT pid, counted, sys_at_count AS sysAtCount, counted_by AS "by", counted_at AS "at" FROM count_lines WHERE count_id=? ORDER BY counted_at DESC`).bind(id).all();
+    const lines = (results || []).map((l) => (showSys ? l : { pid: l.pid, counted: l.counted, by: l.by, at: l.at }));
+    return json({ count: c, targets, lines });
+  }
+  if (path === "/count/line" && method === "POST") {
+    const id = s(body.id), pid = s(body.pid), qty = normCountQty(body.qty);
+    if (qty === null) return json({ error: "수량은 0 이상의 숫자로 넣어 주세요." }, 400);
+    const c = await env.DB.prepare(`SELECT floor, status FROM counts WHERE id=?`).bind(id).first();
+    if (!c) return json({ error: "실사를 찾을 수 없습니다." }, 404);
+    if (c.status !== "open") return json({ error: "이미 끝났거나 취소된 실사입니다." }, 409);
+    if (!(await env.DB.prepare(`SELECT 1 AS x FROM products WHERE id=?`).bind(pid).first())) return json({ error: "품목을 찾을 수 없습니다." }, 404);
+    const sys = await floorStockOf(env, pid, c.floor);
+    await env.DB.prepare(`INSERT INTO count_lines (count_id,pid,counted,sys_at_count,counted_by,counted_at) VALUES (?,?,?,?,?,?)
+        ON CONFLICT(count_id,pid) DO UPDATE SET counted=excluded.counted, sys_at_count=excluded.sys_at_count, counted_by=excluded.counted_by, counted_at=excluded.counted_at`)
+      .bind(id, pid, qty, sys, actor, Date.now()).run();
+    return json({ ok: true });
+  }
+  if (path === "/count/cancel" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "관리자만 실사를 취소할 수 있습니다." }, 403);
+    const r = await env.DB.prepare(`UPDATE counts SET status='cancelled', finished_by=?, finished_at=? WHERE id=? AND status='open'`).bind(actor, Date.now(), s(body.id)).run();
+    if (!(r.meta && r.meta.changes > 0)) return json({ error: "진행 중인 실사가 아닙니다." }, 409);
+    return json({ ok: true });
+  }
+  if (path === "/count/finish" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "관리자만 실사를 확정할 수 있습니다." }, 403);
+    const id = s(body.id), excluded = (Array.isArray(body.excluded) ? body.excluded : []).map(s);
+    const c = await env.DB.prepare(`SELECT name, floor, status FROM counts WHERE id=?`).bind(id).first();
+    if (!c) return json({ error: "실사를 찾을 수 없습니다." }, 404);
+    if (c.status !== "open") return json({ error: "이미 끝났거나 취소된 실사입니다." }, 409);
+    const lines = ((await env.DB.prepare(`SELECT l.pid AS pid, l.counted AS counted, l.sys_at_count AS sysAtCount FROM count_lines l JOIN products p ON p.id = l.pid WHERE l.count_id=?`).bind(id).all()).results) || [];
+    /* 먼저 상태를 바꿔 두 번 확정을 막는다(바뀐 행이 없으면 이미 누가 확정한 것) — 기록을 넣다 실패하면 되돌린다 */
+    const claim = await env.DB.prepare(`UPDATE counts SET status='done', finished_by=?, finished_at=? WHERE id=? AND status='open'`).bind(actor, Date.now(), id).run();
+    if (!(claim.meta && claim.meta.changes > 0)) return json({ error: "이미 확정된 실사입니다." }, 409);
+    try {
+      const stmts = [], now = Date.now();
+      for (const l of lines) {
+        if (excluded.includes(l.pid)) continue;
+        const d = adjustment(l.counted, l.sysAtCount);
+        if (!d) continue;
+        const memo = `실사 조정 (${c.name} · ${l.sysAtCount}→${l.counted})`;
+        if (d > 0) stmts.push(env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'in',?,?,?,'','',?,?)`).bind(uid(), l.pid, d, memo, actor, now, c.floor));
+        else stmts.push(...(await buildOutStatements(env, l.pid, -d, memo, actor, c.floor)).stmts);
+      }
+      if (stmts.length) await env.DB.batch(stmts);
+    } catch (e) {
+      await env.DB.prepare(`UPDATE counts SET status='open', finished_by=NULL, finished_at=NULL WHERE id=?`).bind(id).run();
+      return json({ error: "조정 기록을 넣지 못해 확정을 되돌렸습니다. 다시 시도해 주세요." }, 500);
+    }
+    const sm = summarize(lines, excluded);
+    return json({ ok: true, adjusted: sm.items, plus: sm.plus, minus: sm.minus });
+  }
+
   if (path === "/product/floor-stock" && method === "POST") {
     const pid = s(body.pid);
     const want = body.floors && typeof body.floors === "object" ? body.floors : null;
