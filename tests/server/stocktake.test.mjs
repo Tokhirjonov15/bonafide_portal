@@ -29,3 +29,14 @@ test("buildReview: 큰 차이 먼저, 차이 0은 뒤, 금액·삭제된 품목"
   assert.equal(r[2].name, "(삭제된 품목)");
   assert.equal(r[3].diff, 0);
 });
+
+import { planOut } from "../../src/stocktake.js";
+test("planOut: 유통기한 빠른 묶음부터 차감, 모자라면 기한 없음으로", () => {
+  const lots = [{ expiry: "2027-01-01", qty: 3 }, { expiry: "2027-06-01", qty: 5 }];
+  assert.deepEqual(planOut(lots, 2), [{ expiry: "2027-01-01", qty: 2 }]);
+  assert.deepEqual(planOut(lots, 6), [{ expiry: "2027-01-01", qty: 3 }, { expiry: "2027-06-01", qty: 3 }]);
+  assert.deepEqual(planOut(lots, 10), [{ expiry: "2027-01-01", qty: 3 }, { expiry: "2027-06-01", qty: 5 }, { expiry: "", qty: 2 }]);
+  assert.deepEqual(planOut([], 4), [{ expiry: "", qty: 4 }]);
+  assert.deepEqual(planOut(null, 0), []);
+  assert.deepEqual(planOut([{ expiry: "2027-01-01", qty: 0 }, { expiry: "2027-02-01", qty: -2 }], 1), [{ expiry: "", qty: 1 }]);
+});

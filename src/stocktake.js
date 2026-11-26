@@ -39,3 +39,19 @@ export function buildReview(lines, products) {
   const nz = rows.filter((r) => r.diff !== 0).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
   return [...nz, ...rows.filter((r) => r.diff === 0)];
 }
+
+/* 줄어드는 조정의 유통기한 묶음 차감 계획 (FEFO) — lots 는 유통기한 오름차순 [{expiry,qty}]. 모자라는 만큼은 기한 없는 재고에서 뺀다 */
+export function planOut(lots, qty) {
+  const out = [];
+  let remain = Number(qty) || 0;
+  for (const b of Array.isArray(lots) ? lots : []) {
+    if (remain <= 0) break;
+    const q = Number(b && b.qty) || 0;
+    if (q <= 0) continue;
+    const take = Math.min(remain, q);
+    out.push({ expiry: String(b.expiry || ""), qty: take });
+    remain -= take;
+  }
+  if (remain > 0) out.push({ expiry: "", qty: remain });
+  return out;
+}
