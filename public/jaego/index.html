@@ -274,6 +274,16 @@
   .lottbl input{font-size:15px; padding:6px 8px}
   .lotbtn{padding:1px 8px !important; font-size:11.5px !important; white-space:nowrap}
   .modal{background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:440px; max-height:92vh; overflow:auto}
+  /* 품목 수정창 접이식 섹션 (2026-11-26) */
+  .modal.wide{max-width:640px}
+  details.sec{border:1px solid var(--line); border-radius:10px; margin:0 0 10px; background:#fff}
+  details.sec>summary{cursor:pointer; padding:10px 12px; font-weight:800; font-size:14px; list-style:none; display:flex; align-items:center; gap:6px; user-select:none}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::before{content:"▸"; color:var(--ink2); width:1em}
+  details.sec[open]>summary::before{content:"▾"}
+  details.sec[open]>summary{border-bottom:1px solid var(--line)}
+  details.sec .secbody{padding:8px 12px 4px}
+  .inrow{display:flex; gap:8px; align-items:center} .inrow input{flex:1; min-width:0}
   .modal h2{font-size:16px; margin-bottom:14px; color:var(--accent)}
   .modal label{display:block; font-size:12px; color:var(--ink2); font-weight:700; margin:10px 0 4px}
   .modal input{
@@ -573,45 +583,64 @@
   <div id="alertBody"></div>
 </div>
 
-<div class="ovl" id="prodOvl"><div class="modal">
+<div class="ovl" id="prodOvl"><div class="modal wide">
   <h2 id="prodTitle">품목 추가</h2>
+  <!-- 품목 수정창 접이식 섹션 (2026-11-26): 기존 항목은 그대로, 배치만 구역별로 묶음 -->
+  <details class="sec" id="secBasic" open><summary>기본 정보</summary><div class="secbody">
   <label>품목명 *</label><input id="pName" placeholder="예) 니트릴 장갑 M">
   <div class="mrow">
     <div><label>카테고리</label><input id="pCat" list="catList" placeholder="예) 소모품"><datalist id="catList"></datalist></div>
     <div><label>처방코드 (비트)</label><input id="pRx" placeholder="예) sono3, MM085"><datalist id="locList"></datalist></div>
   </div>
-  <div class="mrow">
+    <div class="mrow">
     <div><label>약품 / 물품</label><select id="pKind" class="fsel" style="width:100%"><option value="">자동</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option></select></div>
-    <div></div>
-  </div>
-  <div class="mrow">
     <div><label>단위</label><input id="pUnit" placeholder="예) 박스"></div>
-    <div><label>주문시점 (이하로 떨어지면 발주)</label><input id="pMin" type="number" min="0" value="0"></div>
-  </div>
-  <div class="mrow">
-    <div><label>필요수량 (유지 목표)</label><input id="pPar" type="number" min="0" value="0"></div>
-    <div><label>단가 (원)</label><input id="pPrice" type="number" min="0" value="0"></div>
-  </div>
-  <div class="mrow">
+    </div>
+    <div class="mrow">
     <div><label>거래처 (구입처)</label><input id="pVendor" list="venList" placeholder="예) 한대표님 / 메디풀"><datalist id="venList"></datalist></div>
     <div><label>대체품목</label><input id="pAlt" placeholder="선택사항 — 여러 개는 쉼표로" onchange="renderAltStock()"></div>
-  </div>
+    </div>
   <div class="muted" style="font-size:11.5px; margin:-4px 0 6px">· 대체품목이 여러 개면 쉼표(,)로 구분 · 대체품목도 아래에서 층별 재고를 따로 넣을 수 있습니다</div>
-  <div id="pFloorWrap" style="display:none">
+  </div></details>
+  <details class="sec" id="pFloorWrap" open style="display:none"><summary>층별 재고 조정</summary><div class="secbody">
     <div class="fbox"><div class="fb-t">이 품목(발주 품목) 층별 재고 <span class="muted" style="font-weight:400">— 지금 실제로 있는 개수. 바꾸면 그 차이만큼 입출고 기록이 남습니다</span></div><div class="mrow3" id="pFloors"></div></div>
     <div id="pAltStock"></div>
-  </div>
-  <div class="mrow">
+  </div></details>
+  <details class="sec" id="secPrice" open><summary>가격 · 발주</summary><div class="secbody">
+    <div class="mrow">
+    <div><label>입고가 (원)</label><input id="pPrice" type="number" min="0" value="0"></div>
+      <div><label>처방단가 (원)</label><input id="pRxPrice" type="number" min="0" value="0" title="병원에서 책정한 처방 단가"></div>
+    </div>
+    <div class="mrow">
+    <div><label>주문시점 (이하로 떨어지면 발주)</label><input id="pMin" type="number" min="0" value="0"></div>
+    <div><label>필요수량 (유지 목표)</label><input id="pPar" type="number" min="0" value="0"></div>
+    </div>
+    <div class="mrow">
     <div><label>발주단위 (1박스 수량)</label><input id="pOunit" type="number" min="0" value="0" placeholder="예) 20"></div>
     <div><label>발주그룹 (합계 단위 적용)</label><input id="pOgrp" placeholder="예) 목발"></div>
-  </div>
+    </div>
   <div class="muted" style="font-size:11.5px; margin:-4px 0 8px">
     · 발주단위: 주문수량을 이 배수로 올림 (예: 20 → 1박스=20개) · 발주그룹: 같은 그룹의 <b>합계</b>가 단위의 배수가 되도록 맞춤 (예: 목발 S 3 + L 7 = 총 10)</div>
+  </div></details>
+  <details class="sec" id="secCode" open><summary>급여 · 코드</summary><div class="secbody">
+    <div class="mrow">
+      <div><label>급여 구분</label><select id="pPayType" class="fsel" style="width:100%"><option value="">선택 안 함</option><option value="급여">급여</option><option value="비급여">비급여</option><option value="미정">미정</option></select></div>
+      <div></div>
+    </div>
+    <label>급여코드</label>
+    <div class="inrow"><input id="pPayCode" placeholder="급여 제품의 보험(급여) 코드"><button type="button" class="btn small ghost" id="benefitBtn" disabled title="급여정보 API 인증 설정 후 사용할 수 있습니다"><i data-lucide="search"></i> 조회</button></div>
+    <div class="muted" id="benefitHint" style="font-size:11.5px; margin:4px 0 8px">급여정보 조회는 API 인증이 설정되면 켜집니다.</div>
+    <label>자체 코드 (비급여)</label>
+    <div class="inrow"><input id="pOwnCode" placeholder="비급여 제품의 자체 코드"><button type="button" class="btn small ghost" id="ownGenBtn" title="자체 코드를 자동으로 만들기"><i data-lucide="sparkles"></i> 자동 생성</button></div>
+  </div></details>
+  <details class="sec" id="secBar" open><summary>바코드</summary><div class="secbody">
   <label>바코드 (스캔하거나 입력)</label><input id="pBar" placeholder="선택사항">
-  <div style="display:flex; gap:8px; margin:6px 0 2px">
+    <div style="display:flex; gap:8px; margin:6px 0 8px; flex-wrap:wrap">
     <button type="button" class="btn small ghost" id="barGenBtn" title="바코드 없는 품목용 내부 바코드 생성"><i data-lucide="barcode"></i> 내부 바코드 생성</button>
     <button type="button" class="btn small ghost" id="barPrintBtn" title="이 바코드를 라벨로 인쇄"><i data-lucide="printer"></i> 라벨 인쇄</button>
-  </div>
+      <button type="button" class="btn small ghost" id="lotBarBtn" style="display:none" title="약품 — lot 번호가 바뀔 때마다 lot 바코드 라벨 만들기"><i data-lucide="barcode"></i> lot 바코드 생성</button>
+    </div>
+  </div></details>
   <div id="pInitWrap">
     <div class="mrow">
       <div><label>초기 수량</label><input id="pInit" type="number" min="0" value="0"></div>
