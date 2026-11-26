@@ -12,6 +12,8 @@
 /* PDF 발주서 생성용 (한글 폰트 임베드) */
 import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
+import { normExtra, normFields, FIELD_COLUMNS } from "./product-fields.js";
+import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "./hira.js";
 
 let schemaReady = false;
 
@@ -125,7 +127,13 @@ const MIGRATIONS = [
   `ALTER TABLE movements ADD COLUMN expiry TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN lot    TEXT DEFAULT ''`,
   `ALTER TABLE movements ADD COLUMN floor  TEXT DEFAULT ''`,   // 층별 재고 (2026-10-06): 입출고한 층. '' = 예전 기록 → 품목 위치(loc)의 층으로 본다
-  `ALTER TABLE products  ADD COLUMN alt_of TEXT DEFAULT ''`    // 대체 품목 (2026-10-06): 본 품목 id. 대체 품목도 자기 재고를 가진다
+  `ALTER TABLE products  ADD COLUMN alt_of TEXT DEFAULT ''`,    // 대체 품목 (2026-10-06): 본 품목 id. 대체 품목도 자기 재고를 가진다
+  /* 품목 수정창 개편 1단계 (2026-11-26): 처방단가 · 급여구분 · 급여코드 · 비급여 자체 코드 · 급여정보 조회 결과 보관 */
+  `ALTER TABLE products  ADD COLUMN rx_price INTEGER DEFAULT 0`,
+  `ALTER TABLE products  ADD COLUMN pay_type TEXT DEFAULT ''`,
+  `ALTER TABLE products  ADD COLUMN pay_code TEXT DEFAULT ''`,
+  `ALTER TABLE products  ADD COLUMN own_code TEXT DEFAULT ''`,
+  `ALTER TABLE products  ADD COLUMN benefit_info TEXT DEFAULT ''`
 ];
 /* 층 (2026-10-06) — 화면의 FLOORS 와 같다. 위치 글자에 든 층으로 판정 */
 const FLOORS = ["3층", "4층", "10층"];
@@ -217,6 +225,7 @@ async function listProducts(env) {
     SELECT p.id, p.name, p.cat, p.loc, p.unit, p.bar,
            p.min_qty AS min, p.par_qty AS par, p.alt, p.price, p.vendor,
            p.order_unit AS ounit, p.order_group AS ogrp, p.rx_code AS rx, COALESCE(p.hidden,0) AS hidden, COALESCE(p.kind,'') AS kind, COALESCE(p.alt_of,'') AS altOf, p.created_at,
+           COALESCE(p.rx_price,0) AS rxPrice, COALESCE(p.pay_type,'') AS payType, COALESCE(p.pay_code,'') AS payCode, COALESCE(p.own_code,'') AS ownCode,
            COALESCE(SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END), 0) AS stock
     FROM products p
     LEFT JOIN movements m ON m.pid = p.id
@@ -1589,6 +1598,9 @@ async function currentStock(env, pid) {
 }
 
 /* ---------- 라우팅 ---------- */
+/* 급여정보 조회 결과 캐시 (서버 인스턴스 메모리, 1시간·최대 200건) */
+const BENEFIT_CACHE = createCache({ ttlMs: 3600000, max: 200 });
+
 async function handleApi(request, env, url, ident, ctx) {
   const path = url.pathname.replace(/^\/api/, "") || "/";
   const method = request.method;
@@ -1703,23 +1715,26 @@ async function handleApi(request, env, url, ident, ctx) {
     const name = s(body.name);
     if (!name) return json({ error: "품목명이 필요합니다." }, 400);
 
+    const ex = normExtra(body);   // 처방단가·급여구분·급여코드·자체 코드 (안 보내면 null → 기존 값 유지)
     if (body.id) {
       await env.DB.prepare(
-        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=?, rx_code=COALESCE(?, rx_code), kind=COALESCE(?, kind) WHERE id=?`
+        `UPDATE products SET name=?, cat=?, loc=?, unit=?, bar=?, min_qty=?, par_qty=?, alt=?, price=?, vendor=?, order_unit=?, order_group=?, rx_code=COALESCE(?, rx_code), kind=COALESCE(?, kind), rx_price=COALESCE(?, rx_price), pay_type=COALESCE(?, pay_type), pay_code=COALESCE(?, pay_code), own_code=COALESCE(?, own_code) WHERE id=?`
       ).bind(name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), body.rx === undefined ? null : s(body.rx), body.kind === undefined ? null : kindVal(body.kind), s(body.id)).run();
+             n(body.ounit), s(body.ogrp), body.rx === undefined ? null : s(body.rx), body.kind === undefined ? null : kindVal(body.kind),
+             ex.rxPrice, ex.payType, ex.payCode, ex.ownCode, s(body.id)).run();
       return json({ ok: true, id: body.id });
     }
 
     const id = uid();
     const stmts = [
       env.DB.prepare(
-        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,kind,alt_of,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        `INSERT INTO products (id,name,cat,loc,unit,bar,min_qty,par_qty,alt,price,vendor,order_unit,order_group,rx_code,kind,alt_of,created_at,rx_price,pay_type,pay_code,own_code)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(id, name, s(body.cat), s(body.loc), s(body.unit), s(body.bar),
              n(body.min), n(body.par), s(body.alt), n(body.price), s(body.vendor),
-             n(body.ounit), s(body.ogrp), s(body.rx), kindVal(body.kind), s(body.altOf), Date.now())
+             n(body.ounit), s(body.ogrp), s(body.rx), kindVal(body.kind), s(body.altOf), Date.now(),
+             ex.rxPrice || 0, ex.payType || "", ex.payCode || "", ex.ownCode || "")
     ];
     const init = n(body.init);
     if (init > 0) {
@@ -1729,6 +1744,40 @@ async function handleApi(request, env, url, ident, ctx) {
     }
     await env.DB.batch(stmts);
     return json({ ok: true, id });
+  }
+
+  /* 품목의 일부 항목만 바꾸기 (2026-11-26) — 박스당 개수(발주단위)·입고가·처방단가·급여 구분·급여코드·자체 코드 중 보낸 것만.
+     /product 수정은 안 보여도 모든 항목을 보낸 값으로 덮어써서, 오래된 화면 데이터로 다른 직원이 방금 바꾼 값을 되돌릴 수 있다 → 이 경로는 보낸 항목만 건드린다 */
+  if (path === "/product/fields" && method === "POST") {
+    const id = s(body.id), f = normFields(body), keys = Object.keys(f);
+    if (!id || !keys.length) return json({ error: "품목과 바꿀 항목이 필요합니다." }, 400);
+    const r = await env.DB.prepare(`UPDATE products SET ${keys.map((k) => FIELD_COLUMNS[k] + "=?").join(", ")} WHERE id=?`)
+      .bind(...keys.map((k) => f[k]), id).run();
+    if (!(r.meta && r.meta.changes > 0)) return json({ error: "품목을 찾을 수 없습니다." }, 404);
+    return json({ ok: true, id, fields: f });
+  }
+
+  /* 급여정보 조회 (2026-11-26): 환경변수 HIRA_API_KEY(건강보험심사평가원 약가 정보 인증키)가 있으면 화면의 [조회] 버튼이 켜진다.
+     공공데이터 서비스는 키가 있는 요청에 10~18초 걸려서(실측) 대기 30초, 같은 검색은 1시간 기억한다 */
+  if (path === "/benefit/status" && method === "GET") return json({ ok: true, enabled: !!env.HIRA_API_KEY });
+  if (path === "/benefit/lookup" && method === "GET") {
+    if (!env.HIRA_API_KEY) return json({ error: "급여정보 API 인증이 설정되지 않았습니다." }, 400);
+    const code = s(url.searchParams.get("code")), name = s(url.searchParams.get("name")), maker = s(url.searchParams.get("maker"));
+    if (!code && !name && !maker) return json({ error: "조회할 급여코드나 품목명이 필요합니다." }, 400);
+    const cacheKey = [code, name, maker].map((v) => v.slice(0, 100).toLowerCase()).join("|");   // 키(인증키)는 넣지 않는다
+    const hit = BENEFIT_CACHE.get(cacheKey);
+    if (hit) return json(hit);
+    try {
+      /* 인증키는 여기서만 쓴다 — 응답·오류 메시지에 URL 이나 키를 넣지 않는다 */
+      const r = await fetch(buildDgamtUrl({ key: env.HIRA_API_KEY, code, name, maker, rows: 20 }), { signal: AbortSignal.timeout(30000) });
+      const out = parseDgamtXml(await r.text());
+      if (!out.ok) return json({ error: "급여정보 조회 실패: " + (safeMessage(friendlyMessage(out.message), env.HIRA_API_KEY) || "응답 오류") }, 502);
+      const body = { ok: true, total: out.total, items: out.items.slice(0, 20).map((it) => ({ ...it, warning: itemWarning(it) })) };
+      BENEFIT_CACHE.set(cacheKey, body);   // 성공한 조회만 기억
+      return json(body);
+    } catch (_) {
+      return json({ error: "급여정보 조회 실패: 서비스에 연결하지 못했습니다." }, 502);
+    }
   }
 
   /* 여러 품목의 층(위치)·약품/물품 한꺼번에 바꾸기 — 관리자만 (2026-10-04). loc·kind 중 준 것만 바꾼다 */
