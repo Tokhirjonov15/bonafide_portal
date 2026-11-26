@@ -36,8 +36,8 @@ test("normFields: 보낸 항목만 돌려준다", () => {
   assert.deepEqual(normFields(null), {});
 });
 
-test("normFields: 허용되지 않은 항목(이름·수량·바코드 등)은 무시", () => {
-  assert.deepEqual(normFields({ name: "X", bar: "B", min: 5, ounit: 10 }), { ounit: 10 });
+test("normFields: 허용되지 않은 항목(이름·최소·적정 수량 등)은 무시", () => {
+  assert.deepEqual(normFields({ name: "X", min: 5, par: 7, ounit: 10 }), { ounit: 10 });
 });
 
 test("normFields: 숫자는 정리 — 글자는 빼고 음수는 0", () => {
@@ -55,5 +55,13 @@ test("normFields: 급여 구분·코드 정리", () => {
 });
 
 test("FIELD_COLUMNS: 허용 항목과 DB 열 이름", () => {
-  assert.deepEqual(FIELD_COLUMNS, { ounit: "order_unit", price: "price", rxPrice: "rx_price", payType: "pay_type", payCode: "pay_code", ownCode: "own_code" });
+  assert.deepEqual(FIELD_COLUMNS, { ounit: "order_unit", price: "price", rxPrice: "rx_price", payType: "pay_type", payCode: "pay_code", ownCode: "own_code", bar: "bar" });
 });
+
+test("normFields: 바코드는 보낸 때만, 앞뒤 공백 제거·60자 제한, 빈 값은 비움", () => {
+  assert.deepEqual(normFields({ bar: "  ABC-1 " }), { bar: "ABC-1" });
+  assert.deepEqual(normFields({ bar: "" }), { bar: "" });
+  assert.equal(normFields({ bar: "x".repeat(100) }).bar.length, 60);
+  assert.deepEqual(normFields({ price: 5 }), { price: 5 });
+});
+
