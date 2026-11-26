@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buildDgamtUrl, parseDgamtXml, itemWarning } from "../../src/hira.js";
+import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage } from "../../src/hira.js";
 
 const sample = fs.readFileSync(new URL("../fixtures/hira-getDgamtList.xml", import.meta.url), "utf8");
 const wrap = (items, extra = "") => `<?xml version="1.0" encoding="UTF-8"?><response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body>${items}${extra}</body></response>`;
@@ -71,4 +71,18 @@ test("경고: 삭제·변경 코드", () => {
   assert.equal(itemWarning({ code: "A", payType: "삭제", changedCode: "B" }), "삭제된 코드입니다 · 변경 코드: B");
   assert.equal(itemWarning({ code: "A", payType: "급여", changedCode: "A" }), "");
   assert.equal(itemWarning({ code: "A", payType: "급여", changedCode: "" }), "");
+});
+
+test("오류 메시지에서 인증키(원문·인코딩)를 지우고 200자로 자른다", () => {
+  const m = safeMessage("bad key a+b/c= and a%2Bb%2Fc%3D here", "a+b/c=");
+  assert.ok(!m.includes("a+b/c=") && !m.includes("a%2Bb%2Fc%3D"));
+  assert.ok(m.includes("***"));
+  assert.equal(safeMessage("x".repeat(500), "k").length, 200);
+  assert.equal(safeMessage(null, "k"), "");
+});
+
+test("URL: 검색어는 100자까지만", () => {
+  const u = buildDgamtUrl({ key: "k", name: "가".repeat(300) });
+  const v = decodeURIComponent(/itmNm=([^&]*)/.exec(u)[1]);
+  assert.equal(v.length, 100);
 });

@@ -14,7 +14,7 @@ function encKey(key) {
 export function buildDgamtUrl(o) {
   const p = o || {};
   const q = [`serviceKey=${encKey(p.key)}`, `numOfRows=${Math.max(1, parseInt(p.rows, 10) || 10)}`, `pageNo=${Math.max(1, parseInt(p.page, 10) || 1)}`];
-  const add = (name, v) => { const t = txt(v); if (t) q.push(`${name}=${encodeURIComponent(t)}`); };
+  const add = (name, v) => { const t = txt(v).slice(0, 100); if (t) q.push(`${name}=${encodeURIComponent(t)}`); };   // 검색어는 100자까지
   add("mdsCd", p.code);
   add("itmNm", p.name);
   add("mnfEntpNm", p.maker);
@@ -60,4 +60,16 @@ export function itemWarning(item) {
   if (it.payType === "삭제") w.push("삭제된 코드입니다");
   if (it.changedCode && it.changedCode !== it.code) w.push("변경 코드: " + it.changedCode);
   return w.join(" · ");
+}
+
+/* 상위 서비스 오류 메시지를 화면에 내보내기 전에 정리: 인증키(원문·인코딩 형태)를 지우고 200자로 자른다 */
+export function safeMessage(msg, key) {
+  let m = txt(msg);
+  const k = txt(key);
+  if (k) {
+    let dec = k;
+    if (/%[0-9A-Fa-f]{2}/.test(k)) { try { dec = decodeURIComponent(k); } catch (_) { /* 그대로 */ } }
+    for (const v of new Set([k, dec, encodeURIComponent(dec)])) if (v) m = m.split(v).join("***");
+  }
+  return m.slice(0, 200);
 }

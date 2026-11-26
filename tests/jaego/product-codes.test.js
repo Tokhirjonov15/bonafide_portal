@@ -28,3 +28,13 @@ test("lot 이 비거나 쓸 수 없는 글자뿐이면 코드 없음", () => {
 test("품목 바코드가 비면 코드 없음", () => {
   assert.equal(lotBarcode("", "L1"), "");
 });
+
+const { benefitQueryKind } = require("../../public/jaego/product-codes.js");
+test("급여코드 모양(영문 1자 + 숫자 8자리)이면 code, 아니면 name", () => {
+  assert.equal(benefitQueryKind("G03900131"), "code");
+  assert.equal(benefitQueryKind(" g03900131 "), "code");
+  assert.equal(benefitQueryKind("피렌정"), "name");
+  assert.equal(benefitQueryKind("G0390013"), "name");
+  assert.equal(benefitQueryKind(""), "");
+  assert.equal(benefitQueryKind(null), "");
+});

@@ -13,7 +13,7 @@
 import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
 import { normExtra } from "./product-fields.js";
-import { buildDgamtUrl, parseDgamtXml, itemWarning } from "./hira.js";
+import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage } from "./hira.js";
 
 let schemaReady = false;
 
@@ -1754,7 +1754,7 @@ async function handleApi(request, env, url, ident, ctx) {
       /* 인증키는 여기서만 쓴다 — 응답·오류 메시지에 URL 이나 키를 넣지 않는다 */
       const r = await fetch(buildDgamtUrl({ key: env.HIRA_API_KEY, code, name, maker, rows: 20 }), { signal: AbortSignal.timeout(10000) });
       const out = parseDgamtXml(await r.text());
-      if (!out.ok) return json({ error: "급여정보 조회 실패: " + (out.message || "응답 오류") }, 502);
+      if (!out.ok) return json({ error: "급여정보 조회 실패: " + (safeMessage(out.message, env.HIRA_API_KEY) || "응답 오류") }, 502);
       return json({ ok: true, total: out.total, items: out.items.slice(0, 20).map((it) => ({ ...it, warning: itemWarning(it) })) });
     } catch (_) {
       return json({ error: "급여정보 조회 실패: 서비스에 연결하지 못했습니다." }, 502);

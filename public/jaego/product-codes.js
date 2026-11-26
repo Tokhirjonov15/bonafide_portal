@@ -11,7 +11,13 @@
     var l = String(lot == null ? "" : lot).replace(/[^A-Za-z0-9._-]/g, "");
     return b && l ? b + "-" + l : "";
   }
-  var api = { ownCode: ownCode, lotBarcode: lotBarcode };
+  /* 급여정보 조회 검색어 종류: 영문 1자 + 숫자 8자리(예: G03900131)면 제품코드, 아니면 품목명 */
+  function benefitQueryKind(q) {
+    var s = String(q == null ? "" : q).trim();
+    if (!s) return "";
+    return /^[A-Za-z][0-9]{8}$/.test(s) ? "code" : "name";
+  }
+  var api = { ownCode: ownCode, lotBarcode: lotBarcode, benefitQueryKind: benefitQueryKind };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.ProductCodes = api;
 })(typeof window !== "undefined" ? window : this);
