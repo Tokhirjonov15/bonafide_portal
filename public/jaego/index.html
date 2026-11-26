@@ -266,6 +266,9 @@
   .out-q{font-weight:800; font-size:15px; margin:4px 0 8px}
   .out-pick{display:flex; flex-direction:column; gap:8px}
   .out-big{width:100%; justify-content:center; font-size:17px; padding:14px 12px}
+  .out-seg{display:flex; gap:8px; margin:0 0 10px}   /* 박스 / 개수 선택 — 고른 쪽이 파랗게 */
+  .out-seg .btn{flex:1; justify-content:center; font-size:16px; padding:12px 8px}
+  .out-seg .btn.on{background:var(--accent); color:#fff; border-color:var(--accent); font-weight:800}
   .out-big span,.out-big span.muted{font-weight:700; font-size:14px; margin-left:4px; color:inherit; opacity:.9}   /* 파란 버튼 위에서도 잘 보이게 (흰 글씨) */
   .ovl{position:fixed; inset:0; background:rgba(20,30,45,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:14px}
   .ovl.show{display:flex}
@@ -691,20 +694,17 @@
   <h2 id="outTitle"><i data-lucide="package-open"></i> 출고</h2>
   <p id="outProd" style="font-weight:700; margin-bottom:2px"></p>
   <p class="muted" id="outNow" style="margin-bottom:10px"></p>
-  <div id="outStep1">
-    <div class="out-q">어떤 단위로 출고하시나요?</div>
-    <div class="out-pick">
-      <button type="button" class="btn out-big" onclick="outPick('box')"><i data-lucide="package"></i> <b class="out-v">박스 단위로 출고</b><span id="outBoxSz" class="muted"></span></button>
-      <button type="button" class="btn ghost out-big" onclick="outPick('ea')"><i data-lucide="hash"></i> <b class="out-v2">개수 단위로 출고</b></button>
-    </div>
+  <div id="outUnitRow" class="out-seg" style="display:none">
+    <button type="button" id="outUBox" class="btn ghost" onclick="outPick('box')"><i data-lucide="package"></i> 박스<span id="outBoxSz"></span></button>
+    <button type="button" id="outUEa" class="btn ghost" onclick="outPick('ea')"><i data-lucide="hash"></i> 개수</button>
   </div>
-  <div id="outStep2" style="display:none">
+  <div id="outStep2">
     <label id="outQtyLabel">수량</label><input id="outQty" type="number" min="1" value="1" class="qbig" oninput="outHint()">
     <p class="muted" id="outHintTx" style="margin:4px 0 0; font-weight:700"></p>
   </div>
   <div class="mbtns">
     <button class="btn ghost" type="button" onclick="outClose()">취소</button>
-    <button class="btn" type="button" id="outOk" style="display:none" onclick="outGo()">출고</button>
+    <button class="btn" type="button" id="outOk" onclick="outGo()">출고</button>
   </div>
 </div></div>
 
@@ -767,6 +767,7 @@
 
 <script src="vendor/lucide.min.js"></script>
 <script src="product-codes.js"></script>
+<script src="scan-unit.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -2165,41 +2166,43 @@ async function scanOutAsk(bar,mode){
   const r=await API.call("/scan",{ bar, mode, lookup:true });
   if(r.notFound) return r;
   const p=r.product, bs=Number(r.boxSize)||0;
-  OUT={bar, mode, product:p, stock:Number(r.stock)||0, bs, unit:""};
+  /* 2026-11-26: 단위 선택과 수량을 한 화면에 — 처음 단위는 이 품목에서 마지막에 쓴 단위(없으면 입고=박스·출고=개수) */
+  let last=null; try{ last=localStorage.getItem(ScanUnit.unitKey(mode,p.id)); }catch(_){}
+  OUT={bar, mode, product:p, stock:Number(r.stock)||0, bs, unit:ScanUnit.defaultUnit(mode,bs,last)};
   const W=mode==="in"?"입고":"출고";
   $("outTitle").innerHTML=`<i data-lucide="${mode==="in"?"package-plus":"package-open"}"></i> ${W}`;
-  $("outOvl").querySelector(".out-q").textContent=`어떤 단위로 ${W}하시나요?`;
-  $("outOvl").querySelector(".out-v").textContent=`박스 단위로 ${W}`;$("outOvl").querySelector(".out-v2").textContent=`개수 단위로 ${W}`;
   $("outOk").textContent=W;
   $("outProd").textContent=p.name;
   $("outNow").innerHTML=`현재 재고: <b>${OUT.stock}</b> ${esc(p.unit||"개")}${boxTxt(p,OUT.stock)?` = ${esc(boxTxt(p,OUT.stock))}`:""}`;
   $("outBoxSz").textContent=bs>1?` (1박스=${bs}개)`:"";
-  $("outStep1").style.display=bs>1?"":"none";
+  $("outUnitRow").style.display=bs>1?"":"none";
+  $("outQty").value=1;outUnitUi();
   $("outOvl").classList.add("show");refreshIcons();
-  if(bs>1){ $("outStep2").style.display="none"; $("outOk").style.display="none"; setTimeout(()=>$("outOvl").querySelector(".out-big").focus(),30); }
-  else outPick("ea");
+  setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);
   return {asked:true};
 }
-window.outPick=function(u){if(!OUT)return;OUT.unit=u;
-  $("outStep1").style.display="none";$("outStep2").style.display="";$("outOk").style.display="";
-  $("outQtyLabel").textContent=u==="box"?`박스 수 (1박스=${OUT.bs}개)`:"개수";
-  $("outQty").value=1;outHint();setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);};
-function outCount(){const q=Math.floor(Number($("outQty").value)||0);return OUT&&OUT.unit==="box"?q*OUT.bs:q;}
+function outUnitUi(){const u=OUT.unit;
+  $("outUBox").classList.toggle("on",u==="box");$("outUEa").classList.toggle("on",u==="ea");
+  $("outQtyLabel").textContent=u==="box"?`박스 수 (1박스=${OUT.bs}개)`:"개수";outHint();}
+window.outPick=function(u){if(!OUT)return;OUT.unit=u;outUnitUi();$("outQty").focus();$("outQty").select();};
+function outCount(){return OUT?ScanUnit.unitCount(OUT.unit,$("outQty").value,OUT.bs):0;}
 window.outHint=function(){if(!OUT)return;const c=outCount(),el=$("outHintTx");
   const W=OUT.mode==="in"?"입고":"출고",over=OUT.mode==="out"&&c>OUT.stock;
   el.style.color=over?"var(--warn)":"var(--accent)";
-  el.textContent=c<1?"수량을 넣어 주세요":(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
+  el.textContent=c<1?(Number($("outQty").value)>ScanUnit.MAX_QTY?`수량이 너무 큽니다 (최대 ${ScanUnit.MAX_QTY}) — 바코드가 입력된 건 아닌지 확인하세요`:"수량을 넣어 주세요"):(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
 window.outClose=function(){OUT=null;$("outOvl").classList.remove("show");focusScan();};
 window.outGo=async function(){if(!OUT)return;const c=outCount();if(c<1){$("outQty").focus();return;}
   if(OUT.mode==="out"&&c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
   /* 입고 박스: 서버가 박스 수 × 1박스 개수로 넣는다(입고 기록에 'N박스') · 개수: unit:'ea' 로 곱하지 않게 · 출고: 늘 개수 */
+  if(OUT.bs>1){ try{ localStorage.setItem(ScanUnit.unitKey(OUT.mode,OUT.product.id),OUT.unit); }catch(_){} }   // 다음에 이 품목은 이 단위로 시작
   const o=OUT,boxes=Math.floor(Number($("outQty").value)||0);
   const opt=o.mode==="in"?(o.unit==="box"?{qty:boxes,unit:"box"}:{qty:c,unit:"ea"}):{qty:c};
   $("outOvl").classList.remove("show");OUT=null;
   await doScan(o.bar,opt);};
 $("outOvl").addEventListener("keydown",e=>{
   if(e.key==="Escape"){e.preventDefault();outClose();}
-  else if(e.key==="Enter"&&$("outStep2").style.display!=="none"){e.preventDefault();outGo();}
+  else if(e.key==="Enter"){ if(e.target.closest&&e.target.closest("button")) return;   /* 단위·취소 버튼에서 Enter = 그 버튼 누르기(확정 아님) */
+    e.preventDefault();outGo();}
 });
 
 async function doScan(code,opt){
