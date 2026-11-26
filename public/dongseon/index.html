@@ -3919,7 +3919,7 @@ function renderBitBar(){
 }
 /* ═════ 설치 상태 표 (2026-10-28 요청: 진료실·원무과 PC에 새 버전이 깔렸는지 가지 않고 확인) ═════
    bitStatus/_all 하트비트(PC마다 5분, 비트 창이 안 열린 PC는 30분)에 남는 버전·마지막 신호·오류·처방 보내기 모드를 표로. 비트 표시를 누르면 열린다(관리자) */
-const BIT_LATEST={watcher:'v4.1',agent:'db2.5',rec:'r2.1'};   // v4.1: 진료 녹음 프로그램 돌보기 (2026-11-26) ·   // db2.5: 비트 저장 차팅(EmrInf)으로 슬립 채우기·고치기 (2026-11-05)
+const BIT_LATEST={watcher:'v4.2',agent:'db2.5',rec:'r2.1'};   // v4.1: 진료 녹음 프로그램 돌보기 (2026-11-26) ·   // db2.5: 비트 저장 차팅(EmrInf)으로 슬립 채우기·고치기 (2026-11-05)
   //   // db2.4: 처방 문서에 그 접수의 보험(insNm) — 예상 본인부담 계산용(2026-11-03 정혁).
   // db2.3: 처방 줄마다 비트 구분(itm·sot) — 동의서 처방내역이 먹는 약을 비트 @투약으로 가림(2026-11-02). db2.2: 자보 환자 전원 상태(bitRx/_jabo.all) — 보드 카드·환자 정보 창(2026-11-02). v3.8: 마지막 수정 뒤 6초 안에 환자를 바꿔도 보냄(2026-11-01 최하은). db2.1: 자보 급여 도수 팝업 자료(bitRx/_jabo, 2026-10-30)
 function verNum(v){const m=/(\d+)\.(\d+)/.exec(String(v||''));return m?Number(m[1])*1000+Number(m[2]):0;}
@@ -3938,7 +3938,7 @@ function openBitStatus(){let ov=document.getElementById('bitStOv');
   const rows=R.map(r=>`<tr><td><b>${esc(r.pc)}</b>${r.st.ip?` <span class="hint" title="이 PC 의 IP — 어느 자리 컴퓨터인지 찾을 때">${esc(String(r.st.ip).split(',')[0])}</span>`:''}<div class="hint">${esc(r.kind)}</div></td>
     <td>${r.ver?`<b style="color:${r.ok?'#15803d':'#b91c1c'}">${esc(r.ver)}</b>`:'<span class="hint">(버전 없음)</span>'} ${r.ok?'✅':`<span style="color:#b91c1c;font-weight:800">⚠ 옛 버전 → ${esc(r.latest)} 필요</span>`}</td>
     <td>${esc(hm(r.t))}<div class="hint">${r.ageMin==null?'':r.ageMin<1?'방금':r.ageMin+'분 전'}${r.ageMin!=null&&r.ageMin>40?' · 꺼져 있거나 신호 없음':''}</div></td>
-    <td>${esc(r.mode)}${(()=>{/* 진료 녹음 프로그램 (감시 v4.1~, 2026-11-26): 버전 · 응답 · 다시 띄운 기록 · [기록] */const st=r.st;if(st.recVer==null)return '';const a=Number(st.recAliveSec);const okV=st.recVer===BIT_LATEST.rec;
+    <td>${esc(r.mode)}${(()=>{/* 진료 녹음 프로그램 (감시 v4.1~, 2026-11-26): 버전 · 응답 · 다시 띄운 기록 · [기록] */const st=r.st;if(st.recVer==null)return '';if(st.recVer==='none')return '<div style="margin-top:3px;font-size:12px;color:#78716c">녹음 프로그램 없음(설치 안 됨)'+(st.recNote?' · '+esc(String(st.recNote)):'')+'</div>';const a=Number(st.recAliveSec);const okV=st.recVer===BIT_LATEST.rec;
       const alive=st.recVer==='old'?'옛 판(곧 스스로 바뀜)':a<0?'응답 기록 없음':a<120?(st.recState==='rec'?'녹음 중':'대기 중'):Math.round(a/60)+'분째 응답 없음';const bad=!Number(st.recProc)||(a>=300);
       return `<div style="margin-top:3px;font-size:12px;color:${bad?'#b91c1c':okV?'#166534':'#92400e'}">녹음 ${esc(String(st.recVer))} · ${Number(st.recProc)?esc(alive):'꺼져 있음'}${st.recNote?' · 다시 띄움 '+esc(String(st.recNote)):''} <a href="#" onclick="event.preventDefault();bitRecTail('${esc(r.pc)}')">[기록]</a></div>`;})()}</td><td class="hint" style="max-width:260px">${r.st.lastErr?esc(String(r.st.lastErr).slice(0,120))+(r.st.lastErrAt?' ('+esc(hm(new Date(r.st.lastErrAt)))+')':''):''}</td></tr>`).join('');
   ov.innerHTML=`<div class="modal" style="width:900px;max-width:96vw"><h3>설치 상태 — PC별 <span class="hint" style="font-size:13px">최신: 진료실·접수 감시 ${BIT_LATEST.watcher} · DB 에이전트 ${BIT_LATEST.agent} · ${BIT_STATUS_AT?Math.round((Date.now()-BIT_STATUS_AT)/60000)+'분 전 읽음':''}</span></h3>

@@ -212,7 +212,7 @@ function ReadPayWin($procId) {
 # v3.9 자동 업데이트 (2026-11-15) — PC 를 돌며 USB 로 다시 설치하지 않게. 30분마다 동선관리 사이트의 watcher.json(ver·sha256)을 보고,
 #  버전이 다르면 새 파일을 받아 ① sha256 ② 문법 ③ 파일 안 버전 표시가 json 과 같은지 확인한 뒤에만 이 파일을 바꾸고 같은 인수로 다시 시작한다.
 #  비밀번호(.secret)·토큰은 건드리지 않는다. 확인이 하나라도 틀리면 그대로 둔다(로그만)
-$MyVer = 'v4.1'   # v4.1: 진료 녹음 프로그램(clinic_rec.ps1)도 돌본다 — 사이트의 rec.json 으로 바꿔 주고, 멈추면 다시 띄우고, 상태를 하트비트에 싣는다 (2026-11-26). v4.0: 진료실 캡처 바(slip_capture.ps1)도 사이트의 capture.json 을 보고 바꿔 준다 (2026-11-17 [진료 캡처] 추가)
+$MyVer = 'v4.2'   # v4.2: 녹음 프로그램을 작업 ClinicRec 의 경로에서도 찾고(감시와 다른 폴더에 설치된 PC), 진료실 PC 에 녹음 프로그램이 없으면 '없음'으로 알린다 (2026-11-26). v4.1: 진료 녹음 프로그램(clinic_rec.ps1)도 돌본다 — 사이트의 rec.json 으로 바꿔 주고, 멈추면 다시 띄우고, 상태를 하트비트에 싣는다 (2026-11-26). v4.0: 진료실 캡처 바(slip_capture.ps1)도 사이트의 capture.json 을 보고 바꿔 준다 (2026-11-17 [진료 캡처] 추가)
 $UpdBase = 'https://bonafide-portal.seoulgijibae.workers.dev/dongseon/bit'
 $script:UpdAt = (Get-Date).AddMinutes(-28)   # 시작 2분 뒤 첫 확인
 function SelfUpdate() {
@@ -262,7 +262,22 @@ function CapSync() {
 #  ① RecSync: 30분마다 rec.json 의 sha256 과 다르면 새 파일로 바꾸고 다시 띄운다(녹음 중이면 5분 뒤로 미룬다)
 #  ② RecWatch: 1분마다 — 녹음 프로그램이 15초마다 적는 clinic_rec.alive 가 5분 넘게 그대로면(멈춤) 끄고 다시 띄운다. 프로그램이 아예 없으면 작업을 다시 시작한다
 #  ③ RecStatus: 하트비트에 녹음 프로그램 버전·응답·마지막 기록 20줄(환자 이름은 가림)을 싣는다 → 동선관리 [PC 설치 상태]에서 보인다
-$RecFile = Join-Path $PSScriptRoot 'clinic_rec.ps1'
+# v4.2: 녹음 프로그램 파일 찾기 — ① 작업 ClinicRec 이 띄우는 파일 ② 시작 프로그램의 ClinicRec.vbs ③ 이 폴더. 30분마다 다시 찾는다(나중에 설치돼도 알아챈다)
+$RecFile = Join-Path $PSScriptRoot 'clinic_rec.ps1'; $script:RecHow = ''; $script:RecFindAt = [DateTime]::MinValue
+function RecLocate() {
+  if (((Get-Date) - $script:RecFindAt).TotalMinutes -lt 30) { return }; $script:RecFindAt = Get-Date
+  $f = ''; $how = ''
+  try { $t = Get-ScheduledTask -TaskName 'ClinicRec' -ErrorAction SilentlyContinue
+    if ($t) { $how = 'task'; $a = [string]($t.Actions | Select-Object -First 1).Arguments
+      $m = [regex]::Match($a, '-File\s+"([^"]+)"'); if (-not $m.Success) { $m = [regex]::Match($a, '-File\s+(\S+)') }
+      if ($m.Success -and (Test-Path -LiteralPath $m.Groups[1].Value)) { $f = $m.Groups[1].Value } } } catch {}
+  if (-not $f) { try { $vbs = Join-Path ([Environment]::GetFolderPath('Startup')) 'ClinicRec.vbs'
+    if (Test-Path $vbs) { $m = [regex]::Match([IO.File]::ReadAllText($vbs), '-File\s+""([^"]+)""'); if ($m.Success -and (Test-Path -LiteralPath $m.Groups[1].Value)) { $f = $m.Groups[1].Value; $how = 'vbs' } } } catch {} }
+  if (-not $f) { $d = Join-Path $PSScriptRoot 'clinic_rec.ps1'; if (Test-Path $d) { $f = $d; if (-not $how) { $how = 'file' } } }
+  if ($f) { if ($f -ne $script:RecFileNow) { Log "녹음 프로그램 찾음: $f ($how)" }; Set-Variable -Name RecFile -Value $f -Scope Script }
+  $script:RecFileNow = $f; $script:RecHow = $(if ($f) { $how } elseif ($how) { "$how(파일 없음)" } else { '' })
+}
+$script:RecFileNow = ''
 $RecLog = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\clinic_rec.log'; $RecAlive = Join-Path $env:LOCALAPPDATA 'bitplus_watcher\clinic_rec.alive'
 $script:RecUpdAt = (Get-Date).AddMinutes(-26); $script:RecChkAt = Get-Date; $script:RecNote = ''; $script:RecGoneAt = $null
 function RecProcs() {   # 녹음 프로그램 본체(받아쓰기만 하는 -SttJob 프로세스는 빼고)
@@ -293,7 +308,7 @@ function RecSync() {
   if (-not $j.sha256) { return }
   if ((Get-FileHash $RecFile -Algorithm SHA256).Hash -eq ([string]$j.sha256).ToUpper()) { return }
   if (RecBusy) { $script:RecUpdAt = (Get-Date).AddMinutes(-25); return }   # 녹음 중 — 5분 뒤 다시
-  $tmp = Join-Path $PSScriptRoot 'clinic_rec.new'
+  $tmp = Join-Path (Split-Path $RecFile) 'clinic_rec.new'
   Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -Uri "$UpdBase/clinic_rec.ps1?v=$($j.ver)" -OutFile $tmp
   if ((Get-FileHash $tmp -Algorithm SHA256).Hash -ne ([string]$j.sha256).ToUpper()) { Log "녹음 프로그램 업데이트 건너뜀: 받은 파일 확인값이 다름 ($($j.ver))"; Remove-Item $tmp -Force -ErrorAction SilentlyContinue; return }
   $txt = [IO.File]::ReadAllText($tmp, [Text.Encoding]::UTF8); $pe = $null; [void][System.Management.Automation.Language.Parser]::ParseInput($txt, [ref]$null, [ref]$pe)
@@ -726,7 +741,9 @@ while ($true) {
         $hb = @{ pc = $Pc; lastSeen = (NowIso); bitOpen = $open; doctorOpen = $docOpen; cast = ($null -ne $listener); ip = ($script:MyIps -join ',')
                  ver = $MyVer; noteOff = [bool]$NoNote; noteGlp = [bool]$NoteGlp; agentOk = [bool]$script:AgentOk; startedAt = $script:StartedAt; uptimeSec = [int]((Get-Date) - [DateTime]::Parse($script:StartedAt)).TotalSeconds; procId = [int]$PID
                  lastErr = $script:LastErr; lastErrAt = $script:LastErrAt; cycMaxMs = [int]$script:CycMax; logTail = (LogTail 5) }
+        try { RecLocate } catch {}
         if (Test-Path $RecFile) { try { $rs = RecStatus; foreach ($k in @($rs.Keys)) { $hb[$k] = $rs[$k] } } catch { Log "녹음 상태 읽기 오류: $($_.Exception.Message)" } }   # v4.1
+        elseif ($Pc -match '^진료실') { $hb['recVer'] = 'none'; $hb['recNote'] = [string]$script:RecHow }   # v4.2: 진료실 PC 인데 녹음 프로그램이 없다
         # v3.4: PC 별 문서 대신 bitStatus/_all 한 문서의 'PC이름' 필드에 쓴다 — 동선관리가 5분마다 이 문서 하나만 읽으면 되도록(읽기 = 문서 수 × 화면 수 × 주기)
         try { FsPatchNested "bitStatus/_all" $Pc $hb; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen; $script:CycMax = 0 }
         catch { Log "하트비트 실패: $($_.Exception.Message)"; $lastBeat = Get-Date; $lastOpen = $open; $lastDocOpen = $docOpen }   # 실패해도 30초 뒤에 다시(2초마다 재시도해 로그·로그인 시도를 쏟지 않도록)
@@ -844,6 +861,7 @@ while ($true) {
   if ($cycMs -gt 10000) { Log "느린 주기: ${cycMs}ms (창 읽기 또는 네트워크 지연)" }
   try { SelfUpdate } catch { Log "자동 업데이트 확인 실패: $($_.Exception.Message)" }
   try { CapSync } catch { Log "캡처 바 업데이트 확인 실패: $($_.Exception.Message)" }   # v4.0
+  try { RecLocate } catch {}
   try { RecSync } catch { Log "녹음 프로그램 업데이트 확인 실패: $($_.Exception.Message)" }   # v4.1
   try { RecWatch } catch { Log "녹음 프로그램 확인 실패: $($_.Exception.Message)" }
   Start-Sleep -Milliseconds 500
