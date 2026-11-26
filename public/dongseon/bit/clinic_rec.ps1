@@ -23,7 +23,7 @@ param([string]$Pc = $env:COMPUTERNAME,
       [string]$Portal = 'https://bonafide-portal.seoulgijibae.workers.dev',
       [switch]$Test)               # 마이크 시험: 3초 녹음해서 소리 크기만 알려 주고 끝
 $ErrorActionPreference = 'Continue'
-$RecVer = 'r2.0'   # r2.0 (2026-11-26): 감시 스크립트(v4.1~)가 사이트의 rec.json 을 보고 이 파일을 바꿔 준다(진료실 PC 에 가지 않고). 15초마다 clinic_rec.alive 에 '살아 있음'을 적는다 —
+$RecVer = 'r2.1'   # r2.1 (2026-11-26): 녹음 시작이 실패하면(진료실3: 마이크 없음 — MCI 328) 1.5초마다 다시 해 보며 기록을 가득 채우던 것 → 30초마다, 기록은 5분에 한 줄 + Windows 녹음 장치 수·이름. r2.0: 감시 스크립트(v4.1~)가 사이트의 rec.json 을 보고 이 파일을 바꿔 준다(진료실 PC 에 가지 않고). 15초마다 clinic_rec.alive 에 '살아 있음'을 적는다 —
                    #   5분 넘게 안 적히면 감시 스크립트가 다시 띄운다(11/24~26 진료실2: 아침 몇 건 뒤 기록 없이 멈춤). 10분마다 지금 상태를 기록에 남긴다
 $ApiKey    = 'AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
@@ -49,11 +49,19 @@ Add-Type -Namespace ClinicRec -Name Mci -MemberDefinition @'
 [DllImport("winmm.dll", CharSet=CharSet.Unicode)] public static extern int mciSendString(string cmd, System.Text.StringBuilder ret, int len, System.IntPtr cb);
 [DllImport("winmm.dll", CharSet=CharSet.Unicode)] public static extern bool mciGetErrorString(int err, System.Text.StringBuilder buf, int len);
 [DllImport("winmm.dll")] public static extern int waveInGetNumDevs();
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct WAVEINCAPS { public ushort wMid; public ushort wPid; public uint vDriverVersion; [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string szPname; public uint dwFormats; public ushort wChannels; public ushort wReserved1; }
+[DllImport("winmm.dll", CharSet=CharSet.Unicode, EntryPoint="waveInGetDevCapsW")] public static extern int waveInGetDevCaps(System.IntPtr id, ref WAVEINCAPS caps, int size);
 '@
 function Mci($cmd) { $sb = New-Object Text.StringBuilder 256; $e = [ClinicRec.Mci]::mciSendString($cmd, $sb, 256, [IntPtr]::Zero)
   if ($e) { $eb = New-Object Text.StringBuilder 256; [void][ClinicRec.Mci]::mciGetErrorString($e, $eb, 256); throw "MCI '$($cmd.Split(' ')[0])' 오류 ${e}: $($eb.ToString())" }
   return $sb.ToString() }
 function MciQuiet($cmd) { try { [void](Mci $cmd) } catch {} }
+function MicInfo() {   # Windows 녹음 장치(마이크) 수와 이름 — 0개면 녹음할 수 없다(마이크가 빠졌거나 '사용 안 함')
+  try { $n = [ClinicRec.Mci]::waveInGetNumDevs(); $names = @()
+    for ($i = 0; $i -lt $n -and $i -lt 6; $i++) { $c = New-Object ClinicRec.Mci+WAVEINCAPS; if ([ClinicRec.Mci]::waveInGetDevCaps([IntPtr]$i, [ref]$c, [Runtime.InteropServices.Marshal]::SizeOf($c)) -eq 0) { $names += ([string]$c.szPname).Trim() } }
+    return "녹음 장치 ${n}개$(if ($names.Count) { ': ' + ($names -join ', ') })" } catch { return '녹음 장치 확인 못 함' }
+}
+$script:FailUntil = [DateTime]::MinValue; $script:FailLogAt = [DateTime]::MinValue
 # 소리 크기 재기·키우기 (2026-11-02: 녹음 대부분이 '말소리가 거의 없음'으로 받아써졌다 — 마이크가 멀거나 작게 잡혀도 받아쓸 수 있게 키워서 보내고, 크기를 녹음기록에 남긴다)
 Add-Type -Namespace ClinicRec -Name WavX -MemberDefinition @'
 public static double[] Stats(byte[] b, int off, int len) {   // [최대 %, 99.9% 지점 %, 말소리 있는 0.1초 비율 %]
@@ -343,11 +351,14 @@ function Hms($d) { return "{0:00}시{1:00}분{2:00}초" -f $d.Hour, $d.Minute, $
 function SafeName($s) { return (([string]$s) -replace '[\\/:*?"<>|]', '').Trim() }
 function RecFolder() { if ($Dir -and (Test-Path -LiteralPath $Dir)) { return $Dir }; New-Item -ItemType Directory -Force $Hold | Out-Null; return $Hold }
 function StartRec($p) {
+  if ((Get-Date) -lt $script:FailUntil) { return }   # 방금 실패 — 30초 뒤에 다시
   $tmp = Join-Path $Work ("cur_" + (Get-Date).ToString('yyyyMMddHHmmss') + '.wav')
   MciQuiet 'close crRec'
   try { [void](Mci 'open new type waveaudio alias crRec'); [void](Mci 'set crRec bitspersample 16 samplespersec 16000 channels 1 bytespersec 32000 alignment 2'); [void](Mci 'record crRec') }
-  catch { MciQuiet 'close crRec'; $script:LastErr = $_.Exception.Message; Log "녹음 시작 실패 $($p.mrn): $($script:LastErr)"; SetIcon; return }
-  $script:LastErr = ''
+  catch { MciQuiet 'close crRec'; $script:LastErr = $_.Exception.Message; $script:FailUntil = (Get-Date).AddSeconds(30)
+    if (((Get-Date) - $script:FailLogAt).TotalMinutes -ge 5) { $script:FailLogAt = Get-Date; Log "녹음 시작 실패 $($p.mrn): $(MicInfo) · $($script:LastErr -replace '\s+', ' ')" }   # 기록은 5분에 한 줄
+    SetIcon; return }
+  $script:LastErr = ''; $script:FailLogAt = [DateTime]::MinValue
   $script:Cur = @{ mrn = $p.mrn; name = $p.name; rrn7 = $p.rrn7; start = (Get-Date); tmp = $tmp }
   Log "녹음 시작: $($p.name) ($($p.mrn))"; SetIcon
 }
@@ -460,7 +471,7 @@ function Poll() {
   }
   if ($script:Cur -and ((Get-Date) - $script:Cur.start).TotalMinutes -ge $MaxMin) { $script:StopKey = $script:Cur.mrn; StopRec "최대 ${MaxMin}분" }
   if ($script:Tick % 4 -eq 0) { SetIcon }
-  if ($script:Tick % 400 -eq 0) { Log "상태: 화면 환자=$(if ($key) { $key } else { '없음' }) · 녹음=$(if ($script:Cur) { $script:Cur.mrn } else { '안 함' })$(if ($script:StopKey) { " · 멈춘 차트=$($script:StopKey)" })$(if ($key -and $script:BoardRoom.ContainsKey($key)) { " · 동선 방=$($script:BoardRoom[$key])" })" }   # 10분마다 — 왜 녹음이 없는지 뒤에 알 수 있게
+  if ($script:Tick % 400 -eq 0) { Log "상태: $(MicInfo) · 화면 환자=$(if ($key) { $key } else { '없음' }) · 녹음=$(if ($script:Cur) { $script:Cur.mrn } else { '안 함' })$(if ($script:StopKey) { " · 멈춘 차트=$($script:StopKey)" })$(if ($key -and $script:BoardRoom.ContainsKey($key)) { " · 동선 방=$($script:BoardRoom[$key])" })" }   # 10분마다 — 왜 녹음이 없는지 뒤에 알 수 있게
   if ($script:Tick % 20 -eq 0) { try { MoveHeld } catch {}; try { PushTexts } catch { Log "글 올리기 오류: $($_.Exception.Message)" }; try { SttNext } catch { Log "받아쓰기 오류: $($_.Exception.Message)" } }   # 30초마다
 }
 
@@ -471,6 +482,7 @@ $form.Add_Shown({ $form.Hide() })
 $form.Add_FormClosing({ try { StopRec '프로그램 종료(로그오프·종료)' } catch {}; try { $tray.Visible = $false; $tray.Dispose() } catch {} })
 $timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ try { Poll } catch { Log "주기 오류: $($_.Exception.Message)" } }); $timer.Start()
 Log "시작 ${RecVer}: PC=$Pc 진료실=$Room 폴더=$(if ($Dir) { $Dir } else { '(없음 — 임시 폴더)' }) 최대 ${MaxMin}분$(if ($SimFile) { ' [시험: ' + $SimFile + ']' })"
+Log (MicInfo)
 if (-not $Dir) { Log '녹음 폴더가 정해지지 않았습니다 — clinic_rec_install.ps1 로 외장하드 폴더를 고르세요' }
 SetIcon
 [Windows.Forms.Application]::Run($form)
