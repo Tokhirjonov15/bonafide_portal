@@ -16427,6 +16427,7 @@ boot();
   window.recCheck=recCheck;
   window.recActive=()=>!!REC;   // 녹음 중 — 자동 새로고침 안 함 (2026-10-15)
   setInterval(()=>{recCheck();if(REC)badge();},2000);
+  setInterval(()=>{try{badge();}catch(e){}},300000);   // 녹음 설정 신호(recStatus) — 폴더가 없어 recCheck 가 일찍 끝나는 PC 도 (2026-11-26)
   /* ═ 받아쓰기 (2026-10-12) — 진료실 PC 의 변환 프로그램(tools/rec_transcribe.py)이 녹음 옆에 같은 이름의 .txt 를 만들면
      읽어서 recText/{파일} 문서로 올린다 → 환자 정보 창 '녹음기록'. 이 PC 가 녹음한 파일만(대기 목록), 3일 지나면 포기 ═ */
   /* ═ 크롬 실시간 받아쓰기 (2026-10-12 — 먼저 무료로 시험) — 녹음과 함께 크롬 음성인식(ko-KR)을 켜 두고, 끊기면(조용하면 저절로 멈춘다) 다시 켠다.
