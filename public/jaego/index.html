@@ -450,6 +450,7 @@
       <span id="bulkTools" class="bulktools" style="display:none">
         <button class="btn ghost" onclick="bulkHide()" title="체크한 품목을 한꺼번에 숨기기 (관리자)"><i data-lucide="eye-off"></i> 선택 숨기기</button>
         <button class="btn ghost" onclick="selClear()" title="체크한 품목 모두 해제"><i data-lucide="x"></i> 선택 해제</button>
+        <button class="btn ghost" style="color:var(--warn)" onclick="bulkResetStock()" title="체크한 품목(과 그 대체 품목)의 재고를 0으로 (관리자)"><i data-lucide="eraser"></i> 재고 초기화</button>
         <select class="fsel" title="체크한 품목의 층(보관 위치)을 한꺼번에" onchange="bulkSet('loc',this.value);this.value=''"><option value="">층 지정…</option><option value="3층">3층</option><option value="4층">4층</option><option value="10층">10층</option><option value="__none__">위치 비우기</option></select>
         <select class="fsel" title="체크한 품목을 약품/물품으로" onchange="bulkSet('kind',this.value);this.value=''"><option value="">약품/물품…</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option><option value="__auto__">자동 판정으로</option></select>
       </span>
@@ -670,6 +671,7 @@
 <div class="ovl" id="mvOvl"><div class="modal">
   <h2 id="mvTitle">입고</h2>
   <p id="mvProd" style="font-weight:700; margin-bottom:4px"></p>
+  <p id="mvKind" style="display:none; margin:0 0 6px; font-size:13px"></p>
   <p class="muted" id="mvNow"></p>
   <div id="mvUnitRow" style="display:none; gap:6px; margin:0 0 6px">
     <button type="button" class="btn small ghost" id="mvUnitEa" onclick="setMvUnit('ea')">개수</button>
@@ -1098,6 +1100,20 @@ window.bulkSet=async function(field, v){
   }catch(err){ alert("바꾸지 못했습니다: "+err.message); }
 };
 /* 선택 숨기기 (2026-10-06) — 체크한 품목을 한꺼번에 숨긴다. '숨긴 목록'에서 되돌릴 수 있다 */
+/* 체크한 품목(과 그 대체 품목)의 재고를 0으로 (관리자, 2026-11-26) — 입출고 기록에 '재고 초기화'로 남고 기록에서 되돌릴 수 있다 */
+window.bulkResetStock=async function(){
+  if(!(ME&&ME.admin)){alert("관리자만 할 수 있습니다.");return;}
+  const list=PRODUCTS.filter(p=>SEL.has(p.id)); if(!list.length) return;
+  const subs=list.reduce((a,p)=>a+(SUBS[p.id]||[]).length,0), tot=list.reduce((a,p)=>a+gstock(p),0);
+  const names=list.slice(0,5).map(p=>p.name).join(", ")+(list.length>5?` 외 ${list.length-5}개`:"");
+  const ans=prompt(`체크한 ${list.length}개 품목${subs?`과 그 대체 품목 ${subs}개`:""}의 재고를 모두 0으로 만듭니다.\n(${names})\n현재 재고 합계 ${tot}개 — 입출고 기록에 '재고 초기화'로 남고, 기록에서 되돌릴 수 있습니다.\n\n계속하려면 '초기화'라고 입력하세요.`);
+  if(ans===null) return;
+  if(ans.trim()!=="초기화"){ alert("입력이 달라 취소했습니다."); return; }
+  try{ const r=await API.call("/product/reset-stock",{ids:list.map(p=>p.id)});
+    SEL.clear(); await refresh(true);
+    alert(`재고를 초기화했습니다. (${r.products}개 품목, 기록 ${r.records}건)`);
+  }catch(err){ alert("초기화하지 못했습니다: "+err.message); }
+};
 window.bulkHide=async function(){
   if(!(ME&&ME.admin)){alert("관리자만 할 수 있습니다.");return;}
   const list=PRODUCTS.filter(p=>SEL.has(p.id)); if(!list.length) return;
@@ -1866,7 +1882,7 @@ function altNames(p){ return String(p.alt||"").split(/[,/]/).map(x=>x.trim()).fi
 function altRowsHtml(p, ADM){
   const cols=ADM?10:9, subs=SUBS[p.id]||[];
   const linked=subs.map(x=>`<tr class="altrow">${ADM?'<td class="selcol"></td>':''}
-      <td class="namecol"><span class="altname">↳ 대체: ${esc(x.name)}</span></td><td class="hidem"></td>
+      <td class="namecol"><span class="altname">↳ 대체: ${esc(x.name)}</span>${x.bar?` <span class="muted" style="font-size:11px">${esc(x.bar)}</span>`:""}</td><td class="hidem"></td>
       <td class="hidem" style="white-space:nowrap;font-size:12px">${floorTxt(x)}</td>
       <td class="qty">${x.stock} <span class="muted">${esc(x.unit||p.unit||"")}</span></td>
       <td class="hidem"></td><td class="hidem"></td><td class="hidem"></td>
@@ -2194,7 +2210,8 @@ async function scanOutAsk(bar,mode){
   const W=mode==="in"?"입고":"출고";
   $("outTitle").innerHTML=`<i data-lucide="${mode==="in"?"package-plus":"package-open"}"></i> ${W}`;
   $("outOk").textContent=W;
-  $("outProd").textContent=p.name;
+  { const gp=PRODUCTS.find(x=>x.id===p.id), par=gp&&gp.altOf?PRODUCTS.find(x=>x.id===gp.altOf):null;   // 대체 품목 바코드를 스캔했으면 표시
+    $("outProd").textContent=p.name+(par?` (대체 품목 — 본 품목: ${par.name})`:""); }
   $("outNow").innerHTML=`현재 재고: <b>${OUT.stock}</b> ${esc(p.unit||"개")}${boxTxt(p,OUT.stock)?` = ${esc(boxTxt(p,OUT.stock))}`:""}`;
   /* 2단계 B: 박스 크기를 모르는 품목도 [박스]를 고를 수 있다 — 고르면 "1박스에 몇 개인가요?"를 한 번 묻고 이 품목에 저장 */
   OUT.ask=!(bs>1);
@@ -2868,6 +2885,7 @@ window.renderAltStock=function(){
     const nv=k=>sub?String(Number(sv[k])||0):"";
     return `<div class="fbox"><div class="fb-t alt">대체 품목: ${esc(nm)} 층별 재고 ${sub?"":'<span class="muted" style="font-weight:400">— 아직 재고 없음. 넣으면 대체 품목으로 등록돼요</span>'}</div>
       <div class="mrow3">${FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pAs_${j}_${i}" type="number" min="0" value="${sub?floorQty(sub,f):""}" placeholder="0"></div>`).join("")}</div>
+      <div style="margin:4px 0 6px"><label>바코드 <span class="muted" style="font-weight:400">(이 대체 품목을 스캔할 때 쓰는 바코드 — 본 품목과 달라야 함)</span></label><input id="pAv_${j}_bar" value="${esc(sv.bar||"")}" data-init="${esc(sv.bar||"")}" placeholder="대체 품목 바코드"></div>
       <details class="sec" ${hasVal?"open":""} style="margin:6px 0 8px"><summary>달라지는 값 <span class="muted" style="font-weight:400">(비우면 본 품목과 같음 · 코드는 복사하지 않음)</span></summary><div class="secbody">
         <div class="mrow"><div><label>입고가 (원)</label><input id="pAv_${j}_price" type="number" min="0" value="${esc(nv("price"))}" data-init="${esc(nv("price"))}" placeholder="${ph(p.price)}"></div>
           <div><label>처방단가 (원)</label><input id="pAv_${j}_rx" type="number" min="0" value="${esc(nv("rxPrice"))}" data-init="${esc(nv("rxPrice"))}" placeholder="${ph(p.rxPrice)}"></div></div>
@@ -2888,11 +2906,17 @@ async function saveFloorAndAltStock(pid, payload){
     const fl2={}; let ch2=false, any=false;
     FLOORS.forEach((f,i)=>{ const el=$(`pAs_${j}_${i}`); if(!el||el.value==="") return; const v=Math.max(0,+el.value||0); if(v>0) any=true; if(v!==(sub?floorQty(sub,f):0)){ fl2[f]=v; ch2=true; } });
     /* 달라지는 값 (2026-11-26): 본 품목과 다른 값만 적는다 — 비운 칸은 본 품목 값(방금 저장한 값 기준). 코드는 복사하지 않는다 */
-    const ids={ price:`pAv_${j}_price`, rxPrice:`pAv_${j}_rx`, ounit:`pAv_${j}_ounit`, payType:`pAv_${j}_pay`, payCode:`pAv_${j}_code`, ownCode:`pAv_${j}_own` };
+    const ids={ price:`pAv_${j}_price`, rxPrice:`pAv_${j}_rx`, ounit:`pAv_${j}_ounit`, payType:`pAv_${j}_pay`, payCode:`pAv_${j}_code`, ownCode:`pAv_${j}_own`, bar:`pAv_${j}_bar` };
     const raw={}, touched=[];
     for(const k of Object.keys(ids)){ const el=$(ids[k]); raw[k]=el?el.value:""; if(el&&el.value!==(el.dataset.init||"")) touched.push(k); }
     if(!sub&&!any&&!touched.length) continue;   // 재고도 값도 안 넣은 이름은 글자로만
     const av=ProductCodes.resolveAltValues(payload, raw);
+    av.bar=String(raw.bar||"").trim();
+    /* 바코드는 한 품목에만 — 스캔이 엉뚱한 품목에 입출고되지 않게 (서버도 한 번 더 확인) */
+    if(av.bar && (!sub || touched.includes("bar"))){
+      const dup=[...PRODUCTS,...HIDDEN].find(x=>x.bar===av.bar && x.id!==(sub&&sub.id) && x.id!==pid) || (String(payload.bar||"").trim()===av.bar?{name:payload.name}:null);
+      if(dup) throw new Error(`이미 다른 품목('${dup.name}')에 쓰는 바코드입니다: ${av.bar}`);
+    }
     if(!sub){ const r=await API.call("/product",{name:nm, altOf:pid, cat:payload.cat, unit:payload.unit, vendor:payload.vendor, kind:payload.kind, loc:payload.loc, ...av}); sub={id:r.id}; }
     else if(touched.length){   // 이미 있는 대체 품목: 건드린 칸만, 서버의 좁은 저장 경로로 (다른 항목은 건드리지 않음)
       const body={id:sub.id}; touched.forEach(k=>{ body[k]=av[k]; });
@@ -2921,13 +2945,20 @@ window.openMv=function(pid,type){
   const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
   $("mvTitle").innerHTML=(type==="in"?'<i data-lucide="plus"></i> 입고':'<i data-lucide="minus"></i> 출고');
   $("mvProd").textContent=p.name;
+  /* 본 품목인지 대체 품목인지 (2026-11-26) — 대체 품목이면 색 띠로 눈에 띄게, 본 품목은 대체 품목 재고가 따로임을 알린다 */
+  { const par=p.altOf?PRODUCTS.find(x=>x.id===p.altOf):null, ns=p.altOf?0:(SUBS[p.id]||[]).length, k=$("mvKind");
+    k.style.display=(p.altOf||ns)?"":"none";
+    k.innerHTML=p.altOf
+      ? `<span style="background:var(--cau-bg);border:1px solid var(--cau);border-radius:6px;padding:2px 8px;font-weight:700">대체 품목</span> 본 품목: <b>${esc(par?par.name:"")}</b>${p.bar?` · 바코드 ${esc(p.bar)}`:""}`
+      : ns ? `<span style="background:#EEF2F7;border:1px solid #CBD5E1;border-radius:6px;padding:2px 8px;font-weight:700">본 품목</span> <span class="muted">대체 품목 ${ns}개의 재고는 따로 계산됩니다</span>` : "";
+    if(p.altOf) $("mvTitle").innerHTML+=" — 대체 품목"; }
   const nl=nearestLot(pid), lotN=lotsOf(pid).length;
   const bs=boxSizeOf(p);
   const boxTx=boxTxt(p,p.stock)?` = ${boxTxt(p,p.stock)}`:"";
   /* 개수/박스 단위 고르기 (2026-09-27): 박스 크기가 있으면 단추 표시. 기본값 — 입고=박스, 출고=개수 */
   mvBs=bs;
   $("mvUnitRow").style.display=bs>1?"flex":"none";
-  setMvUnit(bs>1?(type==="in"?"box":"ea"):"ea");
+  setMvUnit(bs>1?"box":"ea");   // 박스 크기를 알면 입고·출고 모두 박스가 기본 (출고도 박스 위주, 2026-11-26)
   if(type==="out" && nl){
     $("mvNow").innerHTML=`현재 재고: ${p.stock} ${esc(p.unit||"")}${esc(boxTx)}<br>
       <span style="color:var(--cau); font-weight:700"><i data-lucide="triangle-alert"></i> 유통기한 ${esc(nl.expiry)} 묶음부터 꺼내세요${lotN>1?` (묶음 ${lotN}개)`:""}</span>`;

@@ -13,6 +13,7 @@
 import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
 import { normExtra, normFields, FIELD_COLUMNS } from "./product-fields.js";
+import { resetPlan } from "./stock-reset.js";
 import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "./hira.js";
 
 let schemaReady = false;
@@ -1748,9 +1749,39 @@ async function handleApi(request, env, url, ident, ctx) {
 
   /* 품목의 일부 항목만 바꾸기 (2026-11-26) — 박스당 개수(발주단위)·입고가·처방단가·급여 구분·급여코드·자체 코드 중 보낸 것만.
      /product 수정은 안 보여도 모든 항목을 보낸 값으로 덮어써서, 오래된 화면 데이터로 다른 직원이 방금 바꾼 값을 되돌릴 수 있다 → 이 경로는 보낸 항목만 건드린다 */
+  /* 재고 초기화 (2026-11-26, 관리자): 고른 품목과 그 대체 품목의 재고를 0으로 — 층·유통기한 묶음별로 같은 층·같은 기한에서 '재고 초기화' 출고 기록을 남긴다(되돌리기 가능) */
+  if (path === "/product/reset-stock" && method === "POST") {
+    if (!(staff && staff.admin)) return json({ error: "관리자만 재고를 초기화할 수 있습니다." }, 403);
+    const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(s).filter(Boolean))].slice(0, 500);
+    if (!ids.length) return json({ error: "초기화할 품목이 없습니다." }, 400);
+    const all = new Set(ids);
+    for (let i = 0; i < ids.length; i += 80) {
+      const part = ids.slice(i, i + 80);
+      const subs = await env.DB.prepare(`SELECT id FROM products WHERE alt_of IN (${part.map(() => "?").join(",")})`).bind(...part).all();
+      for (const r of subs.results || []) all.add(r.id);
+    }
+    const pids = [...all];
+    const cells = [];
+    for (let i = 0; i < pids.length; i += 80) {
+      const part = pids.slice(i, i + 80);
+      const rows = await env.DB.prepare(`SELECT pid, COALESCE(floor,'') AS floor, expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty FROM movements WHERE pid IN (${part.map(() => "?").join(",")}) GROUP BY pid, COALESCE(floor,''), expiry`).bind(...part).all();
+      cells.push(...(rows.results || []));
+    }
+    const plan = resetPlan(cells), now = Date.now();
+    const stmts = plan.map((c) => env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) VALUES (?,?,'out',?,?,?,?,'',?,?)`)
+      .bind(uid(), c.pid, c.qty, "재고 초기화", actor, c.expiry, now, c.floor));
+    if (stmts.length) await env.DB.batch(stmts);
+    return json({ ok: true, products: new Set(plan.map((c) => c.pid)).size, records: stmts.length, selected: pids.length });
+  }
+
   if (path === "/product/fields" && method === "POST") {
     const id = s(body.id), f = normFields(body), keys = Object.keys(f);
     if (!id || !keys.length) return json({ error: "품목과 바꿀 항목이 필요합니다." }, 400);
+    /* 바코드는 한 품목에만 (2026-11-26): 스캔은 바코드로 품목을 찾으므로 같은 바코드가 둘이면 엉뚱한 품목이 입출고된다 */
+    if (f.bar) {
+      const dup = await env.DB.prepare(`SELECT name FROM products WHERE bar=? AND id<>? LIMIT 1`).bind(f.bar, id).first();
+      if (dup) return json({ error: `이미 다른 품목('${dup.name}')에 쓰는 바코드입니다.` }, 409);
+    }
     const r = await env.DB.prepare(`UPDATE products SET ${keys.map((k) => FIELD_COLUMNS[k] + "=?").join(", ")} WHERE id=?`)
       .bind(...keys.map((k) => f[k]), id).run();
     if (!(r.meta && r.meta.changes > 0)) return json({ error: "품목을 찾을 수 없습니다." }, 404);

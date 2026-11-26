@@ -8,7 +8,7 @@ export function normPayType(v) {
 }
 
 /* 좁은 저장 경로(POST /product/fields)가 바꿀 수 있는 항목 → DB 열. 이 밖의 항목은 이 경로로 바꿀 수 없다 */
-export const FIELD_COLUMNS = { ounit: "order_unit", price: "price", rxPrice: "rx_price", payType: "pay_type", payCode: "pay_code", ownCode: "own_code" };
+export const FIELD_COLUMNS = { ounit: "order_unit", price: "price", rxPrice: "rx_price", payType: "pay_type", payCode: "pay_code", ownCode: "own_code", bar: "bar" };
 
 /* 보낸 항목만 정리해 돌려준다(안 보낸 항목은 키 자체가 없음). 숫자는 정수만(글자·"1e3" 같은 것은 빼고) 음수는 0, 너무 큰 값은 뺀다 */
 export function normFields(body) {
@@ -27,6 +27,7 @@ export function normFields(body) {
   if (b.payType !== undefined) put("payType", normPayType(b.payType));
   if (b.payCode !== undefined) put("payCode", str(b.payCode).slice(0, 60));
   if (b.ownCode !== undefined) put("ownCode", str(b.ownCode).slice(0, 60));
+  if (b.bar !== undefined) put("bar", str(b.bar).slice(0, 60));   // 대체 품목 바코드 (2026-11-26) — 중복 확인은 서버 경로에서
   return out;
 }
 
