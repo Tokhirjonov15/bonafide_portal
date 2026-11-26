@@ -29,6 +29,6 @@ const b2 = html.indexOf('$("addBtn").onclick', a2);
 const openProd = a2 >= 0 && b2 > a2 ? html.slice(a2, b2) : "";
 test("openProd 함수를 찾았다", () => assert.ok(openProd.length > 300));
 for (const id of ["secBasic", "pFloorWrap", "secPrice", "secBar"]) {
-  test(`열 때마다 #${id} 를 펼친다`, () => assert.match(openProd, new RegExp(`setSecOpen\("${id}",\s*true\)`)));
+  test(`열 때마다 #${id} 를 펼친다`, () => assert.ok(openProd.includes(`setSecOpen("${id}", true)`)));
 }
-test("새 코드 섹션만 값이 있을 때 펼친다", () => assert.match(openProd, /setSecOpen\("secCode",\s*!!/));
+test("새 코드 섹션만 값이 있을 때 펼친다", () => assert.ok(openProd.includes("setSecOpen(\"secCode\", !!")));
