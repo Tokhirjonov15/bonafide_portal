@@ -41,3 +41,33 @@ test("실사 팝업이 열려 있으면 스캐너 입력이 가로채지 않는�
 test("기존 기능 유지", () => {
   for (const k of ["selectAllVisible", "bulkHide", "bulkDelete", "openMv", "openHidden"]) assert.ok(html.includes(k), k);
 });
+
+/* 독립 검토 반영 */
+test("실사를 빠르게 바꿔도 마지막 요청만 반영한다 (요청 순번)", () => {
+  const i = html.indexOf("window.cntEnter=async function");
+  const s = html.slice(i, i + 700);
+  assert.ok(s.includes("++CNT.seq") && s.includes("seq!==CNT.seq"));
+});
+test("id 는 인라인 onclick 문자열이 아니라 data-id 로 넘긴다", () => {
+  assert.ok(!html.includes("cntEnter('${"));
+  assert.ok(!html.includes("cntPick('${"));
+  assert.ok(!html.includes("cntExclude('${"));
+  assert.ok(html.includes("this.dataset.id"));
+});
+test("스캔 칸이 서버 스캔과 같은 바코드 규칙(GS1·끝 13자리)을 쓴다", () => {
+  assert.ok(html.includes("function cntBarKeys"));
+  assert.ok(html.includes('startsWith("01")') && html.includes("slice(-13)"));
+});
+test("대상 밖 품목은 확인을 받고 검토 표에 표시한다", () => {
+  assert.ok(html.includes("대상이 아닙니다"));
+  assert.ok(html.includes("(대상 외)"));
+});
+test("수량 칸에 스캐너 입력을 걸러낸다", () => {
+  const i = html.indexOf('$("cntQty").addEventListener("keydown"');
+  assert.ok(i > 0 && html.slice(i, i + 700).includes("ScanUnit.looksLikeScan"));
+});
+test("확정은 검토 시점(asOf)을 보내고, 저장은 응답으로 한 줄만 갱신한다", () => {
+  assert.ok(html.includes("asOf:Math.max(0"));
+  const i = html.indexOf("window.cntSave");
+  assert.ok(html.slice(i, i + 1800).includes("r.line"));
+});
