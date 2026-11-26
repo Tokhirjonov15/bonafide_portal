@@ -427,6 +427,15 @@
         <div class="h">최근 스캔 (이 화면에서만 표시)</div>
         <div id="scanLog"><div class="muted">아직 스캔 기록이 없습니다.</div></div>
       </div>
+
+      <div class="rlist" id="inbLbl" style="display:none">
+        <div class="h">이번 입고 목록 (라벨 미출력) <span class="muted" style="font-weight:400">— 새로고침해도 유지됩니다</span></div>
+        <div id="inbList"></div>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px">
+          <button class="btn" id="inbBtn" type="button" onclick="inbOpen()"><i data-lucide="printer"></i> <span id="inbBtnTx">라벨 출력</span></button>
+          <a href="#" id="inbUndo" style="display:none; font-size:12.5px" onclick="inbUndo();return false">방금 출력 취소·다시 불러오기</a>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -690,6 +699,13 @@
   <div class="mbtns"><button class="btn ghost" type="button" id="benefitClose">닫기</button></div>
 </div></div>
 
+<div class="ovl" id="inbOvl"><div class="modal" style="max-width:460px">
+  <h2><i data-lucide="printer"></i> 출력하시겠습니까?</h2>
+  <p class="muted" style="margin-bottom:8px">아래 입고 품목의 라벨 출력 화면으로 넘어갑니다. 입고 수량과 장수를 한 번 더 확인하세요.</p>
+  <div id="inbRows" style="max-height:46vh; overflow:auto; margin-bottom:10px"></div>
+  <div class="muted" id="inbTotal" style="margin-bottom:10px"></div>
+  <div class="actions"><button class="btn ghost" id="inbCancel" type="button" onclick="inbClose()">취소</button><button class="btn" id="inbOk" type="button" onclick="inbConfirm()">확인</button></div>
+</div></div>
 <div class="ovl" id="outOvl"><div class="modal" style="max-width:420px">
   <h2 id="outTitle"><i data-lucide="package-open"></i> 출고</h2>
   <p id="outProd" style="font-weight:700; margin-bottom:2px"></p>
@@ -773,6 +789,7 @@
 <script src="vendor/lucide.min.js"></script>
 <script src="product-codes.js"></script>
 <script src="scan-unit.js"></script>
+<script src="inbound-labels.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -892,7 +909,7 @@ async function refresh(silent){
     $("adminBox").style.display = (ME && ME.admin) ? "" : "none";
     if(ME && ME.admin && !STAFF_CACHE) loadStaffList();   // 기록에 이름 표시용
     updateSessLeft();
-    showErr(""); render();
+    showErr(""); render(); renderInbLabels();
   }catch(err){
     { const el=$("conn"); el.className="conn off"; el.innerHTML='<i data-lucide="triangle-alert"></i> 연결 안 됨'; }
     showErr(err.message+"  —  ↻ 로 다시 시도하세요.");
@@ -2586,7 +2603,6 @@ $("barPrintBtn").onclick=()=>{
   printBarLabels([{bar, name:$("pName").value.trim()||""}]);
 };
 
-/* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (품목마다 기본 1장 — 인쇄 창의 [장수]에서 바꾼다) */
 /* 비급여 자체 코드 자동 생성 · 약품 lot 바코드 라벨 · 급여정보 조회 (2026-11-26) */
 $("ownGenBtn").onclick=()=>{
   const cur=$("pOwnCode").value.trim();
@@ -2642,7 +2658,75 @@ window.pickBenefit=function(i){
 };
 $("benefitClose").onclick=()=>{ BENEFIT_SEQ++; $("benefitOvl").classList.remove("show"); };
 
-/* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (장수 = 각 품목의 현재 재고) */
+/* ===== 스캔 입고 라벨 목록 (2026-11-26) =====
+   서버 입고 기록(MOVEMENTS)에서 "내가 스캔 화면으로 입고했고 마지막 출력 이후이며 취소되지 않은" 것을 계산한다 → 새로고침해도 유지.
+   출력 기준 시각만 이 PC 에 저장(계정별). [확인]을 눌러야만 출력 창이 열린다. */
+let INB_ROWS=[], INB_COPIES={};   // INB_COPIES: 사용자가 고친 장수(품목별) — 스캔으로 목록이 다시 그려져도 유지
+const inbMarkKey=()=>"jaego_lbl_mark_"+(ME?ME.id:"");
+const inbPrevKey=()=>"jaego_lbl_prev_"+(ME?ME.id:"");
+function inbSince(){
+  try{ const v=Number(localStorage.getItem(inbMarkKey())); if(v>0) return v; }catch(_){}
+  const t=new Date(); t.setHours(0,0,0,0); return t.getTime();   // 기록이 없으면 오늘 0시부터
+}
+function inbCopies(r){ const v=INB_COPIES[r.pid]; return v===undefined?r.copies:v; }
+function renderInbLabels(){
+  const box=$("inbLbl"); if(!box) return;
+  if(!ME){ box.style.display="none"; INB_ROWS=[]; return; }
+  INB_ROWS=InboundLabels.pendingInboundLabels({movements:MOVEMENTS, meId:ME.id, since:inbSince()});
+  let hasPrev=false; try{ hasPrev=!!localStorage.getItem(inbPrevKey()); }catch(_){}
+  $("inbUndo").style.display=hasPrev?"":"none";
+  box.style.display=(INB_ROWS.length||hasPrev)?"":"none";
+  $("inbList").innerHTML=INB_ROWS.length?INB_ROWS.map(r=>`<div class="row" style="align-items:center">
+      <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${esc(r.name)}</span>
+      <span class="muted">입고 ${r.qty}개</span>
+      <span class="muted">장수</span><input type="number" min="0" max="500" step="1" value="${inbCopies(r)}" style="width:62px" onchange="inbSetCopies('${esc(r.pid)}',this.value)">
+    </div>`).join(""):'<div class="muted">출력할 입고가 없습니다.</div>';
+  inbSum();
+}
+function inbSum(){
+  const rows=INB_ROWS.filter(r=>inbCopies(r)>0), n=rows.reduce((s,r)=>s+inbCopies(r),0);
+  $("inbBtn").disabled=!rows.length;
+  $("inbBtnTx").textContent=rows.length?`라벨 출력 (${rows.length}품목 · ${n}장)`:"라벨 출력";
+}
+window.inbSetCopies=function(pid,v){
+  let n=Math.floor(Number(v)); if(!(n>=0)) n=0; if(n>500) n=500;
+  INB_COPIES[pid]=n; renderInbLabels();
+};
+window.inbOpen=function(){
+  const rows=INB_ROWS.filter(r=>inbCopies(r)>0);
+  if(!rows.length) return;
+  $("inbRows").innerHTML=rows.map(r=>`<div class="row" style="gap:8px"><span style="flex:1; min-width:0">${esc(r.name)}</span><span class="muted">입고 ${r.qty}개</span><b>${inbCopies(r)}장</b></div>`).join("");
+  $("inbTotal").textContent=`총 ${rows.length}품목 · ${rows.reduce((s,r)=>s+inbCopies(r),0)}장`;
+  $("inbOvl").classList.add("show"); refreshIcons();
+};
+window.inbClose=function(){ $("inbOvl").classList.remove("show"); };
+window.inbConfirm=function(){
+  const rows=INB_ROWS.filter(r=>inbCopies(r)>0);
+  const items=[], skipped=[];
+  rows.forEach(r=>{ const p=PRODUCTS.find(x=>x.id===r.pid); if(p&&(p.bar||"").trim()) items.push({bar:p.bar.trim(), name:p.name, copies:inbCopies(r)}); else skipped.push(r.name); });
+  if(skipped.length) alert("바코드가 없어 라벨을 뽑을 수 없는 품목: "+skipped.join(", "));
+  if(!items.length){ inbClose(); return; }
+  if(!printBarLabels(items,{perItem:true})) return;   // 팝업이 막혔으면 목록을 그대로 둔다
+  /* 출력 창이 열렸다 → 출력 기준 시각을 이번 목록의 가장 늦은 입고로 올린다 (직전 값은 되돌리기용으로 저장) */
+  try{
+    const prev=localStorage.getItem(inbMarkKey())||"0";
+    localStorage.setItem(inbPrevKey(),prev);
+    localStorage.setItem(inbMarkKey(),String(Math.max.apply(null,INB_ROWS.map(r=>r.lastTs))));
+  }catch(_){}
+  INB_COPIES={}; inbClose(); renderInbLabels();
+};
+window.inbUndo=function(){
+  try{
+    const prev=localStorage.getItem(inbPrevKey());
+    if(prev===null) return;
+    if(prev==="0") localStorage.removeItem(inbMarkKey()); else localStorage.setItem(inbMarkKey(),prev);
+    localStorage.removeItem(inbPrevKey());
+  }catch(_){}
+  renderInbLabels();
+};
+$("inbOvl").addEventListener("keydown",e=>{ if(e.key==="Escape"){ e.preventDefault(); inbClose(); } });
+
+/* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (품목마다 기본 1장 — 인쇄 창의 [장수]에서 바꾼다) */
 $("todayLabelBtn").onclick=()=>{
   const t=new Date(); t.setHours(0,0,0,0);
   const todays=PRODUCTS.filter(p=>p.created_at&&p.created_at>=t.getTime());
@@ -2656,11 +2740,12 @@ $("todayLabelBtn").onclick=()=>{
 
 /* 라벨 인쇄 공통: items=[{bar,name}] — 장수는 인쇄 창의 [장수] 칸(품목마다, 기본 1장)에서 정한다.
    라벨은 인쇄 창 안에서 그린다 → 장수를 바꾸면 바로 다시 그려진다 */
-function printBarLabels(items){
+function printBarLabels(items,opt){
+  const per=!!(opt&&opt.perItem);   // 입고 라벨 목록에서: 품목마다 정해진 장수(copies)로 — 장수 칸 대신 총 장수만
   const w=window.open("","_blank");
   if(!w){ alert("팝업이 차단되었습니다. 주소창의 팝업 허용을 눌러주세요."); return; }
   const lib=location.origin+"/jaego/vendor/jsbarcode.min.js";
-  const itemsJson=JSON.stringify(items.map(x=>({bar:String(x.bar||""),name:String(x.name||"")}))).replace(/</g,"\\u003c");
+  const itemsJson=JSON.stringify(items.map(x=>({bar:String(x.bar||""),name:String(x.name||""),...(per?{copies:Math.max(0,Math.min(500,Math.floor(Number(x.copies)||0)))}:{})}))).replace(/</g,"\\u003c");
   /* 2026-10-23: 라벨이 옆으로 누워 두 장에 걸쳐 나왔다 — 50×30(가로가 긴) 용지를 크롬이 '가로 방향'으로 보내면 라벨 프린터 드라이버가 90° 돌려 찍는다.
      [90° 회전] = 용지를 30×50(세로)으로 보내고 라벨 내용만 90° 돌린다 → 드라이버가 어떻게 받든 50×30 라벨 한 장에 맞게. 고른 방향은 이 PC 에 기억(기본 90° 회전) */
   /* 라벨 인쇄 설정 — 이 PC 에 기억 (2026-10-23, BY-482BT 로 맞춤)
@@ -2692,7 +2777,7 @@ function printBarLabels(items){
     .bar .h{color:#475569;flex-basis:100%}
     @media print{.lb{border:none}.bar{display:none}}
   </style><style id="pg"></style></head><body>
-  <div class="bar"><b>장수</b> <input id="lc" type="number" min="1" max="500" step="1" value="1" title="품목마다 인쇄할 라벨 장수"> 장${items.length>1?" (품목마다)":""}
+  <div class="bar"><b>${per?"":"장수"}</b> <input id="lc" ${per?'style="display:none" ':""}type="number" min="1" max="500" step="1" value="1" title="품목마다 인쇄할 라벨 장수"> ${per?"":" 장"+(items.length>1?" (품목마다)":"")}
     <span id="lt" style="color:#475569"></span><span style="width:10px"></span><b>라벨 크기</b> 가로 <input id="lw" type="number" min="15" max="120" value="${LW}"> × 세로 <input id="lh" type="number" min="10" max="120" value="${LH}"> mm
     <span style="width:10px"></span><b>방향</b>
     <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button><button id="r2" onclick="setRot('2')" title="용지 크기를 정하지 않음 — 인쇄 창의 [시스템 대화상자를 사용하여 인쇄]로">프린터 설정대로</button>
@@ -2707,8 +2792,8 @@ function printBarLabels(items){
     var MODE='${rot}',TURN='${LR}',ITEMS=${itemsJson};
     function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
     /* 장수(품목마다) 만큼 라벨을 다시 그린다 — 기본 1장, 저장하지 않음(실수로 많이 뽑는 것 방지) */
-    function build(){var n=Math.floor(Number(document.getElementById('lc').value));if(!(n>=1))n=1;if(n>500)n=500;var total=n*ITEMS.length,h='';
-      ITEMS.forEach(function(x){for(var i=0;i<n;i++)h+='<div class="lb"><div class="in"><div class="nm">'+esc(x.name)+'</div><svg data-code="'+esc(x.bar)+'"></svg></div></div>';});
+    function build(){var n=Math.floor(Number(document.getElementById('lc').value));if(!(n>=1))n=1;if(n>500)n=500;var total=0,h='';
+      ITEMS.forEach(function(x){var c=x.copies!=null?x.copies:n;total+=c;for(var i=0;i<c;i++)h+='<div class="lb"><div class="in"><div class="nm">'+esc(x.name)+'</div><svg data-code="'+esc(x.bar)+'"></svg></div></div>';});
       document.getElementById('cells').innerHTML=h;document.getElementById('lt').textContent='총 '+total+'장';document.title='라벨 '+total+'장';
       document.querySelectorAll('svg[data-code]').forEach(function(el){JsBarcode(el,el.dataset.code,{format:'CODE128',displayValue:true,fontSize:9,height:34,margin:0});});}
     document.getElementById('lc').addEventListener('change',build);
@@ -2741,6 +2826,7 @@ function printBarLabels(items){
     window.onload=()=>setTimeout(()=>{window.focus();var c=document.getElementById('lc');c.focus();c.select();},300);
   <\/script></body></html>`);
   w.document.close();
+  return true;
 }
 $("prodCancel").onclick=()=>{ $("prodOvl").classList.remove("show"); focusScan(); };
 
