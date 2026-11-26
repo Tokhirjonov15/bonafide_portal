@@ -2852,7 +2852,7 @@ window.cntFinish=async function(){
   const plus=rows.filter(r=>r.diff>0).reduce((a,r)=>a+r.diff,0), minus=rows.filter(r=>r.diff<0).reduce((a,r)=>a-r.diff,0);
   if(!confirm(`'${CNT.rev.count.name}' 실사를 확정할까요?\n\n조정 ${rows.length}품목 — 늘어남 ${plus}개, 줄어듦 ${minus}개\n입출고 기록에 '실사 조정'으로 남고, 확정 후에는 이 실사를 고칠 수 없습니다.\n(기록에서 건별로 되돌릴 수는 있습니다.)`)) return;
   CNT.busy=true; $("cntFinish").disabled=true;
-  try{ const r=await API.call("/count/finish",{id:CNT.rev.count.id, excluded:[...CNT.ex], asOf:Math.max(0,...(CNT.rev.lines||[]).map(l=>l.at))});
+  try{ const r=await API.call("/count/finish",{id:CNT.rev.count.id, excluded:[...CNT.ex], rev:CNT.rev.count.rev});
     alert(`확정했습니다. 조정 ${r.adjusted}품목 (늘어남 ${r.plus}, 줄어듦 ${r.minus})`);
     await refresh(true); await cntOpen();
   }catch(err){ alert("확정하지 못했습니다: "+err.message); $("cntFinish").disabled=false; if(/다시 검토|다시 확인/.test(err.message)){ CNT.busy=false; await cntReview(); } }

@@ -55,3 +55,10 @@ export function planOut(lots, qty) {
   if (remain > 0) out.push({ expiry: "", qty: remain });
   return out;
 }
+
+/* 한 품목의 그 층 재고 합 — groups = [{f: 기록의 층('' 가능), q: 합계}]. 층이 빈 기록은 품목 위치의 층(locFloor)으로 본다(attachFloors 와 같은 규칙) */
+export function floorTotal(groups, floor, locFloor) {
+  let s = 0;
+  for (const g of Array.isArray(groups) ? groups : []) if ((g.f || locFloor) === floor) s += Number(g.q) || 0;
+  return s;
+}

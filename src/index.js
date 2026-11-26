@@ -14,7 +14,7 @@ import * as PDFLib from "./vendor/pdf-lib.min.js";
 import fontkit from "./vendor/fontkit.umd.min.js";
 import { normExtra, normFields, FIELD_COLUMNS } from "./product-fields.js";
 import { buildDgamtUrl, parseDgamtXml, itemWarning, safeMessage, createCache, friendlyMessage } from "./hira.js";
-import { normCountQty, adjustment, summarize, planOut } from "./stocktake.js";
+import { normCountQty, adjustment, summarize, planOut, floorTotal } from "./stocktake.js";
 
 let schemaReady = false;
 
@@ -121,6 +121,7 @@ const DDL = [
      count_id TEXT, pid TEXT, counted INTEGER, sys_at_count INTEGER, counted_by TEXT, counted_at INTEGER,
      PRIMARY KEY (count_id, pid)
    )`,
+  `UPDATE counts SET status='cancelled' WHERE status='open' AND rowid NOT IN (SELECT MIN(rowid) FROM counts WHERE status='open' GROUP BY floor)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS ux_counts_open_floor ON counts(floor) WHERE status='open'`
 ];
 
@@ -143,6 +144,7 @@ const MIGRATIONS = [
   `ALTER TABLE products  ADD COLUMN rx_price INTEGER DEFAULT 0`,
   `ALTER TABLE products  ADD COLUMN pay_type TEXT DEFAULT ''`,
   `ALTER TABLE products  ADD COLUMN pay_code TEXT DEFAULT ''`,
+  `ALTER TABLE counts    ADD COLUMN rev INTEGER DEFAULT 0`,   // 재고 실사: 센 값이 바뀔 때마다 오르는 번호 (2026-11-26)
   `ALTER TABLE products  ADD COLUMN own_code TEXT DEFAULT ''`,
   `ALTER TABLE products  ADD COLUMN benefit_info TEXT DEFAULT ''`
 ];
@@ -255,7 +257,7 @@ async function floorStockOf(env, pid, floor) {
   let sys = 0, unassigned = 0;
   for (const r of results || []) {
     const k = r.floor || floorOfLoc(prod && prod.loc);
-    if (!k) unassigned += r.qty || 0; else if (k === floor) sys += r.qty || 0;
+    if (!FLOORS.includes(k)) unassigned += r.qty || 0; else if (k === floor) sys += r.qty || 0;   // 층도 위치의 층도 아니면(빈 값·"약품장" 등) 어느 층인지 알 수 없다
   }
   return { sys, unassigned };
 }
@@ -1938,7 +1940,8 @@ async function handleApi(request, env, url, ident, ctx) {
   /* ===== 재고 실사 (2026-11-26) =====
      층별로 직원이 실제 수량을 세어 넣고(/count/line), 관리자가 확정(/count/finish)하면 차이만큼 조정 기록이 남는다.
      조정량 = 센 수량 − 센 순간의 전산 재고(서버가 계산) → 세는 동안의 입출고가 섞이지 않는다. 확정 전에는 재고가 바뀌지 않는다.
-     한 층에는 진행 중인 실사가 하나뿐이다(같은 품목이 두 실사에서 두 번 조정되는 것을 막음). */
+     한 층에는 진행 중인 실사가 하나뿐이다(같은 품목이 두 실사에서 두 번 조정되는 것을 막음).
+     counts.rev 는 센 값이 바뀔 때마다 1씩 오르는 번호 — 확정이 "검토한 그 상태 그대로일 때만" 반영되게 한다. */
   if (path === "/count/start" && method === "POST") {
     const floor = s(body.floor), kind = ["약품", "물품"].includes(s(body.kind)) ? s(body.kind) : "";
     if (!FLOORS.includes(floor)) return json({ error: "층을 골라 주세요." }, 400);
@@ -1950,7 +1953,7 @@ async function handleApi(request, env, url, ident, ctx) {
     /* 전산 수량을 숨기는 것(블라인드)은 관리자만 끌 수 있다 */
     const blind = staff && staff.admin && (body.blind === false || body.blind === 0) ? 0 : 1;
     try {
-      await env.DB.prepare(`INSERT INTO counts (id,name,floor,kind,status,blind,created_by,created_at) VALUES (?,?,?,?, 'open',?,?,?)`)
+      await env.DB.prepare(`INSERT INTO counts (id,name,floor,kind,status,blind,created_by,created_at,rev) VALUES (?,?,?,?, 'open',?,?,?,0)`)
         .bind(id, name, floor, kind, blind, actor, Date.now()).run();
     } catch (e) {   // 동시에 두 번 눌러 같은 층에 열린 실사가 이미 생겼다(유니크 인덱스) → 그것을 이어서 연다
       const again = await findOpen();
@@ -1966,13 +1969,13 @@ async function handleApi(request, env, url, ident, ctx) {
   }
   if (path === "/count/get" && method === "GET") {
     const id = s(url.searchParams.get("id"));
-    const c = await env.DB.prepare(`SELECT id, name, floor, kind, status, blind, created_by AS createdBy, created_at AS createdAt, finished_at AS finishedAt FROM counts WHERE id=?`).bind(id).first();
+    const c = await env.DB.prepare(`SELECT id, name, floor, kind, status, blind, COALESCE(rev,0) AS rev, created_by AS createdBy, created_at AS createdAt, finished_at AS finishedAt FROM counts WHERE id=?`).bind(id).first();
     if (!c) return json({ error: "실사를 찾을 수 없습니다." }, 404);
     /* 전산 수량은 블라인드가 아니거나, 관리자가 검토할 때만 내려준다 */
     const showSys = !c.blind || (url.searchParams.get("review") === "1" && !!(staff && staff.admin));
     const products = await listProducts(env);
     await attachFloors(env, products);
-    const targets = products.filter((p) => !p.hidden && ((p.floors[c.floor] || 0) > 0 || floorOfLoc(p.loc) === c.floor))
+    const targets = products.filter((p) => !p.hidden && ((p.floors[c.floor] || 0) !== 0 || floorOfLoc(p.loc) === c.floor))   // 마이너스 재고도 대상(실사가 꼭 필요)
       .map((p) => (showSys ? { pid: p.id, sys: p.floors[c.floor] || 0 } : { pid: p.id }));
     const { results } = await env.DB.prepare(`SELECT pid, counted, sys_at_count AS sysAtCount, counted_by AS "by", counted_at AS "at" FROM count_lines WHERE count_id=? ORDER BY counted_at DESC`).bind(id).all();
     const lines = (results || []).map((l) => (showSys ? l : { pid: l.pid, counted: l.counted, by: l.by, at: l.at }));
@@ -1986,15 +1989,18 @@ async function handleApi(request, env, url, ident, ctx) {
     if (c.status !== "open") return json({ error: "이미 끝났거나 취소된 실사입니다." }, 409);
     if (!(await env.DB.prepare(`SELECT 1 AS x FROM products WHERE id=?`).bind(pid).first())) return json({ error: "품목을 찾을 수 없습니다." }, 404);
     const fs = await floorStockOf(env, pid, c.floor);
-    /* 층이 지정되지 않은 옛 재고가 있으면 어느 층 재고인지 몰라 조정이 어긋난다 → 위치(층)를 먼저 지정하게 한다 */
-    if (fs.unassigned) return json({ error: `이 품목에는 층이 지정되지 않은 재고(${fs.unassigned}개)가 있습니다. 품목의 위치(층)를 먼저 지정한 뒤 실사해 주세요.` }, 409);
+    /* 층을 알 수 없는 재고(층도 위치의 층도 없음)가 있으면 어느 층 재고인지 몰라 조정이 어긋난다 → 위치(층)를 먼저 지정하게 한다 */
+    if (fs.unassigned) return json({ error: "이 품목에는 어느 층인지 알 수 없는 재고가 있습니다. 품목 수정에서 위치(층)를 먼저 지정한 뒤 실사해 주세요." }, 409);
     const at = Date.now();
-    /* 상태가 open 일 때만 저장 — 확정과 겹쳐도 확정된 실사에 값이 섞이지 않는다 */
-    const r = await env.DB.prepare(`INSERT INTO count_lines (count_id,pid,counted,sys_at_count,counted_by,counted_at)
-        SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM counts WHERE id=? AND status='open')
-        ON CONFLICT(count_id,pid) DO UPDATE SET counted=excluded.counted, sys_at_count=excluded.sys_at_count, counted_by=excluded.counted_by, counted_at=excluded.counted_at`)
-      .bind(id, pid, qty, fs.sys, actor, at, id).run();
-    if (!(r.meta && r.meta.changes > 0)) return json({ error: "이미 끝났거나 취소된 실사입니다." }, 409);
+    /* 센 값 저장과 rev 올리기를 한 묶음으로 — 상태가 open 일 때만. 확정과 겹쳐도 확정된 실사에 값이 섞이지 않는다 */
+    const res = await env.DB.batch([
+      env.DB.prepare(`INSERT INTO count_lines (count_id,pid,counted,sys_at_count,counted_by,counted_at)
+          SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM counts WHERE id=? AND status='open')
+          ON CONFLICT(count_id,pid) DO UPDATE SET counted=excluded.counted, sys_at_count=excluded.sys_at_count, counted_by=excluded.counted_by, counted_at=excluded.counted_at`)
+        .bind(id, pid, qty, fs.sys, actor, at, id),
+      env.DB.prepare(`UPDATE counts SET rev = COALESCE(rev,0) + 1 WHERE id=? AND status='open'`).bind(id),
+    ]);
+    if (!(res[0].meta && res[0].meta.changes > 0)) return json({ error: "이미 끝났거나 취소된 실사입니다." }, 409);
     const line = { pid, counted: qty, by: actor, at };
     if (!c.blind) line.sysAtCount = fs.sys;
     return json({ ok: true, line });
@@ -2005,27 +2011,34 @@ async function handleApi(request, env, url, ident, ctx) {
     if (!(r.meta && r.meta.changes > 0)) return json({ error: "진행 중인 실사가 아닙니다." }, 409);
     return json({ ok: true });
   }
-  /* 확정: 조정 기록과 '확정됨' 표시를 한 번의 묶음(원자적)으로 넣는다. 모든 문장이 "아직 open 이고 그 사이 새 입력이 없을 때만" 조건을 달고 있어
+  /* 확정: 조정 기록과 '확정됨' 표시를 한 번의 묶음(원자적)으로 넣는다. 모든 문장이 "아직 open 이고 rev 가 읽은 값 그대로일 때만" 조건을 달고 있어
      동시에 두 번 확정하거나 확정 도중 새 값이 들어와도 한쪽만 반영되고, 도중에 실패하면 아무것도 남지 않는다. */
   if (path === "/count/finish" && method === "POST") {
     if (!(staff && staff.admin)) return json({ error: "관리자만 실사를 확정할 수 있습니다." }, 403);
     const id = s(body.id), excluded = (Array.isArray(body.excluded) ? body.excluded : []).map(s);
-    const c = await env.DB.prepare(`SELECT name, floor, status FROM counts WHERE id=?`).bind(id).first();
+    const c = await env.DB.prepare(`SELECT name, floor, status, COALESCE(rev,0) AS rev FROM counts WHERE id=?`).bind(id).first();
     if (!c) return json({ error: "실사를 찾을 수 없습니다." }, 404);
     if (c.status !== "open") return json({ error: "이미 끝났거나 취소된 실사입니다." }, 409);
-    const lines = ((await env.DB.prepare(`SELECT l.pid AS pid, l.counted AS counted, l.sys_at_count AS sysAtCount, l.counted_at AS at, p.name AS name FROM count_lines l JOIN products p ON p.id = l.pid WHERE l.count_id=?`).bind(id).all()).results) || [];
-    const lastAt = ((await env.DB.prepare(`SELECT COALESCE(MAX(counted_at),0) AS m FROM count_lines WHERE count_id=?`).bind(id).first()) || {}).m || 0;
-    /* 관리자가 검토한 뒤 새로 입력된 값이 있으면 다시 검토하게 한다 */
-    if (body.asOf !== undefined && lastAt > (Number(body.asOf) || 0)) return json({ error: "검토한 뒤 새로 입력된 값이 있습니다. 다시 검토해 주세요.", stale: true }, 409);
+    /* 관리자가 검토한 뒤 센 값이 바뀌었으면 다시 검토하게 한다 (rev 를 보내지 않는 호출도 아래 묶음 조건으로 막힌다) */
+    if (body.rev !== undefined && Number(body.rev) !== c.rev) return json({ error: "검토한 뒤 새로 입력된 값이 있습니다. 다시 검토해 주세요.", stale: true }, 409);
+    const lines = ((await env.DB.prepare(`SELECT l.pid AS pid, l.counted AS counted, l.sys_at_count AS sysAtCount, l.counted_at AS at, p.name AS name, p.loc AS loc FROM count_lines l JOIN products p ON p.id = l.pid WHERE l.count_id=?`).bind(id).all()).results) || [];
     const active = lines.filter((l) => !excluded.includes(l.pid));
-    /* 센 뒤에 층별 재고 조정·입출고 취소가 있었던 품목은 '센 뒤 입출고는 실제에도 반영됐다'는 가정이 깨진다 → 확정하지 않고 알린다 */
+    /* 센 뒤에 '조정 전제'가 깨진 품목은 확정하지 않고 알린다: ① 그 층의 층별 재고 조정·입출고 취소 ② 위치(층)가 바뀌어 센 순간과 층 귀속이 달라진 것 */
     const conflicts = [];
     for (let i = 0; i < active.length; i += 80) {
-      const part = active.slice(i, i + 80);
-      const rows = ((await env.DB.prepare(`SELECT pid, MAX(ts) AS ts FROM movements WHERE pid IN (${part.map(() => "?").join(",")}) AND (memo LIKE '층별 재고 조정%' OR memo LIKE '취소:%') GROUP BY pid`).bind(...part.map((l) => l.pid)).all()).results) || [];
-      for (const r of rows) { const l = part.find((x) => x.pid === r.pid); if (l && r.ts > l.at && adjustment(l.counted, l.sysAtCount)) conflicts.push({ pid: l.pid, name: l.name }); }
+      const part = active.slice(i, i + 80), ph = part.map(() => "?").join(","), pids = part.map((l) => l.pid);
+      const fix = ((await env.DB.prepare(`SELECT pid, MAX(ts) AS ts FROM movements WHERE pid IN (${ph}) AND (COALESCE(floor,'')='' OR floor=?) AND (memo LIKE '층별 재고 조정%' OR memo LIKE '취소:%') GROUP BY pid`).bind(...pids, c.floor).all()).results) || [];
+      const cur = ((await env.DB.prepare(`SELECT pid, COALESCE(floor,'') AS f, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS q FROM movements WHERE pid IN (${ph}) GROUP BY pid, COALESCE(floor,'')`).bind(...pids).all()).results) || [];
+      const since = ((await env.DB.prepare(`SELECT m.pid AS pid, COALESCE(m.floor,'') AS f, SUM(CASE WHEN m.type='in' THEN m.qty ELSE -m.qty END) AS q FROM movements m JOIN count_lines l ON l.pid = m.pid AND l.count_id = ? WHERE m.pid IN (${ph}) AND m.ts > l.counted_at GROUP BY m.pid, COALESCE(m.floor,'')`).bind(id, ...pids).all()).results) || [];
+      for (const l of part) {
+        const lf = floorOfLoc(l.loc), mine = (rows) => rows.filter((r) => r.pid === l.pid);
+        const fixed = fix.find((r) => r.pid === l.pid && r.ts > l.at) && adjustment(l.counted, l.sysAtCount) !== 0;
+        /* 일관성: 지금 그 층 재고 = 센 순간 전산 + 센 뒤 그 층 입출고 — 위치 변경 등으로 깨지면 충돌 */
+        const moved = floorTotal(mine(cur), c.floor, lf) !== l.sysAtCount + floorTotal(mine(since), c.floor, lf);
+        if (fixed || moved) conflicts.push({ pid: l.pid, name: l.name });
+      }
     }
-    if (conflicts.length) return json({ error: `센 뒤에 재고 조정이나 입출고 취소가 있었던 품목이 있어 확정할 수 없습니다: ${conflicts.slice(0, 5).map((x) => x.name).join(", ")}${conflicts.length > 5 ? " 외 " + (conflicts.length - 5) + "개" : ""}. 다시 세거나 [제외]해 주세요.`, conflicts }, 409);
+    if (conflicts.length) return json({ error: `센 뒤에 재고 조정·입출고 취소가 있었거나 위치(층)가 바뀐 품목이 있어 확정할 수 없습니다: ${conflicts.slice(0, 5).map((x) => x.name).join(", ")}${conflicts.length > 5 ? " 외 " + (conflicts.length - 5) + "개" : ""}. 다시 세거나 [제외]해 주세요.`, conflicts }, 409);
     /* 줄어드는 조정의 유통기한 묶음은 한 번에 읽는다 */
     const outPids = active.filter((l) => adjustment(l.counted, l.sysAtCount) < 0).map((l) => l.pid), lotsBy = {};
     for (let i = 0; i < outPids.length; i += 80) {
@@ -2033,9 +2046,9 @@ async function handleApi(request, env, url, ident, ctx) {
       const rows = ((await env.DB.prepare(`SELECT pid, expiry, SUM(CASE WHEN type='in' THEN qty ELSE -qty END) AS qty FROM movements WHERE pid IN (${part.map(() => "?").join(",")}) AND expiry <> '' GROUP BY pid, expiry HAVING qty > 0 ORDER BY expiry`).bind(...part).all()).results) || [];
       for (const r of rows) (lotsBy[r.pid] = lotsBy[r.pid] || []).push({ expiry: r.expiry, qty: r.qty });
     }
-    const GUARD = `WHERE EXISTS (SELECT 1 FROM counts WHERE id=? AND status='open') AND (SELECT COALESCE(MAX(counted_at),0) FROM count_lines WHERE count_id=?) <= ?`;
+    const GUARD = `WHERE EXISTS (SELECT 1 FROM counts WHERE id=? AND status='open' AND COALESCE(rev,0)=?)`;
     const ins = (pid, type, qty, memo, expiry, now) => env.DB.prepare(`INSERT INTO movements (id,pid,type,qty,memo,who,expiry,lot,ts,floor) SELECT ?,?,?,?,?,?,?,'',?,? ${GUARD}`)
-      .bind(uid(), pid, type, qty, memo, actor, expiry, now, c.floor, id, id, lastAt);
+      .bind(uid(), pid, type, qty, memo, actor, expiry, now, c.floor, id, c.rev);
     const stmts = [], now = Date.now();
     for (const l of active) {
       const d = adjustment(l.counted, l.sysAtCount);
@@ -2044,7 +2057,7 @@ async function handleApi(request, env, url, ident, ctx) {
       if (d > 0) stmts.push(ins(l.pid, "in", d, memo, "", now));
       else for (const o of planOut(lotsBy[l.pid], -d)) stmts.push(ins(l.pid, "out", o.qty, memo, o.expiry, now));
     }
-    stmts.push(env.DB.prepare(`UPDATE counts SET status='done', finished_by=?, finished_at=? WHERE id=? AND status='open' AND (SELECT COALESCE(MAX(counted_at),0) FROM count_lines WHERE count_id=?) <= ?`).bind(actor, now, id, id, lastAt));
+    stmts.push(env.DB.prepare(`UPDATE counts SET status='done', finished_by=?, finished_at=? WHERE id=? AND status='open' AND COALESCE(rev,0)=?`).bind(actor, now, id, c.rev));
     const res = await env.DB.batch(stmts);
     const last = res[res.length - 1];
     if (!(last && last.meta && last.meta.changes > 0)) return json({ error: "다른 곳에서 이미 확정했거나 그 사이 새 값이 입력됐습니다. 다시 확인해 주세요.", stale: true }, 409);
@@ -2228,7 +2241,7 @@ async function handleApi(request, env, url, ident, ctx) {
       env.DB.prepare(`DELETE FROM movements`),
       env.DB.prepare(`DELETE FROM products`),
       /* 진행 중인 재고 실사는 복원으로 기준이 바뀌므로 취소한다 (센 순간의 전산 값이 더 이상 맞지 않음) */
-      env.DB.prepare(`UPDATE counts SET status='cancelled' WHERE status='open'`)
+      env.DB.prepare(`UPDATE counts SET status='cancelled', finished_at=? WHERE status='open'`).bind(Date.now())
     ];
     for (const p of products) {
       stmts.push(env.DB.prepare(

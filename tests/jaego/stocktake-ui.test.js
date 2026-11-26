@@ -66,8 +66,8 @@ test("수량 칸에 스캐너 입력을 걸러낸다", () => {
   const i = html.indexOf('$("cntQty").addEventListener("keydown"');
   assert.ok(i > 0 && html.slice(i, i + 700).includes("ScanUnit.looksLikeScan"));
 });
-test("확정은 검토 시점(asOf)을 보내고, 저장은 응답으로 한 줄만 갱신한다", () => {
-  assert.ok(html.includes("asOf:Math.max(0"));
+test("확정은 검토한 번호(rev)를 보내고, 저장은 응답으로 한 줄만 갱신한다", () => {
+  assert.ok(html.includes("rev:CNT.rev.count.rev"));
   const i = html.indexOf("window.cntSave");
   assert.ok(html.slice(i, i + 1800).includes("r.line"));
 });

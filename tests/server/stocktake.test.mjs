@@ -40,3 +40,16 @@ test("planOut: 유통기한 빠른 묶음부터 차감, 모자라면 기한 없�
   assert.deepEqual(planOut(null, 0), []);
   assert.deepEqual(planOut([{ expiry: "2027-01-01", qty: 0 }, { expiry: "2027-02-01", qty: -2 }], 1), [{ expiry: "", qty: 1 }]);
 });
+
+import { floorTotal } from "../../src/stocktake.js";
+test("floorTotal: 층 기록 + 층 없는 기록은 품목 위치의 층으로", () => {
+  const g = [{ f: "3층", q: 5 }, { f: "", q: 2 }, { f: "4층", q: 1 }];
+  assert.equal(floorTotal(g, "3층", "3층"), 7);
+  assert.equal(floorTotal(g, "3층", "4층"), 5);
+  assert.equal(floorTotal(g, "4층", "4층"), 3);
+  assert.equal(floorTotal(g, "10층", ""), 0);
+  assert.equal(floorTotal(null, "3층", "3층"), 0);
+});
+test("floorTotal: 위치에 층 글자가 없으면 층 없는 기록은 어느 층에도 넣지 않는다", () => {
+  assert.equal(floorTotal([{ f: "", q: 20 }], "3층", "약품장 A-2"), 0);
+});
