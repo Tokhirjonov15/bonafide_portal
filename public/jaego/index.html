@@ -454,6 +454,7 @@
         <select class="fsel" title="체크한 품목의 층(보관 위치)을 한꺼번에" onchange="bulkSet('loc',this.value);this.value=''"><option value="">층 지정…</option><option value="3층">3층</option><option value="4층">4층</option><option value="10층">10층</option><option value="__none__">위치 비우기</option></select>
         <select class="fsel" title="체크한 품목을 약품/물품으로" onchange="bulkSet('kind',this.value);this.value=''"><option value="">약품/물품…</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option><option value="__auto__">자동 판정으로</option></select>
       </span>
+      <button class="btn ghost" id="cntBtn" type="button" onclick="cntOpen()" title="층별로 실제 수량을 세어 전산 재고와 맞춰 보기"><i data-lucide="clipboard-check"></i> 재고 실사</button>
       <button class="btn ghost" id="hiddenBtn" style="display:none" onclick="openHidden()" title="숨긴 품목 보기·되돌리기 (관리자)"><i data-lucide="eye-off"></i> 숨긴 목록 <span id="hiddenCnt"></span></button>
       <button class="btn" id="addBtn"><i data-lucide="plus"></i> 품목 추가</button>
     </div>
@@ -701,12 +702,68 @@
   <div class="mbtns"><button class="btn ghost" type="button" id="benefitClose">닫기</button></div>
 </div></div>
 
+<div class="ovl" id="cntOvl"><div class="modal wide" style="max-width:680px">
+  <h2><i data-lucide="clipboard-check"></i> 재고 실사 <span id="cntTitle" class="muted" style="font-weight:400"></span></h2>
+
+  <div id="cntList">
+    <div id="cntNew" style="padding:10px; border:1px solid var(--line,#D8E0EA); border-radius:10px; margin-bottom:12px">
+      <b>새 실사 시작</b> <span class="muted" style="font-size:12px">— 층별로 셉니다. 같은 층·구분의 진행 중인 실사가 있으면 그것을 이어서 엽니다.</span>
+      <div class="inrow" style="margin-top:8px; gap:8px; flex-wrap:wrap">
+        <select id="cntFloor" class="fsel"><option value="3층">3층</option><option value="4층">4층</option><option value="10층">10층</option></select>
+        <select id="cntKind" class="fsel"><option value="">전체</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option></select>
+        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:400"><input id="cntBlind" type="checkbox" checked style="width:auto"> 전산 수량 숨기고 세기(권장)</label>
+        <button class="btn" type="button" onclick="cntStart()"><i data-lucide="play"></i> 시작</button>
+      </div>
+    </div>
+    <div class="muted" style="font-size:12px; margin-bottom:4px">진행 중 · 지난 실사</div>
+    <div id="cntSessions"></div>
+  </div>
+
+  <div id="cntWork" style="display:none">
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+      <b id="cntProg"></b>
+      <span class="muted" id="cntMode" style="font-size:12px"></span>
+    </div>
+    <input id="cntScan" placeholder="바코드를 스캔하거나 품목 이름을 입력하고 Enter" autocomplete="off">
+    <div id="cntCand" style="margin:6px 0"></div>
+    <div id="cntEntry" style="display:none; padding:10px; border:1px solid var(--accent); border-radius:10px; margin:8px 0">
+      <div style="font-weight:700; margin-bottom:6px" id="cntSel"></div>
+      <div class="inrow" style="gap:8px; flex-wrap:wrap; align-items:center">
+        <select id="cntUnit" class="fsel" onchange="cntHint()"><option value="box">박스</option><option value="ea">개수</option></select>
+        <input id="cntQty" type="number" min="0" placeholder="실제 수량 (0도 가능)" style="max-width:170px" oninput="cntHint()">
+        <button class="btn" id="cntSaveBtn" type="button" onclick="cntSave()">저장</button>
+        <button class="btn ghost" type="button" onclick="cntUnpick()">취소</button>
+      </div>
+      <div class="muted" id="cntHintTx" style="font-size:12px; margin-top:4px"></div>
+    </div>
+    <div class="muted" style="font-size:12px; margin:8px 0 4px">센 품목 (최근순)</div>
+    <div id="cntRows" style="max-height:30vh; overflow:auto"></div>
+    <details style="margin-top:8px"><summary class="muted" id="cntTodoSum" style="cursor:pointer"></summary><div id="cntTodo" style="max-height:24vh; overflow:auto; font-size:13px"></div></details>
+    <div class="mbtns">
+      <button class="btn ghost" type="button" onclick="cntBack()">목록으로</button>
+      <button class="btn ghost cnt-admin" id="cntCancelBtn" type="button" style="color:var(--warn)" onclick="cntCancel()">실사 취소</button>
+      <button class="btn cnt-admin" type="button" onclick="cntReview()">차이 검토</button>
+    </div>
+  </div>
+
+  <div id="cntReview" style="display:none">
+    <div class="muted" style="font-size:12px; margin-bottom:6px">전산 수량은 <b>센 순간</b>의 값입니다. 안 센 품목은 조정하지 않습니다. 조정하지 않을 줄은 [제외]를 체크하세요.</div>
+    <div id="cntRev" style="max-height:44vh; overflow:auto"></div>
+    <div id="cntSum" style="margin-top:8px; font-weight:700"></div>
+    <div class="mbtns">
+      <button class="btn ghost" type="button" onclick="cntEnter(CNT.id)">세기로 돌아가기</button>
+      <button class="btn" id="cntFinish" type="button" onclick="cntFinish()">확정</button>
+    </div>
+  </div>
+
+  <div class="mbtns" id="cntCloseRow"><button class="btn ghost" type="button" onclick="cntClose()">닫기</button></div>
+</div></div>
 <div class="ovl" id="inbOvl"><div class="modal" style="max-width:460px">
   <h2><i data-lucide="printer"></i> 출력하시겠습니까?</h2>
   <p class="muted" style="margin-bottom:8px">아래 입고 품목의 라벨 출력 화면으로 넘어갑니다. 입고 수량과 장수를 한 번 더 확인하세요.</p>
   <div id="inbRows" style="max-height:46vh; overflow:auto; margin-bottom:10px"></div>
   <div class="muted" id="inbTotal" style="margin-bottom:10px"></div>
-  <div class="actions"><button class="btn ghost" id="inbCancel" type="button" onclick="inbClose()">취소</button><button class="btn" id="inbOk" type="button" onclick="inbConfirm()">확인</button></div>
+  <div class="mbtns"><button class="btn ghost" id="inbCancel" type="button" onclick="inbClose()">취소</button><button class="btn" id="inbOk" type="button" onclick="inbConfirm()">확인</button></div>
 </div></div>
 <div class="ovl" id="outOvl"><div class="modal" style="max-width:420px">
   <h2 id="outTitle"><i data-lucide="package-open"></i> 출고</h2>
@@ -2167,7 +2224,7 @@ $("scanLoc").onchange=()=>{ localStorage.setItem("jaego_loc",$("scanLoc").value)
 function focusScan(){
   if(window.innerWidth<760) return;   // 모바일: 키보드가 자동으로 튀어나오지 않게 (카메라 스캔 위주)
   if($("pgScan").style.display==="none") return;
-  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")||$("outOvl").classList.contains("show")) return;
+  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")||$("outOvl").classList.contains("show")||$("cntOvl").classList.contains("show")) return;
   setTimeout(()=>$("scanIn").focus(), 30);
 }
 $("pgScan").addEventListener("click",e=>{
@@ -2675,6 +2732,158 @@ window.pickBenefit=function(i){
 };
 $("benefitClose").onclick=()=>{ BENEFIT_SEQ++; $("benefitOvl").classList.remove("show"); };
 
+/* ===== 재고 실사 (2026-11-26) =====
+   층별로 직원이 실제 수량을 세어 넣고(서버에 저장), 관리자가 차이를 검토·확정하면 그때만 조정 기록이 생긴다.
+   조정량은 서버가 계산한다(센 수량 − 센 순간의 전산 재고). 대상 구분(약품/물품) 필터는 화면의 kindOf 로 — 서버는 층 기준 대상만 준다. */
+let CNT={id:"", data:null, sel:null, busy:false, ex:new Set(), rev:null, seq:0, qk:[]};
+const cntProd=id=>PRODUCTS.find(p=>p.id===id)||HIDDEN.find(p=>p.id===id);   // 숨긴 품목도 이름을 보여 준다
+/* 스캔 코드가 품목 바코드와 맞는지 보는 후보 — 서버 스캔과 같은 규칙(전체 일치 · GS1 01+GTIN14 · 끝 13자리) */
+function cntBarKeys(code){ const k=[code]; if(code.length>16&&code.startsWith("01")){ const g=code.slice(2,16); k.push(g,g.replace(/^0+/,"")); } if(code.length>=13) k.push(code.slice(-13)); return k; }
+const cntAdmin=()=>!!(ME&&ME.admin);
+function cntAdminSync(){ document.querySelectorAll("#cntOvl .cnt-admin").forEach(b=>{ b.style.display=cntAdmin()?"":"none"; }); }
+function cntShow(view){ ["cntList","cntWork","cntReview"].forEach(v=>{ $(v).style.display=(v===view)?"":"none"; }); $("cntCloseRow").style.display=(view==="cntList")?"":"none"; cntAdminSync(); }
+const cntWhen=ts=>{ const d=new Date(ts); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+window.cntOpen=async function(){ $("cntOvl").classList.add("show"); $("cntTitle").textContent=""; cntShow("cntList"); refreshIcons(); try{ await refresh(true); }catch(_){} await cntLoadList(); };
+window.cntClose=function(){ $("cntOvl").classList.remove("show"); focusScan(); };
+window.cntBack=function(){ if(CNT.busy) return; CNT.sel=null; cntOpen(); };
+async function cntLoadList(){
+  $("cntSessions").innerHTML='<div class="muted">불러오는 중…</div>';
+  try{
+    const r=await API.call("/count/list"), st={open:"진행 중",done:"확정됨",cancelled:"취소됨"};
+    $("cntSessions").innerHTML=(r.counts||[]).length?r.counts.map(c=>`<div class="row" style="align-items:center; gap:8px; padding:6px 0">
+      <span style="flex:1; min-width:0"><b>${esc(c.name)}</b> <span class="muted">${esc(c.floor)}${c.kind?" · "+esc(c.kind):""} · 센 ${c.counted}품목 · ${esc(cntWhen(c.createdAt))} ${esc(c.createdBy||"")}</span></span>
+      <span class="muted">${st[c.status]||esc(c.status)}</span>
+      <button class="btn small ${c.status==="open"?"":"ghost"}" type="button" data-id="${esc(c.id)}" onclick="cntEnter(this.dataset.id)">${c.status==="open"?"이어서 세기":"보기"}</button></div>`).join(""):'<div class="muted">아직 실사가 없습니다.</div>';
+  }catch(err){ $("cntSessions").innerHTML='<div class="muted" style="color:var(--warn)">불러오지 못했습니다: '+esc(err.message)+'</div>'; }
+}
+window.cntStart=async function(){
+  if(CNT.busy) return; CNT.busy=true;
+  try{ const r=await API.call("/count/start",{floor:$("cntFloor").value, kind:$("cntKind").value, blind:$("cntBlind").checked});
+    if(r.existing) alert(`이미 진행 중인 ${$("cntFloor").value} 실사('${r.name||""}')가 있어 그것을 이어서 엽니다. (한 층에는 진행 중인 실사가 하나만 있을 수 있어요)`); await cntEnter(r.id);
+  }catch(err){ alert("시작하지 못했습니다: "+err.message); }
+  finally{ CNT.busy=false; }
+};
+/* 세기 화면 — 서버의 센 값·대상 목록을 불러와 그린다 */
+window.cntEnter=async function(id){
+  const seq=++CNT.seq; let data;
+  try{ data=await API.call("/count/get?id="+encodeURIComponent(id)); }
+  catch(err){ if(seq===CNT.seq) alert("불러오지 못했습니다: "+err.message); return; }
+  if(seq!==CNT.seq) return;   // 그 사이 다른 실사를 열었다 — 늦게 온 응답은 버린다
+  CNT.id=id; CNT.data=data; CNT.sel=null; cntRender();
+};
+function cntTargets(){   // 대상 품목: 서버가 준 층 기준 목록 + 구분 필터
+  const c=CNT.data.count, ids=new Set();
+  const list=(CNT.data.targets||[]).map(t=>PRODUCTS.find(p=>p.id===t.pid)).filter(p=>p&&(!c.kind||kindOf(p)===c.kind));
+  list.forEach(p=>ids.add(p.id)); return {list, ids};
+}
+function cntRender(){
+  const d=CNT.data, c=d.count, open=c.status==="open", {list,ids}=cntTargets();
+  const lines=d.lines||[], done=new Set(lines.map(l=>l.pid));
+  $("cntTitle").textContent="· "+c.name;
+  cntShow("cntWork");
+  const total=list.length+lines.filter(l=>!ids.has(l.pid)).length;
+  $("cntProg").textContent=`센 품목 ${lines.length} / 대상 ${total}`+(open?"":` (${c.status==="done"?"확정됨":"취소됨"})`);
+  $("cntMode").textContent=(c.blind?"전산 수량 숨김 · ":"")+c.floor+(c.kind?" · "+c.kind:"");
+  $("cntScan").disabled=!open; $("cntScan").placeholder=open?"바코드를 스캔하거나 품목 이름을 입력하고 Enter":"끝난 실사는 입력할 수 없습니다";
+  $("cntEntry").style.display=CNT.sel?"":"none"; $("cntCand").innerHTML="";
+  $("cntRows").innerHTML=lines.length?lines.map(l=>{ const p=cntProd(l.pid);
+    return `<div class="row" style="gap:8px"><span style="flex:1; min-width:0">${esc(p?p.name:"(삭제된 품목)")}</span><b>${l.counted}${esc(p&&p.unit||"")}</b><span class="muted">${esc(l.by||"")} ${esc(cntWhen(l.at))}</span></div>`; }).join(""):'<div class="muted">아직 센 품목이 없습니다.</div>';
+  const todo=list.filter(p=>!done.has(p.id));
+  $("cntTodoSum").textContent=`아직 안 센 품목 ${todo.length}개`;
+  $("cntTodo").innerHTML=todo.map(p=>`<div class="row"><a href="#" data-id="${esc(p.id)}" onclick="cntPick(this.dataset.id);return false" style="flex:1">${esc(p.name)}</a><span class="muted">${esc(p.bar||"")}</span></div>`).join("")||'<div class="muted">모두 셌습니다.</div>';
+  cntAdminSync(); if(!open) $("cntCancelBtn").style.display="none";   // 끝난 실사는 취소할 수 없다
+  refreshIcons(); if(open&&!CNT.sel) $("cntScan").focus();
+}
+/* 품목 찾기: 바코드가 정확히 맞으면 바로 선택, 아니면 이름·바코드 포함 검색(최대 8개) */
+$("cntScan").addEventListener("keydown",e=>{
+  if(e.key!=="Enter") return; e.preventDefault();
+  const q=$("cntScan").value.trim(); if(!q) return;
+  const keys=cntBarKeys(q), all=PRODUCTS.filter(p=>!p.hidden), ex=all.filter(p=>p.bar&&keys.includes(p.bar));
+  const hit=ex.length?ex:all.filter(p=>(p.name||"").toLowerCase().includes(q.toLowerCase())||(p.bar||"").includes(q));
+  $("cntScan").value="";
+  if(hit.length===1){ cntPick(hit[0].id); return; }
+  $("cntCand").innerHTML=hit.length?hit.slice(0,8).map(p=>`<button class="btn small ghost" type="button" style="margin:2px" data-id="${esc(p.id)}" onclick="cntPick(this.dataset.id)">${esc(p.name)}</button>`).join(""):'<span class="muted">찾는 품목이 없습니다.</span>';
+});
+window.cntPick=function(pid){
+  const p=PRODUCTS.find(x=>x.id===pid); if(!p||!CNT.data||CNT.data.count.status!=="open") return;
+  if(!cntTargets().ids.has(p.id) && !confirm(`'${p.name}'은(는) 이 실사(${CNT.data.count.floor})의 대상이 아닙니다 — 이 층에 전산 재고도 위치도 없는 품목이에요.\n이 층에서 발견한 재고로 기록할까요? (확정하면 이 층 재고가 늘어납니다)`)) return;
+  CNT.qk=[];
+  CNT.sel=p; const bs=boxSizeOf(p);
+  { const tg=(CNT.data.targets||[]).find(x=>x.pid===p.id); $("cntSel").textContent=p.name+(p.altOf?" (대체 품목)":"")+(tg&&tg.sys!==undefined?" · 전산 "+tg.sys:""); }
+  $("cntUnit").style.display=bs>1?"":"none"; $("cntUnit").value="ea";   // 박스 크기를 아는 품목은 박스 선택 가능 — 실사는 낱개가 흔해 개수 기본
+  if(bs>1) $("cntUnit").options[0].textContent=`박스 (1박스=${bs}개)`;
+  $("cntQty").value=""; $("cntHintTx").textContent=""; $("cntEntry").style.display=""; $("cntCand").innerHTML="";
+  $("cntQty").focus(); cntHint();
+};
+window.cntUnpick=function(){ CNT.sel=null; $("cntEntry").style.display="none"; $("cntScan").focus(); };
+window.cntHint=function(){
+  const p=CNT.sel; if(!p) return; const bs=boxSizeOf(p), n=/^[0-9]+$/.test($("cntQty").value.trim())?parseInt($("cntQty").value,10):null;
+  $("cntHintTx").textContent=(n!==null&&bs>1&&$("cntUnit").value==="box")?`= ${n*bs}${p.unit||"개"}`:"";
+};
+$("cntQty").addEventListener("keydown",e=>{
+  if(e.key.length===1&&/[0-9A-Za-z]/.test(e.key)){ CNT.qk.push(Date.now()); if(CNT.qk.length>8) CNT.qk.shift(); return; }
+  if(e.key==="Enter"){ e.preventDefault();
+    if(ScanUnit.looksLikeScan(CNT.qk)){ $("cntQty").value=""; CNT.qk=[]; $("cntHintTx").textContent="바코드가 입력된 것 같아 지웠습니다. 숫자를 직접 입력해 주세요."; return; }   // 스캐너가 쳐 넣은 숫자는 수량이 아니다
+    cntSave(); }
+});
+window.cntSave=async function(){
+  const p=CNT.sel, o=CNT.data; if(!p||!o||CNT.busy) return;
+  const t=$("cntQty").value.trim(); if(!/^[0-9]+$/.test(t)){ alert("실제 수량을 0 이상의 숫자로 넣어 주세요. (없으면 0)"); $("cntQty").focus(); return; }
+  const bs=boxSizeOf(p), n=parseInt(t,10)*((bs>1&&$("cntUnit").value==="box")?bs:1);
+  if(n>100000){ alert("수량이 너무 큽니다. 바코드가 입력된 건 아닌지 확인하세요."); return; }
+  CNT.busy=true; $("cntSaveBtn").disabled=true;
+  try{ const cid=o.count.id, r=await API.call("/count/line",{id:cid, pid:p.id, qty:n});
+    if(CNT.data&&CNT.data.count.id===cid){ CNT.data.lines=[r.line,...(CNT.data.lines||[]).filter(l=>l.pid!==p.id)]; CNT.sel=null; cntRender(); } }
+  catch(err){ alert("저장하지 못했습니다: "+err.message); }
+  finally{ CNT.busy=false; $("cntSaveBtn").disabled=false; }
+};
+/* 차이 검토 (관리자) — 전산 수량은 센 순간의 값 */
+window.cntReview=async function(){
+  if(!(ME&&ME.admin)||!CNT.data||CNT.busy){ if(!(ME&&ME.admin)) alert("관리자만 할 수 있습니다."); return; }
+  CNT.busy=true;
+  try{ CNT.rev=await API.call("/count/get?id="+encodeURIComponent(CNT.data.count.id)+"&review=1"); }catch(err){ alert("불러오지 못했습니다: "+err.message); return; }
+  finally{ CNT.busy=false; }
+  CNT.ex=new Set(); cntRevRender(); cntShow("cntReview");
+};
+function cntRevRows(){
+  const tset=new Set((CNT.rev.targets||[]).map(t=>t.pid)), rows=(CNT.rev.lines||[]).map(l=>{ const p=cntProd(l.pid), diff=(l.counted||0)-(l.sysAtCount||0), price=p?(Number(p.price)||0):0;
+    return {pid:l.pid, name:p?p.name:"(삭제된 품목)", unit:p?p.unit||"":"", counted:l.counted, sys:l.sysAtCount, diff, amount:diff*price, off:!tset.has(l.pid)}; });
+  return [...rows.filter(r=>r.diff!==0).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)), ...rows.filter(r=>r.diff===0)];
+}
+function cntRevRender(){
+  const rows=cntRevRows(); let items=0, plus=0, minus=0, amt=0;
+  rows.forEach(r=>{ if(!r.diff||CNT.ex.has(r.pid)) return; items++; amt+=r.amount; if(r.diff>0) plus+=r.diff; else minus+=-r.diff; });
+  $("cntRev").innerHTML=rows.length?`<table style="width:100%; font-size:13px; border-collapse:collapse"><thead><tr style="text-align:left"><th>품목</th><th>전산</th><th>실제</th><th>차이</th><th>금액</th><th>제외</th></tr></thead><tbody>${rows.map(r=>`<tr style="${r.diff?"":"color:#8A97A8"}">
+    <td>${esc(r.name)}${r.off?' <span class="muted">(대상 외)</span>':""}</td><td>${r.sys}</td><td>${r.counted}</td><td style="font-weight:700; color:${r.diff>0?"var(--accent)":r.diff<0?"var(--warn)":"inherit"}">${r.diff>0?"+":""}${r.diff}</td><td>${r.amount?won(r.amount):""}</td>
+    <td>${r.diff?`<input type="checkbox" style="width:auto" ${CNT.ex.has(r.pid)?"checked":""} data-id="${esc(r.pid)}" onchange="cntExclude(this.dataset.id,this.checked)">`:""}</td></tr>`).join("")}</tbody></table>`:'<div class="muted">센 품목이 없습니다.</div>';
+  const un=cntUncountedN();
+  $("cntSum").textContent=`조정 ${items}품목 · 늘어남 ${plus} · 줄어듦 ${minus} · 금액 ${amt>0?"+":""}${won(amt)}원`+(un?` · 안 센 품목 ${un}개는 그대로`:"");
+  $("cntFinish").disabled=!items||CNT.rev.count.status!=="open";
+}
+function cntUncountedN(){ const d=CNT.rev, c=d.count, done=new Set((d.lines||[]).map(l=>l.pid));
+  return (d.targets||[]).map(t=>PRODUCTS.find(p=>p.id===t.pid)).filter(p=>p&&(!c.kind||kindOf(p)===c.kind)&&!done.has(p.id)).length; }
+window.cntExclude=function(pid,on){ if(on) CNT.ex.add(pid); else CNT.ex.delete(pid); cntRevRender(); };
+window.cntFinish=async function(){
+  if(!(ME&&ME.admin)||CNT.busy) return;
+  const rows=cntRevRows().filter(r=>r.diff&&!CNT.ex.has(r.pid)); if(!rows.length) return;
+  const plus=rows.filter(r=>r.diff>0).reduce((a,r)=>a+r.diff,0), minus=rows.filter(r=>r.diff<0).reduce((a,r)=>a-r.diff,0);
+  if(!confirm(`'${CNT.rev.count.name}' 실사를 확정할까요?\n\n조정 ${rows.length}품목 — 늘어남 ${plus}개, 줄어듦 ${minus}개\n입출고 기록에 '실사 조정'으로 남고, 확정 후에는 이 실사를 고칠 수 없습니다.\n(기록에서 건별로 되돌릴 수는 있습니다.)`)) return;
+  CNT.busy=true; $("cntFinish").disabled=true;
+  try{ const r=await API.call("/count/finish",{id:CNT.rev.count.id, excluded:[...CNT.ex], rev:CNT.rev.count.rev});
+    alert(`확정했습니다. 조정 ${r.adjusted}품목 (늘어남 ${r.plus}, 줄어듦 ${r.minus})`);
+    await refresh(true); await cntOpen();
+  }catch(err){ alert("확정하지 못했습니다: "+err.message); $("cntFinish").disabled=false; if(/다시 검토|다시 확인/.test(err.message)){ CNT.busy=false; await cntReview(); } }
+  finally{ CNT.busy=false; }
+};
+window.cntCancel=async function(){
+  if(!(ME&&ME.admin)) return;
+  if(!confirm("이 실사를 취소할까요? 입력한 수량은 버려지고 재고는 바뀌지 않습니다.")) return;
+  if(CNT.busy||!CNT.data) return; CNT.busy=true;
+  try{ await API.call("/count/cancel",{id:CNT.data.count.id}); CNT.busy=false; await cntOpen(); }catch(err){ alert("취소하지 못했습니다: "+err.message); }
+  finally{ CNT.busy=false; }
+};
+$("cntOvl").addEventListener("keydown",e=>{ if(e.key==="Escape"&&!CNT.busy){ e.preventDefault(); if(CNT.sel&&$("cntEntry").style.display===""){ cntUnpick(); return; } cntClose(); } });
+
 /* ===== 스캔 입고 라벨 목록 (2026-11-26) =====
    서버 입고 기록(MOVEMENTS)에서 "내가 스캔 화면으로 입고했고 마지막 출력 이후이며 취소되지 않은" 것을 계산한다 → 새로고침해도 유지.
    출력 기준 시각만 이 PC 에 저장(계정별). [확인]을 눌러야만 출력 창이 열린다. */
@@ -3161,7 +3370,7 @@ refreshIcons();   /* 첫 화면(헤더·스캔·로그인창)의 정적 아이�
 refresh();
 setInterval(()=>{
   if(document.hidden) return;
-  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")||$("outOvl").classList.contains("show")) return;
+  if($("prodOvl").classList.contains("show")||$("mvOvl").classList.contains("show")||$("outOvl").classList.contains("show")||$("cntOvl").classList.contains("show")) return;
   refresh(true);
 },15000);
 </script>
