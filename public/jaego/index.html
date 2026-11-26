@@ -2501,9 +2501,9 @@ window.openProd=function(id){
   $("pOunit").value=p?(p.ounit||0):0; $("pOgrp").value=p?(p.ogrp||""):"";
   /* 새 항목 (2026-11-26) + 값이 있는 섹션은 열어 둔다 */
   $("pRxPrice").value=p?(p.rxPrice||0):0; $("pPayType").value=p?(p.payType||""):""; $("pPayCode").value=p?(p.payCode||""):""; $("pOwnCode").value=p?(p.ownCode||""):"";
-  setSecOpen("secPrice", !p || !!(p.price||p.rxPrice||p.min||p.par||p.ounit||p.ogrp));
+  /* 기존 기능이 든 섹션은 열 때마다 펼친다(접어 둔 채 남아 칸이 숨지 않게). 새 코드 섹션만 값이 있을 때 펼친다 */
+  setSecOpen("secBasic", true); setSecOpen("pFloorWrap", true); setSecOpen("secPrice", true); setSecOpen("secBar", true);
   setSecOpen("secCode", !!(p&&(p.payType||p.payCode||p.ownCode)));
-  setSecOpen("secBar", !p || !!p.bar);
   lotBtnSync(); benefitSync();
   $("pInitWrap").style.display=p?"none":"";
   $("prodDel").style.display=p?"":"none";

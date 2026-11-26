@@ -22,3 +22,13 @@ for (const id of EXISTING) test(`기존 항목 유지: #${id}`, () => assert.ok(
 for (const id of NEW) test(`새 항목 추가: #${id}`, () => assert.ok(has(id), `#${id} 가 없습니다`));
 
 test("접이식 섹션 5개", () => assert.equal((modal.match(/<details class="sec/g) || []).length, 5));
+
+/* 검토 반영: 열 때마다 섹션 상태를 다시 정한다 (접어 둔 채 남지 않게), 기존 기능이 있는 섹션은 늘 펼친다 */
+const a2 = html.indexOf("window.openProd=function(id){");
+const b2 = html.indexOf('$("addBtn").onclick', a2);
+const openProd = a2 >= 0 && b2 > a2 ? html.slice(a2, b2) : "";
+test("openProd 함수를 찾았다", () => assert.ok(openProd.length > 300));
+for (const id of ["secBasic", "pFloorWrap", "secPrice", "secBar"]) {
+  test(`열 때마다 #${id} 를 펼친다`, () => assert.match(openProd, new RegExp(`setSecOpen\("${id}",\s*true\)`)));
+}
+test("새 코드 섹션만 값이 있을 때 펼친다", () => assert.match(openProd, /setSecOpen\("secCode",\s*!!/));
