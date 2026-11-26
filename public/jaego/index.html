@@ -2582,12 +2582,11 @@ $("barGenBtn").onclick=()=>{
 $("barPrintBtn").onclick=()=>{
   const bar=$("pBar").value.trim();
   if(!bar){ alert("바코드가 비어 있습니다. 먼저 [내부 바코드 생성]을 누르거나 입력하세요."); return; }
-  /* 라벨 장수 = 현재 재고 수량 (재고 0이거나 새 품목이면 1장) */
-  const p=editId?PRODUCTS.find(x=>x.id===editId):null;
-  const copies=(p&&p.stock>0)?p.stock:1;
-  printBarLabels([{bar, name:$("pName").value.trim()||"", copies}]);
+  /* 라벨 장수 기본 1장 — 인쇄 창의 [장수] 칸에서 바꾼다 */
+  printBarLabels([{bar, name:$("pName").value.trim()||""}]);
 };
 
+/* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (품목마다 기본 1장 — 인쇄 창의 [장수]에서 바꾼다) */
 /* 비급여 자체 코드 자동 생성 · 약품 lot 바코드 라벨 · 급여정보 조회 (2026-11-26) */
 $("ownGenBtn").onclick=()=>{
   const cur=$("pOwnCode").value.trim();
@@ -2652,21 +2651,16 @@ $("todayLabelBtn").onclick=()=>{
   const noBar=todays.length-withBar.length;
   if(!withBar.length){ alert(`오늘 추가된 품목 ${todays.length}개 모두 바코드가 없습니다.\n품목 수정에서 [내부 바코드 생성] 후 다시 시도하세요.`); return; }
   if(noBar>0 && !confirm(`오늘 품목 ${todays.length}개 중 바코드 없는 ${noBar}개는 제외됩니다.\n${withBar.length}개 품목의 라벨을 인쇄할까요?`)) return;
-  printBarLabels(withBar.map(p=>({bar:p.bar.trim(), name:p.name, copies:p.stock>0?p.stock:1})));
+  printBarLabels(withBar.map(p=>({bar:p.bar.trim(), name:p.name})));
 };
 
-/* 라벨 인쇄 공통: items=[{bar,name,copies}] — 장수는 재고 수량만큼 자동 */
+/* 라벨 인쇄 공통: items=[{bar,name}] — 장수는 인쇄 창의 [장수] 칸(품목마다, 기본 1장)에서 정한다.
+   라벨은 인쇄 창 안에서 그린다 → 장수를 바꾸면 바로 다시 그려진다 */
 function printBarLabels(items){
-  const total=items.reduce((s,x)=>s+x.copies,0);
-  if(total>600 && !confirm(`라벨이 총 ${total}장입니다. 계속할까요?`)) return;
   const w=window.open("","_blank");
   if(!w){ alert("팝업이 차단되었습니다. 주소창의 팝업 허용을 눌러주세요."); return; }
   const lib=location.origin+"/jaego/vendor/jsbarcode.min.js";
-  let k=0;
-  const cells=items.map(x=>{
-    const nm=(x.name||"").replace(/</g,"&lt;");
-    return Array(x.copies).fill(0).map(()=>`<div class="lb"><div class="in"><div class="nm">${nm}</div><svg id="b${k}" data-code="${x.bar.replace(/"/g,"&quot;")}"></svg>${(k++,"")}</div></div>`).join("");
-  }).join("");
+  const itemsJson=JSON.stringify(items.map(x=>({bar:String(x.bar||""),name:String(x.name||"")}))).replace(/</g,"\\u003c");
   /* 2026-10-23: 라벨이 옆으로 누워 두 장에 걸쳐 나왔다 — 50×30(가로가 긴) 용지를 크롬이 '가로 방향'으로 보내면 라벨 프린터 드라이버가 90° 돌려 찍는다.
      [90° 회전] = 용지를 30×50(세로)으로 보내고 라벨 내용만 90° 돌린다 → 드라이버가 어떻게 받든 50×30 라벨 한 장에 맞게. 고른 방향은 이 PC 에 기억(기본 90° 회전) */
   /* 라벨 인쇄 설정 — 이 PC 에 기억 (2026-10-23, BY-482BT 로 맞춤)
@@ -2678,7 +2672,7 @@ function printBarLabels(items){
   const LW=Number(LS("jaego_labelW",v=>Number(v)>=15&&Number(v)<=120,"50")),LH=Number(LS("jaego_labelH",v=>Number(v)>=10&&Number(v)<=120,"30"));
   const LZ=Number(LS("jaego_labelZ",v=>Number(v)>=50&&Number(v)<=300,"100")),LR=LS("jaego_labelTurn",v=>v==="0"||v==="90"||v==="270","90");
   const LX=Number(LS("jaego_labelX",v=>v!==null&&v!==""&&Math.abs(Number(v))<=15,"-1.5"));   // 좌우 이동(mm, 글 방향 기준, − = 왼쪽) — 프린터 설정대로에서만
-  w.document.write(`<html><head><title>라벨 ${total}장</title><style>
+  w.document.write(`<html><head><title>라벨 인쇄</title><style>
     :root{--w:${LW}mm;--h:${LH}mm}
     body{margin:0;padding:0;font-family:'Malgun Gothic',sans-serif}
     .lb{width:var(--w);height:var(--h);position:relative;border:1px dashed #bbb;box-sizing:border-box;overflow:hidden;page-break-after:always;break-after:page}
@@ -2698,7 +2692,8 @@ function printBarLabels(items){
     .bar .h{color:#475569;flex-basis:100%}
     @media print{.lb{border:none}.bar{display:none}}
   </style><style id="pg"></style></head><body>
-  <div class="bar"><b>라벨 크기</b> 가로 <input id="lw" type="number" min="15" max="120" value="${LW}"> × 세로 <input id="lh" type="number" min="10" max="120" value="${LH}"> mm
+  <div class="bar"><b>장수</b> <input id="lc" type="number" min="1" max="500" step="1" value="1" title="품목마다 인쇄할 라벨 장수"> 장${items.length>1?" (품목마다)":""}
+    <span id="lt" style="color:#475569"></span><span style="width:10px"></span><b>라벨 크기</b> 가로 <input id="lw" type="number" min="15" max="120" value="${LW}"> × 세로 <input id="lh" type="number" min="10" max="120" value="${LH}"> mm
     <span style="width:10px"></span><b>방향</b>
     <button id="r0" onclick="setRot('0')">기본</button><button id="r1" onclick="setRot('1')">90° 회전</button><button id="r2" onclick="setRot('2')" title="용지 크기를 정하지 않음 — 인쇄 창의 [시스템 대화상자를 사용하여 인쇄]로">프린터 설정대로</button>
     <span style="width:10px"></span><b>내용 회전</b>
@@ -2706,10 +2701,17 @@ function printBarLabels(items){
     · 확대 <input id="lz" type="number" min="50" max="300" step="10" value="${LZ}"> % · 좌우 <input id="lx" type="number" min="-15" max="15" step="0.5" value="${LX}" title="− 왼쪽 / + 오른쪽 (mm, 라벨 글 방향 기준)"> mm
     <button id="pb">인쇄</button>
     <span class="h" id="rh"></span><div class="big" id="sysTip" style="display:none">⌨ 키보드 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> 를 누르세요 — 윈도우 인쇄 창(BY-482BT · 용지 50×30 · 세로)으로 인쇄해야 라벨에 맞게 나옵니다</div></div>
-  ${cells}
+  <div id="cells"></div>
   <script src="${lib}"><\/script>
   <script>
-    var MODE='${rot}',TURN='${LR}';
+    var MODE='${rot}',TURN='${LR}',ITEMS=${itemsJson};
+    function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+    /* 장수(품목마다) 만큼 라벨을 다시 그린다 — 기본 1장, 저장하지 않음(실수로 많이 뽑는 것 방지) */
+    function build(){var n=Math.floor(Number(document.getElementById('lc').value));if(!(n>=1))n=1;if(n>500)n=500;var total=n*ITEMS.length,h='';
+      ITEMS.forEach(function(x){for(var i=0;i<n;i++)h+='<div class="lb"><div class="in"><div class="nm">'+esc(x.name)+'</div><svg data-code="'+esc(x.bar)+'"></svg></div></div>';});
+      document.getElementById('cells').innerHTML=h;document.getElementById('lt').textContent='총 '+total+'장';document.title='라벨 '+total+'장';
+      document.querySelectorAll('svg[data-code]').forEach(function(el){JsBarcode(el,el.dataset.code,{format:'CODE128',displayValue:true,fontSize:9,height:34,margin:0});});}
+    document.getElementById('lc').addEventListener('change',build);
     function sv(k,v){try{window.opener&&window.opener.localStorage.setItem(k,v);}catch(e){}try{localStorage.setItem(k,v);}catch(e){}}
     function num(id,d){var v=Number(document.getElementById(id).value);return v>0?v:d;}
     function apply(){var W0=num('lw',50),H0=num('lh',30),p2=MODE==='2',Z=p2?num('lz',100)/100:1,W=W0*Z,H=H0*Z,DX=p2?(Number(document.getElementById('lx').value)||0):0;
@@ -2732,12 +2734,11 @@ function printBarLabels(items){
     /* 프린터 설정대로: 크롬 인쇄 창(Ctrl+P)은 이 라벨을 두 장에 걸쳐 찍는다 → 윈도우 인쇄 창(Ctrl+Shift+P)만 쓰게 */
     function sysOnly(){alert('이 라벨 프린터는 윈도우 인쇄 창으로 인쇄해야 맞게 나옵니다.\\n\\n키보드 Ctrl + Shift + P 를 누르세요.');}
     document.addEventListener('keydown',function(e){if(MODE==='2'&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='p'||e.key==='P')){e.preventDefault();sysOnly();}},true);
-    document.getElementById('pb').onclick=function(){if(MODE==='2')sysOnly();else window.print();};
+    document.getElementById('pb').onclick=function(){build();if(MODE==='2')sysOnly();else window.print();};
     apply();
-    document.querySelectorAll("svg[data-code]").forEach(el=>{
-      JsBarcode(el, el.dataset.code, {format:"CODE128",displayValue:true,fontSize:9,height:34,margin:0});
-    });
-    window.onload=()=>setTimeout(()=>{if(MODE!=='2')window.print();else window.focus();},300);   // 프린터 설정대로는 크롬 인쇄 창을 자동으로 띄우지 않는다
+    build();
+    /* 기본 1장이라 자동으로 인쇄 창을 띄우지 않는다 — 장수를 정한 뒤 [인쇄] 버튼(또는 Ctrl+Shift+P) */
+    window.onload=()=>setTimeout(()=>{window.focus();var c=document.getElementById('lc');c.focus();c.select();},300);
   <\/script></body></html>`);
   w.document.close();
 }
