@@ -678,6 +678,14 @@
 </div></div>
 
 <!-- 스캔 출고: 박스/개수 → 수량 (2026-10-16 요청 — 여러 개를 한 번에 출고) -->
+<!-- 급여정보 조회 결과 (2026-11-26): 수정창 위에 겹쳐 뜨고, 선택하면 급여코드가 채워진다 -->
+<div class="ovl" id="benefitOvl"><div class="modal wide">
+  <h2><i data-lucide="search"></i> 급여정보 조회 결과</h2>
+  <p class="muted" id="benefitQuery" style="margin-bottom:8px"></p>
+  <div id="benefitList"></div>
+  <div class="mbtns"><button class="btn ghost" type="button" id="benefitClose">닫기</button></div>
+</div></div>
+
 <div class="ovl" id="outOvl"><div class="modal" style="max-width:420px">
   <h2 id="outTitle"><i data-lucide="package-open"></i> 출고</h2>
   <p id="outProd" style="font-weight:700; margin-bottom:2px"></p>
@@ -2545,12 +2553,33 @@ $("lotBarBtn").onclick=()=>{
   if(!code){ alert("lot 번호를 확인하세요. 영문·숫자·-·. 만 쓸 수 있습니다."); return; }
   printBarLabels([{bar:code, name:($("pName").value.trim()||"")+" (lot "+lot.trim()+")", copies:1}]);
 };
+/* 급여정보 조회: 급여코드가 있으면 코드로, 없으면 품목명으로. 고르면 급여코드(와 급여 구분)만 채운다 — 품목명·거래처·입고가·처방단가는 건드리지 않음 */
+let BENEFIT_ITEMS=[];
 $("benefitBtn").onclick=async()=>{
-  const code=$("pPayCode").value.trim();
-  if(!code){ alert("급여코드를 입력하세요."); $("pPayCode").focus(); return; }
-  try{ const r=await API.call("/benefit/lookup?code="+encodeURIComponent(code)); alert(JSON.stringify(r)); }
-  catch(err){ alert(err.message); }
+  const code=$("pPayCode").value.trim(), name=$("pName").value.trim();
+  if(!code&&!name){ alert("급여코드나 품목명을 입력하세요."); $("pPayCode").focus(); return; }
+  const b=$("benefitBtn"); b.disabled=true;
+  try{
+    const r=await API.call("/benefit/lookup?"+(code?"code="+encodeURIComponent(code):"name="+encodeURIComponent(name)));
+    BENEFIT_ITEMS=r.items||[];
+    $("benefitQuery").textContent=(code?"급여코드 "+code:'품목명 "'+name+'"')+" 검색 결과 "+(r.total||0)+"건"+((r.total||0)>BENEFIT_ITEMS.length?" (앞 "+BENEFIT_ITEMS.length+"건 표시)":"");
+    $("benefitList").innerHTML=BENEFIT_ITEMS.length?BENEFIT_ITEMS.map((it,i)=>`<div class="lowitem" style="flex-wrap:wrap; gap:6px">
+        <span class="nm"><b>${esc(it.name)}</b> <span class="muted">${esc(it.maker)} · ${esc(it.spec)}${esc(it.unit)} · ${esc(it.code)}</span><br>
+        <span class="muted">급여 구분 ${esc(it.payType||"-")} · 상한금액(참고) ${won(it.price)}원</span>
+        ${it.warning?`<br><span style="color:var(--warn); font-weight:700">⚠ ${esc(it.warning)}</span>`:""}</span>
+        <button class="btn small" type="button" onclick="pickBenefit(${i})">선택</button></div>`).join("")
+      :'<div class="empty">조회 결과가 없습니다.</div>';
+    $("benefitOvl").classList.add("show"); refreshIcons();
+  }catch(err){ alert(err.message); }
+  finally{ b.disabled=!BENEFIT_ON; }
 };
+window.pickBenefit=function(i){
+  const it=BENEFIT_ITEMS[i]; if(!it) return;
+  $("pPayCode").value=it.code;
+  if(it.payType==="급여") $("pPayType").value="급여";
+  $("benefitOvl").classList.remove("show");
+};
+$("benefitClose").onclick=()=>$("benefitOvl").classList.remove("show");
 
 /* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (장수 = 각 품목의 현재 재고) */
 $("todayLabelBtn").onclick=()=>{

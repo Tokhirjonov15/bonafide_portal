@@ -32,3 +32,9 @@ for (const id of ["secBasic", "pFloorWrap", "secPrice", "secBar"]) {
   test(`열 때마다 #${id} 를 펼친다`, () => assert.ok(openProd.includes(`setSecOpen("${id}", true)`)));
 }
 test("새 코드 섹션만 값이 있을 때 펼친다", () => assert.ok(openProd.includes("setSecOpen(\"secCode\", !!")));
+
+/* 급여정보 조회 결과 팝업 */
+for (const id of ["benefitOvl", "benefitQuery", "benefitList", "benefitClose"]) {
+  test(`조회 결과 팝업 요소: #${id}`, () => assert.ok(html.includes(`id="${id}"`)));
+}
+test("조회 팝업은 수정창보다 뒤에 있어 위에 겹친다", () => assert.ok(html.indexOf('id="benefitOvl"') > html.indexOf('id="prodOvl"')));
