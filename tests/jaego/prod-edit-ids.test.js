@@ -45,3 +45,11 @@ test("조회 결과를 늦게 받아도 품목이 바뀌었으면 버린다", ()
 test("조회 결과 행에 적용 시작일을 보여 준다", () => assert.ok(html.includes("it.startDate")));
 
 test("조회 중 안내: 응답에 10~20초 걸릴 수 있음을 알린다", () => assert.ok(html.includes("10~20초")));
+
+/* 2단계 A: 대체 품목 블록의 "달라지는 값" 입력 */
+test("대체 품목에 달라지는 값 입력 칸이 있다", () => {
+  assert.ok(html.includes("달라지는 값"));
+  for (const k of ["price", "rx", "ounit", "pay", "code", "own"]) assert.ok(html.includes("pAv_${j}_" + k), "pAv_${j}_" + k);
+});
+test("대체 품목 층별 재고 칸(기존)은 그대로", () => assert.ok(html.includes("pAs_${j}_${i}")));
+test("저장 때 비운 칸을 본 품목 값으로 채우는 함수를 쓴다", () => assert.ok(html.includes("ProductCodes.resolveAltValues(")));

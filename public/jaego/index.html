@@ -2726,9 +2726,20 @@ window.renderAltStock=function(){
   const box=$("pAltStock"); if(!box) return;
   const p=editId?PRODUCTS.find(x=>x.id===editId):null; if(!p){ box.innerHTML=""; return; }
   const subs=SUBS[p.id]||[];
+  const nz=v=>v?v:"";   // 0 은 빈칸으로 — 비우면 본 품목과 같음
+  const ph=v=>esc("본 품목 "+(v||0));
   box.innerHTML=altNames({alt:$("pAlt").value}).map((nm,j)=>{ const sub=subs.find(x=>String(x.name||"").trim()===nm);
+    const sv=sub||{}, hasVal=!!(sv.price||sv.rxPrice||sv.ounit||sv.payType||sv.payCode||sv.ownCode);
     return `<div class="fbox"><div class="fb-t alt">대체 품목: ${esc(nm)} 층별 재고 ${sub?"":'<span class="muted" style="font-weight:400">— 아직 재고 없음. 넣으면 대체 품목으로 등록돼요</span>'}</div>
-      <div class="mrow3">${FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pAs_${j}_${i}" type="number" min="0" value="${sub?floorQty(sub,f):""}" placeholder="0"></div>`).join("")}</div></div>`; }).join("");
+      <div class="mrow3">${FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pAs_${j}_${i}" type="number" min="0" value="${sub?floorQty(sub,f):""}" placeholder="0"></div>`).join("")}</div>
+      <details class="sec" ${hasVal?"open":""} style="margin:6px 0 8px"><summary>달라지는 값 <span class="muted" style="font-weight:400">(비우면 본 품목과 같음)</span></summary><div class="secbody">
+        <div class="mrow"><div><label>입고가 (원)</label><input id="pAv_${j}_price" type="number" min="0" value="${nz(sv.price)}" placeholder="${ph(p.price)}"></div>
+          <div><label>처방단가 (원)</label><input id="pAv_${j}_rx" type="number" min="0" value="${nz(sv.rxPrice)}" placeholder="${ph(p.rxPrice)}"></div></div>
+        <div class="mrow"><div><label>박스당 개수</label><input id="pAv_${j}_ounit" type="number" min="0" value="${nz(sv.ounit)}" placeholder="${ph(p.ounit)}"></div>
+          <div><label>급여 구분</label><select id="pAv_${j}_pay" class="fsel" style="width:100%"><option value="">본 품목과 같음${p.payType?" ("+esc(p.payType)+")":""}</option>${["급여","비급여","미정"].map(v=>`<option value="${v}"${sv.payType===v?" selected":""}>${v}</option>`).join("")}</select></div></div>
+        <div class="mrow"><div><label>급여코드</label><input id="pAv_${j}_code" value="${esc(sv.payCode||"")}" placeholder="${esc(p.payCode?"본 품목 "+p.payCode:"본 품목과 같음")}"></div>
+          <div><label>자체 코드 (비급여)</label><input id="pAv_${j}_own" value="${esc(sv.ownCode||"")}" placeholder="${esc(p.ownCode?"본 품목 "+p.ownCode:"본 품목과 같음")}"></div></div>
+      </div></details></div>`; }).join("");
 };
 async function saveFloorAndAltStock(pid, payload){
   const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
@@ -2740,8 +2751,17 @@ async function saveFloorAndAltStock(pid, payload){
     let sub=subs.find(x=>String(x.name||"").trim()===nm);
     const fl2={}; let ch2=false, any=false;
     FLOORS.forEach((f,i)=>{ const el=$(`pAs_${j}_${i}`); if(!el||el.value==="") return; const v=Math.max(0,+el.value||0); if(v>0) any=true; if(v!==(sub?floorQty(sub,f):0)){ fl2[f]=v; ch2=true; } });
-    if(!sub&&!any) continue;   // 재고를 안 넣은 이름은 글자로만
-    if(!sub){ const r=await API.call("/product",{name:nm, altOf:pid, cat:payload.cat, unit:payload.unit, vendor:payload.vendor, kind:payload.kind, loc:payload.loc}); sub={id:r.id}; }
+    /* 달라지는 값 (2026-11-26): 본 품목과 다른 값만 적는다 — 비운 칸은 본 품목 값을 복사 */
+    const val=id=>{ const el=$(id); return el?el.value:""; };
+    const raw={ price:val(`pAv_${j}_price`), rxPrice:val(`pAv_${j}_rx`), ounit:val(`pAv_${j}_ounit`), payType:val(`pAv_${j}_pay`), payCode:val(`pAv_${j}_code`), ownCode:val(`pAv_${j}_own`) };
+    const typed=Object.values(raw).some(v=>String(v).trim()!=="");
+    if(!sub&&!any&&!typed) continue;   // 재고도 값도 안 넣은 이름은 글자로만
+    const av=ProductCodes.resolveAltValues(p, raw);
+    if(!sub){ const r=await API.call("/product",{name:nm, altOf:pid, cat:payload.cat, unit:payload.unit, vendor:payload.vendor, kind:payload.kind, loc:payload.loc, ...av}); sub={id:r.id}; }
+    else{
+      const cur=k=>sub[k]||(typeof av[k]==="number"?0:"");
+      if(Object.keys(av).some(k=>cur(k)!==av[k])) await API.call("/product", ProductCodes.updatePayload(sub, av));   // 바뀐 값이 있을 때만, 기존 항목은 모두 담아서
+    }
     if(ch2) await API.call("/product/floor-stock",{pid:sub.id, floors:fl2});
   }
   for(const x of subs) if(!names.includes(String(x.name||"").trim())) await API.call("/product/sub-remove",{id:x.id});
