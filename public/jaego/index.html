@@ -266,6 +266,9 @@
   .out-q{font-weight:800; font-size:15px; margin:4px 0 8px}
   .out-pick{display:flex; flex-direction:column; gap:8px}
   .out-big{width:100%; justify-content:center; font-size:17px; padding:14px 12px}
+  .out-seg{display:flex; gap:8px; margin:0 0 10px}   /* 박스 / 개수 선택 — 고른 쪽이 파랗게 */
+  .out-seg .btn{flex:1; justify-content:center; font-size:16px; padding:12px 8px}
+  .out-seg .btn.on{background:var(--accent); color:#fff; border-color:var(--accent); font-weight:800}
   .out-big span,.out-big span.muted{font-weight:700; font-size:14px; margin-left:4px; color:inherit; opacity:.9}   /* 파란 버튼 위에서도 잘 보이게 (흰 글씨) */
   .ovl{position:fixed; inset:0; background:rgba(20,30,45,.45); display:none; align-items:center; justify-content:center; z-index:50; padding:14px}
   .ovl.show{display:flex}
@@ -274,6 +277,16 @@
   .lottbl input{font-size:15px; padding:6px 8px}
   .lotbtn{padding:1px 8px !important; font-size:11.5px !important; white-space:nowrap}
   .modal{background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:440px; max-height:92vh; overflow:auto}
+  /* 품목 수정창 접이식 섹션 (2026-11-26) */
+  .modal.wide{max-width:640px}
+  details.sec{border:1px solid var(--line); border-radius:10px; margin:0 0 10px; background:#fff}
+  details.sec>summary{cursor:pointer; padding:10px 12px; font-weight:800; font-size:14px; list-style:none; display:flex; align-items:center; gap:6px; user-select:none}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::before{content:"▸"; color:var(--ink2); width:1em}
+  details.sec[open]>summary::before{content:"▾"}
+  details.sec[open]>summary{border-bottom:1px solid var(--line)}
+  details.sec .secbody{padding:8px 12px 4px}
+  .inrow{display:flex; gap:8px; align-items:center} .inrow input{flex:1; min-width:0}
   .modal h2{font-size:16px; margin-bottom:14px; color:var(--accent)}
   .modal label{display:block; font-size:12px; color:var(--ink2); font-weight:700; margin:10px 0 4px}
   .modal input{
@@ -573,45 +586,64 @@
   <div id="alertBody"></div>
 </div>
 
-<div class="ovl" id="prodOvl"><div class="modal">
+<div class="ovl" id="prodOvl"><div class="modal wide">
   <h2 id="prodTitle">품목 추가</h2>
+  <!-- 품목 수정창 접이식 섹션 (2026-11-26): 기존 항목은 그대로, 배치만 구역별로 묶음 -->
+  <details class="sec" id="secBasic" open><summary>기본 정보</summary><div class="secbody">
   <label>품목명 *</label><input id="pName" placeholder="예) 니트릴 장갑 M">
   <div class="mrow">
     <div><label>카테고리</label><input id="pCat" list="catList" placeholder="예) 소모품"><datalist id="catList"></datalist></div>
     <div><label>처방코드 (비트)</label><input id="pRx" placeholder="예) sono3, MM085"><datalist id="locList"></datalist></div>
   </div>
-  <div class="mrow">
+    <div class="mrow">
     <div><label>약품 / 물품</label><select id="pKind" class="fsel" style="width:100%"><option value="">자동</option><option value="약품">💊 약품</option><option value="물품">📦 물품</option></select></div>
-    <div></div>
-  </div>
-  <div class="mrow">
     <div><label>단위</label><input id="pUnit" placeholder="예) 박스"></div>
-    <div><label>주문시점 (이하로 떨어지면 발주)</label><input id="pMin" type="number" min="0" value="0"></div>
-  </div>
-  <div class="mrow">
-    <div><label>필요수량 (유지 목표)</label><input id="pPar" type="number" min="0" value="0"></div>
-    <div><label>단가 (원)</label><input id="pPrice" type="number" min="0" value="0"></div>
-  </div>
-  <div class="mrow">
+    </div>
+    <div class="mrow">
     <div><label>거래처 (구입처)</label><input id="pVendor" list="venList" placeholder="예) 한대표님 / 메디풀"><datalist id="venList"></datalist></div>
     <div><label>대체품목</label><input id="pAlt" placeholder="선택사항 — 여러 개는 쉼표로" onchange="renderAltStock()"></div>
-  </div>
+    </div>
   <div class="muted" style="font-size:11.5px; margin:-4px 0 6px">· 대체품목이 여러 개면 쉼표(,)로 구분 · 대체품목도 아래에서 층별 재고를 따로 넣을 수 있습니다</div>
-  <div id="pFloorWrap" style="display:none">
+  </div></details>
+  <details class="sec" id="pFloorWrap" open style="display:none"><summary>층별 재고 조정</summary><div class="secbody">
     <div class="fbox"><div class="fb-t">이 품목(발주 품목) 층별 재고 <span class="muted" style="font-weight:400">— 지금 실제로 있는 개수. 바꾸면 그 차이만큼 입출고 기록이 남습니다</span></div><div class="mrow3" id="pFloors"></div></div>
     <div id="pAltStock"></div>
-  </div>
-  <div class="mrow">
+  </div></details>
+  <details class="sec" id="secPrice" open><summary>가격 · 발주</summary><div class="secbody">
+    <div class="mrow">
+    <div><label>입고가 (원)</label><input id="pPrice" type="number" min="0" value="0"></div>
+      <div><label>처방단가 (원)</label><input id="pRxPrice" type="number" min="0" value="0" title="병원에서 책정한 처방 단가"></div>
+    </div>
+    <div class="mrow">
+    <div><label>주문시점 (이하로 떨어지면 발주)</label><input id="pMin" type="number" min="0" value="0"></div>
+    <div><label>필요수량 (유지 목표)</label><input id="pPar" type="number" min="0" value="0"></div>
+    </div>
+    <div class="mrow">
     <div><label>발주단위 (1박스 수량)</label><input id="pOunit" type="number" min="0" value="0" placeholder="예) 20"></div>
     <div><label>발주그룹 (합계 단위 적용)</label><input id="pOgrp" placeholder="예) 목발"></div>
-  </div>
+    </div>
   <div class="muted" style="font-size:11.5px; margin:-4px 0 8px">
     · 발주단위: 주문수량을 이 배수로 올림 (예: 20 → 1박스=20개) · 발주그룹: 같은 그룹의 <b>합계</b>가 단위의 배수가 되도록 맞춤 (예: 목발 S 3 + L 7 = 총 10)</div>
+  </div></details>
+  <details class="sec" id="secCode" open><summary>급여 · 코드</summary><div class="secbody">
+    <div class="mrow">
+      <div><label>급여 구분</label><select id="pPayType" class="fsel" style="width:100%"><option value="">선택 안 함</option><option value="급여">급여</option><option value="비급여">비급여</option><option value="미정">미정</option></select></div>
+      <div></div>
+    </div>
+    <label>급여코드</label>
+    <div class="inrow"><input id="pPayCode" placeholder="급여 제품의 보험(급여) 코드"><button type="button" class="btn small ghost" id="benefitBtn" disabled title="급여정보 API 인증 설정 후 사용할 수 있습니다"><i data-lucide="search"></i> 조회</button></div>
+    <div class="muted" id="benefitHint" style="font-size:11.5px; margin:4px 0 8px">급여정보 조회는 API 인증이 설정되면 켜집니다.</div>
+    <label>자체 코드 (비급여)</label>
+    <div class="inrow"><input id="pOwnCode" placeholder="비급여 제품의 자체 코드"><button type="button" class="btn small ghost" id="ownGenBtn" title="자체 코드를 자동으로 만들기"><i data-lucide="sparkles"></i> 자동 생성</button></div>
+  </div></details>
+  <details class="sec" id="secBar" open><summary>바코드</summary><div class="secbody">
   <label>바코드 (스캔하거나 입력)</label><input id="pBar" placeholder="선택사항">
-  <div style="display:flex; gap:8px; margin:6px 0 2px">
+    <div style="display:flex; gap:8px; margin:6px 0 8px; flex-wrap:wrap">
     <button type="button" class="btn small ghost" id="barGenBtn" title="바코드 없는 품목용 내부 바코드 생성"><i data-lucide="barcode"></i> 내부 바코드 생성</button>
     <button type="button" class="btn small ghost" id="barPrintBtn" title="이 바코드를 라벨로 인쇄"><i data-lucide="printer"></i> 라벨 인쇄</button>
-  </div>
+      <button type="button" class="btn small ghost" id="lotBarBtn" style="display:none" title="약품 — lot 번호가 바뀔 때마다 lot 바코드 라벨 만들기"><i data-lucide="barcode"></i> lot 바코드 생성</button>
+    </div>
+  </div></details>
   <div id="pInitWrap">
     <div class="mrow">
       <div><label>초기 수량</label><input id="pInit" type="number" min="0" value="0"></div>
@@ -649,24 +681,35 @@
 </div></div>
 
 <!-- 스캔 출고: 박스/개수 → 수량 (2026-10-16 요청 — 여러 개를 한 번에 출고) -->
+<!-- 급여정보 조회 결과 (2026-11-26): 수정창 위에 겹쳐 뜨고, 선택하면 급여코드가 채워진다 -->
+<div class="ovl" id="benefitOvl"><div class="modal wide">
+  <h2><i data-lucide="search"></i> 급여정보 조회 결과</h2>
+  <div class="inrow" style="margin-bottom:8px"><input id="benefitQ" placeholder="급여코드(예: G03900131) 또는 품목명" autocomplete="off"><button type="button" class="btn small" id="benefitGo"><i data-lucide="search"></i> 검색</button></div>
+  <p class="muted" id="benefitQuery" style="margin-bottom:8px"></p>
+  <div id="benefitList"></div>
+  <div class="mbtns"><button class="btn ghost" type="button" id="benefitClose">닫기</button></div>
+</div></div>
+
 <div class="ovl" id="outOvl"><div class="modal" style="max-width:420px">
   <h2 id="outTitle"><i data-lucide="package-open"></i> 출고</h2>
   <p id="outProd" style="font-weight:700; margin-bottom:2px"></p>
   <p class="muted" id="outNow" style="margin-bottom:10px"></p>
-  <div id="outStep1">
-    <div class="out-q">어떤 단위로 출고하시나요?</div>
-    <div class="out-pick">
-      <button type="button" class="btn out-big" onclick="outPick('box')"><i data-lucide="package"></i> <b class="out-v">박스 단위로 출고</b><span id="outBoxSz" class="muted"></span></button>
-      <button type="button" class="btn ghost out-big" onclick="outPick('ea')"><i data-lucide="hash"></i> <b class="out-v2">개수 단위로 출고</b></button>
-    </div>
+  <div id="outUnitRow" class="out-seg" style="display:none">
+    <button type="button" id="outUBox" class="btn ghost" onclick="outPick('box')"><i data-lucide="package"></i> 박스<span id="outBoxSz"></span></button>
+    <button type="button" id="outUEa" class="btn ghost" onclick="outPick('ea')"><i data-lucide="hash"></i> 개수</button>
   </div>
-  <div id="outStep2" style="display:none">
+  <div id="outBoxAsk" style="display:none; margin:0 0 10px">
+    <label>1박스에 몇 개인가요? <span class="muted" style="font-weight:400">(한 번만 알려 주면 이 품목에 기억돼요)</span></label>
+    <div class="inrow"><input id="outBoxN" type="number" min="2" max="1000" placeholder="예) 50" oninput="outHint()"><span id="outBoxSug" style="display:flex; gap:6px; flex-wrap:wrap"></span></div>
+    <div class="muted" id="outBoxNote" style="font-size:11.5px; margin-top:4px">※ 발주 수량도 이 개수 단위로 올림됩니다.</div>
+  </div>
+  <div id="outStep2">
     <label id="outQtyLabel">수량</label><input id="outQty" type="number" min="1" value="1" class="qbig" oninput="outHint()">
     <p class="muted" id="outHintTx" style="margin:4px 0 0; font-weight:700"></p>
   </div>
   <div class="mbtns">
     <button class="btn ghost" type="button" onclick="outClose()">취소</button>
-    <button class="btn" type="button" id="outOk" style="display:none" onclick="outGo()">출고</button>
+    <button class="btn" type="button" id="outOk" onclick="outGo()">출고</button>
   </div>
 </div></div>
 
@@ -728,6 +771,8 @@
 </div>
 
 <script src="vendor/lucide.min.js"></script>
+<script src="product-codes.js"></script>
+<script src="scan-unit.js"></script>
 <script>
 "use strict";
 /* ============================================================
@@ -2126,41 +2171,82 @@ async function scanOutAsk(bar,mode){
   const r=await API.call("/scan",{ bar, mode, lookup:true });
   if(r.notFound) return r;
   const p=r.product, bs=Number(r.boxSize)||0;
-  OUT={bar, mode, product:p, stock:Number(r.stock)||0, bs, unit:""};
+  /* 2026-11-26: 단위 선택과 수량을 한 화면에 — 처음 단위는 이 품목에서 마지막에 쓴 단위(없으면 입고=박스·출고=개수) */
+  let last=null; try{ last=localStorage.getItem(ScanUnit.unitKey(mode,p.id)); }catch(_){}
+  OUT={bar, mode, product:p, stock:Number(r.stock)||0, bs, unit:ScanUnit.defaultUnit(mode,bs,last)};
   const W=mode==="in"?"입고":"출고";
   $("outTitle").innerHTML=`<i data-lucide="${mode==="in"?"package-plus":"package-open"}"></i> ${W}`;
-  $("outOvl").querySelector(".out-q").textContent=`어떤 단위로 ${W}하시나요?`;
-  $("outOvl").querySelector(".out-v").textContent=`박스 단위로 ${W}`;$("outOvl").querySelector(".out-v2").textContent=`개수 단위로 ${W}`;
   $("outOk").textContent=W;
   $("outProd").textContent=p.name;
   $("outNow").innerHTML=`현재 재고: <b>${OUT.stock}</b> ${esc(p.unit||"개")}${boxTxt(p,OUT.stock)?` = ${esc(boxTxt(p,OUT.stock))}`:""}`;
+  /* 2단계 B: 박스 크기를 모르는 품목도 [박스]를 고를 수 있다 — 고르면 "1박스에 몇 개인가요?"를 한 번 묻고 이 품목에 저장 */
+  OUT.ask=!(bs>1);
+  OUT.sug=OUT.ask?ScanUnit.suggestBoxSizes(p.name,p.unit):[];
+  OUT_KEYS=[];
   $("outBoxSz").textContent=bs>1?` (1박스=${bs}개)`:"";
-  $("outStep1").style.display=bs>1?"":"none";
+  $("outUnitRow").style.display="";
+  $("outBoxN").value="";
+  $("outBoxSug").innerHTML=OUT.sug.map(n=>`<button type="button" class="btn small ghost" onclick="outSugPick(${n})">${n}개</button>`).join("");
+  { const gp=PRODUCTS.find(x=>x.id===p.id);   // 발주그룹에 속한 품목이면 그룹 합계 단위에도 영향이 있음을 알린다
+    $("outBoxNote").textContent="※ 발주 수량도 이 개수 단위로 올림됩니다."+(gp&&gp.ogrp?` 이 품목은 발주그룹(${gp.ogrp})에 속해 있어 그룹 합계 단위에도 영향이 있습니다.`:""); }
+  $("outQty").value=1;outUnitUi();
   $("outOvl").classList.add("show");refreshIcons();
-  if(bs>1){ $("outStep2").style.display="none"; $("outOk").style.display="none"; setTimeout(()=>$("outOvl").querySelector(".out-big").focus(),30); }
-  else outPick("ea");
+  setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);
   return {asked:true};
 }
-window.outPick=function(u){if(!OUT)return;OUT.unit=u;
-  $("outStep1").style.display="none";$("outStep2").style.display="";$("outOk").style.display="";
-  $("outQtyLabel").textContent=u==="box"?`박스 수 (1박스=${OUT.bs}개)`:"개수";
-  $("outQty").value=1;outHint();setTimeout(()=>{$("outQty").focus();$("outQty").select();},30);};
-function outCount(){const q=Math.floor(Number($("outQty").value)||0);return OUT&&OUT.unit==="box"?q*OUT.bs:q;}
+function outUnitUi(){const u=OUT.unit;
+  $("outUBox").classList.toggle("on",u==="box");$("outUEa").classList.toggle("on",u==="ea");
+  $("outBoxAsk").style.display=(OUT.ask&&u==="box")?"":"none";
+  $("outQtyLabel").textContent=u==="box"?(OUT.ask?"박스 수":`박스 수 (1박스=${OUT.bs}개)`):"개수";outHint();}
+window.outPick=function(u){if(!OUT||OUT.busy)return;OUT.unit=u;outUnitUi();
+  const n=$("outBoxN");
+  if(OUT.ask&&u==="box"&&!n.value){ n.focus(); return; }   // 박스 크기를 아직 모르면 그것부터
+  $("outQty").focus();$("outQty").select();};
+window.outSugPick=function(n){ if(!OUT||OUT.busy) return; $("outBoxN").value=n; outHint(); $("outQty").focus(); $("outQty").select(); };
+/* 이번 입고·출고에 쓰는 1박스 개수: 아는 품목은 저장된 값, 모르는 품목은 방금 적은 값(2 이상) */
+function outBs(){ if(!OUT) return 0; if(!OUT.ask) return OUT.bs; const n=Math.floor(Number($("outBoxN").value)||0); return n>=2&&n<=1000?n:0; }
+function outCount(){return OUT?ScanUnit.unitCount(OUT.unit,$("outQty").value,outBs()):0;}
 window.outHint=function(){if(!OUT)return;const c=outCount(),el=$("outHintTx");
+  if(OUT.unit==="box"&&OUT.ask&&outBs()<2){ el.style.color="var(--accent)"; el.textContent=Number($("outBoxN").value)>1000?"1박스 개수는 1000 이하로 넣어 주세요 — 바코드가 입력된 건 아닌지 확인하세요":"1박스에 몇 개인지 먼저 넣어 주세요"; return; }
   const W=OUT.mode==="in"?"입고":"출고",over=OUT.mode==="out"&&c>OUT.stock;
   el.style.color=over?"var(--warn)":"var(--accent)";
-  el.textContent=c<1?"수량을 넣어 주세요":(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));};
-window.outClose=function(){OUT=null;$("outOvl").classList.remove("show");focusScan();};
-window.outGo=async function(){if(!OUT)return;const c=outCount();if(c<1){$("outQty").focus();return;}
-  if(OUT.mode==="out"&&c>OUT.stock&&!confirm(`재고(${OUT.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
+  el.textContent=c<1?(Number($("outQty").value)>ScanUnit.MAX_QTY?`수량이 너무 큽니다 (최대 ${ScanUnit.MAX_QTY}) — 바코드가 입력된 건 아닌지 확인하세요`:"수량을 넣어 주세요"):(OUT.unit==="box"?`= ${c}개 ${W}`:`${c}개 ${W}`)+(over?` — 재고(${OUT.stock})보다 많습니다`:(OUT.mode==="in"?` → 재고 ${OUT.stock+c}`:""));
+  if(OUT.unit==="box"&&OUT.ask&&c>=1) el.textContent+=` · 1박스=${outBs()}개로 저장`;};
+window.outClose=function(){if(OUT&&OUT.busy)return;OUT=null;$("outOvl").classList.remove("show");focusScan();};
+window.outGo=async function(){const o=OUT; if(!o||o.busy) return;   // 저장을 기다리는 중에 다시 눌러도 한 번만
+  if(o.unit==="box"&&o.ask&&outBs()<2){ $("outBoxN").focus(); outHint(); return; }   // 박스 크기부터
+  const c=outCount();if(c<1){$("outQty").focus();return;}
+  if(o.mode==="out"&&c>o.stock&&!confirm(`재고(${o.stock})보다 많은 ${c}개를 출고합니다. 계속할까요?`))return;
+  const N=outBs(), boxes=Math.floor(Number($("outQty").value)||0);
+  /* 모르던 박스 크기는 이 품목에 저장한다(발주단위) — 서버가 입고 박스 수를 이 값으로 곱하므로 입고보다 먼저.
+     좁은 저장 경로로 박스 크기만 바꾼다(오래된 화면 데이터로 다른 항목을 되돌리지 않음). 저장하는 동안에는 닫거나 다시 누를 수 없다 */
+  if(o.unit==="box"&&o.ask){
+    o.busy=true; $("outOk").disabled=true;
+    try{ await API.call("/product/fields",{id:o.product.id, ounit:N}); }
+    catch(err){ o.busy=false; $("outOk").disabled=false; if(OUT===o) alert("박스 크기를 저장하지 못했습니다: "+err.message); return; }
+    o.busy=false; $("outOk").disabled=false;
+    if(OUT!==o) return;   // 그 사이 팝업이 바뀌었으면 입고하지 않는다
+    try{ localStorage.setItem(ScanUnit.unitKey(o.mode,o.product.id),"box"); }catch(_){}
+  }
   /* 입고 박스: 서버가 박스 수 × 1박스 개수로 넣는다(입고 기록에 'N박스') · 개수: unit:'ea' 로 곱하지 않게 · 출고: 늘 개수 */
-  const o=OUT,boxes=Math.floor(Number($("outQty").value)||0);
+  if(o.bs>1){ try{ localStorage.setItem(ScanUnit.unitKey(o.mode,o.product.id),o.unit); }catch(_){} }   // 다음에 이 품목은 이 단위로 시작
   const opt=o.mode==="in"?(o.unit==="box"?{qty:boxes,unit:"box"}:{qty:c,unit:"ea"}):{qty:c};
   $("outOvl").classList.remove("show");OUT=null;
   await doScan(o.bar,opt);};
+let OUT_KEYS=[];   // 팝업 안에서 최근에 친 글자의 시각 — 스캐너(아주 빠름)와 사람을 구분한다
 $("outOvl").addEventListener("keydown",e=>{
-  if(e.key==="Escape"){e.preventDefault();outClose();}
-  else if(e.key==="Enter"&&$("outStep2").style.display!=="none"){e.preventDefault();outGo();}
+  if(e.key==="Escape"){e.preventDefault();outClose();return;}
+  if(e.key.length===1&&/[0-9A-Za-z]/.test(e.key)){ OUT_KEYS.push(Date.now()); if(OUT_KEYS.length>8) OUT_KEYS.shift(); return; }
+  if(e.key==="Enter"){
+    const t=e.target;
+    /* 숫자 칸에 스캐너가 바코드를 쳐 넣고 Enter 한 것은 지우고 안내한다 (글자는 number 칸이 버려 짧은 숫자만 남아 엉뚱한 수량·박스 크기가 될 수 있음) */
+    if((t.id==="outBoxN"||t.id==="outQty")&&ScanUnit.looksLikeScan(OUT_KEYS)){
+      e.preventDefault(); t.value=""; OUT_KEYS=[]; outHint();
+      $("outHintTx").style.color="var(--warn)"; $("outHintTx").textContent="바코드가 입력된 것 같아 지웠습니다. 숫자를 직접 입력해 주세요."; return;
+    }
+    if(t.id==="outBoxN"){ e.preventDefault(); $("outQty").focus(); $("outQty").select(); return; }   // 박스 크기 칸에서 Enter = 수량 칸으로
+    if(t.closest&&t.closest("button")) return;   /* 단위·취소 버튼에서 Enter = 그 버튼 누르기(확정 아님) */
+    e.preventDefault();outGo();}
 });
 
 async function doScan(code,opt){
@@ -2445,8 +2531,22 @@ $("camClose").onclick=closeCam;
    품목 추가 / 수정
    ============================================================ */
 let editId=null;
+function setSecOpen(id,on){ const d=$(id); if(d) d.open=!!on; }
+/* lot 바코드 버튼: 약품일 때만 (직접 지정한 값이 없으면 카테고리·거래처로 자동 판정) */
+function lotBtnSync(){ const k=$("pKind").value||kindAuto({cat:$("pCat").value,vendor:$("pVendor").value}); $("lotBarBtn").style.display=k==="약품"?"":"none"; }
+["pKind","pCat","pVendor"].forEach(i=>{ $(i).addEventListener("input",lotBtnSync); $(i).addEventListener("change",lotBtnSync); });
+/* 급여정보 조회 버튼: 서버에 API 인증(HIRA_API_KEY)이 설정돼 있으면 켜진다 */
+let BENEFIT_ON=null;
+async function benefitSync(){
+  const b=$("benefitBtn");
+  if(BENEFIT_ON===null){ try{ BENEFIT_ON=!!(await API.call("/benefit/status")).enabled; }catch(_){ BENEFIT_ON=false; } }
+  b.disabled=!BENEFIT_ON;
+  b.title=BENEFIT_ON?"급여코드로 급여정보 조회":"급여정보 API 인증 설정 후 사용할 수 있습니다";
+  $("benefitHint").textContent=BENEFIT_ON?"급여코드를 넣고 [조회]를 누르세요.":"급여정보 조회는 API 인증이 설정되면 켜집니다.";
+}
 window.openProd=function(id){
   editId=id||null;
+  BENEFIT_SEQ++; $("benefitOvl").classList.remove("show");   // 이전 품목의 조회 결과가 늦게 와서 이 품목에 들어가지 않게
   const p=id? PRODUCTS.find(x=>x.id===id) : null;
   $("prodTitle").textContent=p?"품목 수정":"품목 추가";
   $("pName").value=p?p.name:""; $("pCat").value=p?(p.cat||""):"";
@@ -2456,6 +2556,12 @@ window.openProd=function(id){
   $("pPar").value=p?(p.par||0):0; $("pAlt").value=p?(p.alt||""):"";
   $("pPrice").value=p?(p.price||0):0; $("pVendor").value=p?(p.vendor||""):"";
   $("pOunit").value=p?(p.ounit||0):0; $("pOgrp").value=p?(p.ogrp||""):"";
+  /* 새 항목 (2026-11-26) + 값이 있는 섹션은 열어 둔다 */
+  $("pRxPrice").value=p?(p.rxPrice||0):0; $("pPayType").value=p?(p.payType||""):""; $("pPayCode").value=p?(p.payCode||""):""; $("pOwnCode").value=p?(p.ownCode||""):"";
+  /* 기존 기능이 든 섹션은 열 때마다 펼친다(접어 둔 채 남아 칸이 숨지 않게). 새 코드 섹션만 값이 있을 때 펼친다 */
+  setSecOpen("secBasic", true); setSecOpen("pFloorWrap", true); setSecOpen("secPrice", true); setSecOpen("secBar", true);
+  setSecOpen("secCode", !!(p&&(p.payType||p.payCode||p.ownCode)));
+  lotBtnSync(); benefitSync();
   $("pInitWrap").style.display=p?"none":"";
   $("prodDel").style.display=p?"":"none";
   $("prodHide").style.display=(p&&ME&&ME.admin)?"":"none";
@@ -2481,6 +2587,62 @@ $("barPrintBtn").onclick=()=>{
 };
 
 /* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (품목마다 기본 1장 — 인쇄 창의 [장수]에서 바꾼다) */
+/* 비급여 자체 코드 자동 생성 · 약품 lot 바코드 라벨 · 급여정보 조회 (2026-11-26) */
+$("ownGenBtn").onclick=()=>{
+  const cur=$("pOwnCode").value.trim();
+  if(cur && !confirm("이미 자체 코드가 있습니다. 새 코드로 바꿀까요?")) return;
+  $("pOwnCode").value=ProductCodes.ownCode(Date.now());
+};
+$("lotBarBtn").onclick=()=>{
+  const base=$("pBar").value.trim();
+  if(!base){ alert("품목 바코드가 비어 있습니다. 먼저 [내부 바코드 생성]을 누르거나 입력하세요."); return; }
+  const lot=prompt("lot 번호를 입력하세요 (영문·숫자·-·. 만 사용)"); if(lot===null) return;
+  const code=ProductCodes.lotBarcode(base,lot);
+  if(!code){ alert("lot 번호를 확인하세요. 영문·숫자·-·. 만 쓸 수 있습니다."); return; }
+  printBarLabels([{bar:code, name:($("pName").value.trim()||"")+" (lot "+lot.trim()+")", copies:1}]);
+};
+/* 급여정보 조회: 팝업의 검색어(처음엔 급여코드, 없으면 품목명)로 조회 — 검색어는 팝업에서 고칠 수 있다.
+   고르면 급여코드(와 급여 구분)만 채운다 — 품목명·거래처·입고가·처방단가는 건드리지 않음 */
+let BENEFIT_ITEMS=[], BENEFIT_SEQ=0;
+const fmtYmd=d=>/^[0-9]{8}$/.test(d||"")?d.slice(0,4)+"-"+d.slice(4,6)+"-"+d.slice(6):(d||"");
+async function runBenefit(q){
+  q=String(q||"").trim();
+  if(!q){ $("benefitQ").focus(); return; }
+  const seq=++BENEFIT_SEQ, pid=editId, kind=ProductCodes.benefitQueryKind(q);
+  $("benefitGo").disabled=true; $("benefitQuery").textContent="조회 중… (공공데이터 서비스 응답이 10~20초 걸릴 수 있습니다)"; $("benefitList").innerHTML="";
+  try{
+    const r=await API.call("/benefit/lookup?"+(kind==="code"?"code=":"name=")+encodeURIComponent(q));
+    if(seq!==BENEFIT_SEQ || pid!==editId || !$("prodOvl").classList.contains("show")) return;   // 그 사이 다른 품목을 열었거나 수정창을 닫았으면 결과를 버린다
+    BENEFIT_ITEMS=r.items||[];
+    $("benefitQuery").textContent=(kind==="code"?"급여코드 ":"품목명 ")+q+" 검색 결과 "+(r.total||0)+"건"+((r.total||0)>BENEFIT_ITEMS.length?" (앞 "+BENEFIT_ITEMS.length+"건 표시)":"");
+    $("benefitList").innerHTML=BENEFIT_ITEMS.length?BENEFIT_ITEMS.map((it,i)=>`<div class="lowitem" style="flex-wrap:wrap; gap:6px">
+        <span class="nm" style="white-space:normal"><b>${esc(it.name)}</b><br>
+        <span class="muted">${esc(it.code)} · ${esc(it.maker)} · ${esc(it.spec)}${esc(it.unit)}</span><br>
+        <span class="muted">급여 구분 ${esc(it.payType||"-")} · 적용 ${esc(fmtYmd(it.startDate))} · 상한금액(참고) ${won(it.price)}원</span>
+        ${it.warning?`<br><span style="color:var(--warn); font-weight:700">⚠ ${esc(it.warning)}</span>`:""}</span>
+        <button class="btn small" type="button" onclick="pickBenefit(${i})">선택</button></div>`).join("")
+      :'<div class="empty">조회 결과가 없습니다. 위 검색어를 고쳐서 다시 검색해 보세요.</div>';
+    refreshIcons();
+  }catch(err){ if(seq===BENEFIT_SEQ){ $("benefitQuery").textContent=""; alert(err.message); } }
+  finally{ if(seq===BENEFIT_SEQ) $("benefitGo").disabled=false; }
+}
+$("benefitBtn").onclick=()=>{
+  const q=$("pPayCode").value.trim()||$("pName").value.trim();
+  if(!q){ alert("급여코드나 품목명을 입력하세요."); $("pPayCode").focus(); return; }
+  $("benefitQ").value=q; $("benefitOvl").classList.add("show"); refreshIcons();
+  runBenefit(q);
+};
+$("benefitGo").onclick=()=>runBenefit($("benefitQ").value);
+$("benefitQ").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); runBenefit($("benefitQ").value); } });
+window.pickBenefit=function(i){
+  const it=BENEFIT_ITEMS[i]; if(!it) return;
+  $("pPayCode").value=it.code;
+  if(it.payType==="급여") $("pPayType").value="급여";
+  BENEFIT_SEQ++; $("benefitOvl").classList.remove("show");
+};
+$("benefitClose").onclick=()=>{ BENEFIT_SEQ++; $("benefitOvl").classList.remove("show"); };
+
+/* 오늘 추가된 모든 품목 라벨 한 번에 인쇄 (장수 = 각 품목의 현재 재고) */
 $("todayLabelBtn").onclick=()=>{
   const t=new Date(); t.setHours(0,0,0,0);
   const todays=PRODUCTS.filter(p=>p.created_at&&p.created_at>=t.getTime());
@@ -2592,7 +2754,8 @@ $("prodSave").onclick=async()=>{
     bar:$("pBar").value.trim(), min:+$("pMin").value||0,
     par:+$("pPar").value||0, alt:$("pAlt").value.trim(),
     price:+$("pPrice").value||0, vendor:$("pVendor").value.trim(),
-    ounit:+$("pOunit").value||0, ogrp:$("pOgrp").value.trim() };
+    ounit:+$("pOunit").value||0, ogrp:$("pOgrp").value.trim(),
+    rxPrice:+$("pRxPrice").value||0, payType:$("pPayType").value, payCode:$("pPayCode").value.trim(), ownCode:$("pOwnCode").value.trim() };
   if(!editId){ payload.init=+$("pInit").value||0; payload.expiry=$("pExp").value||""; }
   $("prodSave").disabled=true;
   try{
@@ -2611,9 +2774,22 @@ window.renderAltStock=function(){
   const box=$("pAltStock"); if(!box) return;
   const p=editId?PRODUCTS.find(x=>x.id===editId):null; if(!p){ box.innerHTML=""; return; }
   const subs=SUBS[p.id]||[];
+  const ph=v=>esc("본 품목 "+(v||0));
   box.innerHTML=altNames({alt:$("pAlt").value}).map((nm,j)=>{ const sub=subs.find(x=>String(x.name||"").trim()===nm);
+    const sv=sub||{}, hasVal=!!(sub&&(sv.price||sv.rxPrice||sv.ounit||sv.payType||sv.payCode||sv.ownCode));
+    /* 이미 있는 대체 품목은 저장된 값을 그대로(0 도 0 으로) 보여 주고, 새 대체 품목은 빈칸(= 본 품목과 같음).
+       data-init = 처음 보여 준 값 — 저장할 때 건드린 칸만 보낸다 */
+    const nv=k=>sub?String(Number(sv[k])||0):"";
     return `<div class="fbox"><div class="fb-t alt">대체 품목: ${esc(nm)} 층별 재고 ${sub?"":'<span class="muted" style="font-weight:400">— 아직 재고 없음. 넣으면 대체 품목으로 등록돼요</span>'}</div>
-      <div class="mrow3">${FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pAs_${j}_${i}" type="number" min="0" value="${sub?floorQty(sub,f):""}" placeholder="0"></div>`).join("")}</div></div>`; }).join("");
+      <div class="mrow3">${FLOORS.map((f,i)=>`<div><label>${f}</label><input id="pAs_${j}_${i}" type="number" min="0" value="${sub?floorQty(sub,f):""}" placeholder="0"></div>`).join("")}</div>
+      <details class="sec" ${hasVal?"open":""} style="margin:6px 0 8px"><summary>달라지는 값 <span class="muted" style="font-weight:400">(비우면 본 품목과 같음 · 코드는 복사하지 않음)</span></summary><div class="secbody">
+        <div class="mrow"><div><label>입고가 (원)</label><input id="pAv_${j}_price" type="number" min="0" value="${esc(nv("price"))}" data-init="${esc(nv("price"))}" placeholder="${ph(p.price)}"></div>
+          <div><label>처방단가 (원)</label><input id="pAv_${j}_rx" type="number" min="0" value="${esc(nv("rxPrice"))}" data-init="${esc(nv("rxPrice"))}" placeholder="${ph(p.rxPrice)}"></div></div>
+        <div class="mrow"><div><label>박스당 개수</label><input id="pAv_${j}_ounit" type="number" min="0" value="${esc(nv("ounit"))}" data-init="${esc(nv("ounit"))}" placeholder="${ph(p.ounit)}"></div>
+          <div><label>급여 구분</label><select id="pAv_${j}_pay" class="fsel" style="width:100%" data-init="${esc(sv.payType||"")}"><option value="">본 품목과 같음${p.payType?" ("+esc(p.payType)+")":""}</option>${["급여","비급여","미정"].map(v=>`<option value="${v}"${sv.payType===v?" selected":""}>${v}</option>`).join("")}</select></div></div>
+        <div class="mrow"><div><label>급여코드</label><input id="pAv_${j}_code" value="${esc(sv.payCode||"")}" data-init="${esc(sv.payCode||"")}" placeholder="이 품목의 급여코드"></div>
+          <div><label>자체 코드 (비급여)</label><input id="pAv_${j}_own" value="${esc(sv.ownCode||"")}" data-init="${esc(sv.ownCode||"")}" placeholder="이 품목의 자체 코드"></div></div>
+      </div></details></div>`; }).join("");
 };
 async function saveFloorAndAltStock(pid, payload){
   const p=PRODUCTS.find(x=>x.id===pid); if(!p) return;
@@ -2625,8 +2801,17 @@ async function saveFloorAndAltStock(pid, payload){
     let sub=subs.find(x=>String(x.name||"").trim()===nm);
     const fl2={}; let ch2=false, any=false;
     FLOORS.forEach((f,i)=>{ const el=$(`pAs_${j}_${i}`); if(!el||el.value==="") return; const v=Math.max(0,+el.value||0); if(v>0) any=true; if(v!==(sub?floorQty(sub,f):0)){ fl2[f]=v; ch2=true; } });
-    if(!sub&&!any) continue;   // 재고를 안 넣은 이름은 글자로만
-    if(!sub){ const r=await API.call("/product",{name:nm, altOf:pid, cat:payload.cat, unit:payload.unit, vendor:payload.vendor, kind:payload.kind, loc:payload.loc}); sub={id:r.id}; }
+    /* 달라지는 값 (2026-11-26): 본 품목과 다른 값만 적는다 — 비운 칸은 본 품목 값(방금 저장한 값 기준). 코드는 복사하지 않는다 */
+    const ids={ price:`pAv_${j}_price`, rxPrice:`pAv_${j}_rx`, ounit:`pAv_${j}_ounit`, payType:`pAv_${j}_pay`, payCode:`pAv_${j}_code`, ownCode:`pAv_${j}_own` };
+    const raw={}, touched=[];
+    for(const k of Object.keys(ids)){ const el=$(ids[k]); raw[k]=el?el.value:""; if(el&&el.value!==(el.dataset.init||"")) touched.push(k); }
+    if(!sub&&!any&&!touched.length) continue;   // 재고도 값도 안 넣은 이름은 글자로만
+    const av=ProductCodes.resolveAltValues(payload, raw);
+    if(!sub){ const r=await API.call("/product",{name:nm, altOf:pid, cat:payload.cat, unit:payload.unit, vendor:payload.vendor, kind:payload.kind, loc:payload.loc, ...av}); sub={id:r.id}; }
+    else if(touched.length){   // 이미 있는 대체 품목: 건드린 칸만, 서버의 좁은 저장 경로로 (다른 항목은 건드리지 않음)
+      const body={id:sub.id}; touched.forEach(k=>{ body[k]=av[k]; });
+      await API.call("/product/fields", body);
+    }
     if(ch2) await API.call("/product/floor-stock",{pid:sub.id, floors:fl2});
   }
   for(const x of subs) if(!names.includes(String(x.name||"").trim())) await API.call("/product/sub-remove",{id:x.id});
