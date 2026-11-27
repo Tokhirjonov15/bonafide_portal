@@ -30,7 +30,7 @@
 param([string]$Pc = $env:COMPUTERNAME,
       [string]$Room = '')   # 동선관리 방 이름(예: 진료실1). 비우면 PC 이름이 '진료실…'일 때 그 이름
 $ErrorActionPreference = 'Continue'
-$CapVer = 'c1.7'   # c1.7: 원장님 알림은 사진 없이 글 + [확인] 만 (2026-11-25). c1.6: 원장님 [확인] 뒤 간호 PC 의 바가 비트 [저장]을 스스로 누른다(확인 3가지 뒤, 2026-11-25). c1.5: 원장님 쪽은 바 아래 작은 미리보기 → 누르면 크게 + [확인]. 바가 있는 PC 는 모두 알림을 받는다 (2026-11-25). c1.4: 원장님 PC 알림 창 [확인] (rx_doctor.on 이 있는 PC 만, 2026-11-25). c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
+$CapVer = 'c1.8'   # c1.8: [숨기기] — 바를 작은 [캡처 ▼] 표시로 줄인다, 이 PC 만 (2026-11-27). c1.7: 원장님 알림은 사진 없이 글 + [확인] 만 (2026-11-25). c1.6: 원장님 [확인] 뒤 간호 PC 의 바가 비트 [저장]을 스스로 누른다(확인 3가지 뒤, 2026-11-25). c1.5: 원장님 쪽은 바 아래 작은 미리보기 → 누르면 크게 + [확인]. 바가 있는 PC 는 모두 알림을 받는다 (2026-11-25). c1.4: 원장님 PC 알림 창 [확인] (rx_doctor.on 이 있는 PC 만, 2026-11-25). c1.3: [원장님 확인 요청] (rx_approve.on 이 있는 PC 만, 2026-11-25). c1.1: [진료 캡처] (2026-11-17). c1.2: 진료 캡처를 이 PC 의 C:\진료캡처 에도 파일로 저장. 감시 스크립트가 capture.json 의 sha256 과 다르면 이 파일을 바꾼다
 $ApiKey    ='AIzaSyDBj3z-Qj9DyT1ZgDNps1-Yp9ZBopeWr0w'
 $ProjectId = 'bonafide-dongseon-108e2'
 $Bucket    = 'bonafide-dongseon-108e2.firebasestorage.app'
@@ -532,13 +532,13 @@ function RxThumbSync() {
   $tm = ''; try { $tm = ([DateTime]::Parse($r.at)).ToString('HH:mm') } catch {}
   $t.Controls['cap'].Text = " 처방이 바뀌었습니다$(if ($cand.Count -gt 1) { "  (외 $($cand.Count - 1)건)" })"
   $t.Controls['body'].Controls['who'].Text = "$($r.name)  ·  $($r.mrn)`n$tm  $($r.pc)"
-  $tx = $bar.Left + $(if ($btnRxDoc) { $btnRxDoc.Left } else { 0 }); $vs2 = [Windows.Forms.SystemInformation]::VirtualScreen
-  if ($tx + $t.Width -gt $vs2.Right) { $tx = $vs2.Right - $t.Width }
+  $tx = $(if ($script:MiniNow) { $bar.Right - $t.Width } else { $bar.Left + $(if ($btnRxDoc) { $btnRxDoc.Left } else { 0 }) }); $vs2 = [Windows.Forms.SystemInformation]::VirtualScreen
+  if ($tx + $t.Width -gt $vs2.Right) { $tx = $vs2.Right - $t.Width }; if ($tx -lt $vs2.Left) { $tx = $vs2.Left }
   $t.Location = New-Object Drawing.Point $tx, ($bar.Bottom + 2)
   if (-not $t.Visible) { $t.Show() }
 }
 function RxDocButton() { if (-not $btnRxDoc) { return }; $n = @($script:RxPend).Count
-  if ($n) { $btnRxDoc.Text = "처방 확인 $n"; $btnRxDoc.BackColor = [Drawing.Color]::FromArgb(220, 38, 38) } else { $btnRxDoc.Text = '처방 확인'; $btnRxDoc.BackColor = [Drawing.Color]::FromArgb(71, 85, 105) } }
+  if ($n) { $btnRxDoc.Text = "처방 확인 $n"; $btnRxDoc.BackColor = [Drawing.Color]::FromArgb(220, 38, 38) } else { $btnRxDoc.Text = '처방 확인'; $btnRxDoc.BackColor = [Drawing.Color]::FromArgb(71, 85, 105) }; if ($script:MiniNow) { MiniLook } }
 function RxDocTick() {   # 타이머(1.5초)에서 부른다. 비트가 떠 있으면 8초마다, 아니면 60초마다 읽는다(읽기 수를 아낀다)
   if ($script:Capturing) { return }
   $gap = if (Get-Process -Name BITDoctorOrder -ErrorAction SilentlyContinue) { 8 } else { 60 }
@@ -561,7 +561,7 @@ $script:CurMrn = ''; $script:CurName = ''; $script:HoldUntil = [DateTime]::MinVa
 $bar = New-Object Windows.Forms.Form
 $bar.FormBorderStyle = 'None'; $bar.TopMost = $true; $bar.ShowInTaskbar = $false; $bar.StartPosition = 'Manual'
 $RxX1 = $(if ($RxOn) { 138 } else { 0 }); $RxX2 = $(if ($RxDoc) { 112 } else { 0 })   # 처방 확인 단추들이 차지하는 폭
-$BarW = 628 + $RxX1 + $RxX2; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
+$BarW = 686 + $RxX1 + $RxX2; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.BackColor = [Drawing.Color]::FromArgb(30, 41, 59); $bar.Opacity = 0.96
 $wa = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $bar.Location = New-Object Drawing.Point ([int]($wa.Left + ($wa.Width - $BarW) / 2)), $wa.Top
 try { if (Test-Path $PosFile) { $p = (Get-Content $PosFile -TotalCount 1) -split ','; $pt = New-Object Drawing.Point ([int]$p[0]), ([int]$p[1])
@@ -589,6 +589,23 @@ $menu = New-Object Windows.Forms.ContextMenuStrip
 [void]$menu.Items.Add('진료 캡처 폴더 열기', $null, { $d = LocalCapRoot; if ($d) { Start-Process explorer.exe $d } })
 [void]$menu.Items.Add('잠시 끄기 (5분 안에 다시 켜짐)', $null, { $bar.Close() })
 $bar.ContextMenuStrip = $menu; $lbl.ContextMenuStrip = $menu
+# ── 숨기기 (c1.8, 2026-11-27) ── [숨기기]를 누르면 바가 작은 [캡처 ▼] 표시로 줄고, 그것을 누르면 다시 펴진다. 이 PC(이 윈도 사용자)의 파일에만 기억한다 — 다른 PC 와 무관.
+#  줄어 있어도 프로그램은 그대로 돈다(원장님 알림·자보 팝업). 처방 확인을 기다리는 동안(간호 PC)은 안내가 보여야 하므로 잠시 펴 둔다.
+$MiniFile = Join-Path $LogDir 'slip_capture.mini'; $MiniW = 64; $MiniH = 18
+$script:Mini = Test-Path $MiniFile; $script:MiniNow = $false
+$btnHide = CapButton '숨기기' (628 + $RxX1 + $RxX2) 51 65 85; $btnHide.Size = New-Object Drawing.Size 54, 30; $btnHide.Font = New-Object Drawing.Font 'Malgun Gothic', 9
+$btnMini = New-Object Windows.Forms.Button; $btnMini.FlatStyle = 'Flat'; $btnMini.FlatAppearance.BorderSize = 0; $btnMini.ForeColor = [Drawing.Color]::White; $btnMini.Font = New-Object Drawing.Font 'Malgun Gothic', 8
+$btnMini.Location = New-Object Drawing.Point 0, 0; $btnMini.Size = New-Object Drawing.Size $MiniW, $MiniH; $btnMini.Cursor = [Windows.Forms.Cursors]::Hand; $btnMini.TabStop = $false; $btnMini.Visible = $false
+$bar.Controls.AddRange(@($btnHide, $btnMini))
+function MiniLook() { $n = 0; if ($btnRxDoc) { $n = @($script:RxPend).Count }   # 원장님 PC: 요청이 있으면 빨강 + 건수
+  if ($n) { $btnMini.Text = "처방 $n"; $btnMini.BackColor = [Drawing.Color]::FromArgb(220, 38, 38) } else { $btnMini.Text = '캡처 ▼'; $btnMini.BackColor = [Drawing.Color]::FromArgb(30, 41, 59) } }
+function BarMini($on) { $on = [bool]$on; if ($on -eq $script:MiniNow) { return }
+  $script:MiniNow = $on   # 줄일 때는 오른쪽 끝([숨기기] 자리)에 남긴다 — 같은 자리를 다시 누르면 펴진다
+  if ($on) { $x = $bar.Left + $BarW - $MiniW; foreach ($c in $bar.Controls) { $c.Visible = $false }; $bar.MinimumSize = New-Object Drawing.Size $MiniW, $MiniH; $bar.Size = New-Object Drawing.Size $MiniW, $MiniH; $bar.Left = $x; MiniLook; $btnMini.Visible = $true; $bar.Opacity = 0.8 }
+  else { $x = $bar.Left - ($BarW - $MiniW); $btnMini.Visible = $false; $bar.Size = New-Object Drawing.Size $BarW, 38; $bar.Left = $x; foreach ($c in $bar.Controls) { if ($c -ne $btnMini) { $c.Visible = $true } }; $bar.Opacity = 0.96 } }
+function MiniSync() { BarMini ($script:Mini -and -not $script:Rx) }
+$btnHide.Add_Click({ $script:Mini = $true; try { Set-Content $MiniFile '1' -Encoding ASCII } catch {}; MiniSync; if (-not $script:MiniNow) { SetStatus '원장님 확인이 끝나면 숨겨집니다' ([Drawing.Color]::White) 5 }; Log '바 숨김' })
+$btnMini.Add_Click({ $script:Mini = $false; try { Remove-Item $MiniFile -Force -ErrorAction SilentlyContinue } catch {}; MiniSync; Log '바 다시 폄'; if ($btnRxDoc -and @($script:RxPend).Count) { try { RxDocOpen } catch {} } })
 
 function SetStatus($text, $color, $sec) { $lbl.Text = $text; $lbl.ForeColor = $color; $script:HoldUntil = (Get-Date).AddSeconds($sec) }
 # ── 자동차보험 급여 도수 가능 팝업 (2026-10-30) ──
@@ -790,15 +807,15 @@ function EnsureBarVisible() {
   if ($script:Capturing) { return }
   try {
     $on = $false; foreach ($sc in [Windows.Forms.Screen]::AllScreens) { if ($sc.WorkingArea.IntersectsWith($bar.Bounds)) { $on = $true; break } }
-    if (-not $on) { $wa0 = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $bar.Location = New-Object Drawing.Point ([int]($wa0.Left + ($wa0.Width - $BarW) / 2)), $wa0.Top
+    if (-not $on) { $wa0 = [Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $bar.Location = New-Object Drawing.Point ([int]($wa0.Left + ($wa0.Width - $BarW) / 2) + $(if ($script:MiniNow) { $BarW - $MiniW } else { 0 })), $wa0.Top
       try { Remove-Item $PosFile -ErrorAction SilentlyContinue } catch {}; Log "바가 화면 밖에 있어 위 가운데로 옮김" }
     if (-not $bar.Visible) { $bar.Show(); Log "숨겨진 바를 다시 보이게 함" }
     if ($bar.WindowState -ne 'Normal') { $bar.WindowState = 'Normal' }
     $bar.TopMost = $true
   } catch { Log "바 표시 확인 오류: $($_.Exception.Message)" }
 }
-$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; ReadPatient; if ($RxOn) { try { RxTick } catch { Log "처방 확인 대기 오류: $($_.Exception.Message)" } }; if ($RxDoc) { try { RxDocTick } catch { Log "처방 확인 알림 오류: $($_.Exception.Message)" } } }); $timer.Start()
-$bar.Add_Shown({ if ($RxOn) { RxResume }; ReadPatient })
+$timer = New-Object Windows.Forms.Timer; $timer.Interval = 1500; $timer.Add_Tick({ EnsureBarVisible; MiniSync; ReadPatient; if ($RxOn) { try { RxTick } catch { Log "처방 확인 대기 오류: $($_.Exception.Message)" } }; if ($RxDoc) { try { RxDocTick } catch { Log "처방 확인 알림 오류: $($_.Exception.Message)" } } }); $timer.Start()
+$bar.Add_Shown({ if ($RxOn) { RxResume }; MiniSync; ReadPatient })
 Log "시작 $CapVer ($Pc)"
 [Windows.Forms.Application]::Run($bar)
 Log "종료"
